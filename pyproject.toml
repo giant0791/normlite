@@ -18,3 +18,6 @@ major_version_zero = true
 dev = [
     "pytest>=8.4.1",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
