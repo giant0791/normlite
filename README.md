@@ -1,2 +1,2 @@
 # normlite
-An SQL frontend to Notion databases.
+Get access to Notion databases with the full power of SQL.
