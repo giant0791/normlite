@@ -51,6 +51,24 @@ def test_create_new_database_with_params():
     assert db_page
     assert engine.database_id == db_page.get('id')
 
+def test_create_new_table():
+    """Test that a new table can be created in the database"""
+
+    # create an engine to connect to the database server
+    engine: Engine = create_engine(
+        uri='normlite://',
+        host='www.notion.so', 
+        database='testdatabase',
+        api_key = 'ntn_abc123def456ghi789jkl012mno345pqr' 
+    )
+
+    engine.execute(
+        'create table students (id int, name varchar(255), grade varchar(1))'
+    )
+
+
+
+
 
 
 
