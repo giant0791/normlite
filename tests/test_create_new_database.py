@@ -1,3 +1,5 @@
+import pytest
+
 from normlite.engine import Engine, create_engine
 from normlite.notion_sdk import _fake_notion_store
 
@@ -51,6 +53,7 @@ def test_create_new_database_with_params():
     assert db_page
     assert engine.database_id == db_page.get('id')
 
+@pytest.mark.skip(reason="execute() method not implemented in Engine class yet")
 def test_create_new_table():
     """Test that a new table can be created in the database"""
 

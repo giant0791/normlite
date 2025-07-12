@@ -1,7 +1,10 @@
+from __future__ import annotations
 from dataclasses import dataclass
 import re
 from enum import Enum, auto
 from typing import List, Tuple, Iterator, Union
+from abc import ABC, abstractmethod
+import json
 
 class TokenType(Enum):
     KEYWORD = auto()
@@ -45,21 +48,49 @@ def tokenize(sql: str) -> Iterator[Token]:
         pos = match.end()
     yield TokenType.EOF, ""
 
+class SqlNode(ABC):
+    @abstractmethod
+    def accept(self, visitor: Visitor) -> str:
+        raise NotImplementedError
+    
+class Visitor:
+    def visit(self, node: SqlNode) -> str:
+        return node.accept(self)
+    
+    def visit_ColumnDef(self, node: ColumnDef) -> str:
+        raise NotImplementedError
+
+    def visit_CreateTable(self, node: CreateTable) -> str:
+        raise NotImplementedError
+
+    def visit_InsertStatement(self, node: InsertStatement) -> str:
+        raise NotImplementedError
+
+
 @dataclass
-class ColumnDef:
+class ColumnDef(SqlNode):
     name: str
     type: str
 
+    def accept(self, visitor):
+        return visitor.visit_ColumnDef(self)
+
 @dataclass
-class CreateTable:
+class CreateTable(SqlNode):
     table_name: str
     columns: List[ColumnDef]
 
+    def accept(self, visitor: Visitor):
+        return visitor.visit_CreateTable(self)
+
 @dataclass
-class InsertStatement:
+class InsertStatement(SqlNode):
     table_name: str
     columns: List[str]
     values: List[Union[int, str]]
+
+    def accept(self, visitor):
+        return visitor.visit_InsertStatement(self)
 
 class Parser:
     def __init__(self, tokens: Iterator[Token]):
@@ -136,3 +167,27 @@ class Parser:
         self.eat(TokenType.SYMBOL, ")")
 
         return InsertStatement(table_name, columns, values)
+
+class SqlToJsonVisitor(Visitor):
+    def visit_CreateTable(self, node: CreateTable) -> str:
+        obj = {
+            "title": [
+                {
+                    "type": "text",
+                    "text": {"content": node.table_name}
+                }
+            ],
+            "properties": {
+                col.name: json.loads(col.accept(self))  # string to dict
+                for col in node.columns
+            }
+        }
+        return json.dumps(obj)
+
+    def visit_ColumnDef(self, node: ColumnDef) -> str:
+        if node.type.startswith("int"):
+            return '{"number": {}}'
+        elif node.type.startswith("varchar"):
+            return '{"rich_text": {}}'
+        else:
+            raise ValueError(f"Unsupported column type: {node.type}")
