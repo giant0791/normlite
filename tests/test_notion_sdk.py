@@ -1,7 +1,7 @@
 from typing import Any, Dict
 from datetime import datetime
 import uuid
-from normlite.notion_sdk.client import AbstractNotionClient, FakeNotionClient
+from normlite.notion_sdk.client import AbstractNotionClient
 
 def is_valid_isodt(dt_str: str) -> bool:
     try:
