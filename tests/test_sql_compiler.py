@@ -5,7 +5,7 @@ from normlite.sql import ColumnDef, CreateTable, InsertStatement, MetaData, toke
 
 
 def test_create_table_to_json():
-    sql = "create table students (id int, name varchar(255), grade varchar(1))"
+    sql = "create table students (id int, name title_varchar(255), grade varchar(1))"
     ast = Parser(tokenize(sql)).parse()
     visitor = SqlToJsonVisitor()
     output = visitor.visit(ast)
@@ -19,7 +19,7 @@ def test_create_table_to_json():
         ],
         "properties": {
             "id": {"number": {}},
-            "name": {"rich_text": {}},
+            "name": {"title": {}},
             "grade": {"rich_text": {}}
         }
     }
@@ -28,7 +28,7 @@ def test_create_table_to_json():
     assert output == expected_json
 
 def test_insert_stmt_to_json():
-    sql = "create table students (id int, name varchar(255), grade varchar(1))"
+    sql = "create table students (id int, name title_varchar(255), grade varchar(1))"
     students_table = Parser(tokenize(sql)).parse()
     table_catalog: MetaData = MetaData()
     table_catalog.add(students_table)
@@ -56,7 +56,7 @@ def test_insert_stmt_to_json():
 def test_compiler_table_def_misspelled():
     # Create a table and add it to the MetaData object
     table_def = Parser(tokenize(
-        "create table students (id int, name varchar(255), grade varchar(1))"
+        "create table students (id int, name title_varchar(255), grade varchar(1))"
     )).parse()
     table_catalog: MetaData = MetaData()
     table_catalog.add(table_def)
@@ -98,3 +98,28 @@ def test_compiler_no_catalog_provided():
         output = visitor.visit(ast)
 
     assert 'No table catalog defined' in str(exc.value)
+
+def test_compiler_table_w_multiple_title_columns():
+    table_def = Parser(tokenize(
+        "create table students (id int, name title_varchar(255), grade title_varchar(1))"
+    )).parse()
+
+    # Compile the create table statement
+    visitor = SqlToJsonVisitor()
+    with pytest.raises(ValueError) as exc:
+        visitor.visit(table_def)
+
+    assert 'Invalid table schema:' in str(exc.value)
+
+def test_compiler_table_w_no_title_column():
+    table_def = Parser(tokenize(
+        "create table students (id int, name varchar(255), grade varchar(1))"
+    )).parse()
+
+    # Compile the create table statement
+    visitor = SqlToJsonVisitor()
+    with pytest.raises(ValueError) as exc:
+        visitor.visit(table_def)
+
+    assert 'Invalid table schema:' in str(exc.value)
+

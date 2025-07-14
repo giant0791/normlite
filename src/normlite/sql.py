@@ -283,6 +283,16 @@ class SqlToJsonVisitor(Visitor):
         super().__init__(table_catalog)
 
     def visit_CreateTable(self, node: CreateTable) -> str:
+        title_count = 0
+        for col in node.columns:
+            if col.type.startswith('title_varchar'):
+                title_count += 1
+        
+        if title_count != 1:
+            raise ValueError(
+                f"Invalid table schema: expected exactly one 'title_varchar' column, found {title_count}"
+            )
+
         obj = {
             "title": [
                 {
@@ -300,6 +310,8 @@ class SqlToJsonVisitor(Visitor):
     def visit_ColumnDef(self, node: ColumnDef) -> str:
         if node.type.startswith("int"):
             return '{"number": {}}'
+        elif node.type.startswith('title_varchar'):
+            return '{"title": {}}'
         elif node.type.startswith("varchar"):
             return '{"rich_text": {}}'
         else:
