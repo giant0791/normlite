@@ -1,7 +1,6 @@
 from __future__ import annotations
 from typing import Dict, Any, List, Optional
-
-from normlite.notion_sdk.client import notion_pages_create
+from normlite.notion_sdk.client import FakeNotionClient
 
 
 def create_engine(
@@ -23,7 +22,10 @@ class Engine:
         self._database = database
         self._api_key = api_key
 
-        page: Dict[str, Any] = notion_pages_create({
+        # TODO: Implement real database discovery
+        # This is a preliminary code implementation so that the code imports.
+        client = FakeNotionClient(self._api_key) 
+        page: Dict[str, Any] = client.pages_create({
             "Title": {"id": "title", "title": self._database}
         })
 

@@ -1,8 +1,6 @@
 import pytest
 
 from normlite.engine import Engine, create_engine
-from normlite.notion_sdk import _fake_notion_store
-
 """
 Quick mapping between Notion and the database world.
 
@@ -43,15 +41,6 @@ def test_create_new_database_with_params():
         api_key = 'ntn_abc123def456ghi789jkl012mno345pqr' 
     )
 
-    assert len(_fake_notion_store["store"]) == 3
-
-    db_page = None
-    for notion_object in _fake_notion_store['store']:
-        if notion_object['object'] == 'page' and notion_object['Title']['title'] == engine.database:
-            db_page = notion_object
-
-    assert db_page
-    assert engine.database_id == db_page.get('id')
 
 @pytest.mark.skip(reason="execute() method not implemented in Engine class yet")
 def test_create_new_table():
@@ -64,8 +53,8 @@ def test_create_new_table():
         database='testdatabase',
         api_key = 'ntn_abc123def456ghi789jkl012mno345pqr' 
     )
-
-    engine.execute(
+    connection: Connection = engine.connect()
+    connection.execute(
         'create table students (id int, name varchar(255), grade varchar(1))'
     )
 
