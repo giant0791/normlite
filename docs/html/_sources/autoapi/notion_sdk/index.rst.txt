@@ -1,0 +1,28 @@
+notion_sdk
+==========
+
+.. py:module:: notion_sdk
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/notion_sdk/client/index
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   notion_sdk._fake_notion_store
+
+
+Package Contents
+----------------
+
+.. py:data:: _fake_notion_store
+

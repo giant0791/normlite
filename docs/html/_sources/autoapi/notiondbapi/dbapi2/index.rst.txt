@@ -1,0 +1,28 @@
+notiondbapi.dbapi2
+==================
+
+.. py:module:: notiondbapi.dbapi2
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   notiondbapi.dbapi2.Cursor
+
+
+Module Contents
+---------------
+
+.. py:class:: Cursor
+
+   Implement the `Cursor` class according to the DBAPI 2.0 specification.
+
+
+   .. py:attribute:: _result_set
+
+
+   .. py:method:: fetchall()
+
+

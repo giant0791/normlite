@@ -1,0 +1,63 @@
+notion_sdk.client
+=================
+
+.. py:module:: notion_sdk.client
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   notion_sdk.client.AbstractNotionClient
+   notion_sdk.client.FakeNotionClient
+
+
+Module Contents
+---------------
+
+.. py:class:: AbstractNotionClient(auth: str)
+
+   Bases: :py:obj:`abc.ABC`
+
+
+   Helper class that provides a standard way to create an ABC using
+   inheritance.
+
+
+   .. py:attribute:: _auth
+
+
+   .. py:method:: pages_create() -> Dict[str, Any]
+      :abstractmethod:
+
+
+
+   .. py:method:: pages_retrieve(id: str) -> Dict[str, Any]
+      :abstractmethod:
+
+
+
+   .. py:method:: databases_create() -> Dict[str, Any]
+      :abstractmethod:
+
+
+
+.. py:class:: FakeNotionClient(auth: str)
+
+   Bases: :py:obj:`AbstractNotionClient`
+
+
+   Helper class that provides a standard way to create an ABC using
+   inheritance.
+
+
+   .. py:method:: pages_create(payload: Dict[str, Any]) -> Dict[str, Any]
+
+
+   .. py:method:: pages_retrieve(id: str) -> Dict[str, Any]
+
+
+   .. py:method:: databases_create() -> Dict[str, Any]
+
+

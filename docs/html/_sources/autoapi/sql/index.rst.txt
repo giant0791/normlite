@@ -1,0 +1,254 @@
+sql
+===
+
+.. py:module:: sql
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   sql.Token
+   sql.KEYWORDS
+   sql.TOKEN_REGEX
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   sql.TokenType
+   sql.SqlNode
+   sql.Visitor
+   sql.MetaData
+   sql.ColumnDef
+   sql.CreateTable
+   sql.InsertStatement
+   sql.Parser
+   sql.SqlToJsonVisitor
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   sql.tokenize
+
+
+Module Contents
+---------------
+
+.. py:class:: TokenType(*args, **kwds)
+
+   Bases: :py:obj:`enum.Enum`
+
+
+   Enum for token types used in the tokenization.
+
+
+   .. py:attribute:: KEYWORD
+
+
+   .. py:attribute:: IDENTIFIER
+
+
+   .. py:attribute:: SYMBOL
+
+
+   .. py:attribute:: NUMBER
+
+
+   .. py:attribute:: STRING
+
+
+   .. py:attribute:: EOF
+
+
+.. py:data:: Token
+
+.. py:data:: KEYWORDS
+
+.. py:data:: TOKEN_REGEX
+
+.. py:function:: tokenize(sql: str) -> Iterator[Token]
+
+   Provide a `Token` iterator from the supplied SQL construct.
+
+   :param sql: The SQL construct to be tokenized
+   :type sql: str
+
+   :raises SyntaxError: Unexpected charachter at position index.
+
+   :Yields: *Iterator[Token]* -- The `Token` iterator
+
+
+.. py:class:: SqlNode
+
+   Bases: :py:obj:`abc.ABC`
+
+
+   Helper class that provides a standard way to create an ABC using
+   inheritance.
+
+
+   .. py:method:: accept(visitor: Visitor) -> str
+      :abstractmethod:
+
+
+
+.. py:class:: Visitor(table_catalog: Optional[MetaData] = None)
+
+   .. py:attribute:: _table_catalog
+      :value: None
+
+
+
+   .. py:method:: visit(node: SqlNode) -> str
+
+
+   .. py:method:: visit_ColumnDef(node: ColumnDef) -> str
+      :abstractmethod:
+
+
+
+   .. py:method:: visit_CreateTable(node: CreateTable) -> str
+      :abstractmethod:
+
+
+
+   .. py:method:: visit_InsertStatement(node: InsertStatement) -> str
+      :abstractmethod:
+
+
+
+.. py:class:: MetaData
+
+   Provide a repository to store table metadata.
+
+   This class represents a table catalog where all table-related metadata are stored.
+   It provides a dictionary-like interface to check existence and access stored metadata.
+
+
+   .. py:attribute:: tables
+      :type:  Dict[str, CreateTable]
+
+
+   .. py:method:: add(table: CreateTable) -> None
+
+
+   .. py:method:: __contains__(table_ident: Union[CreateTable, str]) -> bool
+
+
+   .. py:method:: __getitem__(tablename: str) -> CreateTable
+
+
+.. py:class:: ColumnDef(name: str, type: str)
+
+   Bases: :py:obj:`SqlNode`
+
+
+   Helper class that provides a standard way to create an ABC using
+   inheritance.
+
+
+   .. py:attribute:: name
+
+
+   .. py:attribute:: type
+
+
+   .. py:method:: __eq__(value: SqlNode)
+
+
+   .. py:method:: accept(visitor)
+
+
+.. py:class:: CreateTable(table_name: str, columns: List[ColumnDef])
+
+   Bases: :py:obj:`SqlNode`
+
+
+   Helper class that provides a standard way to create an ABC using
+   inheritance.
+
+
+   .. py:attribute:: table_name
+
+
+   .. py:attribute:: columns
+
+
+   .. py:method:: accept(visitor: Visitor)
+
+
+.. py:class:: InsertStatement(table_name: str, columns: List[str], values: List[Union[int, str]])
+
+   Bases: :py:obj:`SqlNode`
+
+
+   Helper class that provides a standard way to create an ABC using
+   inheritance.
+
+
+   .. py:attribute:: table_name
+
+
+   .. py:attribute:: columns
+
+
+   .. py:attribute:: values
+
+
+   .. py:method:: accept(visitor)
+
+
+.. py:class:: Parser(tokens: Iterator[Token])
+
+   Create an SQL AST for a given SQL construct.
+
+
+
+   .. attribute:: `tokens`
+
+      The `Token` iterator.
+
+   .. attribute:: `current`
+
+      The current `Token`.
+
+
+   .. py:attribute:: tokens
+
+
+   .. py:attribute:: current
+
+
+   .. py:method:: eat(expected_type, expected_value=None)
+
+
+   .. py:method:: parse()
+
+
+   .. py:method:: parse_create_table() -> CreateTable
+
+
+   .. py:method:: parse_insert() -> InsertStatement
+
+
+.. py:class:: SqlToJsonVisitor(table_catalog=None)
+
+   Bases: :py:obj:`Visitor`
+
+
+   .. py:method:: visit_CreateTable(node: CreateTable) -> str
+
+
+   .. py:method:: visit_ColumnDef(node: ColumnDef) -> str
+
+
+   .. py:method:: visit_InsertStatement(node: InsertStatement) -> str
+
+

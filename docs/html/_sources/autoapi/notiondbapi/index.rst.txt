@@ -1,0 +1,15 @@
+notiondbapi
+===========
+
+.. py:module:: notiondbapi
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/notiondbapi/dbapi2/index
+
+

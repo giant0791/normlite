@@ -1,0 +1,64 @@
+engine
+======
+
+.. py:module:: engine
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   engine.Engine
+   engine.CursorResult
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   engine.create_engine
+
+
+Module Contents
+---------------
+
+.. py:function:: create_engine(uri: str, host: str, database: str, api_key: str) -> Engine
+
+   Create a new engine object to get access to the Notion database.
+
+   Each engine object represents a Notion page, where the all the database tables are
+   appended as children.
+
+
+
+.. py:class:: Engine(database: str, api_key: str)
+
+   .. py:attribute:: _database
+
+
+   .. py:attribute:: _api_key
+
+
+   .. py:attribute:: _database_id
+
+
+   .. py:property:: database
+      :type: str
+
+
+
+   .. py:property:: database_id
+      :type: str
+
+
+
+   .. py:method:: execute(statement: str, args: Optional[List[str]]) -> CursorResult
+
+
+.. py:class:: CursorResult
+
+   .. py:method:: __len__() -> int
+
+
