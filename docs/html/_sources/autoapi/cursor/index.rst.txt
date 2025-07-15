@@ -42,6 +42,9 @@ Module Contents
    .. py:method:: fetchall() -> List[Row]
 
 
+   .. py:method:: execute() -> List[Row]
+
+
 .. py:class:: Row(metadata: _CursorMetaData, row_data: List[Tuple[str, str, str]])
 
    Provide pythonic high level interface to a single SQL database row.

@@ -19,6 +19,9 @@ class CursorResult:
     def fetchall(self) -> List[Row]:
         raw_rows = self._cursor.fetchall()  # [[(colname, type, val), ...], ...]
         return [Row(self._metadata, row_data) for row_data in raw_rows]
+    
+    def execute(self) -> List[Row]:
+        pass
 
 class Row:
     """Provide pythonic high level interface to a single SQL database row."""

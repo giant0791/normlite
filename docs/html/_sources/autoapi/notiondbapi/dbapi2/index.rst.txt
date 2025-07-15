@@ -4,6 +4,15 @@ notiondbapi.dbapi2
 .. py:module:: notiondbapi.dbapi2
 
 
+Exceptions
+----------
+
+.. autoapisummary::
+
+   notiondbapi.dbapi2.Error
+   notiondbapi.dbapi2.InterfaceError
+
+
 Classes
 -------
 
@@ -15,6 +24,26 @@ Classes
 Module Contents
 ---------------
 
+.. py:exception:: Error
+
+   Bases: :py:obj:`Exception`
+
+
+   Base class of all other error exceptions.
+
+   It can be used this to catch all errors with one single `except` statement.
+
+
+.. py:exception:: InterfaceError
+
+   Bases: :py:obj:`Error`
+
+
+   Exception raised for errors that are related to the database interface.
+
+   For example, it is raised when an operation is not supported by the Notion API.
+
+
 .. py:class:: Cursor
 
    Implement the `Cursor` class according to the DBAPI 2.0 specification.
@@ -23,6 +52,52 @@ Module Contents
    .. py:attribute:: _result_set
 
 
-   .. py:method:: fetchall()
+   .. py:attribute:: _rowcount
+      :value: -1
+
+
+
+   .. py:property:: rowcount
+      :type: int
+
+
+
+   .. py:method:: fetchall() -> List[Tuple[str, str, Any]]
+
+
+   .. py:method:: execute(operation: Dict[str, Any], parameters: Dict[str, Any]) -> Self
+
+      Prepare and execute a database operation (query or command).
+
+      The `execute()` methods implements a return interface to enable concatenating
+      calls on `Cursor` methods.
+
+      Examples of usage for creating a new page
+      >>> operation = {'endpoint': 'pages', 'request': 'create'}
+      >>> parameters = {
+      >>>    'parent': {
+      >>>         'type': 'database_id',
+      >>>         'database_id': 'd9824bdc-8445-4327-be8b-5b47500af6ce'
+      >>>     },
+      >>>     'properties': {
+      >>>         'id': {'number': 1},
+      >>>        'name': {'title': {'text': {'content': 'Isaac Newton'}}},
+      >>>        'grade': {'rich_text': {'text': {'content': 'B'}}}
+      >>>    }
+      >>> }
+      >>> cursor = Cursor()
+      >>> assert cursor.execute(operation, parameters).fetchall() == []
+
+      :param operation: A dictionary containing the Notion API request to be executed
+      :type operation: Dict[str, Any]
+      :param parameters: A dictionary containing the payload for the Notion API request
+      :type parameters: Dict[str, Any]
+
+      :raises InterfaceError: "properties" object not specified in parameters
+      :raises InterfaceError: "parent" object not specified in parameters
+
+      :returns: This `Cursor` instance
+      :rtype: Self
+
 
 

@@ -11,6 +11,12 @@ def client() -> AbstractNotionClient:
 @pytest.fixture(scope="session")
 def dbapi_cursor() -> Cursor:
     cursor = Cursor()
+    
+    # DBAPI 2.0: 
+    # The attribute is -1 in case no .execute*() has been performed on the cursor 
+    # or the rowcount of the last operation cannot be determined by the interface. 
+    assert cursor.rowcount == -1
+
     cursor._result_set = {
         "object": "list",
         "results": [
