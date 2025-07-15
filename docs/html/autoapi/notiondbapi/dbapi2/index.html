@@ -160,21 +160,24 @@
 <dd><p>Prepare and execute a database operation (query or command).</p>
 <p>The <cite>execute()</cite> methods implements a return interface to enable concatenating
 calls on <cite>Cursor</cite> methods.</p>
-<p>Examples of usage for creating a new page
-&gt;&gt;&gt; operation = {‘endpoint’: ‘pages’, ‘request’: ‘create’}
-&gt;&gt;&gt; parameters = {
-&gt;&gt;&gt;    ‘parent’: {
-&gt;&gt;&gt;         ‘type’: ‘database_id’,
-&gt;&gt;&gt;         ‘database_id’: ‘d9824bdc-8445-4327-be8b-5b47500af6ce’
-&gt;&gt;&gt;     },
-&gt;&gt;&gt;     ‘properties’: {
-&gt;&gt;&gt;         ‘id’: {‘number’: 1},
-&gt;&gt;&gt;        ‘name’: {‘title’: {‘text’: {‘content’: ‘Isaac Newton’}}},
-&gt;&gt;&gt;        ‘grade’: {‘rich_text’: {‘text’: {‘content’: ‘B’}}}
-&gt;&gt;&gt;    }
-&gt;&gt;&gt; }
-&gt;&gt;&gt; cursor = Cursor()
-&gt;&gt;&gt; assert cursor.execute(operation, parameters).fetchall() == []</p>
+<p class="rubric">Examples</p>
+<p>Create a new page:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">operation</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;endpoint&#39;</span><span class="p">:</span> <span class="s1">&#39;pages&#39;</span><span class="p">,</span> <span class="s1">&#39;request&#39;</span><span class="p">:</span> <span class="s1">&#39;create&#39;</span><span class="p">}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">parameters</span> <span class="o">=</span> <span class="p">{</span>
+<span class="gp">&gt;&gt;&gt; </span>   <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="p">{</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;database_id&#39;</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;database_id&#39;</span><span class="p">:</span> <span class="s1">&#39;d9824bdc-8445-4327-be8b-5b47500af6ce&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="p">},</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;number&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+<span class="gp">&gt;&gt;&gt; </span>       <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;title&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;Isaac Newton&#39;</span><span class="p">}}},</span>
+<span class="gp">&gt;&gt;&gt; </span>       <span class="s1">&#39;grade&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;B&#39;</span><span class="p">}}}</span>
+<span class="gp">&gt;&gt;&gt; </span>   <span class="p">}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">cursor</span> <span class="o">=</span> <span class="n">Cursor</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">assert</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">operation</span><span class="p">,</span> <span class="n">parameters</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span> <span class="o">==</span> <span class="p">[]</span>
+</pre></div>
+</div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

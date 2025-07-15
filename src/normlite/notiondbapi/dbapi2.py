@@ -63,21 +63,23 @@ class Cursor:
         The `execute()` methods implements a return interface to enable concatenating 
         calls on `Cursor` methods.
 
-        Examples of usage for creating a new page
-        >>> operation = {'endpoint': 'pages', 'request': 'create'}
-        >>> parameters = {
-        >>>    'parent': {
-        >>>         'type': 'database_id', 
-        >>>         'database_id': 'd9824bdc-8445-4327-be8b-5b47500af6ce'
-        >>>     },
-        >>>     'properties': {
-        >>>         'id': {'number': 1},
-        >>>        'name': {'title': {'text': {'content': 'Isaac Newton'}}},
-        >>>        'grade': {'rich_text': {'text': {'content': 'B'}}}
-        >>>    }
-        >>> }
-        >>> cursor = Cursor()
-        >>> assert cursor.execute(operation, parameters).fetchall() == []
+        Examples:
+            Create a new page:
+            
+            >>> operation = {'endpoint': 'pages', 'request': 'create'}
+            >>> parameters = {
+            >>>    'parent': {
+            >>>         'type': 'database_id', 
+            >>>         'database_id': 'd9824bdc-8445-4327-be8b-5b47500af6ce'
+            >>>     },
+            >>>     'properties': {
+            >>>         'id': {'number': 1},
+            >>>        'name': {'title': {'text': {'content': 'Isaac Newton'}}},
+            >>>        'grade': {'rich_text': {'text': {'content': 'B'}}}
+            >>>    }
+            >>> }
+            >>> cursor = Cursor()
+            >>> assert cursor.execute(operation, parameters).fetchall() == []
 
         Args:
             operation (Dict[str, Any]): A dictionary containing the Notion API request to be executed

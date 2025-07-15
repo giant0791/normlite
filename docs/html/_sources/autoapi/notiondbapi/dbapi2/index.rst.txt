@@ -72,7 +72,10 @@ Module Contents
       The `execute()` methods implements a return interface to enable concatenating
       calls on `Cursor` methods.
 
-      Examples of usage for creating a new page
+      .. rubric:: Examples
+
+      Create a new page:
+
       >>> operation = {'endpoint': 'pages', 'request': 'create'}
       >>> parameters = {
       >>>    'parent': {
