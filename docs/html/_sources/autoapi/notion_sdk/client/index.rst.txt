@@ -4,6 +4,14 @@ notion_sdk.client
 .. py:module:: notion_sdk.client
 
 
+Exceptions
+----------
+
+.. autoapisummary::
+
+   notion_sdk.client.NotionError
+
+
 Classes
 -------
 
@@ -16,7 +24,15 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: AbstractNotionClient(auth: str)
+.. py:exception:: NotionError
+
+   Bases: :py:obj:`Exception`
+
+
+   Common base class for all non-exit exceptions.
+
+
+.. py:class:: AbstractNotionClient(auth: str, ischema_page_id: str)
 
    Bases: :py:obj:`abc.ABC`
 
@@ -25,25 +41,56 @@ Module Contents
    inheritance.
 
 
+   .. py:attribute:: allowed_operations
+      :type:  Set[str]
+
+
    .. py:attribute:: _auth
 
 
-   .. py:method:: pages_create() -> Dict[str, Any]
+   .. py:attribute:: _ischema_page_id
+
+
+   .. py:method:: __call__(endpoint: str, request: str, payload: Dict[str, Any]) -> Dict[str, Any]
+
+
+   .. py:property:: ischema_page_id
+      :type: str
+
+
+
+   .. py:method:: pages_create(payload: Dict[str, Any]) -> Dict[str, Any]
       :abstractmethod:
 
 
 
-   .. py:method:: pages_retrieve(id: str) -> Dict[str, Any]
+   .. py:method:: pages_retrieve(payload: Dict[str, Any]) -> Dict[str, Any]
       :abstractmethod:
 
 
 
-   .. py:method:: databases_create() -> Dict[str, Any]
+   .. py:method:: databases_create(payload: Dict[str, Any]) -> Dict[str, Any]
       :abstractmethod:
 
 
 
-.. py:class:: FakeNotionClient(auth: str)
+   .. py:method:: databases_retrieve(payload: Dict[str, Any]) -> Dict[str, Any]
+      :abstractmethod:
+
+
+      Retrieve a database object for the provided ID
+
+      :param payload: A dictionary containing the ID of the database
+      :type payload: Dict[str, Any]
+      :param to be retrieved as value for the `'id'` key:
+
+      :returns: The retrieved database object or and empty dictionary if no
+                databased object for the provided ID were found
+      :rtype: Dict[str, Any]
+
+
+
+.. py:class:: FakeNotionClient(auth: str, ischema_page_id: str)
 
    Bases: :py:obj:`AbstractNotionClient`
 
@@ -52,12 +99,44 @@ Module Contents
    inheritance.
 
 
+   .. py:attribute:: _store
+
+
+   .. py:attribute:: _ischema_page_id
+
+
+   .. py:method:: _get(id: str) -> Dict[str, Any]
+
+
+   .. py:method:: _get_by_title(title: str, type: str) -> Dict[str, Any]
+
+
+   .. py:method:: _add(type: str, payload: Dict[str, Any]) -> Dict[str, Any]
+
+
+   .. py:method:: _store_len() -> int
+
+
    .. py:method:: pages_create(payload: Dict[str, Any]) -> Dict[str, Any]
 
 
-   .. py:method:: pages_retrieve(id: str) -> Dict[str, Any]
+   .. py:method:: pages_retrieve(payload: Dict[str, Any]) -> Dict[str, Any]
 
 
-   .. py:method:: databases_create() -> Dict[str, Any]
+   .. py:method:: databases_create(payload: Dict[str, Any]) -> Dict[str, Any]
+
+
+   .. py:method:: databases_retrieve(payload: Dict[str, Any]) -> Dict[str, Any]
+
+      Retrieve a database object for the provided ID
+
+      :param payload: A dictionary containing the ID of the database
+      :type payload: Dict[str, Any]
+      :param to be retrieved as value for the `'id'` key:
+
+      :returns: The retrieved database object or and empty dictionary if no
+                databased object for the provided ID were found
+      :rtype: Dict[str, Any]
+
 
 

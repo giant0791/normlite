@@ -99,6 +99,12 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#notiondbapi.dbapi2.InterfaceError" title="notiondbapi.dbapi2.InterfaceError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">InterfaceError</span></code></a></p></td>
 <td><p>Exception raised for errors that are related to the database interface.</p></td>
 </tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#notiondbapi.dbapi2.DatabaseError" title="notiondbapi.dbapi2.DatabaseError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DatabaseError</span></code></a></p></td>
+<td><p>Exception raised for errors that are related to the database.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#notiondbapi.dbapi2.InternalError" title="notiondbapi.dbapi2.InternalError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">InternalError</span></code></a></p></td>
+<td><p>Exception raised when the database encounters an internal error.</p></td>
+</tr>
 </tbody>
 </table>
 </section>
@@ -130,10 +136,31 @@
 <p>For example, it is raised when an operation is not supported by the Notion API.</p>
 </dd></dl>
 
+<dl class="py exception">
+<dt class="sig sig-object py" id="notiondbapi.dbapi2.DatabaseError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">DatabaseError</span></span><a class="headerlink" href="#notiondbapi.dbapi2.DatabaseError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#notiondbapi.dbapi2.Error" title="notiondbapi.dbapi2.Error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Error</span></code></a></p>
+<p>Exception raised for errors that are related to the database.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="notiondbapi.dbapi2.InternalError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">InternalError</span></span><a class="headerlink" href="#notiondbapi.dbapi2.InternalError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#notiondbapi.dbapi2.Error" title="notiondbapi.dbapi2.Error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Error</span></code></a></p>
+<p>Exception raised when the database encounters an internal error.</p>
+<p>For example, the cursor is not valid anymore, an unexpected object has been returned by
+the underlying database driver (i.e. the Notion API).</p>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">Cursor</span></span><a class="headerlink" href="#notiondbapi.dbapi2.Cursor" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">Cursor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">normlite.notion_sdk.client.AbstractNotionClient</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#notiondbapi.dbapi2.Cursor" title="Link to this definition"></a></dt>
 <dd><p>Implement the <cite>Cursor</cite> class according to the DBAPI 2.0 specification.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor._client">
+<span class="sig-name descname"><span class="pre">_client</span></span><a class="headerlink" href="#notiondbapi.dbapi2.Cursor._client" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor._result_set">
 <span class="sig-name descname"><span class="pre">_result_set</span></span><a class="headerlink" href="#notiondbapi.dbapi2.Cursor._result_set" title="Link to this definition"></a></dt>
@@ -144,14 +171,65 @@
 <span class="sig-name descname"><span class="pre">_rowcount</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">-1</span></em><a class="headerlink" href="#notiondbapi.dbapi2.Cursor._rowcount" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
+<dl class="py attribute">
+<dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor._lastrowid">
+<span class="sig-name descname"><span class="pre">_lastrowid</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'UNDEF'</span></em><a class="headerlink" href="#notiondbapi.dbapi2.Cursor._lastrowid" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 <dl class="py property">
 <dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor.rowcount">
 <em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">rowcount</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#notiondbapi.dbapi2.Cursor.rowcount" title="Link to this definition"></a></dt>
+<dd><dl class="simple">
+<dt>This read-only attribute specifies the number of rows that the</dt><dd><p>last <cite>.execute*()</cite> produced.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><dl class="simple">
+<dt>Number of rows. <cite>-1</cite> if in case no <cite>.execute*()</cite> has been performed</dt><dd><p>on the cursor or the rowcount of the last operation cannot be
+determined by the interface.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor.lastrowid">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">lastrowid</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#notiondbapi.dbapi2.Cursor.lastrowid" title="Link to this definition"></a></dt>
+<dd><p>This read-only attribute provides the rowid of the last modified row.</p>
+<p>Most Notion API calls return an object with an id, which is used as rowid.
+If the operation does not set a rowid, this attribute is set to <cite>None</cite>.</p>
+<p>The semantics of <cite>.lastrowid</cite> are undefined in case the last executed statement
+modified more than one row, e.g. when using <cite>INSERT</cite> with <cite>.executemany()</cite>.
+<cite>.lastworid</cite> return a 128-bit integer representation of the object id, which can be
+used to access Notion objects.</p>
+<p>Example:
+&gt;&gt;&gt; object_id = str(uuid.UUID(cursor.lastrowid)))
+&gt;&gt;&gt; print(object_id)
+680dee41-b447-451d-9d36-c6eaff13fb46</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A 128-bit integer representing the UUID object id or <cite>None</cite>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Optional[int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor._parse_object">
+<span class="sig-name descname"><span class="pre">_parse_object</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#notiondbapi.dbapi2.Cursor._parse_object" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor.fetchall">
-<span class="sig-name descname"><span class="pre">fetchall</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#notiondbapi.dbapi2.Cursor.fetchall" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">fetchall</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#notiondbapi.dbapi2.Cursor.fetchall" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -161,7 +239,7 @@
 <p>The <cite>execute()</cite> methods implements a return interface to enable concatenating
 calls on <cite>Cursor</cite> methods.</p>
 <p class="rubric">Examples</p>
-<p>Create a new page:</p>
+<p>Create a new page as child of an exisisting database:</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">operation</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;endpoint&#39;</span><span class="p">:</span> <span class="s1">&#39;pages&#39;</span><span class="p">,</span> <span class="s1">&#39;request&#39;</span><span class="p">:</span> <span class="s1">&#39;create&#39;</span><span class="p">}</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">parameters</span> <span class="o">=</span> <span class="p">{</span>
 <span class="gp">&gt;&gt;&gt; </span>   <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="p">{</span>
