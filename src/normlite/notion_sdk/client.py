@@ -1,6 +1,6 @@
 from __future__ import annotations
 import pdb
-from typing import Dict, Any, Set
+from typing import Dict, Any, Optional, Set
 from abc import ABC, abstractmethod
 import uuid
 from datetime import datetime
@@ -11,9 +11,9 @@ class NotionError(Exception):
 class AbstractNotionClient(ABC):
     allowed_operations: Set[str] = set()
 
-    def __init__(self, auth: str, ischema_page_id: str):
+    def __init__(self, auth: str, ischema_page_id: Optional[str] = None):
         self._auth = auth
-        self._ischema_page_id = ischema_page_id
+        self._ischema_page_id = ischema_page_id if ischema_page_id else str(uuid.uuid4())
         AbstractNotionClient.allowed_operations = {
             name
             for name in AbstractNotionClient.__abstractmethods__
@@ -104,8 +104,13 @@ class FakeNotionClient(AbstractNotionClient):
                 
         return {}
 
-
-    def _add(self, type: str, payload: Dict[str, Any]) -> Dict[str, Any]:    
+    def _add(self, type: str, payload: Dict[str, Any]) -> Dict[str, Any]: 
+        # check well-formedness of payload
+        # Note: "properties" object existence is validated previously when binding parameters 
+        if not payload.get('parent', None):
+            # objects being added need to have the parent they belog to
+            raise NotionError(f'Missing "parent" object in payload: {payload}')  
+                    
         new_page = dict()
         new_page['object'] = type
         new_page['id'] = str(uuid.uuid4())

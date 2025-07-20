@@ -32,7 +32,7 @@ Module Contents
    Common base class for all non-exit exceptions.
 
 
-.. py:class:: AbstractNotionClient(auth: str, ischema_page_id: str)
+.. py:class:: AbstractNotionClient(auth: str, ischema_page_id: Optional[str] = None)
 
    Bases: :py:obj:`abc.ABC`
 
@@ -49,6 +49,8 @@ Module Contents
 
 
    .. py:attribute:: _ischema_page_id
+      :value: ''
+
 
 
    .. py:method:: __call__(endpoint: str, request: str, payload: Dict[str, Any]) -> Dict[str, Any]

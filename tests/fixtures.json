@@ -5,7 +5,7 @@
       "table_name": "students",
       "columns": [
         {"name": "id", "type": "int"},
-        {"name": "name", "type": "varchar(n)"},
+        {"name": "name", "type": "title_varchar(n)"},
         {"name": "grade", "type": "varchar(n)"}
       ]
     },
@@ -14,8 +14,9 @@
       "results": [
         {
           "object": "page",
+          "id": "680dee41-b447-451d-9d36-c6eaff13fb45",
           "properties": {
-            "grade": {"type": "rich-text", "richt-text": [{"text": {"content": "B"}}]},
+            "grade": {"type": "rich_text", "richt_text": [{"text": {"content": "B"}}]},
             "name": {"type": "title", "title": [{"text": {"content": "Isaac Newton"}}]},
             "id": {"type": "number", "number": "12345"}
           }
@@ -35,7 +36,7 @@
       "table_name": "researchers",
       "columns": [
         {"name": "id", "type": "int"},
-        {"name": "name", "type": "varchar(n)"},
+        {"name": "name", "type": "title_varchar(n)"},
         {"name": "field", "type": "varchar(n)"},
         {"name": "alive", "type": "varchar(n)"}
       ]
@@ -45,10 +46,11 @@
       "results": [
         {
           "object": "page",
+          "id": "680dee41-b447-451d-9d36-c6eaff13fb46",
           "properties": {
             "name": {"type": "title", "title": [{"text": {"content": "Ada Lovelace"}}]},
-            "field": {"type": "rich-text", "richt-text": [{"text": {"content": "Mathematics"}}]},
-            "alive": {"type": "rich-text", "richt-text": [{"text": {"content": "No"}}]},
+            "field": {"type": "rich_text", "richt_text": [{"text": {"content": "Mathematics"}}]},
+            "alive": {"type": "rich_text", "richt_text": [{"text": {"content": "No"}}]},
             "id": {"type": "number", "number": "42"}
           }
         }

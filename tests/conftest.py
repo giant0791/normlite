@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import uuid
 import pytest
 from normlite.notion_sdk.client import AbstractNotionClient, FakeNotionClient
 from normlite.notiondbapi.dbapi2 import Cursor
@@ -20,7 +21,9 @@ def ischema_page_id() -> str:
 def client(api_key: str, ischema_page_id: str) -> AbstractNotionClient:
     return FakeNotionClient(auth=api_key, ischema_page_id=ischema_page_id)
 
-@pytest.fixture(scope="session")
+# The following fixture must be scope=function otherwise the attribute
+# _result_set gets overwritten when executing all tests together
+@pytest.fixture(scope="function")
 def dbapi_cursor(client: AbstractNotionClient) -> Cursor:
     cursor = Cursor(client)
     
@@ -34,17 +37,19 @@ def dbapi_cursor(client: AbstractNotionClient) -> Cursor:
         "results": [
             {
                 "object": "page",
+                "id": '680dee41-b447-451d-9d36-c6eaff13fb45',
                 "properties": {
                     "id": {"type": "number", "number": "12345"},
-                    "grade": {"type": "rich-text", "richt-text": [{"text": {"content": "B"}}]},
+                    "grade": {"type": "rich_text", "richt_text": [{"text": {"content": "B"}}]},
                     "name": {"type": "title", "title": [{"text": {"content": "Isaac Newton"}}]},
                 },
             },
             {
                 "object": "page",
+                "id": '680dee41-b447-451d-9d36-c6eaff13fb46',
                 "properties": {
                     "id": {"type": "number", "number": "67890"},
-                    "grade": {"type": "rich-text", "richt-text": [{"text": {"content": "A"}}]},
+                    "grade": {"type": "rich_text", "richt_text": [{"text": {"content": "A"}}]},
                     "name": {"type": "title", "title": [{"text": {"content": "Galileo Galilei"}}]},
                 },
             },

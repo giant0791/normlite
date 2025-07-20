@@ -4,6 +4,14 @@ notiondbapi.dbapi2
 .. py:module:: notiondbapi.dbapi2
 
 
+Attributes
+----------
+
+.. autoapisummary::
+
+   notiondbapi.dbapi2.DBAPIParamStyle
+
+
 Exceptions
 ----------
 
@@ -25,6 +33,10 @@ Classes
 
 Module Contents
 ---------------
+
+.. py:data:: DBAPIParamStyle
+
+   Public type for param style used by the cursor.
 
 .. py:exception:: Error
 
@@ -87,6 +99,12 @@ Module Contents
 
 
 
+   .. py:attribute:: _paramstyle
+      :type:  DBAPIParamStyle
+      :value: 'named'
+
+
+
    .. py:property:: rowcount
       :type: int
 
@@ -120,7 +138,8 @@ Module Contents
       `.lastworid` return a 128-bit integer representation of the object id, which can be
       used to access Notion objects.
 
-      Example:
+      .. rubric:: Example
+
       >>> object_id = str(uuid.UUID(cursor.lastrowid)))
       >>> print(object_id)
       680dee41-b447-451d-9d36-c6eaff13fb46
@@ -129,7 +148,61 @@ Module Contents
       :rtype: Optional[int]
 
 
+   .. py:property:: paramstyle
+      :type: DBAPIParamStyle
+
+
+      String constant stating the type of parameter marker formatting expected by the interface.
+
+
+      Supported values are:
+          ``named``: Named mark style, e.g. ``WHERE name=:name``
+
+      Note
+          It always returns ``named``.
+
+      :returns: The paramstyle currently in use.
+      :rtype: DBAPIParamStyle
+
+
    .. py:method:: _parse_object(obj: Dict[str, Any]) -> List[Tuple[str, str, Any]]
+
+      Parse a Notion database or page from a list object into a list of tuples.
+
+      .. rubric:: Examples
+
+      >>> # parse database object returned from databases.create
+      >>> row = cursor._parse_object({
+      >>>     "object": "database",
+      >>>     "id": "bc1211ca-e3f1-4939-ae34-5260b16f627c",
+      >>>     "title": [{
+      >>>     "type": "text",
+      >>>     "text": {"content": "students"}
+      >>>     }],
+      >>>     "properties": {
+      >>>         "id": {"id": "evWq", "name": "id", "type": "number", "number": {}},
+      >>>         "name": {"id": "title", "name": "name", "type": "title", "title": {}},
+      >>>         "grade": {"id": "V}lX", "name": "grade", "type": "rich_text", "rich_text": {}},
+      >>>     },
+      >>> })
+      >>> print(row)
+      [('object', 'otype', 'value'), ('id', 'oid', 'bc1211ca-e3f1-4939-ae34-5260b16f627c'),
+      ('title', 'text', 'students'), ('id', 'number', ''), ('name', 'title', ''),
+      ('grade', 'rich_text', '')]
+
+      >>> # parse page object returned from pages.create
+
+      :param obj: _description_
+      :type obj: Dict[str, Any]
+
+      :raises InternalError: _description_
+      :raises InterfaceError: _description_
+      :raises InterfaceError: _description_
+      :raises InterfaceError: _description_
+
+      :returns: _description_
+      :rtype: List[Tuple[str, str, Any]]
+
 
 
    .. py:method:: fetchall() -> List[List[Tuple[str, str, Any]]]
@@ -139,6 +212,11 @@ Module Contents
 
       Prepare and execute a database operation (query or command).
 
+      Parameters may be provided as a mapping and will be bound to variables in the operation.
+      In Notion, the use of placeholders for variable is redundant, since the properties to
+      which the values are to be bound are known by name.
+      In the current implementation, the parameter style implemented in the cursor is:
+      `named`.
       The `execute()` methods implements a return interface to enable concatenating
       calls on `Cursor` methods.
 
@@ -148,18 +226,24 @@ Module Contents
 
       >>> operation = {'endpoint': 'pages', 'request': 'create'}
       >>> parameters = {
-      >>>    'parent': {
-      >>>         'type': 'database_id',
-      >>>         'database_id': 'd9824bdc-8445-4327-be8b-5b47500af6ce'
+      >>>     'payload': {
+      >>>         'properties': {
+      >>>             'id': {'number': ':id'},
+      >>>             'name': {'title': [{'text': {'content': ':name'}}]},
+      >>>             'grade': {'rich_text': [{'text': {'content': ':grade'}}]}
+      >>>         },
+      >>>         'parent': parent
       >>>     },
-      >>>     'properties': {
-      >>>         'id': {'number': 1},
-      >>>        'name': {'title': {'text': {'content': 'Isaac Newton'}}},
-      >>>        'grade': {'rich_text': {'text': {'content': 'B'}}}
-      >>>    }
+      >>>     'params': {                           # params contains the bindings
+      >>>         'id': 1,
+      >>>         'name': 'Isaac Newton',
+      >>>         'grade': 'B'
+      >>>     }
       >>> }
       >>> cursor = Cursor()
-      >>> assert cursor.execute(operation, parameters).fetchall() == []
+      >>> cursor.execute(operation, parameters).fetchall()
+      >>> _ = cursor.fetchall()
+      >>> assert cursor.rowcount == 1  # the object created
 
       :param operation: A dictionary containing the Notion API request to be executed
       :type operation: Dict[str, Any]
@@ -172,5 +256,8 @@ Module Contents
       :returns: This `Cursor` instance
       :rtype: Self
 
+
+
+   .. py:method:: _bind_parameters(parameters: Dict[str, Any]) -> Dict[str, Any]
 
 

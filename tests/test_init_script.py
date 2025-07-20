@@ -6,7 +6,7 @@ from normlite.notion_sdk.client import AbstractNotionClient
 from normlite.notiondbapi.dbapi2 import Cursor
 
 @pytest.fixture
-def tables_payload(client: AbstractNotionClient)-> dict:
+def tables_payload(client: AbstractNotionClient) -> dict:
     payload = dict()
     parent = dict(type='page_id', page_id=client.ischema_page_id)
     properties = {
@@ -20,6 +20,28 @@ def tables_payload(client: AbstractNotionClient)-> dict:
     payload['title'] = [{'type': 'text', 'text': {'content': 'tables'}}]
 
     return payload
+
+
+
+@pytest.fixture
+def tables_parameters(client: AbstractNotionClient)-> dict:
+
+    payload = dict()
+    parent = dict(type='page_id', page_id=client.ischema_page_id)
+    properties = {
+        'table_name': {'title': {}},
+        'table_schema': {'rich_text': {}},
+        'table_catalog': {'rich_text': {}},
+        'table_id': {'rich_text': {}}
+    }
+    payload['parent'] = parent
+    payload['properties']= properties
+    payload['title'] = [{'type': 'text', 'text': {'content': 'tables'}}]
+
+    return {
+        'payload': payload,
+        'params': {}                # no param bindings required for databases.create
+    }
 
 def test_init_create_tables_w_notion_sdk(client: AbstractNotionClient, tables_payload: dict):
     tables_object = client.databases_create(tables_payload)
@@ -36,10 +58,10 @@ PropertyMetadata = namedtuple('PropertyMetadata', ['name', 'type', 'value'])
 def get_property_data(row: List[Tuple[str, str, Any]]) -> List[PropertyMetadata]:
     return [PropertyMetadata(*column_desc) for column_desc in row]
 
-def test_init_create_tables_w_dbapi(dbapi_cursor: Cursor, tables_payload: dict):
+def test_init_create_tables_w_dbapi(dbapi_cursor: Cursor, tables_parameters: dict):
     cursor = dbapi_cursor.execute(
         dict(endpoint='databases', request='create'),
-        parameters=tables_payload
+        parameters=tables_parameters
     )
  
     results = cursor.fetchall()
@@ -51,7 +73,7 @@ def test_init_create_tables_w_dbapi(dbapi_cursor: Cursor, tables_payload: dict):
     
     _ = cursor.execute(
         dict(endpoint='databases', request='retrieve'), 
-        dict(id=created_db_id)
+        {'payload': dict(id=created_db_id), 'params': {}}
     )
     
     results = cursor.fetchall()

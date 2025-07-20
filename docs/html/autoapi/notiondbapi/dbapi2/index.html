@@ -89,6 +89,16 @@
              
   <section id="module-notiondbapi.dbapi2">
 <span id="notiondbapi-dbapi2"></span><h1>notiondbapi.dbapi2<a class="headerlink" href="#module-notiondbapi.dbapi2" title="Link to this heading"></a></h1>
+<section id="attributes">
+<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#notiondbapi.dbapi2.DBAPIParamStyle" title="notiondbapi.dbapi2.DBAPIParamStyle"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DBAPIParamStyle</span></code></a></p></td>
+<td><p>Public type for param style used by the cursor.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
 <section id="exceptions">
 <h2>Exceptions<a class="headerlink" href="#exceptions" title="Link to this heading"></a></h2>
 <table class="autosummary longtable docutils align-default">
@@ -120,6 +130,12 @@
 </section>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py data">
+<dt class="sig sig-object py" id="notiondbapi.dbapi2.DBAPIParamStyle">
+<span class="sig-prename descclassname"><span class="pre">notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">DBAPIParamStyle</span></span><a class="headerlink" href="#notiondbapi.dbapi2.DBAPIParamStyle" title="Link to this definition"></a></dt>
+<dd><p>Public type for param style used by the cursor.</p>
+</dd></dl>
+
 <dl class="py exception">
 <dt class="sig sig-object py" id="notiondbapi.dbapi2.Error">
 <em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">Error</span></span><a class="headerlink" href="#notiondbapi.dbapi2.Error" title="Link to this definition"></a></dt>
@@ -176,6 +192,11 @@ the underlying database driver (i.e. the Notion API).</p>
 <span class="sig-name descname"><span class="pre">_lastrowid</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'UNDEF'</span></em><a class="headerlink" href="#notiondbapi.dbapi2.Cursor._lastrowid" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
+<dl class="py attribute">
+<dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor._paramstyle">
+<span class="sig-name descname"><span class="pre">_paramstyle</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DBAPIParamStyle</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'named'</span></em><a class="headerlink" href="#notiondbapi.dbapi2.Cursor._paramstyle" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 <dl class="py property">
 <dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor.rowcount">
 <em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">rowcount</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#notiondbapi.dbapi2.Cursor.rowcount" title="Link to this definition"></a></dt>
@@ -208,10 +229,12 @@ If the operation does not set a rowid, this attribute is set to <cite>None</cite
 modified more than one row, e.g. when using <cite>INSERT</cite> with <cite>.executemany()</cite>.
 <cite>.lastworid</cite> return a 128-bit integer representation of the object id, which can be
 used to access Notion objects.</p>
-<p>Example:
-&gt;&gt;&gt; object_id = str(uuid.UUID(cursor.lastrowid)))
-&gt;&gt;&gt; print(object_id)
-680dee41-b447-451d-9d36-c6eaff13fb46</p>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">object_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">(</span><span class="n">cursor</span><span class="o">.</span><span class="n">lastrowid</span><span class="p">)))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">object_id</span><span class="p">)</span>
+<span class="go">680dee41-b447-451d-9d36-c6eaff13fb46</span>
+</pre></div>
+</div>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>A 128-bit integer representing the UUID object id or <cite>None</cite>.</p>
@@ -222,10 +245,74 @@ used to access Notion objects.</p>
 </dl>
 </dd></dl>
 
+<dl class="py property">
+<dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor.paramstyle">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">paramstyle</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DBAPIParamStyle</span></em><a class="headerlink" href="#notiondbapi.dbapi2.Cursor.paramstyle" title="Link to this definition"></a></dt>
+<dd><p>String constant stating the type of parameter marker formatting expected by the interface.</p>
+<dl class="simple">
+<dt>Supported values are:</dt><dd><p><code class="docutils literal notranslate"><span class="pre">named</span></code>: Named mark style, e.g. <code class="docutils literal notranslate"><span class="pre">WHERE</span> <span class="pre">name=:name</span></code></p>
+</dd>
+<dt>Note</dt><dd><p>It always returns <code class="docutils literal notranslate"><span class="pre">named</span></code>.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The paramstyle currently in use.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>DBAPIParamStyle</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor._parse_object">
 <span class="sig-name descname"><span class="pre">_parse_object</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#notiondbapi.dbapi2.Cursor._parse_object" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Parse a Notion database or page from a list object into a list of tuples.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># parse database object returned from databases.create</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">row</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">_parse_object</span><span class="p">({</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;object&quot;</span><span class="p">:</span> <span class="s2">&quot;database&quot;</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;bc1211ca-e3f1-4939-ae34-5260b16f627c&quot;</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">[{</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;students&quot;</span><span class="p">}</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="p">}],</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;evWq&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;id&quot;</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">,</span> <span class="s2">&quot;number&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;title&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;title&quot;</span><span class="p">,</span> <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;V}lX&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;grade&quot;</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text&quot;</span><span class="p">,</span> <span class="s2">&quot;rich_text&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="p">},</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+<span class="go">[(&#39;object&#39;, &#39;otype&#39;, &#39;value&#39;), (&#39;id&#39;, &#39;oid&#39;, &#39;bc1211ca-e3f1-4939-ae34-5260b16f627c&#39;),</span>
+<span class="go">(&#39;title&#39;, &#39;text&#39;, &#39;students&#39;), (&#39;id&#39;, &#39;number&#39;, &#39;&#39;), (&#39;name&#39;, &#39;title&#39;, &#39;&#39;),</span>
+<span class="go">(&#39;grade&#39;, &#39;rich_text&#39;, &#39;&#39;)]</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># parse page object returned from pages.create</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>obj</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – _description_</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference internal" href="#notiondbapi.dbapi2.InternalError" title="notiondbapi.dbapi2.InternalError"><strong>InternalError</strong></a> – _description_</p></li>
+<li><p><a class="reference internal" href="#notiondbapi.dbapi2.InterfaceError" title="notiondbapi.dbapi2.InterfaceError"><strong>InterfaceError</strong></a> – _description_</p></li>
+<li><p><a class="reference internal" href="#notiondbapi.dbapi2.InterfaceError" title="notiondbapi.dbapi2.InterfaceError"><strong>InterfaceError</strong></a> – _description_</p></li>
+<li><p><a class="reference internal" href="#notiondbapi.dbapi2.InterfaceError" title="notiondbapi.dbapi2.InterfaceError"><strong>InterfaceError</strong></a> – _description_</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>_description_</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>List[Tuple[str, str, Any]]</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor.fetchall">
@@ -236,24 +323,35 @@ used to access Notion objects.</p>
 <dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor.execute">
 <span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="headerlink" href="#notiondbapi.dbapi2.Cursor.execute" title="Link to this definition"></a></dt>
 <dd><p>Prepare and execute a database operation (query or command).</p>
-<p>The <cite>execute()</cite> methods implements a return interface to enable concatenating
+<p>Parameters may be provided as a mapping and will be bound to variables in the operation.
+In Notion, the use of placeholders for variable is redundant, since the properties to
+which the values are to be bound are known by name.
+In the current implementation, the parameter style implemented in the cursor is:
+<cite>named</cite>.
+The <cite>execute()</cite> methods implements a return interface to enable concatenating
 calls on <cite>Cursor</cite> methods.</p>
 <p class="rubric">Examples</p>
 <p>Create a new page as child of an exisisting database:</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">operation</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;endpoint&#39;</span><span class="p">:</span> <span class="s1">&#39;pages&#39;</span><span class="p">,</span> <span class="s1">&#39;request&#39;</span><span class="p">:</span> <span class="s1">&#39;create&#39;</span><span class="p">}</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">parameters</span> <span class="o">=</span> <span class="p">{</span>
-<span class="gp">&gt;&gt;&gt; </span>   <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="p">{</span>
-<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;database_id&#39;</span><span class="p">,</span>
-<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;database_id&#39;</span><span class="p">:</span> <span class="s1">&#39;d9824bdc-8445-4327-be8b-5b47500af6ce&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;payload&#39;</span><span class="p">:</span> <span class="p">{</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+<span class="gp">&gt;&gt;&gt; </span>            <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;number&#39;</span><span class="p">:</span> <span class="s1">&#39;:id&#39;</span><span class="p">},</span>
+<span class="gp">&gt;&gt;&gt; </span>            <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;title&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;:name&#39;</span><span class="p">}}]},</span>
+<span class="gp">&gt;&gt;&gt; </span>            <span class="s1">&#39;grade&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;:grade&#39;</span><span class="p">}}]}</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="p">},</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="n">parent</span>
 <span class="gp">&gt;&gt;&gt; </span>    <span class="p">},</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
-<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;number&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
-<span class="gp">&gt;&gt;&gt; </span>       <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;title&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;Isaac Newton&#39;</span><span class="p">}}},</span>
-<span class="gp">&gt;&gt;&gt; </span>       <span class="s1">&#39;grade&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;B&#39;</span><span class="p">}}}</span>
-<span class="gp">&gt;&gt;&gt; </span>   <span class="p">}</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;params&#39;</span><span class="p">:</span> <span class="p">{</span>                           <span class="c1"># params contains the bindings</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Isaac Newton&#39;</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;grade&#39;</span><span class="p">:</span> <span class="s1">&#39;B&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="p">}</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="p">}</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">cursor</span> <span class="o">=</span> <span class="n">Cursor</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="k">assert</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">operation</span><span class="p">,</span> <span class="n">parameters</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span> <span class="o">==</span> <span class="p">[]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">operation</span><span class="p">,</span> <span class="n">parameters</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">assert</span> <span class="n">cursor</span><span class="o">.</span><span class="n">rowcount</span> <span class="o">==</span> <span class="mi">1</span>  <span class="c1"># the object created</span>
 </pre></div>
 </div>
 <dl class="field-list simple">
@@ -277,6 +375,11 @@ calls on <cite>Cursor</cite> methods.</p>
 </dd>
 </dl>
 </dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="notiondbapi.dbapi2.Cursor._bind_parameters">
+<span class="sig-name descname"><span class="pre">_bind_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#notiondbapi.dbapi2.Cursor._bind_parameters" title="Link to this definition"></a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 

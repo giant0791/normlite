@@ -163,6 +163,9 @@ Module Contents
    .. py:method:: __eq__(value: SqlNode)
 
 
+   .. py:method:: __repr__() -> str
+
+
    .. py:method:: accept(visitor)
 
 

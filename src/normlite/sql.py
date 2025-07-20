@@ -167,9 +167,12 @@ class ColumnDef(SqlNode):
             return self.name == value.name and self.type == value.type
 
         return False
+    
+    def __repr__(self) -> str:
+        return f'ColumnDef(name="{self.name}, type="{self.type}")'
 
     def accept(self, visitor):
-        return visitor.visit_ColumnDef(self)
+        return visitor.visit_ColumnDef(self)    
 
 class CreateTable(SqlNode):
     def __init__(self, table_name: str, columns: List[ColumnDef]):

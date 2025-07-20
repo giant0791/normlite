@@ -1,3 +1,4 @@
+import pdb
 import pytest
 from normlite.cursor import _CursorMetaData, CursorResult
 from normlite.notiondbapi.dbapi2 import Cursor
@@ -29,7 +30,7 @@ def test_cursor_fetchall(dbapi_cursor: Cursor):
 
 # Parametrize the test using the loaded data
 @pytest.mark.parametrize("fixture_case", ["unordered_properties", "real_world_data"])
-def test_cursor_result_from_fixture(json_fixtures, fixture_case):
+def test_cursor_result_from_fixture(dbapi_cursor: Cursor, json_fixtures, fixture_case):
     # Extract the named case
     case = next(f for f in json_fixtures if f["name"] == fixture_case)
 
@@ -41,12 +42,10 @@ def test_cursor_result_from_fixture(json_fixtures, fixture_case):
     )
 
     # Set up cursor with simulated result set
-    cursor = Cursor()
-    cursor._result_set = case["result_set"]
-
+    dbapi_cursor._result_set = case["result_set"]
+    #pdb.set_trace()
     metadata = _CursorMetaData(table_def)
-    result = CursorResult(cursor, metadata)
-
+    result = CursorResult(dbapi_cursor, metadata)
     rows = result.fetchall()
     assert len(rows) == 1
     row = rows[0]
