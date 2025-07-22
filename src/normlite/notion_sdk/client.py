@@ -50,8 +50,7 @@ class AbstractNotionClient(ABC):
         """Retrieve a database object for the provided ID
 
         Args:
-            payload (Dict[str, Any]): A dictionary containing the ID of the database
-            to be retrieved as value for the `'id'` key
+            payload (Dict[str, Any]): A dictionary containing the database id as key.
 
         Returns:
             Dict[str, Any]: The retrieved database object or and empty dictionary if no

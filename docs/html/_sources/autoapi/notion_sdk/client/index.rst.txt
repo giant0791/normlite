@@ -82,9 +82,8 @@ Module Contents
 
       Retrieve a database object for the provided ID
 
-      :param payload: A dictionary containing the ID of the database
+      :param payload: A dictionary containing the database id as key.
       :type payload: Dict[str, Any]
-      :param to be retrieved as value for the `'id'` key:
 
       :returns: The retrieved database object or and empty dictionary if no
                 databased object for the provided ID were found
@@ -132,9 +131,8 @@ Module Contents
 
       Retrieve a database object for the provided ID
 
-      :param payload: A dictionary containing the ID of the database
+      :param payload: A dictionary containing the database id as key.
       :type payload: Dict[str, Any]
-      :param to be retrieved as value for the `'id'` key:
 
       :returns: The retrieved database object or and empty dictionary if no
                 databased object for the provided ID were found

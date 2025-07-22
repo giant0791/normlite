@@ -11,6 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
       <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=f7e3ec4f" />
 
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
@@ -21,7 +22,7 @@
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="notiondbapi.dbapi2" href="dbapi2/index.html" />
+    <link rel="next" title="notiondbapi._model" href="_model/index.html" />
     <link rel="prev" title="notion_sdk.client" href="../notion_sdk/client/index.html" /> 
 </head>
 
@@ -53,7 +54,22 @@
 <li class="toctree-l2"><a class="reference internal" href="../notion_sdk/index.html">notion_sdk</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">notiondbapi</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#submodules">Submodules</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="_model/index.html">notiondbapi._model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="_parser/index.html">notiondbapi._parser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="_visitor_impl/index.html">notiondbapi._visitor_impl</a></li>
 <li class="toctree-l4"><a class="reference internal" href="dbapi2/index.html">notiondbapi.dbapi2</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#attributes">Attributes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#exceptions">Exceptions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#classes">Classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#package-contents">Package Contents</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#notiondbapi.DBAPIParamStyle"><code class="docutils literal notranslate"><span class="pre">DBAPIParamStyle</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#notiondbapi.Error"><code class="docutils literal notranslate"><span class="pre">Error</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#notiondbapi.InterfaceError"><code class="docutils literal notranslate"><span class="pre">InterfaceError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#notiondbapi.DatabaseError"><code class="docutils literal notranslate"><span class="pre">DatabaseError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#notiondbapi.InternalError"><code class="docutils literal notranslate"><span class="pre">InternalError</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#notiondbapi.Cursor"><code class="docutils literal notranslate"><span class="pre">Cursor</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -93,9 +109,307 @@
 <h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
 <div class="toctree-wrapper compound">
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="_model/index.html">notiondbapi._model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="_parser/index.html">notiondbapi._parser</a></li>
+<li class="toctree-l1"><a class="reference internal" href="_visitor_impl/index.html">notiondbapi._visitor_impl</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dbapi2/index.html">notiondbapi.dbapi2</a></li>
 </ul>
 </div>
+</section>
+<section id="attributes">
+<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#notiondbapi.DBAPIParamStyle" title="notiondbapi.DBAPIParamStyle"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DBAPIParamStyle</span></code></a></p></td>
+<td><p>Public type for param style used by the cursor.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="exceptions">
+<h2>Exceptions<a class="headerlink" href="#exceptions" title="Link to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#notiondbapi.Error" title="notiondbapi.Error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Error</span></code></a></p></td>
+<td><p>Base class of all other error exceptions.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#notiondbapi.InterfaceError" title="notiondbapi.InterfaceError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">InterfaceError</span></code></a></p></td>
+<td><p>Exception raised for errors that are related to the database interface.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#notiondbapi.DatabaseError" title="notiondbapi.DatabaseError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DatabaseError</span></code></a></p></td>
+<td><p>Exception raised for errors that are related to the database.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#notiondbapi.InternalError" title="notiondbapi.InternalError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">InternalError</span></code></a></p></td>
+<td><p>Exception raised when the database encounters an internal error.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#notiondbapi.Cursor" title="notiondbapi.Cursor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Cursor</span></code></a></p></td>
+<td><p>Implement the <cite>Cursor</cite> class according to the DBAPI 2.0 specification.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="package-contents">
+<h2>Package Contents<a class="headerlink" href="#package-contents" title="Link to this heading"></a></h2>
+<dl class="py data">
+<dt class="sig sig-object py" id="notiondbapi.DBAPIParamStyle">
+<span class="sig-prename descclassname"><span class="pre">notiondbapi.</span></span><span class="sig-name descname"><span class="pre">DBAPIParamStyle</span></span><a class="headerlink" href="#notiondbapi.DBAPIParamStyle" title="Link to this definition"></a></dt>
+<dd><p>Public type for param style used by the cursor.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="notiondbapi.Error">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi.</span></span><span class="sig-name descname"><span class="pre">Error</span></span><a class="headerlink" href="#notiondbapi.Error" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Base class of all other error exceptions.</p>
+<p>It can be used this to catch all errors with one single <cite>except</cite> statement.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="notiondbapi.InterfaceError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi.</span></span><span class="sig-name descname"><span class="pre">InterfaceError</span></span><a class="headerlink" href="#notiondbapi.InterfaceError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#notiondbapi.Error" title="notiondbapi.Error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Error</span></code></a></p>
+<p>Exception raised for errors that are related to the database interface.</p>
+<p>For example, it is raised when an operation is not supported by the Notion API.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="notiondbapi.DatabaseError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi.</span></span><span class="sig-name descname"><span class="pre">DatabaseError</span></span><a class="headerlink" href="#notiondbapi.DatabaseError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#notiondbapi.Error" title="notiondbapi.Error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Error</span></code></a></p>
+<p>Exception raised for errors that are related to the database.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="notiondbapi.InternalError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi.</span></span><span class="sig-name descname"><span class="pre">InternalError</span></span><a class="headerlink" href="#notiondbapi.InternalError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#notiondbapi.Error" title="notiondbapi.Error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Error</span></code></a></p>
+<p>Exception raised when the database encounters an internal error.</p>
+<p>For example, the cursor is not valid anymore, an unexpected object has been returned by
+the underlying database driver (i.e. the Notion API).</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="notiondbapi.Cursor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi.</span></span><span class="sig-name descname"><span class="pre">Cursor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">normlite.notion_sdk.client.AbstractNotionClient</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#notiondbapi.Cursor" title="Link to this definition"></a></dt>
+<dd><p>Implement the <cite>Cursor</cite> class according to the DBAPI 2.0 specification.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="notiondbapi.Cursor._client">
+<span class="sig-name descname"><span class="pre">_client</span></span><a class="headerlink" href="#notiondbapi.Cursor._client" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="notiondbapi.Cursor._result_set">
+<span class="sig-name descname"><span class="pre">_result_set</span></span><a class="headerlink" href="#notiondbapi.Cursor._result_set" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="notiondbapi.Cursor._rowcount">
+<span class="sig-name descname"><span class="pre">_rowcount</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">-1</span></em><a class="headerlink" href="#notiondbapi.Cursor._rowcount" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="notiondbapi.Cursor._lastrowid">
+<span class="sig-name descname"><span class="pre">_lastrowid</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'UNDEF'</span></em><a class="headerlink" href="#notiondbapi.Cursor._lastrowid" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="notiondbapi.Cursor._paramstyle">
+<span class="sig-name descname"><span class="pre">_paramstyle</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DBAPIParamStyle</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'named'</span></em><a class="headerlink" href="#notiondbapi.Cursor._paramstyle" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="notiondbapi.Cursor.rowcount">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">rowcount</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#notiondbapi.Cursor.rowcount" title="Link to this definition"></a></dt>
+<dd><dl class="simple">
+<dt>This read-only attribute specifies the number of rows that the</dt><dd><p>last <cite>.execute*()</cite> produced.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><dl class="simple">
+<dt>Number of rows. <cite>-1</cite> if in case no <cite>.execute*()</cite> has been performed</dt><dd><p>on the cursor or the rowcount of the last operation cannot be
+determined by the interface.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="notiondbapi.Cursor.lastrowid">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">lastrowid</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#notiondbapi.Cursor.lastrowid" title="Link to this definition"></a></dt>
+<dd><p>This read-only attribute provides the rowid of the last modified row.</p>
+<p>Most Notion API calls return an object with an id, which is used as rowid.
+If the operation does not set a rowid, this attribute is set to <cite>None</cite>.</p>
+<p>The semantics of <cite>.lastrowid</cite> are undefined in case the last executed statement
+modified more than one row, e.g. when using <cite>INSERT</cite> with <cite>.executemany()</cite>.
+<cite>.lastworid</cite> return a 128-bit integer representation of the object id, which can be
+used to access Notion objects.</p>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">object_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">(</span><span class="n">cursor</span><span class="o">.</span><span class="n">lastrowid</span><span class="p">)))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">object_id</span><span class="p">)</span>
+<span class="go">680dee41-b447-451d-9d36-c6eaff13fb46</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A 128-bit integer representing the UUID object id or <cite>None</cite>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Optional[int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="notiondbapi.Cursor.paramstyle">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">paramstyle</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DBAPIParamStyle</span></em><a class="headerlink" href="#notiondbapi.Cursor.paramstyle" title="Link to this definition"></a></dt>
+<dd><p>String constant stating the type of parameter marker formatting expected by the interface.</p>
+<dl class="simple">
+<dt>Supported values are:</dt><dd><p><code class="docutils literal notranslate"><span class="pre">named</span></code>: Named mark style, e.g. <code class="docutils literal notranslate"><span class="pre">WHERE</span> <span class="pre">name=:name</span></code></p>
+</dd>
+<dt>Note</dt><dd><p>It always returns <code class="docutils literal notranslate"><span class="pre">named</span></code>.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The paramstyle currently in use.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>DBAPIParamStyle</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="notiondbapi.Cursor._parse_object">
+<span class="sig-name descname"><span class="pre">_parse_object</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#notiondbapi.Cursor._parse_object" title="Link to this definition"></a></dt>
+<dd><p>Parse a Notion database or page from a list object into a list of tuples.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># parse database object returned from databases.create</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">row</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">_parse_object</span><span class="p">({</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;object&quot;</span><span class="p">:</span> <span class="s2">&quot;database&quot;</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;bc1211ca-e3f1-4939-ae34-5260b16f627c&quot;</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">[{</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;students&quot;</span><span class="p">}</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="p">}],</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;evWq&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;id&quot;</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">,</span> <span class="s2">&quot;number&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;title&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;title&quot;</span><span class="p">,</span> <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;V}lX&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;grade&quot;</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text&quot;</span><span class="p">,</span> <span class="s2">&quot;rich_text&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="p">},</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+<span class="go">[(&#39;object&#39;, &#39;otype&#39;, &#39;value&#39;), (&#39;id&#39;, &#39;oid&#39;, &#39;bc1211ca-e3f1-4939-ae34-5260b16f627c&#39;),</span>
+<span class="go">(&#39;title&#39;, &#39;text&#39;, &#39;students&#39;), (&#39;id&#39;, &#39;number&#39;, &#39;&#39;), (&#39;name&#39;, &#39;title&#39;, &#39;&#39;),</span>
+<span class="go">(&#39;grade&#39;, &#39;rich_text&#39;, &#39;&#39;)]</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># parse page object returned from pages.create</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>obj</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – _description_</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference internal" href="#notiondbapi.InternalError" title="notiondbapi.InternalError"><strong>InternalError</strong></a> – _description_</p></li>
+<li><p><a class="reference internal" href="#notiondbapi.InterfaceError" title="notiondbapi.InterfaceError"><strong>InterfaceError</strong></a> – _description_</p></li>
+<li><p><a class="reference internal" href="#notiondbapi.InterfaceError" title="notiondbapi.InterfaceError"><strong>InterfaceError</strong></a> – _description_</p></li>
+<li><p><a class="reference internal" href="#notiondbapi.InterfaceError" title="notiondbapi.InterfaceError"><strong>InterfaceError</strong></a> – _description_</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>_description_</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>List[Tuple[str, str, Any]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="notiondbapi.Cursor.fetchall">
+<span class="sig-name descname"><span class="pre">fetchall</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#notiondbapi.Cursor.fetchall" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="notiondbapi.Cursor.execute">
+<span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="headerlink" href="#notiondbapi.Cursor.execute" title="Link to this definition"></a></dt>
+<dd><p>Prepare and execute a database operation (query or command).</p>
+<p>Parameters may be provided as a mapping and will be bound to variables in the operation.
+In Notion, the use of placeholders for variable is redundant, since the properties to
+which the values are to be bound are known by name.
+In the current implementation, the parameter style implemented in the cursor is:
+<cite>named</cite>.
+The <cite>execute()</cite> methods implements a return interface to enable concatenating
+calls on <cite>Cursor</cite> methods.</p>
+<p class="rubric">Examples</p>
+<p>Create a new page as child of an exisisting database:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">operation</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;endpoint&#39;</span><span class="p">:</span> <span class="s1">&#39;pages&#39;</span><span class="p">,</span> <span class="s1">&#39;request&#39;</span><span class="p">:</span> <span class="s1">&#39;create&#39;</span><span class="p">}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">parameters</span> <span class="o">=</span> <span class="p">{</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;payload&#39;</span><span class="p">:</span> <span class="p">{</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+<span class="gp">&gt;&gt;&gt; </span>            <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;number&#39;</span><span class="p">:</span> <span class="s1">&#39;:id&#39;</span><span class="p">},</span>
+<span class="gp">&gt;&gt;&gt; </span>            <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;title&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;:name&#39;</span><span class="p">}}]},</span>
+<span class="gp">&gt;&gt;&gt; </span>            <span class="s1">&#39;grade&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;:grade&#39;</span><span class="p">}}]}</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="p">},</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="n">parent</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="p">},</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;params&#39;</span><span class="p">:</span> <span class="p">{</span>                           <span class="c1"># params contains the bindings</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Isaac Newton&#39;</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>        <span class="s1">&#39;grade&#39;</span><span class="p">:</span> <span class="s1">&#39;B&#39;</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="p">}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">cursor</span> <span class="o">=</span> <span class="n">Cursor</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">operation</span><span class="p">,</span> <span class="n">parameters</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">assert</span> <span class="n">cursor</span><span class="o">.</span><span class="n">rowcount</span> <span class="o">==</span> <span class="mi">1</span>  <span class="c1"># the object created</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>operation</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – A dictionary containing the Notion API request to be executed</p></li>
+<li><p><strong>parameters</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – A dictionary containing the payload for the Notion API request</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference internal" href="#notiondbapi.InterfaceError" title="notiondbapi.InterfaceError"><strong>InterfaceError</strong></a> – “properties” object not specified in parameters</p></li>
+<li><p><a class="reference internal" href="#notiondbapi.InterfaceError" title="notiondbapi.InterfaceError"><strong>InterfaceError</strong></a> – “parent” object not specified in parameters</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>This <cite>Cursor</cite> instance</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Self</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="notiondbapi.Cursor._bind_parameters">
+<span class="sig-name descname"><span class="pre">_bind_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#notiondbapi.Cursor._bind_parameters" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 </section>
 </section>
 
@@ -104,7 +418,7 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="../notion_sdk/client/index.html" class="btn btn-neutral float-left" title="notion_sdk.client" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="dbapi2/index.html" class="btn btn-neutral float-right" title="notiondbapi.dbapi2" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="_model/index.html" class="btn btn-neutral float-right" title="notiondbapi._model" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

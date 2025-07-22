@@ -1,0 +1,43 @@
+notiondbapi._visitor_impl
+=========================
+
+.. py:module:: notiondbapi._visitor_impl
+
+.. autoapi-nested-parse::
+
+   Provide the visitor implementation for cross-compiling Notion JSON objects to tuples of elements.
+
+   This model takes a Notion API objects AST and compiles it into a tuple of elements.
+
+   .. important::
+
+      This module is **private** to the package :mod:`notiondbapi` and it does **not** expose
+      its features outside.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   notiondbapi._visitor_impl.ToRowVisitor
+
+
+Module Contents
+---------------
+
+.. py:class:: ToRowVisitor
+
+   Bases: :py:obj:`normlite.notiondbapi._model.NotionObjectVisitor`
+
+
+   .. py:method:: visit_page(page: normlite.notiondbapi._model.NotionPage) -> tuple
+
+
+   .. py:method:: visit_database(db: normlite.notiondbapi._model.NotionDatabase) -> tuple
+
+
+   .. py:method:: visit_property(prop: normlite.notiondbapi._model.NotionProperty) -> tuple
+
+
