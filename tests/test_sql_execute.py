@@ -2,15 +2,11 @@ from abc import ABC, abstractmethod
 
 import pytest
 
-from normlite.sql import CreateTable, Parser, tokenize
+from normlite.sql import CreateTable, text
 
 @pytest.fixture
 def create_table_stmt() -> str:
     return """CREATE TABLE students (studentid int, name TITLE_VARCHAR(32), grade VARCHAR(1))"""
-
-def text(sqlcode: str):
-    parser = Parser(tokenize(sqlcode))
-    return parser.parse()
 
 def test_text_construct(create_table_stmt: str):
     node = text(create_table_stmt)

@@ -52,7 +52,7 @@ class TokenType(Enum):
     EOF = auto()
 
 Token = Tuple[TokenType, str]
-"""Type alias for a token used by :func:`tokenizer()`."""
+"""Type alias for a token used by :func:`tokenize()`."""
 
 KEYWORDS = {"create", "table", "insert", "into", "values", "int", "varchar", "title_varchar"}
 """Dictionary defining all the supported SQL keywords."""
@@ -67,7 +67,7 @@ TOKEN_REGEX = re.compile(r"""
 """Regular expression representing a single SQL token."""
 
 def tokenize(sql: str) -> Iterator[Token]:
-    """Provide a :type:`Token` iterator from the supplied SQL construct.
+    """Provide a :class:`Token` iterator from the supplied SQL construct.
 
     Args:
         sql (str): The SQL construct to be tokenized
@@ -76,7 +76,7 @@ def tokenize(sql: str) -> Iterator[Token]:
         SyntaxError: Unexpected charachter at position index.
 
     Yields:
-        Iterator[Token]: The :type:`Token` iterator 
+        Iterator[Token]: The :class:`Token` iterator 
     """
     pos = 0
     while pos < len(sql):
@@ -100,27 +100,49 @@ def tokenize(sql: str) -> Iterator[Token]:
     yield TokenType.EOF, ""
 
 class SqlNode(ABC):
+    """Base class for an AST node."""
+
     def __init__(self) -> None:
         self._operation = dict()
+        """The compiled operation as dictionary."""
 
     @property
     def operation(self) -> dict:
+        """Provide the compiled operation.
+
+        This read-only attribute holds the result of the compilation.
+        It delivers the compiled JSON code after the :meth:`compile()` has been called.
+
+        Returns:
+            dict: The compiled JSON code or ``{}``, if :meth:`compile()` has not previously been called.  
+        """
         return self._operation
 
     @abstractmethod
     def accept(self, visitor: Visitor) -> dict:
+        """Provide abstract interface for cross-compilation from SQL to JSON.
+
+        Args:
+            visitor (Visitor): The visitor object performing the cross-compilation (see :class:`SqlToJsonVisitor`.)
+
+        Returns:
+            dict: The cross-compiled JSON code as dictionary.
+        """
         raise NotImplementedError
     
     @abstractmethod
     def compile(self) -> None:
         """Compile the node to an executable JSON object.
 
-        Subclasses use this method to create the dictionary representing the operation as the following
-        example shows for the SQL statement ``CREATE TABLE``::
+        Subclasses use this method to create the dictionary representing the operation.
+        The following example shows the generated JSON code for the SQL statement ``CREATE TABLE``:
+
+        .. code-block:: json
+        
             {
                 "endpoint": "databases",
                 "request": "create",
-                'payload": {
+                "payload": {
                     "title": [
                         {
                             "type": "text",
@@ -132,9 +154,9 @@ class SqlNode(ABC):
                         "name": {"title": {}},
                         "grade": {"rich_text": {}}
                     }
-                    # TODO: add "parent" object
                 }
             }
+        
         """
         raise NotImplementedError
         
@@ -181,6 +203,8 @@ class MetaData():
             return None
 
 class ColumnDef(SqlNode):
+    """Provide the AST node for SQL constructs like ``studentid int`` as table column."""
+
     def __init__(self, name: str, type: str):
         super().__init__()
         self.name = name
@@ -203,6 +227,8 @@ class ColumnDef(SqlNode):
         return visitor.visit_ColumnDef(self)    
 
 class CreateTable(SqlNode):
+    """Provide the AST node for the SQL construct ``CREATE TABLE``."""
+
     def __init__(self, table_name: str, columns: List[ColumnDef]):
         super().__init__()
         self.table_name = table_name
@@ -232,15 +258,13 @@ class InsertStatement(SqlNode):
         return visitor.visit_InsertStatement(self)
 
 class Parser:
-    """Create an SQL AST for a given SQL construct.
-
-    Attributes:
-        `tokens`: The `Token` iterator.
-        `current`: The current `Token`.
-    """
+    """Create an SQL AST for a given SQL construct."""
     def __init__(self, tokens: Iterator[Token]):
         self.tokens = iter(tokens)
+        """The tokenized string as returned by :func:`tokenize()`."""
+
         self.current = next(self.tokens)
+        """The current token being parsed."""
 
     def eat(self, expected_type, expected_value=None):
         typ, val = self.current
@@ -403,3 +427,34 @@ class SqlToJsonVisitor(Visitor):
             },
             "properties": properties
         }
+
+def text(sqlcode: str) -> SqlNode:
+    """Construct a new :class:`SqlNode` node from a textual SQL string directly.
+
+    The main benefits of the :func:`text()` are support for bind parameters, and 
+    result-column typing behavior.
+    The :func:`text()` enables the simplified SQL code execution as follows, as shown by the 
+    following example::
+
+        >>> from normlite.sql import text
+        >>> result = connection.execute(text("SELECT * FROM students"))
+    
+    Bind parameters are specified by name (named parameter style). 
+    Example::
+    
+        >>> from normlite.sql import text
+        >>> t = text("SELECT * FROM students WHERE studentid=:studentid")
+        >>> result = connection.execute(t, {"studentid": 1234})
+
+    Note:
+        :func:`text()` was inspired by the brilliant homonymous SqlAlchemy construct `text() <https://docs.sqlalchemy.org/en/20/core/sqlelement.html#sqlalchemy.sql.expression.text>`_.
+
+    Args:
+        sqlcode (str): The string representing an SQL statement.
+
+    Returns:
+        SqlNode: The constructed node.
+    """
+    parser = Parser(tokenize(sqlcode))
+    return parser.parse()
+
