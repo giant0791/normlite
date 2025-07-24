@@ -46,7 +46,8 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../../changelog.html">0.2.0 (2025-07-12)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../changelog.html">0.3.0 (2025-07-24)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../changelog.html#id2">0.2.0 (2025-07-12)</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../index.html">API Reference</a><ul class="current">
 <li class="toctree-l2 current"><a class="current reference internal" href="#">sql</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#attributes">Attributes</a></li>
@@ -105,18 +106,59 @@
              
   <section id="module-sql">
 <span id="sql"></span><h1>sql<a class="headerlink" href="#module-sql" title="Link to this heading"></a></h1>
+<p>Provide tokenizer and parser to generate an SQL AST and a cross-compiler for
+the Notion API.</p>
+<p>Central module providing SQL parsing as well as cross-compiling SQL-to-JSON capabilities.
+To generate <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> constructs, the cross-compiler needs a repository where all
+the table metada are stored and accessible.</p>
+<dl>
+<dt>Example usage for the <a class="reference internal" href="#sql.Parser" title="sql.Parser"><code class="xref py py-class docutils literal notranslate"><span class="pre">Parser</span></code></a>:</dt><dd><div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># create an AST for a supported SQL construct</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sql</span> <span class="o">=</span> <span class="s2">&quot;create table students (id int, name title_varchar(255), grade varchar(1))&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">parser</span> <span class="o">=</span> <span class="n">Parser</span><span class="p">(</span><span class="n">tokenize</span><span class="p">(</span><span class="n">sql</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ast</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse</span><span class="p">()</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ast</span><span class="p">,</span> <span class="n">CreateTable</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">assert</span> <span class="n">ast</span><span class="o">.</span><span class="n">table_name</span> <span class="o">==</span> <span class="s1">&#39;students&#39;</span>
+</pre></div>
+</div>
+</dd>
+<dt>Example usage of the cross-compiler <a class="reference internal" href="#sql.SqlToJsonVisitor" title="sql.SqlToJsonVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">SqlToJsonVisitor</span></code></a>:</dt><dd><div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># cross-compile create table</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sql</span> <span class="o">=</span> <span class="s2">&quot;create table students (id int, name varchar(255), grade varchar(1))&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ast</span> <span class="o">=</span> <span class="n">Parser</span><span class="p">(</span><span class="n">tokenize</span><span class="p">(</span><span class="n">sql</span><span class="p">))</span><span class="o">.</span><span class="n">parse</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">visitor</span> <span class="o">=</span> <span class="n">SqlToJsonVisitor</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">visitor</span><span class="o">.</span><span class="n">visit</span><span class="p">(</span><span class="n">ast</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># cross-compine insert into</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Create the table and add it to the table catalog</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sql</span> <span class="o">=</span> <span class="s2">&quot;create table students (id int, name varchar(255), grade varchar(1))&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">students_table</span> <span class="o">=</span> <span class="n">Parser</span><span class="p">(</span><span class="n">tokenize</span><span class="p">(</span><span class="n">sql</span><span class="p">))</span><span class="o">.</span><span class="n">parse</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table_catalog</span><span class="p">:</span> <span class="n">MetaData</span> <span class="o">=</span> <span class="n">MetaData</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table_catalog</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">students_table</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Create the insert statement</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sql</span> <span class="o">=</span> <span class="s2">&quot;insert into students (id, name, grade) values (1, &#39;Isaac Newton&#39;, &#39;B&#39;)&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ast</span> <span class="o">=</span> <span class="n">Parser</span><span class="p">(</span><span class="n">tokenize</span><span class="p">(</span><span class="n">sql</span><span class="p">))</span><span class="o">.</span><span class="n">parse</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">visitor</span> <span class="o">=</span> <span class="n">SqlToJsonVisitor</span><span class="p">(</span><span class="n">table_catalog</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">visitor</span><span class="o">.</span><span class="n">visit</span><span class="p">(</span><span class="n">ast</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd>
+</dl>
 <section id="attributes">
 <h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading"></a></h2>
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#sql.Token" title="sql.Token"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Token</span></code></a></p></td>
-<td><p></p></td>
+<td><p>Type alias for a token used by <code class="xref py py-func docutils literal notranslate"><span class="pre">tokenizer()</span></code>.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#sql.KEYWORDS" title="sql.KEYWORDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">KEYWORDS</span></code></a></p></td>
-<td><p></p></td>
+<td><p>Dictionary defining all the supported SQL keywords.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#sql.TOKEN_REGEX" title="sql.TOKEN_REGEX"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TOKEN_REGEX</span></code></a></p></td>
-<td><p></p></td>
+<td><p>Regular expression representing a single SQL token.</p></td>
 </tr>
 </tbody>
 </table>
@@ -160,7 +202,7 @@
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#sql.tokenize" title="sql.tokenize"><code class="xref py py-obj docutils literal notranslate"><span class="pre">tokenize</span></code></a>(→ Iterator[Token])</p></td>
-<td><p>Provide a <cite>Token</cite> iterator from the supplied SQL construct.</p></td>
+<td><p>Provide a <a class="reference internal" href="#sql.Token" title="sql.Token"><code class="xref py py-type docutils literal notranslate"><span class="pre">Token</span></code></a> iterator from the supplied SQL construct.</p></td>
 </tr>
 </tbody>
 </table>
@@ -207,22 +249,25 @@
 <dl class="py data">
 <dt class="sig sig-object py" id="sql.Token">
 <span class="sig-prename descclassname"><span class="pre">sql.</span></span><span class="sig-name descname"><span class="pre">Token</span></span><a class="headerlink" href="#sql.Token" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Type alias for a token used by <code class="xref py py-func docutils literal notranslate"><span class="pre">tokenizer()</span></code>.</p>
+</dd></dl>
 
 <dl class="py data">
 <dt class="sig sig-object py" id="sql.KEYWORDS">
 <span class="sig-prename descclassname"><span class="pre">sql.</span></span><span class="sig-name descname"><span class="pre">KEYWORDS</span></span><a class="headerlink" href="#sql.KEYWORDS" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Dictionary defining all the supported SQL keywords.</p>
+</dd></dl>
 
 <dl class="py data">
 <dt class="sig sig-object py" id="sql.TOKEN_REGEX">
 <span class="sig-prename descclassname"><span class="pre">sql.</span></span><span class="sig-name descname"><span class="pre">TOKEN_REGEX</span></span><a class="headerlink" href="#sql.TOKEN_REGEX" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Regular expression representing a single SQL token.</p>
+</dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="sql.tokenize">
 <span class="sig-prename descclassname"><span class="pre">sql.</span></span><span class="sig-name descname"><span class="pre">tokenize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sql</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Iterator</span><span class="p"><span class="pre">[</span></span><span class="pre">Token</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#sql.tokenize" title="Link to this definition"></a></dt>
-<dd><p>Provide a <cite>Token</cite> iterator from the supplied SQL construct.</p>
+<dd><p>Provide a <a class="reference internal" href="#sql.Token" title="sql.Token"><code class="xref py py-type docutils literal notranslate"><span class="pre">Token</span></code></a> iterator from the supplied SQL construct.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>sql</strong> (<em>str</em>) – The SQL construct to be tokenized</p>
@@ -231,7 +276,7 @@
 <dd class="field-even"><p><strong>SyntaxError</strong> – Unexpected charachter at position index.</p>
 </dd>
 <dt class="field-odd">Yields<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Iterator[Token]</em> – The <cite>Token</cite> iterator</p>
+<dd class="field-odd"><p><em>Iterator[Token]</em> – The <a class="reference internal" href="#sql.Token" title="sql.Token"><code class="xref py py-type docutils literal notranslate"><span class="pre">Token</span></code></a> iterator</p>
 </dd>
 </dl>
 </dd></dl>
@@ -242,10 +287,48 @@
 <dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">abc.ABC</span></code></p>
 <p>Helper class that provides a standard way to create an ABC using
 inheritance.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="sql.SqlNode._operation">
+<span class="sig-name descname"><span class="pre">_operation</span></span><a class="headerlink" href="#sql.SqlNode._operation" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="sql.SqlNode.operation">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">operation</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span></em><a class="headerlink" href="#sql.SqlNode.operation" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="sql.SqlNode.accept">
-<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.Visitor" title="sql.Visitor"><span class="pre">Visitor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#sql.SqlNode.accept" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.Visitor" title="sql.Visitor"><span class="pre">Visitor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#sql.SqlNode.accept" title="Link to this definition"></a></dt>
 <dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="sql.SqlNode.compile">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">compile</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sql.SqlNode.compile" title="Link to this definition"></a></dt>
+<dd><p>Compile the node to an executable JSON object.</p>
+<p>Subclasses use this method to create the dictionary representing the operation as the following
+example shows for the SQL statement <code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">TABLE</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;endpoint&quot;</span><span class="p">:</span> <span class="s2">&quot;databases&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;request&quot;</span><span class="p">:</span> <span class="s2">&quot;create&quot;</span><span class="p">,</span>
+    <span class="s1">&#39;payload&quot;: {</span>
+        <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;students&quot;</span><span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;studentid&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;number&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+            <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;rich_text&quot;</span><span class="p">:</span> <span class="p">{}}</span>
+        <span class="p">}</span>
+        <span class="c1"># TODO: add &quot;parent&quot; object</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</dd></dl>
 
 </dd></dl>
 
@@ -259,22 +342,22 @@ inheritance.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="sql.Visitor.visit">
-<span class="sig-name descname"><span class="pre">visit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.SqlNode" title="sql.SqlNode"><span class="pre">SqlNode</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#sql.Visitor.visit" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">visit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.SqlNode" title="sql.SqlNode"><span class="pre">SqlNode</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#sql.Visitor.visit" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="sql.Visitor.visit_ColumnDef">
-<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_ColumnDef</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.ColumnDef" title="sql.ColumnDef"><span class="pre">ColumnDef</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#sql.Visitor.visit_ColumnDef" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_ColumnDef</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.ColumnDef" title="sql.ColumnDef"><span class="pre">ColumnDef</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#sql.Visitor.visit_ColumnDef" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="sql.Visitor.visit_CreateTable">
-<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_CreateTable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.CreateTable" title="sql.CreateTable"><span class="pre">CreateTable</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#sql.Visitor.visit_CreateTable" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_CreateTable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.CreateTable" title="sql.CreateTable"><span class="pre">CreateTable</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#sql.Visitor.visit_CreateTable" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="sql.Visitor.visit_InsertStatement">
-<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_InsertStatement</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.InsertStatement" title="sql.InsertStatement"><span class="pre">InsertStatement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#sql.Visitor.visit_InsertStatement" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_InsertStatement</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.InsertStatement" title="sql.InsertStatement"><span class="pre">InsertStatement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#sql.Visitor.visit_InsertStatement" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -324,8 +407,36 @@ inheritance.</p>
 <dd></dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="sql.ColumnDef.compile">
+<span class="sig-name descname"><span class="pre">compile</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#sql.ColumnDef.compile" title="Link to this definition"></a></dt>
+<dd><p>Compile the node to an executable JSON object.</p>
+<p>Subclasses use this method to create the dictionary representing the operation as the following
+example shows for the SQL statement <code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">TABLE</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;endpoint&quot;</span><span class="p">:</span> <span class="s2">&quot;databases&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;request&quot;</span><span class="p">:</span> <span class="s2">&quot;create&quot;</span><span class="p">,</span>
+    <span class="s1">&#39;payload&quot;: {</span>
+        <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;students&quot;</span><span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;studentid&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;number&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+            <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;rich_text&quot;</span><span class="p">:</span> <span class="p">{}}</span>
+        <span class="p">}</span>
+        <span class="c1"># TODO: add &quot;parent&quot; object</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="sql.ColumnDef.__eq__">
-<span class="sig-name descname"><span class="pre">__eq__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.SqlNode" title="sql.SqlNode"><span class="pre">SqlNode</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sql.ColumnDef.__eq__" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">__eq__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.SqlNode" title="sql.SqlNode"><span class="pre">SqlNode</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#sql.ColumnDef.__eq__" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -335,7 +446,7 @@ inheritance.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="sql.ColumnDef.accept">
-<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sql.ColumnDef.accept" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#sql.ColumnDef.accept" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -357,8 +468,36 @@ inheritance.</p>
 <dd></dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="sql.CreateTable.compile">
+<span class="sig-name descname"><span class="pre">compile</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#sql.CreateTable.compile" title="Link to this definition"></a></dt>
+<dd><p>Compile the node to an executable JSON object.</p>
+<p>Subclasses use this method to create the dictionary representing the operation as the following
+example shows for the SQL statement <code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">TABLE</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;endpoint&quot;</span><span class="p">:</span> <span class="s2">&quot;databases&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;request&quot;</span><span class="p">:</span> <span class="s2">&quot;create&quot;</span><span class="p">,</span>
+    <span class="s1">&#39;payload&quot;: {</span>
+        <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;students&quot;</span><span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;studentid&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;number&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">{}},</span>
+            <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;rich_text&quot;</span><span class="p">:</span> <span class="p">{}}</span>
+        <span class="p">}</span>
+        <span class="c1"># TODO: add &quot;parent&quot; object</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="sql.CreateTable.accept">
-<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.Visitor" title="sql.Visitor"><span class="pre">Visitor</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sql.CreateTable.accept" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.Visitor" title="sql.Visitor"><span class="pre">Visitor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#sql.CreateTable.accept" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -386,7 +525,7 @@ inheritance.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="sql.InsertStatement.accept">
-<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#sql.InsertStatement.accept" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#sql.InsertStatement.accept" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -445,17 +584,17 @@ inheritance.</p>
 <dd><p>Bases: <a class="reference internal" href="#sql.Visitor" title="sql.Visitor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Visitor</span></code></a></p>
 <dl class="py method">
 <dt class="sig sig-object py" id="sql.SqlToJsonVisitor.visit_CreateTable">
-<span class="sig-name descname"><span class="pre">visit_CreateTable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.CreateTable" title="sql.CreateTable"><span class="pre">CreateTable</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#sql.SqlToJsonVisitor.visit_CreateTable" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">visit_CreateTable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.CreateTable" title="sql.CreateTable"><span class="pre">CreateTable</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#sql.SqlToJsonVisitor.visit_CreateTable" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="sql.SqlToJsonVisitor.visit_ColumnDef">
-<span class="sig-name descname"><span class="pre">visit_ColumnDef</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.ColumnDef" title="sql.ColumnDef"><span class="pre">ColumnDef</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#sql.SqlToJsonVisitor.visit_ColumnDef" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">visit_ColumnDef</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.ColumnDef" title="sql.ColumnDef"><span class="pre">ColumnDef</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#sql.SqlToJsonVisitor.visit_ColumnDef" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="sql.SqlToJsonVisitor.visit_InsertStatement">
-<span class="sig-name descname"><span class="pre">visit_InsertStatement</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.InsertStatement" title="sql.InsertStatement"><span class="pre">InsertStatement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#sql.SqlToJsonVisitor.visit_InsertStatement" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">visit_InsertStatement</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#sql.InsertStatement" title="sql.InsertStatement"><span class="pre">InsertStatement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#sql.SqlToJsonVisitor.visit_InsertStatement" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </dd></dl>

@@ -6,12 +6,12 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>0.2.0 (2025-07-12) &mdash; normlite 0.2.0 documentation</title>
+  <title>0.3.0 (2025-07-24) &mdash; normlite 0.2.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
       <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
-      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=fa322905" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=f7e3ec4f" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
@@ -46,8 +46,14 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">0.2.0 (2025-07-12)</a><ul>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">0.3.0 (2025-07-24)</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#feat">Feat</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fix">Fix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#refactor">Refactor</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="#id2">0.2.0 (2025-07-12)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id3">Feat</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="autoapi/index.html">API Reference</a></li>
@@ -67,7 +73,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">0.2.0 (2025-07-12)</li>
+      <li class="breadcrumb-item active">0.3.0 (2025-07-24)</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/changelog.md.txt" rel="nofollow"> View page source</a>
       </li>
@@ -78,9 +84,39 @@
            <div itemprop="articleBody">
              
   <section id="id1">
-<h1>0.2.0 (2025-07-12)<a class="headerlink" href="#id1" title="Link to this heading"></a></h1>
+<h1>0.3.0 (2025-07-24)<a class="headerlink" href="#id1" title="Link to this heading"></a></h1>
 <section id="feat">
 <h2>Feat<a class="headerlink" href="#feat" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Add DBAPI2 <code class="docutils literal notranslate"><span class="pre">Cursor</span></code> full implementation.</p></li>
+<li><p>Add parameter binding to operation execution (#15)</p></li>
+<li><p>Extend DBAPI2.0 implementation and Notion SDK functionality.</p></li>
+<li><p>Add <code class="docutils literal notranslate"><span class="pre">execute()</span></code> method to <code class="docutils literal notranslate"><span class="pre">Cursor</span></code> for the <code class="docutils literal notranslate"><span class="pre">pages.create</span></code> endpoint.</p></li>
+<li><p>Add fetching data capabilities (1)</p></li>
+<li><p>Add semantic logic for Notion databases and pages.</p></li>
+<li><p>Add fetching data capabilities</p></li>
+</ul>
+</section>
+<section id="fix">
+<h2>Fix<a class="headerlink" href="#fix" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Render example code in <code class="docutils literal notranslate"><span class="pre">notiondbapi.Cursor</span></code></p></li>
+<li><p>Add check for Notion JSON schema</p></li>
+</ul>
+</section>
+<section id="refactor">
+<h2>Refactor<a class="headerlink" href="#refactor" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Redesign parsing for Notion objects.</p></li>
+<li><p>Refactor <code class="docutils literal notranslate"><span class="pre">Engine.__init__()</span></code> method.</p></li>
+<li><p>Refactor <code class="docutils literal notranslate"><span class="pre">notions_sdk.py</span></code> module</p></li>
+</ul>
+</section>
+</section>
+<section id="id2">
+<h1>0.2.0 (2025-07-12)<a class="headerlink" href="#id2" title="Link to this heading"></a></h1>
+<section id="id3">
+<h2>Feat<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
 <ul class="simple">
 <li><p>Add SQL to JSON cross-compilation.</p></li>
 <li><p>Add SQL module for SQL parsing</p></li>

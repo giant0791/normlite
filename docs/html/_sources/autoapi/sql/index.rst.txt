@@ -3,6 +3,46 @@ sql
 
 .. py:module:: sql
 
+.. autoapi-nested-parse::
+
+   Provide tokenizer and parser to generate an SQL AST and a cross-compiler for
+   the Notion API.
+
+   Central module providing SQL parsing as well as cross-compiling SQL-to-JSON capabilities.
+   To generate ``INSERT`` constructs, the cross-compiler needs a repository where all
+   the table metada are stored and accessible.
+
+   Example usage for the :class:`Parser`:
+       >>> # create an AST for a supported SQL construct
+       >>> sql = "create table students (id int, name title_varchar(255), grade varchar(1))"
+       >>> parser = Parser(tokenize(sql))
+       >>> ast = parser.parse()
+
+       >>> assert isinstance(ast, CreateTable)
+       >>> assert ast.table_name == 'students'
+
+   Example usage of the cross-compiler :class:`SqlToJsonVisitor`:
+       >>> # cross-compile create table
+       >>> sql = "create table students (id int, name varchar(255), grade varchar(1))"
+       >>> ast = Parser(tokenize(sql)).parse()
+       >>> visitor = SqlToJsonVisitor()
+       >>> output = visitor.visit(ast)
+       >>> print(output)
+
+       >>> # cross-compine insert into
+       >>> # Create the table and add it to the table catalog
+       >>> sql = "create table students (id int, name varchar(255), grade varchar(1))"
+       >>> students_table = Parser(tokenize(sql)).parse()
+       >>> table_catalog: MetaData = MetaData()
+       >>> table_catalog.add(students_table)
+       >>> # Create the insert statement
+       >>> sql = "insert into students (id, name, grade) values (1, 'Isaac Newton', 'B')"
+       >>> ast = Parser(tokenize(sql)).parse()
+       >>> visitor = SqlToJsonVisitor(table_catalog)
+       >>> output = visitor.visit(ast)
+       >>> print(output)
+
+
 
 Attributes
 ----------
@@ -69,20 +109,26 @@ Module Contents
 
 .. py:data:: Token
 
+   Type alias for a token used by :func:`tokenizer()`.
+
 .. py:data:: KEYWORDS
+
+   Dictionary defining all the supported SQL keywords.
 
 .. py:data:: TOKEN_REGEX
 
+   Regular expression representing a single SQL token.
+
 .. py:function:: tokenize(sql: str) -> Iterator[Token]
 
-   Provide a `Token` iterator from the supplied SQL construct.
+   Provide a :type:`Token` iterator from the supplied SQL construct.
 
    :param sql: The SQL construct to be tokenized
    :type sql: str
 
    :raises SyntaxError: Unexpected charachter at position index.
 
-   :Yields: *Iterator[Token]* -- The `Token` iterator
+   :Yields: *Iterator[Token]* -- The :type:`Token` iterator
 
 
 .. py:class:: SqlNode
@@ -94,8 +140,45 @@ Module Contents
    inheritance.
 
 
-   .. py:method:: accept(visitor: Visitor) -> str
+   .. py:attribute:: _operation
+
+
+   .. py:property:: operation
+      :type: dict
+
+
+
+   .. py:method:: accept(visitor: Visitor) -> dict
       :abstractmethod:
+
+
+
+   .. py:method:: compile() -> None
+      :abstractmethod:
+
+
+      Compile the node to an executable JSON object.
+
+      Subclasses use this method to create the dictionary representing the operation as the following
+      example shows for the SQL statement ``CREATE TABLE``::
+          {
+              "endpoint": "databases",
+              "request": "create",
+              'payload": {
+                  "title": [
+                      {
+                          "type": "text",
+                          "text": {"content": "students"}
+                      }
+                  ],
+                  "properties": {
+                      "studentid": {"number": {}},
+                      "name": {"title": {}},
+                      "grade": {"rich_text": {}}
+                  }
+                  # TODO: add "parent" object
+              }
+          }
 
 
 
@@ -106,20 +189,20 @@ Module Contents
 
 
 
-   .. py:method:: visit(node: SqlNode) -> str
+   .. py:method:: visit(node: SqlNode) -> dict
 
 
-   .. py:method:: visit_ColumnDef(node: ColumnDef) -> str
+   .. py:method:: visit_ColumnDef(node: ColumnDef) -> dict
       :abstractmethod:
 
 
 
-   .. py:method:: visit_CreateTable(node: CreateTable) -> str
+   .. py:method:: visit_CreateTable(node: CreateTable) -> dict
       :abstractmethod:
 
 
 
-   .. py:method:: visit_InsertStatement(node: InsertStatement) -> str
+   .. py:method:: visit_InsertStatement(node: InsertStatement) -> dict
       :abstractmethod:
 
 
@@ -160,13 +243,40 @@ Module Contents
    .. py:attribute:: type
 
 
-   .. py:method:: __eq__(value: SqlNode)
+   .. py:method:: compile() -> None
+
+      Compile the node to an executable JSON object.
+
+      Subclasses use this method to create the dictionary representing the operation as the following
+      example shows for the SQL statement ``CREATE TABLE``::
+          {
+              "endpoint": "databases",
+              "request": "create",
+              'payload": {
+                  "title": [
+                      {
+                          "type": "text",
+                          "text": {"content": "students"}
+                      }
+                  ],
+                  "properties": {
+                      "studentid": {"number": {}},
+                      "name": {"title": {}},
+                      "grade": {"rich_text": {}}
+                  }
+                  # TODO: add "parent" object
+              }
+          }
+
+
+
+   .. py:method:: __eq__(value: SqlNode) -> bool
 
 
    .. py:method:: __repr__() -> str
 
 
-   .. py:method:: accept(visitor)
+   .. py:method:: accept(visitor) -> dict
 
 
 .. py:class:: CreateTable(table_name: str, columns: List[ColumnDef])
@@ -184,7 +294,34 @@ Module Contents
    .. py:attribute:: columns
 
 
-   .. py:method:: accept(visitor: Visitor)
+   .. py:method:: compile()
+
+      Compile the node to an executable JSON object.
+
+      Subclasses use this method to create the dictionary representing the operation as the following
+      example shows for the SQL statement ``CREATE TABLE``::
+          {
+              "endpoint": "databases",
+              "request": "create",
+              'payload": {
+                  "title": [
+                      {
+                          "type": "text",
+                          "text": {"content": "students"}
+                      }
+                  ],
+                  "properties": {
+                      "studentid": {"number": {}},
+                      "name": {"title": {}},
+                      "grade": {"rich_text": {}}
+                  }
+                  # TODO: add "parent" object
+              }
+          }
+
+
+
+   .. py:method:: accept(visitor: Visitor) -> dict
 
 
 .. py:class:: InsertStatement(table_name: str, columns: List[str], values: List[Union[int, str]])
@@ -205,14 +342,12 @@ Module Contents
    .. py:attribute:: values
 
 
-   .. py:method:: accept(visitor)
+   .. py:method:: accept(visitor) -> dict
 
 
 .. py:class:: Parser(tokens: Iterator[Token])
 
    Create an SQL AST for a given SQL construct.
-
-
 
    .. attribute:: `tokens`
 
@@ -246,12 +381,12 @@ Module Contents
    Bases: :py:obj:`Visitor`
 
 
-   .. py:method:: visit_CreateTable(node: CreateTable) -> str
+   .. py:method:: visit_CreateTable(node: CreateTable) -> dict
 
 
-   .. py:method:: visit_ColumnDef(node: ColumnDef) -> str
+   .. py:method:: visit_ColumnDef(node: ColumnDef) -> dict
 
 
-   .. py:method:: visit_InsertStatement(node: InsertStatement) -> str
+   .. py:method:: visit_InsertStatement(node: InsertStatement) -> dict
 
 

@@ -1,60 +1,46 @@
-from __future__ import annotations
-import pdb
-import re
-from enum import Enum, auto
-from typing import Dict, List, Optional, Tuple, Iterator, Union
-from abc import ABC, abstractmethod
-import json
-
 """Provide tokenizer and parser to generate an SQL AST and a cross-compiler for 
 the Notion API.
 
 Central module providing SQL parsing as well as cross-compiling SQL-to-JSON capabilities.
-To generate `insert into` constructs, the cross-compiler needs a repository where all 
+To generate ``INSERT`` constructs, the cross-compiler needs a repository where all 
 the table metada are stored and accessible.
 
-Example usage for the `Parser` class:
->>> # create an AST for a supported SQL construct
->>> sql = "create table students (id int, name title_varchar(255), grade varchar(1))"
->>> parser = Parser(tokenize(sql))
->>> ast = parser.parse()
+Example usage for the :class:`Parser`:
+    >>> # create an AST for a supported SQL construct
+    >>> sql = "create table students (id int, name title_varchar(255), grade varchar(1))"
+    >>> parser = Parser(tokenize(sql))
+    >>> ast = parser.parse()
 
->>> assert isinstance(ast, CreateTable)
->>> assert ast.table_name == 'students'
+    >>> assert isinstance(ast, CreateTable)
+    >>> assert ast.table_name == 'students'
 
-Example usage of the cross-compiler `SqlToJsonVisitor`:
->>> # cross-compile create table
->>> sql = "create table students (id int, name varchar(255), grade varchar(1))"
->>> ast = Parser(tokenize(sql)).parse()
->>> visitor = SqlToJsonVisitor()
->>> output = visitor.visit(ast)
->>> print(output)
+Example usage of the cross-compiler :class:`SqlToJsonVisitor`:
+    >>> # cross-compile create table
+    >>> sql = "create table students (id int, name varchar(255), grade varchar(1))"
+    >>> ast = Parser(tokenize(sql)).parse()
+    >>> visitor = SqlToJsonVisitor()
+    >>> output = visitor.visit(ast)
+    >>> print(output)
 
->>> # cross-compine insert into
->>> # Create the table and add it to the table catalog
->>> sql = "create table students (id int, name varchar(255), grade varchar(1))"
->>> students_table = Parser(tokenize(sql)).parse()
->>> table_catalog: MetaData = MetaData()
->>> table_catalog.add(students_table)
->>> # Create the insert statement
->>> sql = "insert into students (id, name, grade) values (1, 'Isaac Newton', 'B')"
->>> ast = Parser(tokenize(sql)).parse()
->>> visitor = SqlToJsonVisitor(table_catalog)
->>> output = visitor.visit(ast)
->>> print(output)
+    >>> # cross-compine insert into
+    >>> # Create the table and add it to the table catalog
+    >>> sql = "create table students (id int, name varchar(255), grade varchar(1))"
+    >>> students_table = Parser(tokenize(sql)).parse()
+    >>> table_catalog: MetaData = MetaData()
+    >>> table_catalog.add(students_table)
+    >>> # Create the insert statement
+    >>> sql = "insert into students (id, name, grade) values (1, 'Isaac Newton', 'B')"
+    >>> ast = Parser(tokenize(sql)).parse()
+    >>> visitor = SqlToJsonVisitor(table_catalog)
+    >>> output = visitor.visit(ast)
+    >>> print(output)
+"""
 
-
-
-    Returns:
-        `tokenize()`: Provide a `Token` iterator from the supplied SQL construct.
-        `Parser`: Create an SQL AST for a given SQL construct.
-        `SqlToJsonVisitor`: Cross-compile SQL code to JSON code according to the Notion API schema.
-        `CreateTable`: AST node class for the SQL `create table` construct.
-        `ColumnDef`: AST node class for a single column defination in a table.
-        `InsertStatement`: AST node class for the SQL `insert into` construct.
-        `MetaData`: Provide a repository to store table metadata.
-    """
-
+from __future__ import annotations
+import re
+from enum import Enum, auto
+from typing import Dict, List, Optional, Tuple, Iterator, Union
+from abc import ABC, abstractmethod
 
 class TokenType(Enum):
     """Enum for token types used in the tokenization."""
@@ -66,8 +52,10 @@ class TokenType(Enum):
     EOF = auto()
 
 Token = Tuple[TokenType, str]
+"""Type alias for a token used by :func:`tokenizer()`."""
 
 KEYWORDS = {"create", "table", "insert", "into", "values", "int", "varchar", "title_varchar"}
+"""Dictionary defining all the supported SQL keywords."""
 
 TOKEN_REGEX = re.compile(r"""
     (?P<SPACE>\s+)
@@ -76,9 +64,10 @@ TOKEN_REGEX = re.compile(r"""
   | (?P<IDENTIFIER>[a-zA-Z_][a-zA-Z0-9_]*)
   | (?P<SYMBOL>[(),;])
 """, re.IGNORECASE | re.VERBOSE)
+"""Regular expression representing a single SQL token."""
 
 def tokenize(sql: str) -> Iterator[Token]:
-    """Provide a `Token` iterator from the supplied SQL construct.
+    """Provide a :type:`Token` iterator from the supplied SQL construct.
 
     Args:
         sql (str): The SQL construct to be tokenized
@@ -87,7 +76,7 @@ def tokenize(sql: str) -> Iterator[Token]:
         SyntaxError: Unexpected charachter at position index.
 
     Yields:
-        Iterator[Token]: The `Token` iterator 
+        Iterator[Token]: The :type:`Token` iterator 
     """
     pos = 0
     while pos < len(sql):
@@ -111,24 +100,58 @@ def tokenize(sql: str) -> Iterator[Token]:
     yield TokenType.EOF, ""
 
 class SqlNode(ABC):
+    def __init__(self) -> None:
+        self._operation = dict()
+
+    @property
+    def operation(self) -> dict:
+        return self._operation
+
     @abstractmethod
-    def accept(self, visitor: Visitor) -> str:
+    def accept(self, visitor: Visitor) -> dict:
+        raise NotImplementedError
+    
+    @abstractmethod
+    def compile(self) -> None:
+        """Compile the node to an executable JSON object.
+
+        Subclasses use this method to create the dictionary representing the operation as the following
+        example shows for the SQL statement ``CREATE TABLE``::
+            {
+                "endpoint": "databases",
+                "request": "create",
+                'payload": {
+                    "title": [
+                        {
+                            "type": "text",
+                            "text": {"content": "students"}
+                        }
+                    ],
+                    "properties": {
+                        "studentid": {"number": {}},
+                        "name": {"title": {}},
+                        "grade": {"rich_text": {}}
+                    }
+                    # TODO: add "parent" object
+                }
+            }
+        """
         raise NotImplementedError
         
 class Visitor:
     def __init__(self, table_catalog: Optional[MetaData] = None):
         self._table_catalog = table_catalog
 
-    def visit(self, node: SqlNode) -> str:
+    def visit(self, node: SqlNode) -> dict:
         return node.accept(self)
     
-    def visit_ColumnDef(self, node: ColumnDef) -> str:
+    def visit_ColumnDef(self, node: ColumnDef) -> dict:
         raise NotImplementedError
 
-    def visit_CreateTable(self, node: CreateTable) -> str:
+    def visit_CreateTable(self, node: CreateTable) -> dict:
         raise NotImplementedError
 
-    def visit_InsertStatement(self, node: InsertStatement) -> str:
+    def visit_InsertStatement(self, node: InsertStatement) -> dict:
         raise NotImplementedError
 
 class MetaData():
@@ -159,10 +182,15 @@ class MetaData():
 
 class ColumnDef(SqlNode):
     def __init__(self, name: str, type: str):
+        super().__init__()
         self.name = name
         self.type = type
 
-    def __eq__(self, value: SqlNode):
+    def compile(self) -> None:
+        # No implementation as columns are not executable
+        ...
+
+    def __eq__(self, value: SqlNode) -> bool:
         if isinstance(value, ColumnDef):
             return self.name == value.name and self.type == value.type
 
@@ -171,15 +199,22 @@ class ColumnDef(SqlNode):
     def __repr__(self) -> str:
         return f'ColumnDef(name="{self.name}, type="{self.type}")'
 
-    def accept(self, visitor):
+    def accept(self, visitor) -> dict:
         return visitor.visit_ColumnDef(self)    
 
 class CreateTable(SqlNode):
     def __init__(self, table_name: str, columns: List[ColumnDef]):
+        super().__init__()
         self.table_name = table_name
         self.columns = columns
 
-    def accept(self, visitor: Visitor):
+    def compile(self):
+        visitor = SqlToJsonVisitor()
+        self._operation['endpoint'] = 'databases'
+        self._operation['request'] = 'create'
+        self._operation['payload'] = self.accept(visitor)
+
+    def accept(self, visitor: Visitor) -> dict:
         return visitor.visit_CreateTable(self)
 
 class InsertStatement(SqlNode):
@@ -193,13 +228,11 @@ class InsertStatement(SqlNode):
         self.columns = columns
         self.values = values
 
-    def accept(self, visitor):
+    def accept(self, visitor) -> dict:
         return visitor.visit_InsertStatement(self)
 
 class Parser:
     """Create an SQL AST for a given SQL construct.
-
-
 
     Attributes:
         `tokens`: The `Token` iterator.
@@ -285,7 +318,7 @@ class SqlToJsonVisitor(Visitor):
     def __init__(self, table_catalog = None):
         super().__init__(table_catalog)
 
-    def visit_CreateTable(self, node: CreateTable) -> str:
+    def visit_CreateTable(self, node: CreateTable) -> dict:
         title_count = 0
         for col in node.columns:
             if col.type.startswith('title_varchar'):
@@ -304,23 +337,23 @@ class SqlToJsonVisitor(Visitor):
                 }
             ],
             "properties": {
-                col.name: json.loads(col.accept(self))  # string to dict
+                col.name: col.accept(self) 
                 for col in node.columns
             }
         }
-        return json.dumps(obj)
+        return obj
 
-    def visit_ColumnDef(self, node: ColumnDef) -> str:
+    def visit_ColumnDef(self, node: ColumnDef) -> dict:
         if node.type.startswith("int"):
-            return '{"number": {}}'
+            return {"number": {}}
         elif node.type.startswith('title_varchar'):
-            return '{"title": {}}'
+            return {"title": {}}
         elif node.type.startswith("varchar"):
-            return '{"rich_text": {}}'
+            return {"rich_text": {}}
         else:
             raise ValueError(f"Unsupported column type: {node.type}")
 
-    def visit_InsertStatement(self, node: InsertStatement) -> str:
+    def visit_InsertStatement(self, node: InsertStatement) -> dict:
         if not self._table_catalog:
             # The insert statement visitor requires a table catalog to 
             # properly process the column type when cross-compiling
@@ -363,10 +396,10 @@ class SqlToJsonVisitor(Visitor):
             else:
                 raise ValueError(f"Unsupported value type for column '{col}': {type(val)}")
 
-        return json.dumps({
+        return {
             "parent": {
                 "type": "database_name",
                 "database_name": node.table_name
             },
             "properties": properties
-        })
+        }
