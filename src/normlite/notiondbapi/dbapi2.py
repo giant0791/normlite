@@ -1,7 +1,11 @@
-from typing import Any, Dict, List, Literal, Optional, Self, Tuple
+import pdb
+from typing import Any, Dict, Iterable, List, Literal, Optional, Self, Tuple
 import uuid
 
 from normlite.notion_sdk.client import AbstractNotionClient, NotionError
+from normlite.notiondbapi._model import NotionPage
+from normlite.notiondbapi._parser import parse_page
+from normlite.notiondbapi._visitor_impl import ToRowVisitor
 
 DBAPIParamStyle = Literal[
     'qmark',     
@@ -40,48 +44,62 @@ class Cursor:
     """Implement the `Cursor` class according to the DBAPI 2.0 specification."""
     def __init__(self, client: AbstractNotionClient):
         self._client = client
-        self._result_set = {}  # set by execute method
-        self._rowcount = -1
-        self._lastrowid = 'UNDEF'
+        """The client implementing the Notion API."""
+
+        self._result_set = None
+        """The result set returned by the last :meth:`.execute()`. It is set by :meth:`._parse_result_set()`"""
+        
         self._paramstyle: DBAPIParamStyle = 'named'
+        """The default parameter style applied."""
 
     @property
     def rowcount(self) -> int:
-        """This read-only attribute specifies the number of rows that the 
-            last `.execute*()` produced.
+        """This read-only attribute specifies the number of rows that 
+           the last :meth:`.execute*()` produced.
 
         Returns:
-            int: Number of rows. `-1` if in case no `.execute*()` has been performed 
+            int: Number of rows. `-1` if in case no :meth:`.execute()` has been performed 
                  on the cursor or the rowcount of the last operation cannot be 
                  determined by the interface.
         """
-        return self._rowcount
+        return -1 if self._result_set is None else len(self._result_set)
     
     @property
     def lastrowid(self) -> Optional[int]:
         """This read-only attribute provides the rowid of the last modified row.
 
         Most Notion API calls return an object with an id, which is used as rowid. 
-        If the operation does not set a rowid, this attribute is set to `None`.
+        If the operation does not set a rowid, this attribute is set to ``None``.
 
-        The semantics of `.lastrowid` are undefined in case the last executed statement 
-        modified more than one row, e.g. when using `INSERT` with `.executemany()`.
-        `.lastworid` return a 128-bit integer representation of the object id, which can be 
-        used to access Notion objects.
+        Note:
+            ``normlite`` considers both inserted and updated rows as modified rows.
+            This means that ::attr::`.lastrowid` returns non ``None`` values after either
+            an ``INSERT`` or ``UPDATE`` statement.
+
+            ``normlite`` also defines semantics of ::meth::`.lastrowid` in case the last executed 
+            statement modified more than one row, e.g. when using ``INSERT`` with :meth:`.executemany()` or
+            ``UPDATE`` and its ``SELECT`` clause returns multiple rows.
+            
+            :meth:`.lastworid` returns a 128-bit integer representation of the object id, which can be 
+            used to driectly access Notion objects.
 
         Example:
-            >>> object_id = str(uuid.UUID(cursor.lastrowid)))
+            >>> object_id = str(uuid.UUID(int=cursor.lastrowid)))
             >>> print(object_id)
             680dee41-b447-451d-9d36-c6eaff13fb46
 
         Returns:
             Optional[int]: A 128-bit integer representing the UUID object id or `None`. 
         """
-        if self._lastrowid == 'UNDEF':
+        if not self._result_set:
+            # Either result set is empty or semantics is undefined (example: result set is None)
             return None
         
-        return uuid.UUID(self._lastrowid).int
-    
+        # extract the object UUID, 2nd element of the last row as str
+        lastrowid = self._result_set[-1][1]   
+        
+        return uuid.UUID(lastrowid).int
+
     @property
     def paramstyle(self) -> DBAPIParamStyle:
         """String constant stating the type of parameter marker formatting expected by the interface. 
@@ -98,7 +116,7 @@ class Cursor:
         """
         return self._paramstyle
 
-    def _parse_object(self, obj: Dict[str, Any]) -> List[Tuple[str, str, Any]]:
+    def _parse_object(self, obj: Dict[str, Any]) -> Tuple[tuple]:
         """Parse a Notion database or page from a list object into a list of tuples.
 
         Examples:
@@ -117,9 +135,12 @@ class Cursor:
             >>>     },
             >>> })
             >>> print(row)
-            [('object', 'otype', 'value'), ('id', 'oid', 'bc1211ca-e3f1-4939-ae34-5260b16f627c'),
-            ('title', 'text', 'students'), ('id', 'number', ''), ('name', 'title', ''),
-            ('grade', 'rich_text', '')]
+            ('database', 'bc1211ca-e3f1-4939-ae34-5260b16f627c'), 
+            None, None                     # "archived" and "in_trash" missing
+            'students',                    # database name
+            'id', 'evWq', 'number', {},    # column metadata: <col_name>, <col_id>, <col_type>
+            'name', 'title', {}),
+            'grade', 'rich_text', {})
 
             >>> # parse page object returned from pages.create  
 
@@ -127,17 +148,14 @@ class Cursor:
             obj (Dict[str, Any]): _description_
 
         Raises:
-            InternalError: _description_
-            InterfaceError: _description_
-            InterfaceError: _description_
-            InterfaceError: _description_
+            ValueError: If ``'object'`` is neither ``'page'`` or ``'database'``.
 
         Returns:
-            List[Tuple[str, str, Any]]: _description_
+            Tuple[str, str, Any]: The tuple representing the successfully parsed row.
         """
         object_ = obj['object']
         if not object_ in ['page', 'database']:
-            raise InternalError(
+            raise ValueError(
                 f'Unexpected object: {object_}. '
                 'Only "page" or "database" objects supported.'
             )
@@ -146,73 +164,132 @@ class Cursor:
         if not oid:
             raise InterfaceError(f'Missing object id in: {obj}')
         
-        # Single database or page object returned by one of the following API calls: 
-        # databases.retrieve or pages.retrieve.
-        title = obj.get('title', None)
-        row = [
-            ('id', 'object_id', oid),
-            ('object', 'object_type', object_),
-            # database objects only have a 'title' key
-            ('title', 'title', title if title else '')  
-        ]
-
-        properties = obj.get("properties", {})
-        for column_name, column_data in properties.items():
-            db_type = column_data.get("type")
-            # Extract value based on type
-            if db_type == "number":
-                value = column_data.get("number", "")
-            elif db_type == "rich_text":
-                items = column_data.get("richt_text", None)
-                if not items and object_ == 'page':
-                    # pages must have a "rich_text" key
-                    # databases have not "rich_text" key
-                    raise InterfaceError(f'Expected "rich_text" key in property value object: {column_data}')
-                    
-                value = items[0]["text"]["content"] if items else ""
-            elif db_type == "title":
-                items = column_data.get('title', None)
-                if not items and object_ == 'page':
-                    # pages must have a "title" key
-                    # databases have not "title" key
-                    raise InterfaceError(f'Expected "title" key in property value object: {column_data}')
-
-                value = items[0]["text"]["content"] if items else ""
-            else:
-                value = ""
-
-            row.append((column_name, db_type, str(value)))
+        visitor = ToRowVisitor()
+        if object_ == 'page':
+            page: NotionPage = parse_page(obj)
+            row = page.accept(visitor)
+        elif object_ == 'database':
+            raise NotImplementedError
+        
+        else:
+            raise InterfaceError(f'Expected "page" or "database", received: "{object_}"')
 
         return row
 
-    def fetchall(self) -> List[List[Tuple[str, str, Any]]]:
-
-        results = []
-
-        if self._result_set['object'] == 'list':
-            # Multiple objects returned by the API call: databases.query.
+    def _parse_result_set(self, returned_obj: Dict[str, Any]) -> None:
+        """Parse the JSON object returned by the command execution into the cursor's result set.
+        """
+        if returned_obj['object'] == 'list':
+            # Multiple objects returned by the API call, example: databases.query.
             # Parsing requires constructing a list of rows
-            results = self._result_set.get("results", [])
+            results_as_json = returned_obj.get("results", [])
 
         else:
             # Single page or database object returned by the API calls: 
             # pages.create, pages.query, databases.create, databases.query with filters
-            results = [self._result_set]
-
-        if len(results) == 0:
-            # no results returned by the operation execution
-            return []
+            results_as_json = [returned_obj]
 
         # Parse the objects in the result set
-        rows = []
+        self._result_set: List[tuple] = []
+        for page_or_database in results_as_json:
+            try: 
+                row = self._parse_object(page_or_database)
+                self._result_set.append(row)
+            except ValueError as ve:
+                raise InterfaceError(
+                    f'Unable to parse object: {page_or_database}, '
+                    f'{ve}'
+                ) from ve
+        
+    def __iter__(self) -> Iterable[tuple]:
+        """Make cursors compatible to the iteration protocol.
 
-        for page_or_database in results:
-            row = self._parse_object(page_or_database)
-            rows.append(row)
+        Note:
+            This method is not tested yet. Don't use it yet.
 
-        self._rowcount = len(rows)
-        self._lastrowid = rows[-1][0][-1]  # id object is always the first, the UUID id the last   
-        return rows
+        Yields:
+            Iterator[Iterable[tuple]]: The next row in the result set.
+        """
+        while self._result_set:
+            next_row = self._result_set.pop(0)
+            yield next_row
+
+    def fetchone(self) -> Optional[tuple]:
+        """Fetch the next row of a query result set.
+
+        Note:    
+            The current implementation guarantees that a call to this method will only move 
+            the associated cursor forward by one row.
+
+        Raises:
+            InterfaceError: If the previous call to :meth:`.execute()` did not produce any result set
+                            or no call was issued yet.
+
+        Returns:
+            Optional[tuple]: The next row as single tuple, or an empty tuple when no more data is available.
+        """
+        if self._result_set is None:
+            # the previous call to .execute*() did not produce any result set 
+            # or no call was issued yet.
+            raise InterfaceError(
+                'Cursor result set is empty. '
+                'The previous call to .execute*() did not produce any result set '
+                'or no call was issued yet '
+                'or you are attempting to fetch from an empty result set. '
+                'Hint: .rowcount is 0 if .execute*() did not produce any result set '
+                'or -1 if no call was issued yet.' 
+            )
+
+        # assume fetched rows exausted, all results consumed
+        next_row = ()               
+        if len(self._result_set) > 0:
+            # fetched rows not exausted yet, consume return next row
+            # extract the object UUID, 2nd element of the last row as str
+            next_row = self._result_set.pop(0)
+        
+        return next_row
+
+    def fetchall(self) -> List[tuple]:
+        """Fetch all rows of this query result. 
+        
+        This method returns all the remaining rows contained in this query result as a sequence of sequences 
+        (e.g. a list of tuples). 
+        Please refer to :mod:`notiondbapi` for a detailed description of how Notion JSON objects are
+        parsed and cross-compiled into Python ``tuple`` objects.
+
+        Important:
+        After a call to the :meth:`.fetchall()` the result set is exausted (empty). Any subsequent call
+        to this method returns an empty sequence. 
+
+        Raises:
+            InterfaceError: If the previous call to :meth:`.execute()` did not produce any result set
+                            or no call was issued yet.
+
+        Returns:
+            List[tuple]: The list containing all the remaining queried rows. ``[]`` if no rows are available.
+        """
+
+        if self._result_set is None:
+            # the previous call to .execute*() did not produce any result set 
+            # or no call was issued yet.
+            raise InterfaceError(
+                'Cursor result set is empty. '
+                'The previous call to .execute*() did not produce any result set'
+                'or no call was issued yet '
+                'or you are attempting to fetch from an empty result set. '
+                'Hint: .rowcount is 0 if .execute*() did not produce any result set '
+                'or 1 if no call was issued yet.' 
+            )
+
+        # assume result set is empty
+        results = []
+        if len(self._result_set) > 0:
+            results = list(self)
+            
+            # Important: This ensures that any subsequent call returns an empty list
+            self._result_set = []          
+
+        return results
     
     def execute(self, operation: Dict[str, Any], parameters: Dict[str, Any]) -> Self:
         """Prepare and execute a database operation (query or command).
@@ -222,8 +299,13 @@ class Cursor:
         which the values are to be bound are known by name.
         In the current implementation, the parameter style implemented in the cursor is:
         `named`.
-        The `execute()` methods implements a return interface to enable concatenating 
-        calls on `Cursor` methods.
+        The :meth:`execute()` methods implements a return interface to enable concatenating 
+        calls on :class:`Cursor` methods.
+
+        Important:
+            :meth:`.execute()` stores the executed command result(s) in the internal
+            result set. Always call this method prior to :meth:`.fetchone()` and :meth:`.fetchall(),
+            otherwise an :class:`InterfaceError` error is raised. 
 
         Examples:
             Create a new page as child of an exisisting database:
@@ -246,19 +328,18 @@ class Cursor:
             >>> }
             >>> cursor = Cursor()
             >>> cursor.execute(operation, parameters).fetchall()
-            >>> _ = cursor.fetchall()
-            >>> assert cursor.rowcount == 1  # the object created
+            >>> assert cursor.rowcount == 0  # 0 remaining rows after fetchall()
 
         Args:
             operation (Dict[str, Any]): A dictionary containing the Notion API request to be executed
             parameters (Dict[str, Any]): A dictionary containing the payload for the Notion API request
 
         Raises:
-            InterfaceError: "properties" object not specified in parameters
-            InterfaceError: "parent" object not specified in parameters
+            InterfaceError: ``"properties"`` object not specified in parameters
+            InterfaceError: ``"parent"`` object not specified in parameters
        
         Returns:
-            Self: This `Cursor` instance
+            Self: This :class:`Cursor` instance
         """
         
         object_ = {}
@@ -284,7 +365,7 @@ class Cursor:
                 f'NotionError("{self._client.__class__.__name__}"): {ne}'
             ) from ne
         
-        self._result_set = object_ 
+        self._parse_result_set(object_)         # initialize result set with parsed rows, if any
         return self
     
     def _bind_parameters(self, parameters: Dict[str, Any]) -> Dict[str, Any]:

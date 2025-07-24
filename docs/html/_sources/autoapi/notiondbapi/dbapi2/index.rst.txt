@@ -85,24 +85,22 @@ Module Contents
 
    .. py:attribute:: _client
 
+      The client implementing the Notion API.
+
 
    .. py:attribute:: _result_set
+      :value: None
 
 
-   .. py:attribute:: _rowcount
-      :value: -1
-
-
-
-   .. py:attribute:: _lastrowid
-      :value: 'UNDEF'
-
+      The result set returned by the last :meth:`.execute()`. It is set by :meth:`._parse_result_set()`
 
 
    .. py:attribute:: _paramstyle
       :type:  DBAPIParamStyle
       :value: 'named'
 
+
+      The default parameter style applied.
 
 
    .. py:property:: rowcount
@@ -113,12 +111,12 @@ Module Contents
 
 
 
-      This read-only attribute specifies the number of rows that the
-          last `.execute*()` produced.
+      This read-only attribute specifies the number of rows that
+         the last :meth:`.execute*()` produced.
 
       :returns:
 
-                Number of rows. `-1` if in case no `.execute*()` has been performed
+                Number of rows. `-1` if in case no :meth:`.execute()` has been performed
                      on the cursor or the rowcount of the last operation cannot be
                      determined by the interface.
       :rtype: int
@@ -131,16 +129,24 @@ Module Contents
       This read-only attribute provides the rowid of the last modified row.
 
       Most Notion API calls return an object with an id, which is used as rowid.
-      If the operation does not set a rowid, this attribute is set to `None`.
+      If the operation does not set a rowid, this attribute is set to ``None``.
 
-      The semantics of `.lastrowid` are undefined in case the last executed statement
-      modified more than one row, e.g. when using `INSERT` with `.executemany()`.
-      `.lastworid` return a 128-bit integer representation of the object id, which can be
-      used to access Notion objects.
+      .. note::
+
+         ``normlite`` considers both inserted and updated rows as modified rows.
+         This means that ::attr::`.lastrowid` returns non ``None`` values after either
+         an ``INSERT`` or ``UPDATE`` statement.
+         
+         ``normlite`` also defines semantics of ::meth::`.lastrowid` in case the last executed
+         statement modified more than one row, e.g. when using ``INSERT`` with :meth:`.executemany()` or
+         ``UPDATE`` and its ``SELECT`` clause returns multiple rows.
+         
+         :meth:`.lastworid` returns a 128-bit integer representation of the object id, which can be
+         used to driectly access Notion objects.
 
       .. rubric:: Example
 
-      >>> object_id = str(uuid.UUID(cursor.lastrowid)))
+      >>> object_id = str(uuid.UUID(int=cursor.lastrowid)))
       >>> print(object_id)
       680dee41-b447-451d-9d36-c6eaff13fb46
 
@@ -165,7 +171,7 @@ Module Contents
       :rtype: DBAPIParamStyle
 
 
-   .. py:method:: _parse_object(obj: Dict[str, Any]) -> List[Tuple[str, str, Any]]
+   .. py:method:: _parse_object(obj: Dict[str, Any]) -> Tuple[tuple]
 
       Parse a Notion database or page from a list object into a list of tuples.
 
@@ -186,26 +192,78 @@ Module Contents
       >>>     },
       >>> })
       >>> print(row)
-      [('object', 'otype', 'value'), ('id', 'oid', 'bc1211ca-e3f1-4939-ae34-5260b16f627c'),
-      ('title', 'text', 'students'), ('id', 'number', ''), ('name', 'title', ''),
-      ('grade', 'rich_text', '')]
+      ('database', 'bc1211ca-e3f1-4939-ae34-5260b16f627c'),
+      None, None                     # "archived" and "in_trash" missing
+      'students',                    # database name
+      'id', 'evWq', 'number', {},    # column metadata: <col_name>, <col_id>, <col_type>
+      'name', 'title', {}),
+      'grade', 'rich_text', {})
 
       >>> # parse page object returned from pages.create
 
       :param obj: _description_
       :type obj: Dict[str, Any]
 
-      :raises InternalError: _description_
-      :raises InterfaceError: _description_
-      :raises InterfaceError: _description_
-      :raises InterfaceError: _description_
+      :raises ValueError: If ``'object'`` is neither ``'page'`` or ``'database'``.
 
-      :returns: _description_
-      :rtype: List[Tuple[str, str, Any]]
+      :returns: The tuple representing the successfully parsed row.
+      :rtype: Tuple[str, str, Any]
 
 
 
-   .. py:method:: fetchall() -> List[List[Tuple[str, str, Any]]]
+   .. py:method:: _parse_result_set(returned_obj: Dict[str, Any]) -> None
+
+      Parse the JSON object returned by the command execution into the cursor's result set.
+
+
+
+
+   .. py:method:: __iter__() -> Iterable[tuple]
+
+      Make cursors compatible to the iteration protocol.
+
+      .. note:: This method is not tested yet. Don't use it yet.
+
+      :Yields: *Iterator[Iterable[tuple]]* -- The next row in the result set.
+
+
+
+   .. py:method:: fetchone() -> Optional[tuple]
+
+      Fetch the next row of a query result set.
+
+      .. note::
+
+         The current implementation guarantees that a call to this method will only move
+         the associated cursor forward by one row.
+
+      :raises InterfaceError: If the previous call to :meth:`.execute()` did not produce any result set
+          or no call was issued yet.
+
+      :returns: The next row as single tuple, or an empty tuple when no more data is available.
+      :rtype: Optional[tuple]
+
+
+
+   .. py:method:: fetchall() -> List[tuple]
+
+      Fetch all rows of this query result.
+
+      This method returns all the remaining rows contained in this query result as a sequence of sequences
+      (e.g. a list of tuples).
+      Please refer to :mod:`notiondbapi` for a detailed description of how Notion JSON objects are
+      parsed and cross-compiled into Python ``tuple`` objects.
+
+      Important:
+      After a call to the :meth:`.fetchall()` the result set is exausted (empty). Any subsequent call
+      to this method returns an empty sequence.
+
+      :raises InterfaceError: If the previous call to :meth:`.execute()` did not produce any result set
+          or no call was issued yet.
+
+      :returns: The list containing all the remaining queried rows. ``[]`` if no rows are available.
+      :rtype: List[tuple]
+
 
 
    .. py:method:: execute(operation: Dict[str, Any], parameters: Dict[str, Any]) -> Self
@@ -217,8 +275,14 @@ Module Contents
       which the values are to be bound are known by name.
       In the current implementation, the parameter style implemented in the cursor is:
       `named`.
-      The `execute()` methods implements a return interface to enable concatenating
-      calls on `Cursor` methods.
+      The :meth:`execute()` methods implements a return interface to enable concatenating
+      calls on :class:`Cursor` methods.
+
+      .. important::
+
+         :meth:`.execute()` stores the executed command result(s) in the internal
+         result set. Always call this method prior to :meth:`.fetchone()` and :meth:`.fetchall(),
+         otherwise an :class:`InterfaceError` error is raised.
 
       .. rubric:: Examples
 
@@ -242,18 +306,17 @@ Module Contents
       >>> }
       >>> cursor = Cursor()
       >>> cursor.execute(operation, parameters).fetchall()
-      >>> _ = cursor.fetchall()
-      >>> assert cursor.rowcount == 1  # the object created
+      >>> assert cursor.rowcount == 0  # 0 remaining rows after fetchall()
 
       :param operation: A dictionary containing the Notion API request to be executed
       :type operation: Dict[str, Any]
       :param parameters: A dictionary containing the payload for the Notion API request
       :type parameters: Dict[str, Any]
 
-      :raises InterfaceError: "properties" object not specified in parameters
-      :raises InterfaceError: "parent" object not specified in parameters
+      :raises InterfaceError: ``"properties"`` object not specified in parameters
+      :raises InterfaceError: ``"parent"`` object not specified in parameters
 
-      :returns: This `Cursor` instance
+      :returns: This :class:`Cursor` instance
       :rtype: Self
 
 

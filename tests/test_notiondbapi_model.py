@@ -309,6 +309,27 @@ def database_retrieved() -> Dict[str, Any]:
     return json.loads(json_obj)
 
 @pytest.fixture
+def unsupported_prop_type() -> Dict[str, Any]:
+    return {
+        "Store availability": {
+            "id": "%3AUPp",
+            "type": "multi_select",
+            "multi_select": [
+                {
+                    "id": "t|O@",
+                    "name": "Gus's Community Market",
+                    "color": "yellow"
+                },
+                {
+                    "id": "{Ml\\",
+                    "name": "Rainbow Grocery",
+                    "color": "gray"
+                }
+            ]
+        }
+    }
+
+@pytest.fixture
 def dollar_number_def() -> Dict[str, Any]:
     return  {
         "Price": {
@@ -413,6 +434,15 @@ def test_parse_single_array_title(retrieved_page: Dict[str, Any]):
     property: NotionProperty = parse_property('Name', properties['Name'])
 
     assert expected == property.value
+
+def test_unsupported_property_type(unsupported_prop_type: Dict[str, Any]):
+    
+    with pytest.raises(TypeError, match="Unexpected or unsupported property type"):
+        property: NotionProperty = parse_property(
+            'Store availability', 
+            unsupported_prop_type['Store availability']
+        )
+
 
 def test_compile_page_created(created_page: Dict[str, Any]):
     expected = (

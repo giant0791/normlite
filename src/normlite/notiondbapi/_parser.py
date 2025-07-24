@@ -8,11 +8,12 @@ Important:
     its features outside.
 """
 
+import pdb
 from normlite.notiondbapi._model import NotionDatabase, NotionPage, NotionProperty
 
 
-def parse_text_content(values: dict) -> str:
-    if isinstance(values, list) and values:
+def parse_text_content(values: list) -> str:
+    if values:
         contents = [value.get("text", {}).get("content", "") for value in values]
         text_value = "".join(contents)
         return text_value
@@ -23,21 +24,50 @@ def parse_number(value: dict | int | float) -> str | int | float | None:
         # number object value is a definition (dictionary), 
         # return format or None if format is not specified
         return value.get('format')
-    elif isinstance(value, (int, float,)):
+    
+    if isinstance(value, (int, float,)):
         # number object value is a numeric value, return it
         return value
 
 def parse_property(name: str, payload: dict) -> NotionProperty:
+    """Parse a JSON property object 
+
+    This method parses a JSON property object and creates the corresponding Python node object.
+
+    Args:
+        name (str): The property name.
+        payload (dict): A dictionary containing the JSON property object.
+
+    Raises:
+        TypeError: If an unexpected or unsupported property type is in the :obj:`payload`.
+
+    Returns:
+        NotionProperty: The Python node object corresponding to the Notion page or database property.
+    """
     pid = payload.get("id")
-    ptype = payload.get("type")
+    ptype = payload.get("type")             # pytype is None for updated pages
     value = None
 
+    if ptype and not ptype in ['number', 'title', 'rich_text']:
+        raise TypeError(f'Unexpected or unsupported property type: {ptype}')
+
     if ptype == "number":
-        value = parse_number(payload.get("number"))
+        number = payload.get("number", {})
+
+        # number is {} for database objects or pages returned from pages.create
+        value = parse_number(number) if number else None
+
     elif ptype == "title":
-        value = parse_text_content(payload.get("title", []))
+        title = payload.get("title", [])
+
+        # title is [] for database objects or pages returned from pages.create
+        value = parse_text_content(title) if title else None
+
     elif ptype == "rich_text":
-        value = parse_text_content(payload.get("rich_text", []))
+        rich_text = payload.get("rich_text", [])
+
+        # rich_text is [] for database objects or pages returned from pages.create
+        value = parse_text_content(rich_text) if rich_text else None
 
     return NotionProperty(name=name, id=pid, type=ptype, value=value)
 

@@ -32,11 +32,26 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: parse_text_content(values: dict) -> str
+.. py:function:: parse_text_content(values: list) -> str
 
 .. py:function:: parse_number(value: dict | int | float) -> str | int | float | None
 
 .. py:function:: parse_property(name: str, payload: dict) -> normlite.notiondbapi._model.NotionProperty
+
+   Parse a JSON property object
+
+   This method parses a JSON property object and creates the corresponding Python node object.
+
+   :param name: The property name.
+   :type name: str
+   :param payload: A dictionary containing the JSON property object.
+   :type payload: dict
+
+   :raises TypeError: If an unexpected or unsupported property type is in the :obj:`payload`.
+
+   :returns: The Python node object corresponding to the Notion page or database property.
+   :rtype: NotionProperty
+
 
 .. py:function:: parse_page(payload: dict) -> normlite.notiondbapi._model.NotionPage
 

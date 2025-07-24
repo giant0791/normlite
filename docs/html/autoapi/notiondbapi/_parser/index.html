@@ -117,7 +117,7 @@ its features outside.</p>
 <td><p></p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#notiondbapi._parser.parse_property" title="notiondbapi._parser.parse_property"><code class="xref py py-obj docutils literal notranslate"><span class="pre">parse_property</span></code></a>(...)</p></td>
-<td><p></p></td>
+<td><p>Parse a JSON property object</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#notiondbapi._parser.parse_page" title="notiondbapi._parser.parse_page"><code class="xref py py-obj docutils literal notranslate"><span class="pre">parse_page</span></code></a>(→ normlite.notiondbapi._model.NotionPage)</p></td>
 <td><p></p></td>
@@ -132,7 +132,7 @@ its features outside.</p>
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
 <dl class="py function">
 <dt class="sig sig-object py" id="notiondbapi._parser.parse_text_content">
-<span class="sig-prename descclassname"><span class="pre">notiondbapi._parser.</span></span><span class="sig-name descname"><span class="pre">parse_text_content</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">values</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#notiondbapi._parser.parse_text_content" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">notiondbapi._parser.</span></span><span class="sig-name descname"><span class="pre">parse_text_content</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">values</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#notiondbapi._parser.parse_text_content" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py function">
@@ -143,7 +143,26 @@ its features outside.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="notiondbapi._parser.parse_property">
 <span class="sig-prename descclassname"><span class="pre">notiondbapi._parser.</span></span><span class="sig-name descname"><span class="pre">parse_property</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">normlite.notiondbapi._model.NotionProperty</span></span></span><a class="headerlink" href="#notiondbapi._parser.parse_property" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Parse a JSON property object</p>
+<p>This method parses a JSON property object and creates the corresponding Python node object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The property name.</p></li>
+<li><p><strong>payload</strong> (<em>dict</em>) – A dictionary containing the JSON property object.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If an unexpected or unsupported property type is in the <code class="xref py py-obj docutils literal notranslate"><span class="pre">payload</span></code>.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The Python node object corresponding to the Notion page or database property.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="../_model/index.html#notiondbapi._model.NotionProperty" title="notiondbapi._model.NotionProperty">NotionProperty</a></p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="notiondbapi._parser.parse_page">
