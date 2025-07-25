@@ -45,7 +45,7 @@ Module Contents
 
    Base class of all other error exceptions.
 
-   It can be used this to catch all errors with one single `except` statement.
+   It can be used this to catch all errors with one single ``except`` statement.
 
 
 .. py:exception:: InterfaceError
@@ -80,7 +80,7 @@ Module Contents
 
 .. py:class:: Cursor(client: normlite.notion_sdk.client.AbstractNotionClient)
 
-   Implement the `Cursor` class according to the DBAPI 2.0 specification.
+   Implement the :class:`Cursor` class according to the DBAPI 2.0 specification.
 
 
    .. py:attribute:: _client

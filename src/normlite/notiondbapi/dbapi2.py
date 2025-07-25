@@ -19,7 +19,7 @@ DBAPIParamStyle = Literal[
 class Error(Exception):
     """Base class of all other error exceptions.
 
-    It can be used this to catch all errors with one single `except` statement. 
+    It can be used this to catch all errors with one single ``except`` statement. 
     """
     pass
 
@@ -41,7 +41,7 @@ class InternalError(Error):
    """
 
 class Cursor:
-    """Implement the `Cursor` class according to the DBAPI 2.0 specification."""
+    """Implement the :class:`Cursor` class according to the DBAPI 2.0 specification."""
     def __init__(self, client: AbstractNotionClient):
         self._client = client
         """The client implementing the Notion API."""

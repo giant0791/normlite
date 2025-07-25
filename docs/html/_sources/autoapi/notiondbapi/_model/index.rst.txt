@@ -324,7 +324,7 @@ Module Contents
       :value: None
 
 
-      The ``"archived"`` flag for this page. Defaults to ``None` when
+      The ``"archived"`` flag for this page. Defaults to ``None`` when
       the page is a newly created object.
 
 
@@ -332,7 +332,7 @@ Module Contents
       :value: None
 
 
-      The ``"in_trash"`` flag for this page. Defaults to ``None` when
+      The ``"in_trash"`` flag for this page. Defaults to ``None`` when
       the page is a newly created object.
 
 

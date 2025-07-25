@@ -68,3 +68,19 @@ def test_tokenizer_invalid_sql(sql, error_contains):
     assert error_contains.lower() in str(exc.value).lower()
 
 
+def test_tokenize_where():
+    sql = "where id > 0 and grade = 'C'"
+
+    assert list(tokenize(sql)) == [
+        (TokenType.KEYWORD, 'where'),
+        (TokenType.IDENTIFIER, 'id'),
+        (TokenType.SYMBOL, '>'),
+        (TokenType.NUMBER, '0'),
+        (TokenType.KEYWORD, 'and'),
+        (TokenType.IDENTIFIER, 'grade'),
+        (TokenType.SYMBOL, '='),
+        (TokenType.STRING, 'C'),
+        (TokenType.EOF, '')
+    ]
+
+

@@ -264,10 +264,10 @@ class NotionPage(AbstractNotionObject):
         self.id = id
         """The page id as assigned by Notion."""
         self.archived = archived
-        """The ``"archived"`` flag for this page. Defaults to ``None` when 
+        """The ``"archived"`` flag for this page. Defaults to ``None`` when 
         the page is a newly created object."""
         self.in_trash = in_trash
-        """The ``"in_trash"`` flag for this page. Defaults to ``None` when
+        """The ``"in_trash"`` flag for this page. Defaults to ``None`` when
         the page is a newly created object."""
         self.properties = properties
         """The page ``"properties"`` object."""

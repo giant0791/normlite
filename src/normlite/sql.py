@@ -37,9 +37,10 @@ Example usage of the cross-compiler :class:`SqlToJsonVisitor`:
 """
 
 from __future__ import annotations
+import pdb
 import re
 from enum import Enum, auto
-from typing import Dict, List, Optional, Tuple, Iterator, Union
+from typing import Any, Dict, List, Optional, Tuple, Iterator, Union
 from abc import ABC, abstractmethod
 
 class TokenType(Enum):
@@ -54,15 +55,25 @@ class TokenType(Enum):
 Token = Tuple[TokenType, str]
 """Type alias for a token used by :func:`tokenize()`."""
 
-KEYWORDS = {"create", "table", "insert", "into", "values", "int", "varchar", "title_varchar"}
-"""Dictionary defining all the supported SQL keywords."""
+KEYWORDS = {
+    "create", "table", "insert", "into", "values", 
+    "int", "varchar", "title_varchar",
+    "where" , "and", "or"
+}
+"""The set of supported SQL keywords (incl. dialect specific ones like ``"title_varchar"``)."""
+
+COMPARISON_OPS = {">=", "<=", "!=", "=", "<", ">"}
+"""The set of supported comparison operators in ``WHERE`` clause expressions."""
+
+LOGICAL_OPS = {"and", "or"}
+"""The set of supported logical operators in ``WHERE`` clause expressions."""
 
 TOKEN_REGEX = re.compile(r"""
     (?P<SPACE>\s+)
   | (?P<NUMBER>\d+)
   | (?P<STRING>'[^']*')
   | (?P<IDENTIFIER>[a-zA-Z_][a-zA-Z0-9_]*)
-  | (?P<SYMBOL>[(),;])
+  | (?P<SYMBOL>>=|<=|!=|=|<|>|[(),;])
 """, re.IGNORECASE | re.VERBOSE)
 """Regular expression representing a single SQL token."""
 
@@ -240,6 +251,13 @@ class CreateTable(SqlNode):
         self._operation['request'] = 'create'
         self._operation['payload'] = self.accept(visitor)
 
+    def __getitem__(self, key: str) -> Optional[ColumnDef]:
+        column_list: List[ColumnDef] = [col for col in self.columns if col.name == key]
+        if len(column_list) != 1:
+            raise KeyError(f'Unknown column name: "{key}"')
+
+        return column_list[0]
+
     def accept(self, visitor: Visitor) -> dict:
         return visitor.visit_CreateTable(self)
 
@@ -256,6 +274,65 @@ class InsertStatement(SqlNode):
 
     def accept(self, visitor) -> dict:
         return visitor.visit_InsertStatement(self)
+    
+class BinaryOp(SqlNode):
+    """Provide the AST node for SQL binary operators in expressions allowed in ``WHERE`` clauses."""
+    def __init__(self, left: SqlNode, op: str, right: SqlNode):
+        self.left = left
+        """The left operand node."""
+
+        self.op = op
+        """The operator."""
+
+        self.right = right
+        """The right operand node."""
+
+        self.table_clause: CreateTable = None
+        """The table clause the columns in the ``WHERE`` clause belong to."""
+
+    def accept(self, visitor) -> dict:
+        return visitor.visit_binary_op(self)
+
+    def compile(self) -> None:
+        pass
+
+class Where(SqlNode):
+    def __init__(self, expr: SqlNode):
+        self.expr = expr
+        """The AST node for the SQL expression."""
+
+        self.table_clause: CreateTable = None
+        """The table clause the ``WHERE`` clause is referred to."""
+
+    def accept(self, visitor):
+        return visitor.visit_where(self)
+
+    def compile(self) -> None:
+        pass
+
+class Expression(SqlNode):
+    """Provide the AST node for an SQL expression in a ``WHERE`` clause."""
+
+    def __init__(self, column: str, operator: str, value: Union[int, float, str]):
+        self.column = column
+        """The column name in the expression."""
+
+        self.operator = operator
+        """The operator in the expression."""
+
+        self.value = value
+        """The literal value in the expression."""
+
+        self.table_clause: CreateTable = None
+        """The table clause the columns in the ``WHERE`` clause belong to."""
+
+    def accept(self, visitor):
+        return visitor.visit_expression(self)
+    
+    def compile(self) -> None:
+        pass
+    
+
 
 class Parser:
     """Create an SQL AST for a given SQL construct."""
@@ -273,11 +350,21 @@ class Parser:
         self.current = next(self.tokens)
         return val
 
-    def parse(self):
+    def parse(self) -> SqlNode:
+        """Construct the AST from the input token stream.
+
+        Raises:
+            SyntaxError: If the input token stream is syntactically incorrect.
+
+        Returns:
+            SqlNode: The root node to the constructed AST.
+        """
         if self.current[1] == "create":
             return self.parse_create_table()
         elif self.current[1] == "insert":
             return self.parse_insert()
+        elif self.current[1] == "where":
+            return self.parse_where()
         else:
             raise SyntaxError("Unknown statement")
 
@@ -338,8 +425,56 @@ class Parser:
 
         return InsertStatement(table_name, columns, values)
 
+    def parse_where(self):
+        self.eat(TokenType.KEYWORD, "where")
+        expr = self.parse_expression()
+        return Where(expr)
+
+    def parse_expression(self):
+        left = self.parse_primary()
+
+        while self.current[0] == TokenType.KEYWORD and self.current[1] in LOGICAL_OPS:
+            op = self.eat(TokenType.KEYWORD)
+            right = self.parse_primary()
+            left = BinaryOp(left, op, right)
+
+        return left
+
+    def parse_primary(self):
+        if self.current == (TokenType.SYMBOL, "("):
+            self.eat(TokenType.SYMBOL, "(")
+            expr = self.parse_expression()
+            self.eat(TokenType.SYMBOL, ")")
+            return expr
+        return self.parse_comparison()
+
+    def parse_comparison(self):
+        left = self.eat(TokenType.IDENTIFIER)
+        op = self.eat(TokenType.SYMBOL)
+        if op not in COMPARISON_OPS:
+            raise SyntaxError(f"Uknown or unsupported operator {op}")
+        if self.current[0] == TokenType.NUMBER:
+            right = int(self.eat(TokenType.NUMBER))
+        elif self.current[0] == TokenType.STRING:
+            right = self.eat(TokenType.STRING)
+        else:
+            raise SyntaxError("Expected a number or string as value")
+        return Expression(left, op, right)
+
 class SqlToJsonVisitor(Visitor):
-    def __init__(self, table_catalog = None):
+    _op_map: dict = {
+        '=': 'equals',
+        '!=': 'does_not_equal',
+        '>': 'greater_than',
+        '<': 'less_than',
+        '>=': 'greater_than',
+        '<=': 'less_than_or_equal_to',
+        'and': 'and',
+        'or': 'or'
+    }
+    """Internal SQL-to-Notion operator mapping."""
+
+    def __init__(self, table_catalog: Optional[MetaData] = None):
         super().__init__(table_catalog)
 
     def visit_CreateTable(self, node: CreateTable) -> dict:
@@ -428,6 +563,60 @@ class SqlToJsonVisitor(Visitor):
             "properties": properties
         }
 
+    def visit_where(self, node: Where) -> dict:
+        """Cross-compile an SQL ``WHERE`` clause into the Notion JSON object.
+
+        _description_Args:
+            node (Where): The AST node representing the ``WHERE`` clause.
+
+        Returns:
+            dict: The cross-compiled Notion JSON ``"filter"`` object.
+        """
+
+        # propagate the table clause to the expression
+        node.expr.table_clause = node.table_clause
+        return {"filter": node.expr.accept(self)}
+
+    def visit_expression(self, node: Expression) -> dict:
+        """Cross-compile an SQL expression into the corresponding Notion JSON object.
+
+        Args:
+            node (Expression): The AST node representing the expression.
+
+        Returns:
+            dict: The cross-compiled Notion JSON ``"property"`` object.
+        """
+        #pdb.set_trace()
+
+        column_type = node.table_clause[node.column].type
+        return {
+            "property": node.column,
+             column_type: {
+                self._op_map[node.operator]: node.value
+            }
+        }
+    
+    def visit_binary_op(self, node: BinaryOp) -> dict:
+        """Cross-compile a SQL binary operator contained in a SQl expression. 
+
+        Args:
+            node (BinaryOp): The AST node representing the binary operator.
+
+        Returns:
+            dict: The cross-compiled Notion JSON binary operator string (example: ``"equals"``).
+        """
+        
+        # propagate the table clause to the left and right arms
+        node.left.table_clause = node.table_clause
+        node.right.table_clause = node.table_clause
+
+        return {
+            SqlToJsonVisitor._op_map[node.op]: [
+                node.left.accept(self),
+                node.right.accept(self)
+            ]
+        }
+            
 def text(sqlcode: str) -> SqlNode:
     """Construct a new :class:`SqlNode` node from a textual SQL string directly.
 

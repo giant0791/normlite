@@ -77,6 +77,7 @@
 <div class="genindex-jumpbox">
  <a href="#_"><strong>_</strong></a>
  | <a href="#A"><strong>A</strong></a>
+ | <a href="#B"><strong>B</strong></a>
  | <a href="#C"><strong>C</strong></a>
  | <a href="#D"><strong>D</strong></a>
  | <a href="#E"><strong>E</strong></a>
@@ -92,6 +93,7 @@
  | <a href="#S"><strong>S</strong></a>
  | <a href="#T"><strong>T</strong></a>
  | <a href="#V"><strong>V</strong></a>
+ | <a href="#W"><strong>W</strong></a>
  
 </div>
 <h2 id="_">_</h2>
@@ -106,6 +108,8 @@
       <li><a href="autoapi/cursor/index.html#cursor.Row.__getitem__">__getitem__() (cursor.Row method)</a>
 
       <ul>
+        <li><a href="autoapi/sql/index.html#sql.CreateTable.__getitem__">(sql.CreateTable method)</a>
+</li>
         <li><a href="autoapi/sql/index.html#sql.MetaData.__getitem__">(sql.MetaData method)</a>
 </li>
       </ul></li>
@@ -167,6 +171,8 @@
         <li><a href="autoapi/cursor/index.html#cursor.Row._metadata">(cursor.Row attribute)</a>
 </li>
       </ul></li>
+      <li><a href="autoapi/sql/index.html#sql.SqlToJsonVisitor._op_map">_op_map (sql.SqlToJsonVisitor attribute)</a>
+</li>
       <li><a href="autoapi/sql/index.html#sql.SqlNode._operation">_operation (sql.SqlNode attribute)</a>
 </li>
       <li><a href="autoapi/notiondbapi/index.html#notiondbapi.Cursor._paramstyle">_paramstyle (notiondbapi.Cursor attribute)</a>
@@ -220,13 +226,19 @@
 </li>
         <li><a href="autoapi/notiondbapi/_model/index.html#notiondbapi._model.NotionProperty.accept">(notiondbapi._model.NotionProperty method)</a>
 </li>
+        <li><a href="autoapi/sql/index.html#sql.BinaryOp.accept">(sql.BinaryOp method)</a>
+</li>
         <li><a href="autoapi/sql/index.html#sql.ColumnDef.accept">(sql.ColumnDef method)</a>
 </li>
         <li><a href="autoapi/sql/index.html#sql.CreateTable.accept">(sql.CreateTable method)</a>
 </li>
+        <li><a href="autoapi/sql/index.html#sql.Expression.accept">(sql.Expression method)</a>
+</li>
         <li><a href="autoapi/sql/index.html#sql.InsertStatement.accept">(sql.InsertStatement method)</a>
 </li>
         <li><a href="autoapi/sql/index.html#sql.SqlNode.accept">(sql.SqlNode method)</a>
+</li>
+        <li><a href="autoapi/sql/index.html#sql.Where.accept">(sql.Where method)</a>
 </li>
       </ul></li>
   </ul></td>
@@ -244,9 +256,19 @@
   </ul></td>
 </tr></table>
 
+<h2 id="B">B</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="autoapi/sql/index.html#sql.BinaryOp">BinaryOp (class in sql)</a>
+</li>
+  </ul></td>
+</tr></table>
+
 <h2 id="C">C</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="autoapi/sql/index.html#sql.Expression.column">column (sql.Expression attribute)</a>
+</li>
       <li><a href="autoapi/sql/index.html#sql.ColumnDef">ColumnDef (class in sql)</a>
 </li>
       <li><a href="autoapi/sql/index.html#sql.CreateTable.columns">columns (sql.CreateTable attribute)</a>
@@ -255,18 +277,26 @@
         <li><a href="autoapi/sql/index.html#sql.InsertStatement.columns">(sql.InsertStatement attribute)</a>
 </li>
       </ul></li>
-      <li><a href="autoapi/sql/index.html#sql.ColumnDef.compile">compile() (sql.ColumnDef method)</a>
+      <li><a href="autoapi/sql/index.html#sql.COMPARISON_OPS">COMPARISON_OPS (in module sql)</a>
+</li>
+      <li><a href="autoapi/sql/index.html#sql.BinaryOp.compile">compile() (sql.BinaryOp method)</a>
 
       <ul>
+        <li><a href="autoapi/sql/index.html#sql.ColumnDef.compile">(sql.ColumnDef method)</a>
+</li>
         <li><a href="autoapi/sql/index.html#sql.CreateTable.compile">(sql.CreateTable method)</a>
+</li>
+        <li><a href="autoapi/sql/index.html#sql.Expression.compile">(sql.Expression method)</a>
 </li>
         <li><a href="autoapi/sql/index.html#sql.SqlNode.compile">(sql.SqlNode method)</a>
 </li>
-      </ul></li>
-      <li><a href="autoapi/engine/index.html#engine.create_engine">create_engine() (in module engine)</a>
+        <li><a href="autoapi/sql/index.html#sql.Where.compile">(sql.Where method)</a>
 </li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="autoapi/engine/index.html#engine.create_engine">create_engine() (in module engine)</a>
+</li>
       <li><a href="autoapi/sql/index.html#sql.CreateTable">CreateTable (class in sql)</a>
 </li>
       <li><a href="autoapi/sql/index.html#sql.Parser.current">current (sql.Parser attribute)</a>
@@ -341,10 +371,10 @@
 </li>
       <li><a href="autoapi/sql/index.html#sql.TokenType.EOF">EOF (sql.TokenType attribute)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="autoapi/notiondbapi/dbapi2/index.html#notiondbapi.dbapi2.Error">Error</a>, <a href="autoapi/notiondbapi/index.html#notiondbapi.Error">[1]</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="autoapi/cursor/index.html#cursor.CursorResult.execute">execute() (cursor.CursorResult method)</a>
 
       <ul>
@@ -355,6 +385,10 @@
         <li><a href="autoapi/notiondbapi/dbapi2/index.html#notiondbapi.dbapi2.Cursor.execute">(notiondbapi.dbapi2.Cursor method)</a>
 </li>
       </ul></li>
+      <li><a href="autoapi/sql/index.html#sql.Where.expr">expr (sql.Where attribute)</a>
+</li>
+      <li><a href="autoapi/sql/index.html#sql.Expression">Expression (class in sql)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -439,6 +473,12 @@
         <li><a href="autoapi/notiondbapi/dbapi2/index.html#notiondbapi.dbapi2.Cursor.lastrowid">(notiondbapi.dbapi2.Cursor property)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="autoapi/sql/index.html#sql.BinaryOp.left">left (sql.BinaryOp attribute)</a>
+</li>
+      <li><a href="autoapi/sql/index.html#sql.LOGICAL_OPS">LOGICAL_OPS (in module sql)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -553,7 +593,13 @@
 <h2 id="O">O</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="autoapi/sql/index.html#sql.BinaryOp.op">op (sql.BinaryOp attribute)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="autoapi/sql/index.html#sql.SqlNode.operation">operation (sql.SqlNode property)</a>
+</li>
+      <li><a href="autoapi/sql/index.html#sql.Expression.operator">operator (sql.Expression attribute)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -581,11 +627,15 @@
       </ul></li>
       <li><a href="autoapi/sql/index.html#sql.Parser.parse">parse() (sql.Parser method)</a>
 </li>
+      <li><a href="autoapi/sql/index.html#sql.Parser.parse_comparison">parse_comparison() (sql.Parser method)</a>
+</li>
       <li><a href="autoapi/sql/index.html#sql.Parser.parse_create_table">parse_create_table() (sql.Parser method)</a>
+</li>
+      <li><a href="autoapi/notiondbapi/_parser/index.html#notiondbapi._parser.parse_database">parse_database() (in module notiondbapi._parser)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="autoapi/notiondbapi/_parser/index.html#notiondbapi._parser.parse_database">parse_database() (in module notiondbapi._parser)</a>
+      <li><a href="autoapi/sql/index.html#sql.Parser.parse_expression">parse_expression() (sql.Parser method)</a>
 </li>
       <li><a href="autoapi/sql/index.html#sql.Parser.parse_insert">parse_insert() (sql.Parser method)</a>
 </li>
@@ -593,9 +643,13 @@
 </li>
       <li><a href="autoapi/notiondbapi/_parser/index.html#notiondbapi._parser.parse_page">parse_page() (in module notiondbapi._parser)</a>
 </li>
+      <li><a href="autoapi/sql/index.html#sql.Parser.parse_primary">parse_primary() (sql.Parser method)</a>
+</li>
       <li><a href="autoapi/notiondbapi/_parser/index.html#notiondbapi._parser.parse_property">parse_property() (in module notiondbapi._parser)</a>
 </li>
       <li><a href="autoapi/notiondbapi/_parser/index.html#notiondbapi._parser.parse_text_content">parse_text_content() (in module notiondbapi._parser)</a>
+</li>
+      <li><a href="autoapi/sql/index.html#sql.Parser.parse_where">parse_where() (sql.Parser method)</a>
 </li>
       <li><a href="autoapi/sql/index.html#sql.Parser">Parser (class in sql)</a>
 </li>
@@ -611,6 +665,8 @@
 <h2 id="R">R</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="autoapi/sql/index.html#sql.BinaryOp.right">right (sql.BinaryOp attribute)</a>
+</li>
       <li><a href="autoapi/cursor/index.html#cursor.Row">Row (class in cursor)</a>
 </li>
   </ul></td>
@@ -650,6 +706,14 @@
 <h2 id="T">T</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="autoapi/sql/index.html#sql.BinaryOp.table_clause">table_clause (sql.BinaryOp attribute)</a>
+
+      <ul>
+        <li><a href="autoapi/sql/index.html#sql.Expression.table_clause">(sql.Expression attribute)</a>
+</li>
+        <li><a href="autoapi/sql/index.html#sql.Where.table_clause">(sql.Where attribute)</a>
+</li>
+      </ul></li>
       <li><a href="autoapi/sql/index.html#sql.CreateTable.table_name">table_name (sql.CreateTable attribute)</a>
 
       <ul>
@@ -662,10 +726,10 @@
 </li>
       <li><a href="autoapi/notiondbapi/_model/index.html#notiondbapi._model.NotionDatabase.title">title (notiondbapi._model.NotionDatabase attribute)</a>
 </li>
-      <li><a href="autoapi/sql/index.html#sql.Token">Token (in module sql)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="autoapi/sql/index.html#sql.Token">Token (in module sql)</a>
+</li>
       <li><a href="autoapi/sql/index.html#sql.TOKEN_REGEX">TOKEN_REGEX (in module sql)</a>
 </li>
       <li><a href="autoapi/sql/index.html#sql.tokenize">tokenize() (in module sql)</a>
@@ -689,10 +753,16 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="autoapi/notiondbapi/_model/index.html#notiondbapi._model.NotionProperty.value">value (notiondbapi._model.NotionProperty attribute)</a>
+
+      <ul>
+        <li><a href="autoapi/sql/index.html#sql.Expression.value">(sql.Expression attribute)</a>
 </li>
+      </ul></li>
       <li><a href="autoapi/sql/index.html#sql.InsertStatement.values">values (sql.InsertStatement attribute)</a>
 </li>
       <li><a href="autoapi/sql/index.html#sql.Visitor.visit">visit() (sql.Visitor method)</a>
+</li>
+      <li><a href="autoapi/sql/index.html#sql.SqlToJsonVisitor.visit_binary_op">visit_binary_op() (sql.SqlToJsonVisitor method)</a>
 </li>
       <li><a href="autoapi/sql/index.html#sql.SqlToJsonVisitor.visit_ColumnDef">visit_ColumnDef() (sql.SqlToJsonVisitor method)</a>
 
@@ -714,6 +784,8 @@
       </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="autoapi/sql/index.html#sql.SqlToJsonVisitor.visit_expression">visit_expression() (sql.SqlToJsonVisitor method)</a>
+</li>
       <li><a href="autoapi/sql/index.html#sql.SqlToJsonVisitor.visit_InsertStatement">visit_InsertStatement() (sql.SqlToJsonVisitor method)</a>
 
       <ul>
@@ -732,7 +804,17 @@
         <li><a href="autoapi/notiondbapi/_visitor_impl/index.html#notiondbapi._visitor_impl.ToRowVisitor.visit_property">(notiondbapi._visitor_impl.ToRowVisitor method)</a>
 </li>
       </ul></li>
+      <li><a href="autoapi/sql/index.html#sql.SqlToJsonVisitor.visit_where">visit_where() (sql.SqlToJsonVisitor method)</a>
+</li>
       <li><a href="autoapi/sql/index.html#sql.Visitor">Visitor (class in sql)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="W">W</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="autoapi/sql/index.html#sql.Where">Where (class in sql)</a>
 </li>
   </ul></td>
 </tr></table>
