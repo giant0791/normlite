@@ -2,7 +2,7 @@
 Get access to Notion databases with the full power of SQL.
 ```python
 >>> from normlite import create_engine, text
->>> NOTION_TOKEN = ...
+>>> NOTION_TOKEN = 'your-secret-token'
 >>> NOTION_VERSION = '2022-06-28'
 >>> # create a proxy object to an internal Notion integration
 >>> engine = create_engine(
@@ -33,6 +33,10 @@ Get access to Notion databases with the full power of SQL.
 >>> Row('id': 1, 'name': 'Isaac Newton', 'grade': 'B')
 >>> Row('id': 2, 'name': 'Galileo Galilei', 'grade': 'A')
 ```
+# License
+`normlite` was created by Gianmarco Antonini. It is licensed under the terms of the GNU Affero General Public License v3.0 (AGPL-3.0-or-later).
+See the [LICENSE](../LICENSE) file for details.
+
 # Contributing
 Coming soon!
 

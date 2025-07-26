@@ -4,6 +4,17 @@ version = "0.3.0"
 description = "An SQL frontend to Notion databases."
 readme = "README.md"
 requires-python = ">=3.12"
+authors = [
+  { name="Gianmarco Antonini", email="giant0791@googlemail.com" },
+]
+license = { text = "AGPL-3.0-or-later" }
+keywords = ["example", "notion", "integration"]
+classifiers = [
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: OS Independent",
+]
 dependencies = []
 
 [tool.commitizen]
