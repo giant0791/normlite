@@ -174,7 +174,6 @@ Module Contents
        True
 
 
-
    .. py:attribute:: _uri
 
       The Notion URI denoting the integration to connect to.
@@ -193,7 +192,7 @@ Module Contents
    .. py:attribute:: _database_id
 
 
-   .. py:method:: _create_sim_client(uri: NotionSimulatedURI) -> normlite.notion_sdk.client.FakeNotionClient
+   .. py:method:: _create_sim_client(uri: NotionSimulatedURI) -> normlite.notion_sdk.client.InMemoryNotionClient
 
       Provide helper method to instantiate the correct client based on the URI provided.
 

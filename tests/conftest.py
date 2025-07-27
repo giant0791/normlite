@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import uuid
 import pytest
-from normlite.notion_sdk.client import AbstractNotionClient, FakeNotionClient
+from normlite.notion_sdk.client import AbstractNotionClient, InMemoryNotionClient
 from normlite.notiondbapi.dbapi2 import Cursor
 
 @pytest.fixture(scope="session")
@@ -19,7 +19,7 @@ def ischema_page_id() -> str:
 
 @pytest.fixture(scope="session")
 def client(api_key: str, ischema_page_id: str) -> AbstractNotionClient:
-    return FakeNotionClient(auth=api_key, ischema_page_id=ischema_page_id)
+    return InMemoryNotionClient()
 
 # The following fixture must be scope=function otherwise the attribute
 # _result_set gets overwritten when executing all tests together
