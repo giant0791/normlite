@@ -1,3 +1,16 @@
+## 0.4.0 (2025-07-27)
+
+### Feat
+
+- Provide a URI schema for `normlite` (#24)
+- Add `WHERE` clause to AST (#13)
+- Add SqlAlchemy-like `text()` construct.
+- Add ability to compile SQL nodes.
+
+### Refactor
+
+- Repurpose the Notion client.
+
 ## 0.3.0 (2025-07-24)
 
 ### Feat

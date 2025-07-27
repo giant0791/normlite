@@ -49,7 +49,7 @@ from typing import Optional, Literal, Union
 from urllib.parse import urlparse, parse_qs, unquote
 import os
 
-from normlite.notion_sdk.client import FakeNotionClient
+from normlite.notion_sdk.client import InMemoryNotionClient
 
 @dataclass
 class NotionAuthURI:
@@ -162,7 +162,6 @@ class Engine:
         >>> engine = create_engine('normlite::///:memory:')
         >>> isinstance(engine.client, InMemoryNotionClient)
         True 
-
     """
     def __init__(self, uri: NotionURI) -> None:
         if isinstance(uri, NotionAuthURI):
@@ -184,12 +183,10 @@ class Engine:
 
         self._database_id = page.get('id')
 
-    def _create_sim_client(self, uri: NotionSimulatedURI) -> FakeNotionClient:
+    def _create_sim_client(self, uri: NotionSimulatedURI) -> InMemoryNotionClient:
         """Provide helper method to instantiate the correct client based on the URI provided."""
 
-        # TODO: remove api_key parameter from FakeNotionClient __init__ method
-        # TODO: remove hard coded ischema_page_id
-        return FakeNotionClient('', '680dee41-b447-451d-9d36-c6eaff13fb46')
+        return InMemoryNotionClient()
     
     @property
     def database(self) -> str:
