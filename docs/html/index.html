@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>normlite &mdash; normlite 0.2.0 documentation</title>
+  <title>⚡ normlite: SQL Meets Notion &mdash; normlite 0.2.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
@@ -63,7 +63,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">normlite</li>
+      <li class="breadcrumb-item active">⚡ normlite: SQL Meets Notion</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/index.md.txt" rel="nofollow"> View page source</a>
       </li>
@@ -73,61 +73,143 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="normlite">
-<h1>normlite<a class="headerlink" href="#normlite" title="Link to this heading"></a></h1>
-<p>Get access to Notion databases with the full power of SQL.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">normlite</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_engine</span><span class="p">,</span> <span class="n">text</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">NOTION_TOKEN</span> <span class="o">=</span> <span class="s1">&#39;your-secret-token&#39;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">NOTION_VERSION</span> <span class="o">=</span> <span class="s1">&#39;2022-06-28&#39;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="c1"># create a proxy object to an internal Notion integration</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">engine</span> <span class="o">=</span> <span class="n">create_engine</span><span class="p">(</span>
-<span class="gp">&gt;&gt;&gt; </span>   <span class="sa">f</span><span class="s1">&#39;normlite+auth://internal?token=</span><span class="si">{</span><span class="n">NOTION_TOKEN</span><span class="si">}</span><span class="s1">&amp;version=</span><span class="si">{</span><span class="n">NOTION_VERSION</span><span class="si">}</span><span class="s1">&#39;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="c1">#  get the connection to the integration</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">conn</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="c1"># create a table</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;create table students (id int, name title_varchar(255), grade varchar(1))&quot;</span><span class="p">))</span>
-<span class="gp">&gt;&gt;&gt;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="c1"># insert rows </span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">text</span><span class="p">(</span><span class="s2">&quot;insert into students (id, name, grade) values (:id, :name, :grade)&quot;</span><span class="p">),</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="p">[{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Isaac Newton&quot;</span><span class="p">,</span> <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="s2">&quot;B&quot;</span><span class="p">}]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">text</span><span class="p">(</span><span class="s2">&quot;insert into students (id, name, grade) values (:id, :name, :grade)&quot;</span><span class="p">),</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="p">[{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Galileo Galilei&quot;</span><span class="p">,</span> <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="s2">&quot;B&quot;</span><span class="p">}]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt;</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="c1"># fetch the inserted rows</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s1">&#39;select id, name, grade from students&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">rows</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
-<span class="gp">&gt;&gt;&gt; </span>  <span class="nb">print</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">Row</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Isaac Newton&#39;</span><span class="p">,</span> <span class="s1">&#39;grade&#39;</span><span class="p">:</span> <span class="s1">&#39;B&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">Row</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Galileo Galilei&#39;</span><span class="p">,</span> <span class="s1">&#39;grade&#39;</span><span class="p">:</span> <span class="s1">&#39;A&#39;</span><span class="p">)</span>
+  <section id="normlite-sql-meets-notion">
+<h1>⚡ normlite: SQL Meets Notion<a class="headerlink" href="#normlite-sql-meets-notion" title="Link to this heading"></a></h1>
+<p><strong>Query. Create. Update. Drop.</strong><br />
+All with the power of <strong>SQL</strong>, directly on your <strong>Notion</strong> workspaces.</p>
+<p><code class="docutils literal notranslate"><span class="pre">normlite</span></code> is a Python library that brings SQL capabilities to the <a class="reference external" href="https://developers.notion.com/">Notion API</a>. It allows developers to treat Notion pages and databases like real tables — using familiar SQL constructs like <code class="docutils literal notranslate"><span class="pre">SELECT</span></code>, <code class="docutils literal notranslate"><span class="pre">INSERT</span></code>, <code class="docutils literal notranslate"><span class="pre">UPDATE</span></code>, <code class="docutils literal notranslate"><span class="pre">DELETE</span></code>, and even DDL operations like <code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">TABLE</span></code> and <code class="docutils literal notranslate"><span class="pre">DROP</span> <span class="pre">TABLE</span></code>.</p>
+<p>This is <em>Notion for developers</em>, the way it should have been.</p>
+<hr class="docutils" />
+<section id="what-normlite-can-do">
+<h2>🚀 What normlite Can Do<a class="headerlink" href="#what-normlite-can-do" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Connect to Notion using an internal integration</p></li>
+<li><p>Run SQL queries to interact with Notion databases</p></li>
+<li><p>Automatically map Notion property types (<code class="docutils literal notranslate"><span class="pre">rich_text</span></code>, <code class="docutils literal notranslate"><span class="pre">number</span></code>, <code class="docutils literal notranslate"><span class="pre">title</span></code>, etc.) to Python types (<code class="docutils literal notranslate"><span class="pre">str</span></code>, <code class="docutils literal notranslate"><span class="pre">int</span></code>, <code class="docutils literal notranslate"><span class="pre">float</span></code>, etc.)</p></li>
+<li><p>Provide a familiar <code class="docutils literal notranslate"><span class="pre">SQLAlchemy</span></code>-inspired interface</p></li>
+</ul>
+<p>Here’s a sneak peek of what using <code class="docutils literal notranslate"><span class="pre">normlite</span></code> feels like:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">normlite</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_engine</span><span class="p">,</span> <span class="n">text</span>
+
+<span class="n">NOTION_TOKEN</span> <span class="o">=</span> <span class="s1">&#39;your-secret-token&#39;</span>
+<span class="n">NOTION_VERSION</span> <span class="o">=</span> <span class="s1">&#39;2022-06-28&#39;</span>
+
+<span class="c1"># Create a Notion engine using internal integration</span>
+<span class="n">engine</span> <span class="o">=</span> <span class="n">create_engine</span><span class="p">(</span>
+    <span class="sa">f</span><span class="s1">&#39;normlite+auth://internal?token=</span><span class="si">{</span><span class="n">NOTION_TOKEN</span><span class="si">}</span><span class="s1">&amp;version=</span><span class="si">{</span><span class="n">NOTION_VERSION</span><span class="si">}</span><span class="s1">&#39;</span>
+<span class="p">)</span>
+
+<span class="n">conn</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+
+<span class="c1"># Create a Notion database</span>
+<span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;CREATE TABLE students (id int, name title_varchar(255), grade varchar(1))&quot;</span><span class="p">))</span>
+
+<span class="c1"># Insert some students</span>
+<span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">text</span><span class="p">(</span>
+    <span class="s2">&quot;INSERT INTO students (id, name, grade) VALUES (:id, :name, :grade)&quot;</span>
+<span class="p">),</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Isaac Newton&quot;</span><span class="p">,</span> <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="s2">&quot;B&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Galileo Galilei&quot;</span><span class="p">,</span> <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="s2">&quot;A&quot;</span><span class="p">},</span>
+<span class="p">])</span>
+
+<span class="c1"># Query the students</span>
+<span class="n">rows</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SELECT id, name, grade FROM students&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+<span class="c1"># Row(&#39;id&#39;: 1, &#39;name&#39;: &#39;Isaac Newton&#39;, &#39;grade&#39;: &#39;B&#39;)</span>
+<span class="c1"># Row(&#39;id&#39;: 2, &#39;name&#39;: &#39;Galileo Galilei&#39;, &#39;grade&#39;: &#39;A&#39;)</span>
 </pre></div>
 </div>
 </section>
+</section>
+<section id="why-i-started-this-project">
+<h1>💡 Why I Started This Project<a class="headerlink" href="#why-i-started-this-project" title="Link to this heading"></a></h1>
+<p>I love Notion. I love SQL.
+But I found working with the Notion API… verbose.</p>
+<p>So I asked myself:</p>
+<blockquote>
+<div><blockquote>
+<div><p>“What if interacting with Notion was as simple as writing SQL?”</p>
+</div></blockquote>
+</div></blockquote>
+<p>And just like that, <code class="docutils literal notranslate"><span class="pre">normlite</span></code> was born — a personal learning journey to:</p>
+<ol class="arabic simple">
+<li><p>Deepen my Python and software architecture skills</p></li>
+<li><p>Learn what it takes to ship a real open source project</p></li>
+<li><p>Share something useful with the developer community</p></li>
+</ol>
+<p>If you feel the same friction when working with Notion, this project is for you.</p>
+</section>
+<section id="vision">
+<h1>🌍 Vision<a class="headerlink" href="#vision" title="Link to this heading"></a></h1>
+<p>My long-term goal is to create a full-featured ORM framework for Notion —
+a tool that lets developers query, model, and manipulate Notion data the same way they do with relational databases using tools like SQLAlchemy or Django ORM.</p>
+</section>
+<section id="roadmap">
+<h1>🎯 Roadmap<a class="headerlink" href="#roadmap" title="Link to this heading"></a></h1>
+<section id="v1-0-0-alpha">
+<h2>v1.0.0 — Alpha<a class="headerlink" href="#v1-0-0-alpha" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>✅ SQL-style access to Notion resources</p></li>
+<li><p>✅ DDL &amp; DML support (create, insert, update, delete, drop)</p></li>
+<li><p>✅ Support for simulated and test integrations (e.g., in-memory)</p></li>
+<li><p>🔜 Internal integration only (for now)</p></li>
+</ul>
+</section>
+<section id="v2-0-0-orm-power">
+<h2>v2.0.0 — ORM Power<a class="headerlink" href="#v2-0-0-orm-power" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Class-based mapping between Python and Notion pages</p></li>
+<li><p>Schema reflection from existing Notion databases</p></li>
+</ul>
+</section>
+</section>
+<section id="help-me-shape-this">
+<h1>🤝 Help Me Shape This<a class="headerlink" href="#help-me-shape-this" title="Link to this heading"></a></h1>
+<p>This project is at a very early stage, and your feedback would be invaluable.
+Are we solving the right problem? Does this API make sense? What’s missing?
+Ways you can help:</p>
+<ul class="simple">
+<li><p>⭐ Star this repo to show interest</p></li>
+<li><p>🧠 Open an issue with your ideas or pain points</p></li>
+<li><p>🧪 Try the code, fork it, and share what worked or didn’t</p></li>
+<li><p>💬 Leave a comment, even just to say hi or why this is interesting to you</p></li>
+</ul>
+<p>I’m building normlite in public, and I’d love for you to be part of that journey.</p>
+</section>
+<section id="a-note-on-time-commitment">
+<h1>⚠️ A Note on Time &amp; Commitment<a class="headerlink" href="#a-note-on-time-commitment" title="Link to this heading"></a></h1>
+<p>This is a passion project, and I’m juggling it with many other responsibilities.</p>
+<p>So here’s the deal:</p>
+<ul class="simple">
+<li><p>I’ll do my best to make steady progress</p></li>
+<li><p>I’ll welcome all kinds of input and ideas</p></li>
+<li><p>But I may go quiet at times — don’t take it personally 💛</p></li>
+</ul>
+</section>
 <section id="license">
-<h1>License<a class="headerlink" href="#license" title="Link to this heading"></a></h1>
+<h1>📜 License<a class="headerlink" href="#license" title="Link to this heading"></a></h1>
 <p><code class="docutils literal notranslate"><span class="pre">normlite</span></code> was created by Gianmarco Antonini. It is licensed under the terms of the GNU Affero General Public License v3.0 (AGPL-3.0-or-later).
 See the <a class="reference download internal" download="" href="_downloads/3b423627fe21976c3c06e60f78e14ae1/LICENSE"><span class="xref download myst">LICENSE</span></a> file for details.</p>
 </section>
 <section id="contributing">
-<h1>Contributing<a class="headerlink" href="#contributing" title="Link to this heading"></a></h1>
-<p>Coming soon!</p>
-<section id="build-the-documentation">
-<h2>Build the documentation<a class="headerlink" href="#build-the-documentation" title="Link to this heading"></a></h2>
-<p>You can build the documentation using the following shell command:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>sphinx<span class="w"> </span>docs<span class="w"> </span>docs/html<span class="w"> </span>-b<span class="w"> </span>html<span class="w"> </span>-W
-</pre></div>
-</div>
-<p>The documentation is built under the <code class="docutils literal notranslate"><span class="pre">docs/html</span></code> directory.</p>
+<h1>✨ Contributing<a class="headerlink" href="#contributing" title="Link to this heading"></a></h1>
+<p>Contributions are very welcome, but my current focus is getting v1.0.0 stable before merging external PRs.</p>
+<p>In the meantime, you’re encouraged to:</p>
+<ul class="simple">
+<li><p>Fork the repo</p></li>
+<li><p>Explore and experiment</p></li>
+<li><p>Raise issues, ideas, or improvement proposals</p></li>
+</ul>
+</section>
+<section id="thanks-for-reading">
+<h1>🙏 Thanks for Reading<a class="headerlink" href="#thanks-for-reading" title="Link to this heading"></a></h1>
+<p>Let me know what you think — the good, the bad, the confusing.
+I’m eager to know if <code class="docutils literal notranslate"><span class="pre">normlite</span></code> can become a tool you want to use.</p>
+<p>Let’s build something great together.</p>
+<p>— <em>Gianmarco Antonini</em></p>
 <div class="toctree-wrapper compound">
 </div>
-</section>
 </section>
 
 

@@ -47,14 +47,19 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Changelog</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#id1">0.3.0 (2025-07-24)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">0.4.0 (2025-07-27)</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#feat">Feat</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#fix">Fix</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#refactor">Refactor</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#id2">0.2.0 (2025-07-12)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id2">0.3.0 (2025-07-24)</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#id3">Feat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#fix">Fix</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id4">Refactor</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id5">0.2.0 (2025-07-12)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id6">Feat</a></li>
 </ul>
 </li>
 </ul>
@@ -92,9 +97,27 @@
 <p>The format is based on <a class="reference external" href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <section id="id1">
-<h2>0.3.0 (2025-07-24)<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
+<h2>0.4.0 (2025-07-27)<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
 <section id="feat">
 <h3>Feat<a class="headerlink" href="#feat" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Provide a URI schema for <code class="docutils literal notranslate"><span class="pre">normlite</span></code> (#24)</p></li>
+<li><p>Add <code class="docutils literal notranslate"><span class="pre">WHERE</span></code> clause to AST (#13)</p></li>
+<li><p>Add SqlAlchemy-like <code class="docutils literal notranslate"><span class="pre">text()</span></code> construct.</p></li>
+<li><p>Add ability to compile SQL nodes.</p></li>
+</ul>
+</section>
+<section id="refactor">
+<h3>Refactor<a class="headerlink" href="#refactor" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Repurpose the Notion client.</p></li>
+</ul>
+</section>
+</section>
+<section id="id2">
+<h2>0.3.0 (2025-07-24)<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
+<section id="id3">
+<h3>Feat<a class="headerlink" href="#id3" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p>Add DBAPI2 <code class="docutils literal notranslate"><span class="pre">Cursor</span></code> full implementation.</p></li>
 <li><p>Add parameter binding to operation execution (#15)</p></li>
@@ -112,8 +135,8 @@ and this project adheres to <a class="reference external" href="https://semver.o
 <li><p>Add check for Notion JSON schema</p></li>
 </ul>
 </section>
-<section id="refactor">
-<h3>Refactor<a class="headerlink" href="#refactor" title="Link to this heading"></a></h3>
+<section id="id4">
+<h3>Refactor<a class="headerlink" href="#id4" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p>Redesign parsing for Notion objects.</p></li>
 <li><p>Refactor <code class="docutils literal notranslate"><span class="pre">Engine.__init__()</span></code> method.</p></li>
@@ -121,10 +144,10 @@ and this project adheres to <a class="reference external" href="https://semver.o
 </ul>
 </section>
 </section>
-<section id="id2">
-<h2>0.2.0 (2025-07-12)<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
-<section id="id3">
-<h3>Feat<a class="headerlink" href="#id3" title="Link to this heading"></a></h3>
+<section id="id5">
+<h2>0.2.0 (2025-07-12)<a class="headerlink" href="#id5" title="Link to this heading"></a></h2>
+<section id="id6">
+<h3>Feat<a class="headerlink" href="#id6" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p>Add SQL to JSON cross-compilation.</p></li>
 <li><p>Add SQL module for SQL parsing</p></li>
