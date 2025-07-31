@@ -46,8 +46,8 @@ conn.execute(text(
 rows = conn.execute("SELECT id, name, grade FROM students").fetchall()
 for row in rows:
     print(row)
-# Row('id': 1, 'name': 'Isaac Newton', 'grade': 'B')
-# Row('id': 2, 'name': 'Galileo Galilei', 'grade': 'A')
+# Row(1, 'Isaac Newton', 'B',)
+# Row(2, 'Galileo Galilei', 'A',)
 ```
 
 # 💡 Why I Started This Project

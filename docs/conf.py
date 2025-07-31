@@ -10,20 +10,24 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-# import os
-# import sys
-# sys.path.insert(0, os.path.abspath('.'))
+import os
+import sys
+sys.path.insert(0, os.path.abspath('../src'))
 
+# -- Project metadata from pyproject.toml ----------------------------
+import tomllib  # Python 3.11+; use `import toml` instead for older versions
 
-# -- Project information -----------------------------------------------------
+with open(os.path.abspath("../pyproject.toml"), "rb") as f:
+    pyproject = tomllib.load(f)
 
-project = 'normlite'
-copyright = '2025, Gianmarco Antonini'
-author = 'Gianmarco Antonini'
+project_metadata = pyproject["project"]
+project = project_metadata["name"]
+author = project_metadata["authors"][0]["name"]
+version = project_metadata["version"]
+release = version
 
-# The full version, including alpha/beta/rc tags
-release = '0.2.0'
-
+import datetime
+copyright = f'{datetime.date.today().year} -{author}'
 
 # -- General configuration ---------------------------------------------------
 
@@ -31,12 +35,29 @@ release = '0.2.0'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    "sphinx.ext.autodoc",
+    "sphinx.ext.intersphinx",
     "myst_nb",
     "autoapi.extension",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode"
 ]
-autoapi_dirs = ["../src"]  # location to parse for API reference
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+}
+
+autoapi_dirs = ["../src/"]  # location to parse for API reference
+autoapi_generate_api_docs = True
+autoapi_keep_files = True  # Keep the generated .rst files
+#autodoc_typehints_format = "fully-qualified"
+autoapi_options = [
+    "members",
+    "undoc-members",
+    "show-inheritance",
+    "special-members",
+    "private-members",   # 👈 this is key
+]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
