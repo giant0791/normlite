@@ -17,16 +17,6 @@ notiondbapi._parser
 
 
 
-Functions
----------
-
-.. autoapisummary::
-
-   notiondbapi._parser.parse_text_content
-   notiondbapi._parser.parse_number
-   notiondbapi._parser.parse_property
-   notiondbapi._parser.parse_page
-   notiondbapi._parser.parse_database
 
 
 Module Contents
@@ -34,7 +24,36 @@ Module Contents
 
 .. py:function:: parse_text_content(values: list) -> str
 
-.. py:function:: parse_number(value: dict | int | float) -> str | int | float | None
+.. py:function:: parse_number(number: Union[dict, int, float]) -> Tuple[str, Union[int, float, None]]
+
+   Parse a number object.
+
+   This method parses the following number objects:
+
+       >>> # empty number
+       >>> number = None
+       >>> ptype, value = parse_number(number)
+       >>> ptype, value
+       ('number', None)
+
+       >>> # number with format spec
+       >>> number = {"format": "dollar"}
+       >>> ptype, value = parse_number(number)
+       >>> ptype, value
+       ('number.dollar', None)
+
+       >>> # number with numeric value (int or float)
+       >>> number = 2
+       >>> ptype, value = parse_number(number)
+       >>> ptype, value
+       ('number', 2)
+
+   :param number: Either a dictionary containing a number spec or a numeric value.
+   :type number: Union[dict, int, float]
+
+   :returns: The pair (type, value) as tuple.
+   :rtype: Optional[Tuple[str, Union[int, float, None]]]
+
 
 .. py:function:: parse_property(name: str, payload: dict) -> normlite.notiondbapi._model.NotionProperty
 

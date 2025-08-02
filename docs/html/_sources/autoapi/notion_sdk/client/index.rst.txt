@@ -15,22 +15,8 @@ notion_sdk.client
 
 
 
-Exceptions
-----------
-
-.. autoapisummary::
-
-   notion_sdk.client.NotionError
 
 
-Classes
--------
-
-.. autoapisummary::
-
-   notion_sdk.client.AbstractNotionClient
-   notion_sdk.client.InMemoryNotionClient
-   notion_sdk.client.FileBasedNotionClient
 
 
 Module Contents

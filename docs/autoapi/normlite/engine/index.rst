@@ -1,0 +1,189 @@
+normlite.engine
+===============
+
+.. py:module:: normlite.engine
+
+.. autoapi-nested-parse::
+
+   Provide factory function and convenient engine proxy object to connect and interact to Notion integrations.
+
+   Examples of supported use cases:
+       >>> NOTION_TOKEN = "<secret-token>"
+       >>> NOTION_VERSION = "2022-06-28"
+       >>> # create an engine to connect to an internal integration
+       >>> engine = create_engine(f"normlite+auth://internal?token={NOTION_TOKEN}&version={NOTION_VERSION}")
+
+       >>> # create an engine to connect to an in-memory test integration:
+       >>> engine = create_engine("normlite:///:memory:")
+
+       >>> # create an engine to connect to a file-backed test integration
+       >>> engine = create_engine("normlite:///path/to/my/test-integration.db")
+
+   Experimental use case (**incomplete** and **not tested**):
+       >>> NOTION_CLIENT_ID = "<client_id>"
+       >>> NOTION_CLIENT_SECRET = "<client_secret>"
+       >>> NOTION_AUTH_URL = "<auth_url>"
+       >>> # create an engine to connect to an external integration (experimental!!!)
+       >>> engine = create_engine(
+       >>>    f"normlite+auth://external?client_id={NOTION_CLIENT_ID}"
+       >>>    f"&client_secret={NOTION_CLIENT_SECRET}"
+       >>>    f"&auth_url={NOTION_AUTH_URL}"
+       >>> )
+
+
+
+
+
+
+
+
+
+Module Contents
+---------------
+
+.. py:class:: NotionAuthURI
+
+   Provide a helper data structure to hold URI schema elements for an internal or external Notion integration.
+
+   .. important:: Experimental code! Do not use!
+
+
+   .. py:attribute:: kind
+      :type:  Literal['internal', 'external']
+
+
+   .. py:attribute:: token
+      :type:  Optional[str]
+      :value: None
+
+
+
+   .. py:attribute:: version
+      :type:  Optional[str]
+      :value: None
+
+
+
+   .. py:attribute:: client_id
+      :type:  Optional[str]
+      :value: None
+
+
+
+   .. py:attribute:: client_secret
+      :type:  Optional[str]
+      :value: None
+
+
+
+   .. py:attribute:: auth_url
+      :type:  Optional[str]
+      :value: None
+
+
+
+.. py:class:: NotionSimulatedURI
+
+   Provide an a helper data structure to hold URI schema elements for test integrations.
+
+
+   .. py:attribute:: kind
+      :type:  Literal['simulated']
+
+      The kind of the integration.
+
+
+   .. py:attribute:: mode
+      :type:  Literal['memory', 'file']
+
+      The mode the integration.
+
+
+   .. py:attribute:: path
+      :type:  Optional[str]
+      :value: None
+
+
+      The path to the database file (``None`` for in-memory integrations).
+
+
+   .. py:attribute:: file
+      :type:  Optional[str]
+      :value: None
+
+
+      The database file name (``None`` for in-memory integrations).
+
+
+.. py:type:: NotionURI
+   :canonical: Union[NotionAuthURI, NotionSimulatedURI]
+
+
+   Type for the URI.
+
+.. py:function:: _parse_uri(uri: str) -> NotionURI
+
+   Provide helper function to parse a normlite URI.
+
+
+.. py:function:: create_engine(uri: str) -> Engine
+
+   Create a new engine proxy object to connect and interact to the Notion integration denoted by the supplied URI.
+
+   This is a factory function to create :class:``Engine`` proxy object based on the parameters
+   specified in the supplied URI.
+
+   :param uri: The URI denoting the integration to connect to.
+   :type uri: str
+
+   :returns: The engine proxy object.
+   :rtype: Engine
+
+
+.. py:class:: Engine(uri: NotionURI)
+
+   Provide a convenient proxy object to connect and interact with Notion integrations.
+
+   .. note:: In future versions, this class will be the proxy for handling different kind of clients.
+
+   Examples of possible future extensions:
+       >>> # create a proxy object to a :memory: integration
+       >>> engine = create_engine('normlite::///:memory:')
+       >>> isinstance(engine.client, InMemoryNotionClient)
+       True
+
+
+   .. py:attribute:: _uri
+
+      The Notion URI denoting the integration to connect to.
+
+
+   .. py:attribute:: _database
+
+      ``'memory'`` if mode is memory, the file name without extension if mode is file.
+
+      :type: The database name
+
+
+   .. py:attribute:: client
+
+
+   .. py:attribute:: _database_id
+
+
+   .. py:method:: _create_sim_client(uri: NotionSimulatedURI) -> normlite.notion_sdk.client.InMemoryNotionClient
+
+      Provide helper method to instantiate the correct client based on the URI provided.
+
+
+
+   .. py:property:: database
+      :type: str
+
+
+
+   .. py:property:: database_id
+      :type: str
+
+
+

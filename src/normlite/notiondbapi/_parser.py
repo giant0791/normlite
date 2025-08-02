@@ -27,6 +27,7 @@ Important:
 """
 
 import pdb
+from typing import Tuple, Union
 from normlite.notiondbapi._model import NotionDatabase, NotionPage, NotionProperty
 
 
@@ -37,16 +38,48 @@ def parse_text_content(values: list) -> str:
         return text_value
     return None
 
-def parse_number(value: dict | int | float) -> str | int | float | None:
-    if isinstance(value, dict):
-        # number object value is a definition (dictionary), 
-        # return format or None if format is not specified
-        return value.get('format')
-    
-    if isinstance(value, (int, float,)):
-        # number object value is a numeric value, return it
-        return value
+def parse_number(number: Union[dict, int, float]) -> Tuple[str, Union[int, float, None]]:
+    """Parse a number object.
 
+    This method parses the following number objects:
+
+        >>> # empty number
+        >>> number = None
+        >>> ptype, value = parse_number(number)
+        >>> ptype, value
+        ('number', None)
+
+        >>> # number with format spec
+        >>> number = {"format": "dollar"}
+        >>> ptype, value = parse_number(number)
+        >>> ptype, value
+        ('number.dollar', None)
+
+        >>> # number with numeric value (int or float)
+        >>> number = 2
+        >>> ptype, value = parse_number(number)
+        >>> ptype, value
+        ('number', 2)
+
+    Args:
+        number (Union[dict, int, float]): Either a dictionary containing a number spec or a numeric value.
+
+    Returns:
+        Optional[Tuple[str, Union[int, float, None]]]: The pair (type, value) as tuple.
+    
+    """
+    if isinstance(number, dict):
+        # number contains the either the "format" property or {}
+        format = number.get('format')
+        type = f'number.{format}' if format else 'number'
+        value = None
+    else:
+        type = 'number'
+        value = number
+
+    # numer contains a numeric value
+    return (type, value)
+        
 def parse_property(name: str, payload: dict) -> NotionProperty:
     """Parse a JSON property object 
 
@@ -73,7 +106,8 @@ def parse_property(name: str, payload: dict) -> NotionProperty:
         number = payload.get("number", {})
 
         # number is {} for database objects or pages returned from pages.create
-        value = parse_number(number) if number else None
+        # number is {"formart": ...} for databases retrieved
+        ptype, value = parse_number(number)
 
     elif ptype == "title":
         title = payload.get("title", [])

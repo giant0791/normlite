@@ -4,31 +4,10 @@ notiondbapi.dbapi2
 .. py:module:: notiondbapi.dbapi2
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   notiondbapi.dbapi2.DBAPIParamStyle
 
 
-Exceptions
-----------
-
-.. autoapisummary::
-
-   notiondbapi.dbapi2.Error
-   notiondbapi.dbapi2.InterfaceError
-   notiondbapi.dbapi2.DatabaseError
-   notiondbapi.dbapi2.InternalError
 
 
-Classes
--------
-
-.. autoapisummary::
-
-   notiondbapi.dbapi2.Cursor
 
 
 Module Contents
@@ -37,6 +16,12 @@ Module Contents
 .. py:data:: DBAPIParamStyle
 
    Public type for param style used by the cursor.
+
+.. py:type:: DBAPIExecuteParameters
+   :canonical: dict
+
+
+   Type for parameters passed to for SQL statement execution.
 
 .. py:exception:: Error
 
@@ -80,7 +65,7 @@ Module Contents
 
 .. py:class:: Cursor(client: normlite.notion_sdk.client.AbstractNotionClient)
 
-   Implement the :class:`Cursor` class according to the DBAPI 2.0 specification.
+   Provide database cursor functionalty according to the DBAPI 2.0 specification (PEP 249).
 
 
    .. py:attribute:: _client
@@ -103,6 +88,14 @@ Module Contents
       The default parameter style applied.
 
 
+   .. py:attribute:: _description
+      :type:  tuple
+      :value: None
+
+
+      Provide information describing one result column.
+
+
    .. py:property:: rowcount
       :type: int
 
@@ -112,7 +105,7 @@ Module Contents
 
 
       This read-only attribute specifies the number of rows that
-         the last :meth:`.execute*()` produced.
+         the last :meth:`.execute()` produced.
 
       :returns:
 
@@ -134,19 +127,19 @@ Module Contents
       .. note::
 
          ``normlite`` considers both inserted and updated rows as modified rows.
-         This means that ::attr::`.lastrowid` returns non ``None`` values after either
+         This means that :attr:`.lastrowid` returns non ``None`` values after either
          an ``INSERT`` or ``UPDATE`` statement.
          
-         ``normlite`` also defines semantics of ::meth::`.lastrowid` in case the last executed
+         ``normlite`` also defines semantics of ::attr::`.lastrowid` in case the last executed
          statement modified more than one row, e.g. when using ``INSERT`` with :meth:`.executemany()` or
          ``UPDATE`` and its ``SELECT`` clause returns multiple rows.
          
-         :meth:`.lastworid` returns a 128-bit integer representation of the object id, which can be
+         :attr:`.lastrowid` returns a 128-bit integer representation of the object id, which can be
          used to driectly access Notion objects.
 
       .. rubric:: Example
 
-      >>> object_id = str(uuid.UUID(int=cursor.lastrowid)))
+      >>> object_id = str(uuid.UUID(int=cursor.lastrowid))
       >>> print(object_id)
       680dee41-b447-451d-9d36-c6eaff13fb46
 
@@ -192,12 +185,12 @@ Module Contents
       >>>     },
       >>> })
       >>> print(row)
-      ('database', 'bc1211ca-e3f1-4939-ae34-5260b16f627c'),
+      ('database', 'bc1211ca-e3f1-4939-ae34-5260b16f627c',
       None, None                     # "archived" and "in_trash" missing
       'students',                    # database name
-      'id', 'evWq', 'number', {},    # column metadata: <col_name>, <col_id>, <col_type>
-      'name', 'title', {}),
-      'grade', 'rich_text', {})
+      'id', 'evWq', 'number', {},    # column metadata: <col_name>, <col_id>, <col_type>, <col_val>
+      'name', 'title', 'title', {}),
+      'grade','V}lX', rich_text', {})
 
       >>> # parse page object returned from pages.create
 
@@ -266,7 +259,7 @@ Module Contents
 
 
 
-   .. py:method:: execute(operation: Dict[str, Any], parameters: Dict[str, Any]) -> Self
+   .. py:method:: execute(operation: Dict[str, Any], parameters: DBAPIExecuteParameters) -> Self
 
       Prepare and execute a database operation (query or command).
 
@@ -281,8 +274,8 @@ Module Contents
       .. important::
 
          :meth:`.execute()` stores the executed command result(s) in the internal
-         result set. Always call this method prior to :meth:`.fetchone()` and :meth:`.fetchall(),
-         otherwise an :class:`InterfaceError` error is raised.
+         result set. Always call this method prior to :meth:`Cursor.fetchone()` and :meth:`Cursor.fetchall()`,
+         otherwise an :exc:`InterfaceError` error is raised.
 
       .. rubric:: Examples
 
@@ -308,19 +301,44 @@ Module Contents
       >>> cursor.execute(operation, parameters).fetchall()
       >>> assert cursor.rowcount == 0  # 0 remaining rows after fetchall()
 
-      :param operation: A dictionary containing the Notion API request to be executed
-      :type operation: Dict[str, Any]
+      :param operation: A dictionary containing the Notion API request to be executed.
+      :type operation: dict
       :param parameters: A dictionary containing the payload for the Notion API request
-      :type parameters: Dict[str, Any]
+      :type parameters: DBAPIExecuteParameters
 
       :raises InterfaceError: ``"properties"`` object not specified in parameters
       :raises InterfaceError: ``"parent"`` object not specified in parameters
 
-      :returns: This :class:`Cursor` instance
+      :returns: This :class:`Cursor` instance.
       :rtype: Self
 
 
 
-   .. py:method:: _bind_parameters(parameters: Dict[str, Any]) -> Dict[str, Any]
+   .. py:method:: executemany(operation: dict, parameters: Sequence[dict]) -> Self
+      :abstractmethod:
+
+
+      Prepare a database operation (query or command) and then execute it against all parameter sequences or
+      mappings found in the sequence seq_of_parameters.
+
+      .. note::
+
+         This method is not implemented yet.
+         Calling it raises :exc:`NotImplementedError`.
+
+      :param operation: A dictionary containing the Notion API request to be executed.
+      :type operation: dict
+      :param parameters: A sequence of dictionaries containint the parameters to be executed multiple times.
+      :type parameters: Sequence[dict]
+
+      :returns: This :class:`Cursor` instance.
+      :rtype: Self
+
+
+
+   .. py:method:: _bind_parameters(parameters: DBAPIExecuteParameters) -> dict
+
+      Helper for binding values to the payload.
+
 
 

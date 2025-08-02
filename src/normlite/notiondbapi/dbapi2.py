@@ -16,13 +16,13 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Dict, Iterable, List, Literal, Optional, Self, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Self, Sequence, Tuple, TypeAlias, Union
 import uuid
 
 from normlite.notion_sdk.client import AbstractNotionClient, NotionError
-from normlite.notiondbapi._model import NotionPage
-from normlite.notiondbapi._parser import parse_page
-from normlite.notiondbapi._visitor_impl import ToRowVisitor
+from normlite.notiondbapi._model import NotionDatabase, NotionPage
+from normlite.notiondbapi._parser import parse_database, parse_page
+from normlite.notiondbapi._visitor_impl import ToDescVisitor, ToRowVisitor
 
 DBAPIParamStyle = Literal[
     'qmark',     
@@ -32,6 +32,9 @@ DBAPIParamStyle = Literal[
     'pyformat'
 ]
 """Public type for param style used by the cursor."""
+
+DBAPIExecuteParameters: TypeAlias = dict     # in future, Union[dict, Sequence[dict]] for multi execute params
+"""Type for parameters passed to for SQL statement execution."""
 
 class Error(Exception):
     """Base class of all other error exceptions.
@@ -58,7 +61,7 @@ class InternalError(Error):
    """
 
 class Cursor:
-    """Implement the :class:`Cursor` class according to the DBAPI 2.0 specification."""
+    """Provide database cursor functionalty according to the DBAPI 2.0 specification (PEP 249)."""
     def __init__(self, client: AbstractNotionClient):
         self._client = client
         """The client implementing the Notion API."""
@@ -69,10 +72,13 @@ class Cursor:
         self._paramstyle: DBAPIParamStyle = 'named'
         """The default parameter style applied."""
 
+        self._description: tuple = None
+        """Provide information describing one result column."""
+
     @property
     def rowcount(self) -> int:
         """This read-only attribute specifies the number of rows that 
-           the last :meth:`.execute*()` produced.
+           the last :meth:`.execute()` produced.
 
         Returns:
             int: Number of rows. `-1` if in case no :meth:`.execute()` has been performed 
@@ -90,18 +96,18 @@ class Cursor:
 
         Note:
             ``normlite`` considers both inserted and updated rows as modified rows.
-            This means that ::attr::`.lastrowid` returns non ``None`` values after either
+            This means that :attr:`.lastrowid` returns non ``None`` values after either
             an ``INSERT`` or ``UPDATE`` statement.
 
-            ``normlite`` also defines semantics of ::meth::`.lastrowid` in case the last executed 
+            ``normlite`` also defines semantics of ::attr::`.lastrowid` in case the last executed 
             statement modified more than one row, e.g. when using ``INSERT`` with :meth:`.executemany()` or
             ``UPDATE`` and its ``SELECT`` clause returns multiple rows.
             
-            :meth:`.lastworid` returns a 128-bit integer representation of the object id, which can be 
+            :attr:`.lastrowid` returns a 128-bit integer representation of the object id, which can be 
             used to driectly access Notion objects.
 
         Example:
-            >>> object_id = str(uuid.UUID(int=cursor.lastrowid)))
+            >>> object_id = str(uuid.UUID(int=cursor.lastrowid))
             >>> print(object_id)
             680dee41-b447-451d-9d36-c6eaff13fb46
 
@@ -152,12 +158,12 @@ class Cursor:
             >>>     },
             >>> })
             >>> print(row)
-            ('database', 'bc1211ca-e3f1-4939-ae34-5260b16f627c'), 
+            ('database', 'bc1211ca-e3f1-4939-ae34-5260b16f627c', 
             None, None                     # "archived" and "in_trash" missing
             'students',                    # database name
-            'id', 'evWq', 'number', {},    # column metadata: <col_name>, <col_id>, <col_type>
-            'name', 'title', {}),
-            'grade', 'rich_text', {})
+            'id', 'evWq', 'number', {},    # column metadata: <col_name>, <col_id>, <col_type>, <col_val>
+            'name', 'title', 'title', {}),
+            'grade','V}lX', rich_text', {})
 
             >>> # parse page object returned from pages.create  
 
@@ -181,13 +187,17 @@ class Cursor:
         if not oid:
             raise InterfaceError(f'Missing object id in: {obj}')
         
-        visitor = ToRowVisitor()
+        row_visitor = ToRowVisitor()
+        desc_visitor = ToDescVisitor()
         if object_ == 'page':
             page: NotionPage = parse_page(obj)
-            row = page.accept(visitor)
+            row = page.accept(row_visitor)
+            self._description = page.accept(desc_visitor)
         elif object_ == 'database':
-            raise NotImplementedError
-        
+            database: NotionDatabase = parse_database(obj)
+            row = database.accept(row_visitor)
+            self._description = page.accept(desc_visitor)
+         
         else:
             raise InterfaceError(f'Expected "page" or "database", received: "{object_}"')
 
@@ -308,7 +318,7 @@ class Cursor:
 
         return results
     
-    def execute(self, operation: Dict[str, Any], parameters: Dict[str, Any]) -> Self:
+    def execute(self, operation: Dict[str, Any], parameters: DBAPIExecuteParameters) -> Self:
         """Prepare and execute a database operation (query or command).
 
         Parameters may be provided as a mapping and will be bound to variables in the operation.
@@ -321,8 +331,8 @@ class Cursor:
 
         Important:
             :meth:`.execute()` stores the executed command result(s) in the internal
-            result set. Always call this method prior to :meth:`.fetchone()` and :meth:`.fetchall(),
-            otherwise an :class:`InterfaceError` error is raised. 
+            result set. Always call this method prior to :meth:`Cursor.fetchone()` and :meth:`Cursor.fetchall()`,
+            otherwise an :exc:`InterfaceError` error is raised. 
 
         Examples:
             Create a new page as child of an exisisting database:
@@ -348,15 +358,15 @@ class Cursor:
             >>> assert cursor.rowcount == 0  # 0 remaining rows after fetchall()
 
         Args:
-            operation (Dict[str, Any]): A dictionary containing the Notion API request to be executed
-            parameters (Dict[str, Any]): A dictionary containing the payload for the Notion API request
+            operation (dict): A dictionary containing the Notion API request to be executed.
+            parameters (DBAPIExecuteParameters): A dictionary containing the payload for the Notion API request
 
         Raises:
             InterfaceError: ``"properties"`` object not specified in parameters
             InterfaceError: ``"parent"`` object not specified in parameters
        
         Returns:
-            Self: This :class:`Cursor` instance
+            Self: This :class:`Cursor` instance.
         """
         
         object_ = {}
@@ -385,7 +395,26 @@ class Cursor:
         self._parse_result_set(object_)         # initialize result set with parsed rows, if any
         return self
     
-    def _bind_parameters(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    def executemany(self, operation: dict, parameters: Sequence[dict]) -> Self:
+        """Prepare a database operation (query or command) and then execute it against all parameter sequences or 
+        mappings found in the sequence seq_of_parameters.
+
+        Note:
+            This method is not implemented yet.
+            Calling it raises :exc:`NotImplementedError`.
+
+        Args:
+            operation (dict): A dictionary containing the Notion API request to be executed.
+            parameters (Sequence[dict]): A sequence of dictionaries containint the parameters to be executed multiple times.
+
+        Returns:
+            Self: This :class:`Cursor` instance.
+        """
+        raise NotImplementedError
+    
+    def _bind_parameters(self, parameters: DBAPIExecuteParameters) -> dict:
+        """Helper for binding values to the payload."""
+        
         payload = parameters.get('payload', {})
         params = parameters.get('params', {})
         if not payload or not params:

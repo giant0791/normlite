@@ -17,16 +17,16 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from typing import List, Tuple
+from typing import List, Sequence, Tuple
 
 from normlite.notiondbapi.dbapi2 import Cursor
 from normlite.sql import CreateTable
 
 class _CursorMetaData:
     """Provide helper metadata structures to access raw data from low level `Cursor` DBAPI 2.0."""
-    def __init__(self, table_def: CreateTable):
-        self.index_to_key = {i: col.name for i, col in enumerate(table_def.columns)}
-        self.key_to_index = {col.name: i for i, col in enumerate(table_def.columns)}
+    def __init__(self, desc: Sequence[tuple]):
+        self.index_to_key = {i: col[0] for i, col in enumerate(desc)}
+        self.key_to_index = {col[0]: i for i, col in enumerate(desc)}
 
 class CursorResult:
     """Provide pythonic high level interface to result sets from SQL statements."""
@@ -38,8 +38,6 @@ class CursorResult:
         raw_rows = self._cursor.fetchall()  # [[(colname, type, val), ...], ...]
         return [Row(self._metadata, row_data) for row_data in raw_rows]
     
-    def execute(self) -> List[Row]:
-        pass
 
 class Row:
     """Provide pythonic high level interface to a single SQL database row."""

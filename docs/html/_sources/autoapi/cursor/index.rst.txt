@@ -4,20 +4,12 @@ cursor
 .. py:module:: cursor
 
 
-Classes
--------
-
-.. autoapisummary::
-
-   cursor._CursorMetaData
-   cursor.CursorResult
-   cursor.Row
 
 
 Module Contents
 ---------------
 
-.. py:class:: _CursorMetaData(table_def: normlite.sql.CreateTable)
+.. py:class:: _CursorMetaData(desc: Sequence[tuple])
 
    Provide helper metadata structures to access raw data from low level `Cursor` DBAPI 2.0.
 
@@ -40,9 +32,6 @@ Module Contents
 
 
    .. py:method:: fetchall() -> List[Row]
-
-
-   .. py:method:: execute() -> List[Row]
 
 
 .. py:class:: Row(metadata: _CursorMetaData, row_data: List[Tuple[str, str, str]])

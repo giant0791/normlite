@@ -9,7 +9,7 @@
   <title>cursor &mdash; normlite 0.2.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
-      <link rel="stylesheet" type="text/css" href="../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
+      <link rel="stylesheet" type="text/css" href="../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
       <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
       <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=f7e3ec4f" />
 
@@ -51,7 +51,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../sql/index.html">sql</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../engine/index.html">engine</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">cursor</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#classes">Classes</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#cursor._CursorMetaData"><code class="docutils literal notranslate"><span class="pre">_CursorMetaData</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#cursor.CursorResult"><code class="docutils literal notranslate"><span class="pre">CursorResult</span></code></a></li>
@@ -93,27 +92,11 @@
              
   <section id="module-cursor">
 <span id="cursor"></span><h1>cursor<a class="headerlink" href="#module-cursor" title="Link to this heading"></a></h1>
-<section id="classes">
-<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading"></a></h2>
-<table class="autosummary longtable docutils align-default">
-<tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#cursor._CursorMetaData" title="cursor._CursorMetaData"><code class="xref py py-obj docutils literal notranslate"><span class="pre">_CursorMetaData</span></code></a></p></td>
-<td><p>Provide helper metadata structures to access raw data from low level <cite>Cursor</cite> DBAPI 2.0.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#cursor.CursorResult" title="cursor.CursorResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">CursorResult</span></code></a></p></td>
-<td><p>Provide pythonic high level interface to result sets from SQL statements.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#cursor.Row" title="cursor.Row"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Row</span></code></a></p></td>
-<td><p>Provide pythonic high level interface to a single SQL database row.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
 <dl class="py class">
 <dt class="sig sig-object py" id="cursor._CursorMetaData">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">cursor.</span></span><span class="sig-name descname"><span class="pre">_CursorMetaData</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table_def</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">normlite.sql.CreateTable</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#cursor._CursorMetaData" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">cursor.</span></span><span class="sig-name descname"><span class="pre">_CursorMetaData</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">desc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#cursor._CursorMetaData" title="Link to this definition"></a></dt>
 <dd><p>Provide helper metadata structures to access raw data from low level <cite>Cursor</cite> DBAPI 2.0.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="cursor._CursorMetaData.index_to_key">
@@ -146,16 +129,11 @@
 <span class="sig-name descname"><span class="pre">fetchall</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#cursor.Row" title="cursor.Row"><span class="pre">Row</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#cursor.CursorResult.fetchall" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="cursor.CursorResult.execute">
-<span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#cursor.Row" title="cursor.Row"><span class="pre">Row</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#cursor.CursorResult.execute" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="cursor.Row">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">cursor.</span></span><span class="sig-name descname"><span class="pre">Row</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#cursor._CursorMetaData" title="cursor._CursorMetaData"><span class="pre">_CursorMetaData</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">row_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#cursor.Row" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">cursor.</span></span><span class="sig-name descname"><span class="pre">Row</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#cursor._CursorMetaData" title="cursor._CursorMetaData"><span class="pre">_CursorMetaData</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">row_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#cursor.Row" title="Link to this definition"></a></dt>
 <dd><p>Provide pythonic high level interface to a single SQL database row.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="cursor.Row._metadata">
@@ -169,7 +147,7 @@
 
 <dl class="py method">
 <dt class="sig sig-object py" id="cursor.Row.__getitem__">
-<span class="sig-name descname"><span class="pre">__getitem__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#cursor.Row.__getitem__" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">__getitem__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></span><a class="headerlink" href="#cursor.Row.__getitem__" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">

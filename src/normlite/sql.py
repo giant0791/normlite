@@ -131,22 +131,6 @@ def tokenize(sql: str) -> Iterator[Token]:
 class SqlNode(ABC):
     """Base class for an AST node."""
 
-    def __init__(self) -> None:
-        self._operation = dict()
-        """The compiled operation as dictionary."""
-
-    @property
-    def operation(self) -> dict:
-        """Provide the compiled operation.
-
-        This read-only attribute holds the result of the compilation.
-        It delivers the compiled JSON code after the :meth:`compile()` has been called.
-
-        Returns:
-            dict: The compiled JSON code or ``{}``, if :meth:`compile()` has not previously been called.  
-        """
-        return self._operation
-
     @abstractmethod
     def accept(self, visitor: Visitor) -> dict:
         """Provide abstract interface for cross-compilation from SQL to JSON.
@@ -158,37 +142,7 @@ class SqlNode(ABC):
             dict: The cross-compiled JSON code as dictionary.
         """
         raise NotImplementedError
-    
-    @abstractmethod
-    def compile(self) -> None:
-        """Compile the node to an executable JSON object.
-
-        Subclasses use this method to create the dictionary representing the operation.
-        The following example shows the generated JSON code for the SQL statement ``CREATE TABLE``:
-
-        .. code-block:: json
-        
-            {
-                "endpoint": "databases",
-                "request": "create",
-                "payload": {
-                    "title": [
-                        {
-                            "type": "text",
-                            "text": {"content": "students"}
-                        }
-                    ],
-                    "properties": {
-                        "studentid": {"number": {}},
-                        "name": {"title": {}},
-                        "grade": {"rich_text": {}}
-                    }
-                }
-            }
-        
-        """
-        raise NotImplementedError
-        
+            
 class Visitor:
     def __init__(self, table_catalog: Optional[MetaData] = None):
         self._table_catalog = table_catalog
@@ -262,12 +216,6 @@ class CreateTable(SqlNode):
         super().__init__()
         self.table_name = table_name
         self.columns = columns
-
-    def compile(self):
-        visitor = SqlToJsonVisitor()
-        self._operation['endpoint'] = 'databases'
-        self._operation['request'] = 'create'
-        self._operation['payload'] = self.accept(visitor)
 
     def __getitem__(self, key: str) -> Optional[ColumnDef]:
         column_list: List[ColumnDef] = [col for col in self.columns if col.name == key]
@@ -349,8 +297,6 @@ class Expression(SqlNode):
     
     def compile(self) -> None:
         pass
-    
-
 
 class Parser:
     """Create an SQL AST for a given SQL construct."""

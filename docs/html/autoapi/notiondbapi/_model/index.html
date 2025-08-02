@@ -9,7 +9,7 @@
   <title>notiondbapi._model &mdash; normlite 0.2.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
-      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
       <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
       <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
 
@@ -60,10 +60,6 @@
 <li class="toctree-l4"><a class="reference internal" href="../dbapi2/index.html">notiondbapi.dbapi2</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../index.html#attributes">Attributes</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../index.html#exceptions">Exceptions</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../index.html#classes">Classes</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../index.html#package-contents">Package Contents</a></li>
 </ul>
 </li>
 </ul>
@@ -138,41 +134,19 @@ of the table is a <code class="docutils literal notranslate"><span class="pre">t
 by the class <a class="reference internal" href="../dbapi2/index.html#notiondbapi.dbapi2.Cursor" title="notiondbapi.dbapi2.Cursor"><code class="xref py py-class docutils literal notranslate"><span class="pre">notiondbapi.dbapi2.Cursor</span></code></a> to cross-compile Notion JSON objects.
 <strong>Do not import directly.</strong></p>
 </div>
-<section id="classes">
-<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading"></a></h2>
-<table class="autosummary longtable docutils align-default">
-<tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#notiondbapi._model.AbstractNotionObject" title="notiondbapi._model.AbstractNotionObject"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AbstractNotionObject</span></code></a></p></td>
-<td><p>Abstract class for Notion API objects.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#notiondbapi._model.NotionObjectVisitor" title="notiondbapi._model.NotionObjectVisitor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NotionObjectVisitor</span></code></a></p></td>
-<td><p>Abstract class for a Notion API objects compiler.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#notiondbapi._model.NotionProperty" title="notiondbapi._model.NotionProperty"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NotionProperty</span></code></a></p></td>
-<td><p>Provide Python object implementation for Notion property objects.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#notiondbapi._model.NotionPage" title="notiondbapi._model.NotionPage"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NotionPage</span></code></a></p></td>
-<td><p>Provide Python object implementation for Notion page objects.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#notiondbapi._model.NotionDatabase" title="notiondbapi._model.NotionDatabase"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NotionDatabase</span></code></a></p></td>
-<td><p>Provide Python object implementation for Notion database objects.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
 <dl class="py class">
 <dt class="sig sig-object py" id="notiondbapi._model.AbstractNotionObject">
 <em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi._model.</span></span><span class="sig-name descname"><span class="pre">AbstractNotionObject</span></span><a class="headerlink" href="#notiondbapi._model.AbstractNotionObject" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">abc.ABC</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/abc.html#abc.ABC" title="(in Python v3.13)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">abc.ABC</span></code></a></p>
 <p>Abstract class for Notion API objects.</p>
 <p>This class starts the class hierarchy and it is used to represent the starting node
 of the <strong>Abstract Syntax Tree</strong> built by the parser.
 It implements the design pattern <strong>Visitor</strong>.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="notiondbapi._model.AbstractNotionObject.accept">
-<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionObjectVisitor" title="notiondbapi._model.NotionObjectVisitor"><span class="pre">NotionObjectVisitor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span></span></span><a class="headerlink" href="#notiondbapi._model.AbstractNotionObject.accept" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionObjectVisitor" title="notiondbapi._model.NotionObjectVisitor"><span class="pre">NotionObjectVisitor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></span></span><a class="headerlink" href="#notiondbapi._model.AbstractNotionObject.accept" title="Link to this definition"></a></dt>
 <dd><p>Provide entry point for the visitor to compile.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -182,7 +156,7 @@ It implements the design pattern <strong>Visitor</strong>.</p>
 <dd class="field-even"><p>A tuple containing a subset of values for the represented Notion object.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>tuple</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -192,49 +166,13 @@ It implements the design pattern <strong>Visitor</strong>.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="notiondbapi._model.NotionObjectVisitor">
 <em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi._model.</span></span><span class="sig-name descname"><span class="pre">NotionObjectVisitor</span></span><a class="headerlink" href="#notiondbapi._model.NotionObjectVisitor" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">abc.ABC</span></code></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/abc.html#abc.ABC" title="(in Python v3.13)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">abc.ABC</span></code></a></p>
 <p>Abstract class for a Notion API objects compiler.</p>
 <p>Subclasses of <a class="reference internal" href="#notiondbapi._model.NotionObjectVisitor" title="notiondbapi._model.NotionObjectVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">NotionObjectVisitor</span></code></a> implement the cross-compilation for each Notion object.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="notiondbapi._model.NotionObjectVisitor.visit_page">
-<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_page</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">page</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionPage" title="notiondbapi._model.NotionPage"><span class="pre">NotionPage</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span></span></span><a class="headerlink" href="#notiondbapi._model.NotionObjectVisitor.visit_page" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_page</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">page</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionPage" title="notiondbapi._model.NotionPage"><span class="pre">NotionPage</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></span></span><a class="headerlink" href="#notiondbapi._model.NotionObjectVisitor.visit_page" title="Link to this definition"></a></dt>
 <dd><p>Compile a Notion page object and extracts the relevant values.</p>
-<p>The extracted values in the tuple are:
-<code class="docutils literal notranslate"><span class="pre">(&lt;object&gt;,</span> <span class="pre">&lt;id&gt;,</span> <span class="pre">&lt;archived&gt;,</span> <span class="pre">&lt;in_trash&gt;,</span> <span class="pre">&lt;properties&gt;)</span></code></p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">&lt;object&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">str</span></code>, always <code class="docutils literal notranslate"><span class="pre">&quot;page&quot;</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">&lt;id&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">str</span></code>, the unique identifier of the page</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">&lt;archived&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">bool</span></code>, the archived status of the page</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">&lt;in_trash&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">bool</span></code>, whether the page is in Trash (can be <code class="docutils literal notranslate"><span class="pre">None</span></code>
-if not returned by Notion)</p></li>
-</ul>
-<p>The page properties <code class="docutils literal notranslate"><span class="pre">&lt;properties&gt;</span></code> are rendered as a flattened sequence of values:
-<code class="docutils literal notranslate"><span class="pre">&lt;key&gt;,</span> <span class="pre">&lt;pid&gt;,</span> <span class="pre">&lt;type&gt;,</span> <span class="pre">&lt;value&gt;</span></code> (see also <a class="reference internal" href="#notiondbapi._model.NotionProperty" title="notiondbapi._model.NotionProperty"><code class="xref py py-class docutils literal notranslate"><span class="pre">NotionProperty</span></code></a>)</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">&lt;key&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">str</span></code>, the property key</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">&lt;pid&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">str</span></code>, the underlying identifier for the property</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">&lt;type&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">str</span></code>, the type of the property. Currently supported types are:
-<code class="docutils literal notranslate"><span class="pre">&quot;number&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;rich_text&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;title&quot;</span></code>.</p></li>
-</ul>
-<p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">properties</span> <span class="o">=</span> <span class="p">[</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;Price&#39;</span><span class="p">,</span> <span class="s1">&#39;BJXS&#39;</span><span class="p">,</span> <span class="s1">&#39;number&#39;</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;Description&#39;</span><span class="p">,</span> <span class="s1">&#39;_Tc_&#39;</span><span class="p">,</span> <span class="s1">&#39;rich_text&#39;</span><span class="p">,</span> <span class="s1">&#39;A dark green leafy vegetable&#39;</span><span class="p">),</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;Name&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;Tuscan kale&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="p">]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">page</span> <span class="o">=</span> <span class="n">NotionPage</span><span class="p">(</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;</span><span class="p">,</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">properties</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">visitor</span> <span class="o">=</span> <span class="n">ToRowVisitor</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">row</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">accept</span><span class="p">(</span><span class="n">visitor</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">row</span>
-<span class="go">(&#39;page&#39;, &#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;, False, None,</span>
-<span class="go">&#39;Price&#39;, &#39;BJXS&#39;, &#39;number&#39;, 2.5,</span>
-<span class="go">&#39;Description&#39;, &#39;_Tc_&#39;, &#39;rich_text&#39;, &#39;A dark green leafy vegetable&#39;,</span>
-<span class="go">&#39;Name&#39;, &#39;title&#39;, &#39;title&#39;, &#39;Tuscan kale&#39;,)</span>
-</pre></div>
-</div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>page</strong> (<a class="reference internal" href="#notiondbapi._model.NotionPage" title="notiondbapi._model.NotionPage"><em>NotionPage</em></a>) – The Notion page object to be cross-compiled.</p>
@@ -243,14 +181,14 @@ if not returned by Notion)</p></li>
 <dd class="field-even"><p>A tuple containing the relevant values for this page.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>tuple</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="notiondbapi._model.NotionObjectVisitor.visit_database">
-<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_database</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">db</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionDatabase" title="notiondbapi._model.NotionDatabase"><span class="pre">NotionDatabase</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span></span></span><a class="headerlink" href="#notiondbapi._model.NotionObjectVisitor.visit_database" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_database</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">db</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionDatabase" title="notiondbapi._model.NotionDatabase"><span class="pre">NotionDatabase</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></span></span><a class="headerlink" href="#notiondbapi._model.NotionObjectVisitor.visit_database" title="Link to this definition"></a></dt>
 <dd><p>Compile a Notion database object and extracts the relevant values.</p>
 <p>The extracted values in the tuple are:
 <code class="docutils literal notranslate"><span class="pre">(&lt;object&gt;,</span> <span class="pre">&lt;id&gt;,</span> <span class="pre">&lt;title&gt;,</span> <span class="pre">&lt;archived&gt;,</span> <span class="pre">&lt;in_trash&gt;,</span> <span class="pre">&lt;properties&gt;)</span></code></p>
@@ -300,21 +238,21 @@ Currently supported types are:
 <dd class="field-even"><p>A tuple containing the relevant values for this adatabase.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>tuple</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="notiondbapi._model.NotionObjectVisitor.visit_property">
-<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_property</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prop</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionProperty" title="notiondbapi._model.NotionProperty"><span class="pre">NotionProperty</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span></span></span><a class="headerlink" href="#notiondbapi._model.NotionObjectVisitor.visit_property" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">visit_property</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prop</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionProperty" title="notiondbapi._model.NotionProperty"><span class="pre">NotionProperty</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></span></span><a class="headerlink" href="#notiondbapi._model.NotionObjectVisitor.visit_property" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="notiondbapi._model.NotionProperty">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi._model.</span></span><span class="sig-name descname"><span class="pre">NotionProperty</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#notiondbapi._model.NotionProperty" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi._model.</span></span><span class="sig-name descname"><span class="pre">NotionProperty</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#notiondbapi._model.NotionProperty" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#notiondbapi._model.AbstractNotionObject" title="notiondbapi._model.AbstractNotionObject"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AbstractNotionObject</span></code></a></p>
 <p>Provide Python object implementation for Notion property objects.</p>
 <p>This class implements both Notion page and database property objects.
@@ -329,9 +267,9 @@ Its <a class="reference internal" href="#notiondbapi._model.NotionProperty.accep
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>name</strong> (<em>str</em>) – The property name.</p></li>
-<li><p><strong>id</strong> (<em>str</em>) – The property id.</p></li>
-<li><p><strong>type</strong> (<em>str</em>) – The property type.</p></li>
+<li><p><strong>name</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The property name.</p></li>
+<li><p><strong>id</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The property id.</p></li>
+<li><p><strong>type</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The property type.</p></li>
 <li><p><strong>value</strong> (<em>Any</em><em>, </em><em>optional</em>) – The property value. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code> (for example, database properties).</p></li>
 </ul>
 </dd>
@@ -342,7 +280,7 @@ Its <a class="reference internal" href="#notiondbapi._model.NotionProperty.accep
 <dd><p>The property name.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>name (str)</p>
+<dd class="field-odd"><p>name (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)">str</a>)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -353,7 +291,7 @@ Its <a class="reference internal" href="#notiondbapi._model.NotionProperty.accep
 <dd><p>The property id.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>id (str)</p>
+<dd class="field-odd"><p>id (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)">str</a>)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -364,7 +302,7 @@ Its <a class="reference internal" href="#notiondbapi._model.NotionProperty.accep
 <dd><p>The property type.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>type (str)</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#type" title="(in Python v3.13)">type</a> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)">str</a>)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -384,7 +322,7 @@ newly created object.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="notiondbapi._model.NotionProperty.accept">
-<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionObjectVisitor" title="notiondbapi._model.NotionObjectVisitor"><span class="pre">NotionObjectVisitor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span></span></span><a class="headerlink" href="#notiondbapi._model.NotionProperty.accept" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionObjectVisitor" title="notiondbapi._model.NotionObjectVisitor"><span class="pre">NotionObjectVisitor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></span></span><a class="headerlink" href="#notiondbapi._model.NotionProperty.accept" title="Link to this definition"></a></dt>
 <dd><p>Compile the property object to a tuple.</p>
 <p class="rubric">Example</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># property is a previously created NotionProperty object</span>
@@ -402,16 +340,21 @@ newly created object.</p>
 <dd class="field-even"><p>The tuple describing the property object.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>tuple</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
 </dd>
 </dl>
 </dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="notiondbapi._model.NotionProperty.__repr__">
+<span class="sig-name descname"><span class="pre">__repr__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></span><a class="headerlink" href="#notiondbapi._model.NotionProperty.__repr__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="notiondbapi._model.NotionPage">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi._model.</span></span><span class="sig-name descname"><span class="pre">NotionPage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#notiondbapi._model.NotionProperty" title="notiondbapi._model.NotionProperty"><span class="pre">NotionProperty</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">archived</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">in_trash</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#notiondbapi._model.NotionPage" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi._model.</span></span><span class="sig-name descname"><span class="pre">NotionPage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#notiondbapi._model.NotionProperty" title="notiondbapi._model.NotionProperty"><span class="pre">NotionProperty</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">archived</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">in_trash</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#notiondbapi._model.NotionPage" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#notiondbapi._model.AbstractNotionObject" title="notiondbapi._model.AbstractNotionObject"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AbstractNotionObject</span></code></a></p>
 <p>Provide Python object implementation for Notion page objects.</p>
 <p>This class implements Notion page objects.
@@ -437,10 +380,10 @@ Its <a class="reference internal" href="#notiondbapi._model.NotionPage.accept" t
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>id</strong> (<em>str</em>) – The page id.</p></li>
+<li><p><strong>id</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The page id.</p></li>
 <li><p><strong>properties</strong> (<em>List</em><em>[</em><a class="reference internal" href="#notiondbapi._model.NotionProperty" title="notiondbapi._model.NotionProperty"><em>NotionProperty</em></a><em>]</em>) – The page properties</p></li>
-<li><p><strong>archived</strong> (<em>Optional</em><em>[</em><em>bool</em><em>]</em><em>, </em><em>optional</em>) – The <code class="docutils literal notranslate"><span class="pre">&quot;archived&quot;</span></code> flag for this page. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
-<li><p><strong>in_trash</strong> (<em>Optional</em><em>[</em><em>bool</em><em>]</em><em>, </em><em>optional</em>) – The <code class="docutils literal notranslate"><span class="pre">&quot;in_trash&quot;</span></code> flag for this page. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>archived</strong> (<em>Optional</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><em>bool</em></a><em>]</em><em>, </em><em>optional</em>) – The <code class="docutils literal notranslate"><span class="pre">&quot;archived&quot;</span></code> flag for this page. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>in_trash</strong> (<em>Optional</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><em>bool</em></a><em>]</em><em>, </em><em>optional</em>) – The <code class="docutils literal notranslate"><span class="pre">&quot;in_trash&quot;</span></code> flag for this page. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
 </ul>
 </dd>
 </dl>
@@ -472,7 +415,7 @@ the page is a newly created object.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="notiondbapi._model.NotionPage.accept">
-<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionObjectVisitor" title="notiondbapi._model.NotionObjectVisitor"><span class="pre">NotionObjectVisitor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span></span></span><a class="headerlink" href="#notiondbapi._model.NotionPage.accept" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionObjectVisitor" title="notiondbapi._model.NotionObjectVisitor"><span class="pre">NotionObjectVisitor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></span></span><a class="headerlink" href="#notiondbapi._model.NotionPage.accept" title="Link to this definition"></a></dt>
 <dd><p>Compile a Notion page into a row.</p>
 <p>This method cross-compiles the page object into a row, which can be further processed by
 the class <code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.notiondbapi.Cursor</span></code>.
@@ -495,7 +438,7 @@ The internal Python representation of a JSON Notion page object is a <code class
 <dd class="field-even"><p>The cross-compiled row.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>tuple</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -504,27 +447,27 @@ The internal Python representation of a JSON Notion page object is a <code class
 
 <dl class="py class">
 <dt class="sig sig-object py" id="notiondbapi._model.NotionDatabase">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi._model.</span></span><span class="sig-name descname"><span class="pre">NotionDatabase</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#notiondbapi._model.NotionProperty" title="notiondbapi._model.NotionProperty"><span class="pre">NotionProperty</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">archived</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">in_trash</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#notiondbapi._model.NotionDatabase" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">notiondbapi._model.</span></span><span class="sig-name descname"><span class="pre">NotionDatabase</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#notiondbapi._model.NotionProperty" title="notiondbapi._model.NotionProperty"><span class="pre">NotionProperty</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">archived</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">in_trash</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#notiondbapi._model.NotionDatabase" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#notiondbapi._model.AbstractNotionObject" title="notiondbapi._model.AbstractNotionObject"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AbstractNotionObject</span></code></a></p>
 <p>Provide Python object implementation for Notion database objects.</p>
 <p>This class implements both Notion database objects.
 Its <a class="reference internal" href="#notiondbapi._model.NotionDatabase.accept" title="notiondbapi._model.NotionDatabase.accept"><code class="xref py py-meth docutils literal notranslate"><span class="pre">NotionDatabase.accept()</span></code></a> compiles the page elements into a tuple as follows:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">properties</span> <span class="o">=</span> <span class="p">[</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="s1">&#39;evWq&#39;</span><span class="p">,</span> <span class="s1">&#39;number&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;grade&#39;</span><span class="p">,</span> <span class="s1">&#39;V}lX&#39;</span><span class="p">,</span> <span class="s1">&#39;rich_text&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="s1">&#39;evWq&#39;</span><span class="p">,</span> <span class="s1">&#39;number&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;grade&#39;</span><span class="p">,</span> <span class="s1">&#39;V}lX&#39;</span><span class="p">,</span> <span class="s1">&#39;rich_text&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="p">]</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">database</span> <span class="o">=</span> <span class="n">NotionDatabase</span><span class="p">(</span>
 <span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;</span><span class="p">,</span>     <span class="c1"># page id as assigned by Notion</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;students&#39;</span>                                  <span class="c1"># the database name</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;students&#39;</span><span class="p">,</span>                                 <span class="c1"># the database name</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">properties</span><span class="p">,</span>                                 <span class="c1"># the properties as list of NotionProperty</span>
 <span class="gp">&gt;&gt;&gt; </span>    <span class="kc">False</span><span class="p">,</span>                                      <span class="c1"># archived flag is False for this page</span>
 <span class="gp">&gt;&gt;&gt; </span>    <span class="kc">None</span><span class="p">,</span>                                       <span class="c1"># in_trash flag is not provided</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">properties</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">visitor</span> <span class="o">=</span> <span class="n">ToRowVisitor</span><span class="p">()</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">row</span> <span class="o">=</span> <span class="n">database</span><span class="o">.</span><span class="n">accept</span><span class="p">(</span><span class="n">visitor</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">row</span>
-<span class="go">(&#39;page&#39;,&#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;, &#39;students&#39;, False, None,</span>
+<span class="go">(&#39;database&#39;,&#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;, &#39;students&#39;, False, None,</span>
 <span class="go">&#39;id&#39;, &#39;evWq&#39;, &#39;number&#39;, None,</span>
 <span class="go">&#39;name&#39;, &#39;title&#39;, &#39;title&#39;, None,</span>
 <span class="go">&#39;grade&#39;, &#39;V}lX&#39;, &#39;rich_text&#39;, None,)</span>
@@ -562,7 +505,7 @@ Its <a class="reference internal" href="#notiondbapi._model.NotionDatabase.accep
 
 <dl class="py method">
 <dt class="sig sig-object py" id="notiondbapi._model.NotionDatabase.accept">
-<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionObjectVisitor" title="notiondbapi._model.NotionObjectVisitor"><span class="pre">NotionObjectVisitor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span></span></span><a class="headerlink" href="#notiondbapi._model.NotionDatabase.accept" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#notiondbapi._model.NotionObjectVisitor" title="notiondbapi._model.NotionObjectVisitor"><span class="pre">NotionObjectVisitor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></span></span><a class="headerlink" href="#notiondbapi._model.NotionDatabase.accept" title="Link to this definition"></a></dt>
 <dd><p>Provide entry point for the visitor to compile.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -572,10 +515,15 @@ Its <a class="reference internal" href="#notiondbapi._model.NotionDatabase.accep
 <dd class="field-even"><p>A tuple containing a subset of values for the represented Notion object.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>tuple</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)">tuple</a></p>
 </dd>
 </dl>
 </dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="notiondbapi._model.NotionDatabase.__repr__">
+<span class="sig-name descname"><span class="pre">__repr__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#notiondbapi._model.NotionDatabase.__repr__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 

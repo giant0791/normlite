@@ -83,42 +83,6 @@ class NotionObjectVisitor(ABC):
     def visit_page(self, page: NotionPage) -> tuple:
         """Compile a Notion page object and extracts the relevant values.
 
-        The extracted values in the tuple are:
-        ``(<object>, <id>, <archived>, <in_trash>, <properties>)``
-
-        - ``<object>``: ``str``, always ``"page"``
-        - ``<id>``: ``str``, the unique identifier of the page
-        - ``<archived>``: ``bool``, the archived status of the page 
-        - ``<in_trash>``: ``bool``, whether the page is in Trash (can be ``None`` 
-          if not returned by Notion) 
-        
-        The page properties ``<properties>`` are rendered as a flattened sequence of values:
-        ``<key>, <pid>, <type>, <value>`` (see also :class:`NotionProperty`)
-
-        - ``<key>``: ``str``, the property key
-        - ``<pid>``: ``str``, the underlying identifier for the property
-        - ``<type>``: ``str``, the type of the property. Currently supported types are: 
-          ``"number"``, ``"rich_text"``, ``"title"``.
-
-        Example:
-            >>> properties = [
-            >>>     NotionProperty('Price', 'BJXS', 'number', 2.5)
-            >>>     NotionProperty('Description', '_Tc_', 'rich_text', 'A dark green leafy vegetable'),
-            >>>     NotionProperty('Name', 'title', 'title', 'Tuscan kale')
-            >>> ]
-            >>> page = NotionPage(
-            >>>     '59833787-2cf9-4fdf-8782-e53db20768a5',
-            >>>     properties
-            >>> )
-            >>> visitor = ToRowVisitor()
-            >>> row = page.accept(visitor)
-            >>> row
-            ('page', '59833787-2cf9-4fdf-8782-e53db20768a5', False, None,
-            'Price', 'BJXS', 'number', 2.5,
-            'Description', '_Tc_', 'rich_text', 'A dark green leafy vegetable',
-            'Name', 'title', 'title', 'Tuscan kale',)
-
-
         Args:
             page (NotionPage): The Notion page object to be cross-compiled.
 
@@ -239,6 +203,9 @@ class NotionProperty(AbstractNotionObject):
             tuple: The tuple describing the property object.
         """
         return visitor.visit_property(self)
+    
+    def __repr__(self) -> str:
+        return f'Property(name="{self.name}", id="{self.id}", type="{self.type}", value={self.value})'
 
 
 # === Notion Objects ===
@@ -314,7 +281,6 @@ class NotionPage(AbstractNotionObject):
         """
         return visitor.visit_page(self)
 
-
 class NotionDatabase(AbstractNotionObject):
     """Provide Python object implementation for Notion database objects.
 
@@ -322,21 +288,21 @@ class NotionDatabase(AbstractNotionObject):
     Its :meth:`NotionDatabase.accept()` compiles the page elements into a tuple as follows::
 
         >>> properties = [
-        >>>     NotionProperty('id', 'evWq', 'number', None)
-        >>>     NotionProperty('name', 'title', 'title', None)
-        >>>     NotionProperty('grade', 'V}lX', 'rich_text', None)
+        >>>     NotionProperty('id', 'evWq', 'number', None),
+        >>>     NotionProperty('name', 'title', 'title', None),
+        >>>     NotionProperty('grade', 'V}lX', 'rich_text', None),
         >>> ]
         >>> database = NotionDatabase(
         >>>     '59833787-2cf9-4fdf-8782-e53db20768a5',     # page id as assigned by Notion
-        >>>     'students'                                  # the database name
+        >>>     'students',                                 # the database name
+        >>>     properties,                                 # the properties as list of NotionProperty
         >>>     False,                                      # archived flag is False for this page
         >>>     None,                                       # in_trash flag is not provided
-        >>>     properties
         >>> )
         >>> visitor = ToRowVisitor()
         >>> row = database.accept(visitor)
         >>> row
-        ('page','59833787-2cf9-4fdf-8782-e53db20768a5', 'students', False, None,
+        ('database','59833787-2cf9-4fdf-8782-e53db20768a5', 'students', False, None,
         'id', 'evWq', 'number', None,
         'name', 'title', 'title', None,
         'grade', 'V}lX', 'rich_text', None,)
@@ -361,5 +327,10 @@ class NotionDatabase(AbstractNotionObject):
 
     def accept(self, visitor: NotionObjectVisitor) -> tuple:
         return visitor.visit_database(self)
+    
+    def __repr__(self):
+        db_str = f'Database(id="{self.id}", title="{self.title}", archived={self.archived}, in_trash={self.in_trash})'
+        db_str += ", ".join([prop for prop in self.properties])
+        return db_str + ')' 
 
 

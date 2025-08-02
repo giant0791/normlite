@@ -40,16 +40,6 @@ notiondbapi._model
 
 
 
-Classes
--------
-
-.. autoapisummary::
-
-   notiondbapi._model.AbstractNotionObject
-   notiondbapi._model.NotionObjectVisitor
-   notiondbapi._model.NotionProperty
-   notiondbapi._model.NotionPage
-   notiondbapi._model.NotionDatabase
 
 
 Module Contents
@@ -96,42 +86,6 @@ Module Contents
 
 
       Compile a Notion page object and extracts the relevant values.
-
-      The extracted values in the tuple are:
-      ``(<object>, <id>, <archived>, <in_trash>, <properties>)``
-
-      - ``<object>``: ``str``, always ``"page"``
-      - ``<id>``: ``str``, the unique identifier of the page
-      - ``<archived>``: ``bool``, the archived status of the page
-      - ``<in_trash>``: ``bool``, whether the page is in Trash (can be ``None``
-        if not returned by Notion)
-
-      The page properties ``<properties>`` are rendered as a flattened sequence of values:
-      ``<key>, <pid>, <type>, <value>`` (see also :class:`NotionProperty`)
-
-      - ``<key>``: ``str``, the property key
-      - ``<pid>``: ``str``, the underlying identifier for the property
-      - ``<type>``: ``str``, the type of the property. Currently supported types are:
-        ``"number"``, ``"rich_text"``, ``"title"``.
-
-      .. rubric:: Example
-
-      >>> properties = [
-      >>>     NotionProperty('Price', 'BJXS', 'number', 2.5)
-      >>>     NotionProperty('Description', '_Tc_', 'rich_text', 'A dark green leafy vegetable'),
-      >>>     NotionProperty('Name', 'title', 'title', 'Tuscan kale')
-      >>> ]
-      >>> page = NotionPage(
-      >>>     '59833787-2cf9-4fdf-8782-e53db20768a5',
-      >>>     properties
-      >>> )
-      >>> visitor = ToRowVisitor()
-      >>> row = page.accept(visitor)
-      >>> row
-      ('page', '59833787-2cf9-4fdf-8782-e53db20768a5', False, None,
-      'Price', 'BJXS', 'number', 2.5,
-      'Description', '_Tc_', 'rich_text', 'A dark green leafy vegetable',
-      'Name', 'title', 'title', 'Tuscan kale',)
 
       :param page: The Notion page object to be cross-compiled.
       :type page: NotionPage
@@ -278,6 +232,9 @@ Module Contents
 
 
 
+   .. py:method:: __repr__() -> str
+
+
 .. py:class:: NotionPage(id: str, properties: List[NotionProperty], archived: Optional[bool] = None, in_trash: Optional[bool] = None)
 
    Bases: :py:obj:`AbstractNotionObject`
@@ -378,21 +335,21 @@ Module Contents
    Its :meth:`NotionDatabase.accept()` compiles the page elements into a tuple as follows::
 
        >>> properties = [
-       >>>     NotionProperty('id', 'evWq', 'number', None)
-       >>>     NotionProperty('name', 'title', 'title', None)
-       >>>     NotionProperty('grade', 'V}lX', 'rich_text', None)
+       >>>     NotionProperty('id', 'evWq', 'number', None),
+       >>>     NotionProperty('name', 'title', 'title', None),
+       >>>     NotionProperty('grade', 'V}lX', 'rich_text', None),
        >>> ]
        >>> database = NotionDatabase(
        >>>     '59833787-2cf9-4fdf-8782-e53db20768a5',     # page id as assigned by Notion
-       >>>     'students'                                  # the database name
+       >>>     'students',                                 # the database name
+       >>>     properties,                                 # the properties as list of NotionProperty
        >>>     False,                                      # archived flag is False for this page
        >>>     None,                                       # in_trash flag is not provided
-       >>>     properties
        >>> )
        >>> visitor = ToRowVisitor()
        >>> row = database.accept(visitor)
        >>> row
-       ('page','59833787-2cf9-4fdf-8782-e53db20768a5', 'students', False, None,
+       ('database','59833787-2cf9-4fdf-8782-e53db20768a5', 'students', False, None,
        'id', 'evWq', 'number', None,
        'name', 'title', 'title', None,
        'grade', 'V}lX', 'rich_text', None,)
@@ -430,5 +387,8 @@ Module Contents
       :returns: A tuple containing a subset of values for the represented Notion object.
       :rtype: tuple
 
+
+
+   .. py:method:: __repr__()
 
 

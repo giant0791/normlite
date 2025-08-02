@@ -9,7 +9,7 @@
   <title>engine &mdash; normlite 0.2.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
-      <link rel="stylesheet" type="text/css" href="../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
+      <link rel="stylesheet" type="text/css" href="../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
       <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
       <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=f7e3ec4f" />
 
@@ -50,9 +50,6 @@
 <li class="toctree-l1 current"><a class="reference internal" href="../index.html">API Reference</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="../sql/index.html">sql</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">engine</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#attributes">Attributes</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#classes">Classes</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#functions">Functions</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#engine.NotionAuthURI"><code class="docutils literal notranslate"><span class="pre">NotionAuthURI</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#engine.NotionSimulatedURI"><code class="docutils literal notranslate"><span class="pre">NotionSimulatedURI</span></code></a></li>
@@ -128,45 +125,6 @@
 </div>
 </dd>
 </dl>
-<section id="attributes">
-<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading"></a></h2>
-<table class="autosummary longtable docutils align-default">
-<tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#engine.NotionURI" title="engine.NotionURI"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NotionURI</span></code></a></p></td>
-<td><p>Type for the URI.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="classes">
-<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading"></a></h2>
-<table class="autosummary longtable docutils align-default">
-<tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#engine.NotionAuthURI" title="engine.NotionAuthURI"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NotionAuthURI</span></code></a></p></td>
-<td><p>Provide a helper data structure to hold URI schema elements for an internal or external Notion integration.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#engine.NotionSimulatedURI" title="engine.NotionSimulatedURI"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NotionSimulatedURI</span></code></a></p></td>
-<td><p>Provide an a helper data structure to hold URI schema elements for test integrations.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#engine.Engine" title="engine.Engine"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Engine</span></code></a></p></td>
-<td><p>Provide a convenient proxy object to connect and interact with Notion integrations.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="functions">
-<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading"></a></h2>
-<table class="autosummary longtable docutils align-default">
-<tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#engine._parse_uri" title="engine._parse_uri"><code class="xref py py-obj docutils literal notranslate"><span class="pre">_parse_uri</span></code></a>(→ NotionURI)</p></td>
-<td><p>Provide helper function to parse a normlite URI.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#engine.create_engine" title="engine.create_engine"><code class="xref py py-obj docutils literal notranslate"><span class="pre">create_engine</span></code></a>(→ Engine)</p></td>
-<td><p>Create a new engine proxy object to connect and interact to the Notion integration denoted by the supplied URI.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
 <dl class="py class">
@@ -184,27 +142,27 @@
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="engine.NotionAuthURI.token">
-<span class="sig-name descname"><span class="pre">token</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionAuthURI.token" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">token</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionAuthURI.token" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="engine.NotionAuthURI.version">
-<span class="sig-name descname"><span class="pre">version</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionAuthURI.version" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">version</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionAuthURI.version" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="engine.NotionAuthURI.client_id">
-<span class="sig-name descname"><span class="pre">client_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionAuthURI.client_id" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">client_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionAuthURI.client_id" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="engine.NotionAuthURI.client_secret">
-<span class="sig-name descname"><span class="pre">client_secret</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionAuthURI.client_secret" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">client_secret</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionAuthURI.client_secret" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="engine.NotionAuthURI.auth_url">
-<span class="sig-name descname"><span class="pre">auth_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionAuthURI.auth_url" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">auth_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionAuthURI.auth_url" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -227,13 +185,13 @@
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="engine.NotionSimulatedURI.path">
-<span class="sig-name descname"><span class="pre">path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionSimulatedURI.path" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionSimulatedURI.path" title="Link to this definition"></a></dt>
 <dd><p>The path to the database file (<code class="docutils literal notranslate"><span class="pre">None</span></code> for in-memory integrations).</p>
 </dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="engine.NotionSimulatedURI.file">
-<span class="sig-name descname"><span class="pre">file</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionSimulatedURI.file" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">file</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#engine.NotionSimulatedURI.file" title="Link to this definition"></a></dt>
 <dd><p>The database file name (<code class="docutils literal notranslate"><span class="pre">None</span></code> for in-memory integrations).</p>
 </dd></dl>
 
@@ -247,19 +205,19 @@
 
 <dl class="py function">
 <dt class="sig sig-object py" id="engine._parse_uri">
-<span class="sig-prename descclassname"><span class="pre">engine.</span></span><span class="sig-name descname"><span class="pre">_parse_uri</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">uri</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NotionURI</span></span></span><a class="headerlink" href="#engine._parse_uri" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">engine.</span></span><span class="sig-name descname"><span class="pre">_parse_uri</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">uri</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NotionURI</span></span></span><a class="headerlink" href="#engine._parse_uri" title="Link to this definition"></a></dt>
 <dd><p>Provide helper function to parse a normlite URI.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="engine.create_engine">
-<span class="sig-prename descclassname"><span class="pre">engine.</span></span><span class="sig-name descname"><span class="pre">create_engine</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">uri</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#engine.Engine" title="engine.Engine"><span class="pre">Engine</span></a></span></span><a class="headerlink" href="#engine.create_engine" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">engine.</span></span><span class="sig-name descname"><span class="pre">create_engine</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">uri</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#engine.Engine" title="engine.Engine"><span class="pre">Engine</span></a></span></span><a class="headerlink" href="#engine.create_engine" title="Link to this definition"></a></dt>
 <dd><p>Create a new engine proxy object to connect and interact to the Notion integration denoted by the supplied URI.</p>
 <p>This is a factory function to create :class:<code class="docutils literal notranslate"><span class="pre">Engine</span></code> proxy object based on the parameters
 specified in the supplied URI.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>uri</strong> (<em>str</em>) – The URI denoting the integration to connect to.</p>
+<dd class="field-odd"><p><strong>uri</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The URI denoting the integration to connect to.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The engine proxy object.</p>
@@ -322,12 +280,12 @@ specified in the supplied URI.</p>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="engine.Engine.database">
-<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">database</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#engine.Engine.database" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">database</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></em><a class="headerlink" href="#engine.Engine.database" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="engine.Engine.database_id">
-<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">database_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#engine.Engine.database_id" title="Link to this definition"></a></dt>
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">database_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></em><a class="headerlink" href="#engine.Engine.database_id" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </dd></dl>

@@ -44,44 +44,10 @@ sql
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   sql.Token
-   sql.KEYWORDS
-   sql.COMPARISON_OPS
-   sql.LOGICAL_OPS
-   sql.TOKEN_REGEX
 
 
-Classes
--------
-
-.. autoapisummary::
-
-   sql.TokenType
-   sql.SqlNode
-   sql.Visitor
-   sql.MetaData
-   sql.ColumnDef
-   sql.CreateTable
-   sql.InsertStatement
-   sql.BinaryOp
-   sql.Where
-   sql.Expression
-   sql.Parser
-   sql.SqlToJsonVisitor
 
 
-Functions
----------
-
-.. autoapisummary::
-
-   sql.tokenize
-   sql.text
 
 
 Module Contents
@@ -153,24 +119,6 @@ Module Contents
    Base class for an AST node.
 
 
-   .. py:attribute:: _operation
-
-      The compiled operation as dictionary.
-
-
-   .. py:property:: operation
-      :type: dict
-
-
-      Provide the compiled operation.
-
-      This read-only attribute holds the result of the compilation.
-      It delivers the compiled JSON code after the :meth:`compile()` has been called.
-
-      :returns: The compiled JSON code or ``{}``, if :meth:`compile()` has not previously been called.
-      :rtype: dict
-
-
    .. py:method:: accept(visitor: Visitor) -> dict
       :abstractmethod:
 
@@ -182,38 +130,6 @@ Module Contents
 
       :returns: The cross-compiled JSON code as dictionary.
       :rtype: dict
-
-
-
-   .. py:method:: compile() -> None
-      :abstractmethod:
-
-
-      Compile the node to an executable JSON object.
-
-      Subclasses use this method to create the dictionary representing the operation.
-      The following example shows the generated JSON code for the SQL statement ``CREATE TABLE``:
-
-      .. code-block:: json
-
-          {
-              "endpoint": "databases",
-              "request": "create",
-              "payload": {
-                  "title": [
-                      {
-                          "type": "text",
-                          "text": {"content": "students"}
-                      }
-                  ],
-                  "properties": {
-                      "studentid": {"number": {}},
-                      "name": {"title": {}},
-                      "grade": {"rich_text": {}}
-                  }
-              }
-          }
-
 
 
 
@@ -279,33 +195,6 @@ Module Contents
 
    .. py:method:: compile() -> None
 
-      Compile the node to an executable JSON object.
-
-      Subclasses use this method to create the dictionary representing the operation.
-      The following example shows the generated JSON code for the SQL statement ``CREATE TABLE``:
-
-      .. code-block:: json
-
-          {
-              "endpoint": "databases",
-              "request": "create",
-              "payload": {
-                  "title": [
-                      {
-                          "type": "text",
-                          "text": {"content": "students"}
-                      }
-                  ],
-                  "properties": {
-                      "studentid": {"number": {}},
-                      "name": {"title": {}},
-                      "grade": {"rich_text": {}}
-                  }
-              }
-          }
-
-
-
 
    .. py:method:: __eq__(value: SqlNode) -> bool
 
@@ -337,36 +226,6 @@ Module Contents
 
 
    .. py:attribute:: columns
-
-
-   .. py:method:: compile()
-
-      Compile the node to an executable JSON object.
-
-      Subclasses use this method to create the dictionary representing the operation.
-      The following example shows the generated JSON code for the SQL statement ``CREATE TABLE``:
-
-      .. code-block:: json
-
-          {
-              "endpoint": "databases",
-              "request": "create",
-              "payload": {
-                  "title": [
-                      {
-                          "type": "text",
-                          "text": {"content": "students"}
-                      }
-                  ],
-                  "properties": {
-                      "studentid": {"number": {}},
-                      "name": {"title": {}},
-                      "grade": {"rich_text": {}}
-                  }
-              }
-          }
-
-
 
 
    .. py:method:: __getitem__(key: str) -> Optional[ColumnDef]
@@ -458,33 +317,6 @@ Module Contents
 
    .. py:method:: compile() -> None
 
-      Compile the node to an executable JSON object.
-
-      Subclasses use this method to create the dictionary representing the operation.
-      The following example shows the generated JSON code for the SQL statement ``CREATE TABLE``:
-
-      .. code-block:: json
-
-          {
-              "endpoint": "databases",
-              "request": "create",
-              "payload": {
-                  "title": [
-                      {
-                          "type": "text",
-                          "text": {"content": "students"}
-                      }
-                  ],
-                  "properties": {
-                      "studentid": {"number": {}},
-                      "name": {"title": {}},
-                      "grade": {"rich_text": {}}
-                  }
-              }
-          }
-
-
-
 
 .. py:class:: Where(expr: SqlNode)
 
@@ -520,33 +352,6 @@ Module Contents
 
 
    .. py:method:: compile() -> None
-
-      Compile the node to an executable JSON object.
-
-      Subclasses use this method to create the dictionary representing the operation.
-      The following example shows the generated JSON code for the SQL statement ``CREATE TABLE``:
-
-      .. code-block:: json
-
-          {
-              "endpoint": "databases",
-              "request": "create",
-              "payload": {
-                  "title": [
-                      {
-                          "type": "text",
-                          "text": {"content": "students"}
-                      }
-                  ],
-                  "properties": {
-                      "studentid": {"number": {}},
-                      "name": {"title": {}},
-                      "grade": {"rich_text": {}}
-                  }
-              }
-          }
-
-
 
 
 .. py:class:: Expression(column: str, operator: str, value: Union[int, float, str])
@@ -593,33 +398,6 @@ Module Contents
 
 
    .. py:method:: compile() -> None
-
-      Compile the node to an executable JSON object.
-
-      Subclasses use this method to create the dictionary representing the operation.
-      The following example shows the generated JSON code for the SQL statement ``CREATE TABLE``:
-
-      .. code-block:: json
-
-          {
-              "endpoint": "databases",
-              "request": "create",
-              "payload": {
-                  "title": [
-                      {
-                          "type": "text",
-                          "text": {"content": "students"}
-                      }
-                  ],
-                  "properties": {
-                      "studentid": {"number": {}},
-                      "name": {"title": {}},
-                      "grade": {"rich_text": {}}
-                  }
-              }
-          }
-
-
 
 
 .. py:class:: Parser(tokens: Iterator[Token])
