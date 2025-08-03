@@ -11,17 +11,17 @@ normlite.notiondbapi._visitor_impl
    :class:`notiondbapi._model.NotionPage` or :class:`notiondbapi._model.NotionDatabase` objects, which have been constructed by parsing the
    JSON object return by the Notion API:
 
-       1. Create a DBAPI row: :class:`notiondbapi._visitor_impl.ToRowVisitor`.
+       1. Create a DBAPI row: :class:`normlite.notiondbapi._visitor_impl.ToRowVisitor`.
 
        2. Create a DBAPI description: :class:`normlite.notiondbapi._visitor_impl.ToDescVisitor`.
 
-   :class:`ToRowVisitor` constructs the row objects returned by :meth:`notiondbapi.dbapi2.Cursor.fetchone()` and
-   :meth:`notiondbapi.dbapi2.Cursor.fetchall()`. A row object is a Python ``tuple`` containing one value for each column
+   :class:`ToRowVisitor` constructs the row objects returned by :meth:`normlite.notiondbapi.dbapi2.Cursor.fetchone()` and
+   :meth:`normlite.notiondbapi.dbapi2.Cursor.fetchall()`. A row object is a Python ``tuple`` containing one value for each column
    in the table representing the corresponding Notion object.
 
    :class:`ToDescVisitor` construct the cursor description object returned by the read-only attribute
-   :attr:`notiondbapi.dbapi2.Cursor.description`. A description object is a sequence of Python tuples containing metadata
-   used by the :class:`cursor.CursorResult` to construct :class:`cursor.Row` objects for a more pythonic hanlding
+   :attr:`normlite.notiondbapi.dbapi2.Cursor.description`. A description object is a sequence of Python tuples containing metadata
+   used by the :class:`normlite.cursor.CursorResult` to construct :class:`normlite.cursor.Row` objects for a more pythonic hanlding
    of the query results.
 
    For example, given the following page object is returned from a query to Notion (non
@@ -348,7 +348,7 @@ Module Contents
 
    .. py:method:: _add_not_used_seq(col_desc: tuple) -> tuple
 
-      Helper to fill in the missing elements with ``None``s.
+      Helper to fill in the missing elements with ``None`` values.
 
 
 
