@@ -76,6 +76,36 @@ class Cursor:
         self._description: tuple = None
         """Provide information describing one result column."""
 
+        self._closed = False
+        """Whether this cursor is closed. Always ``False`` after initialitation."""
+
+    @property
+    def description(self) -> tuple:
+        """Provide the cursor description.
+        
+        This read-only attribute is a sequence of 7-item sequences.   
+        
+        Each of these sequences contains information describing one result column:
+
+        * ``name``: The column name.
+
+        * ``type_code``: The type code used to map the Notion to the Python type system. Currently, it is just a string.
+
+        * ``display_size``: Not used. Always ``None``.
+        
+        * ``internal_size``: Not used. Always ``None``.
+
+        * ``precision``: Not used. Always ``None``.
+        
+        * ``scale``: Not used. Always ``None``.
+
+        * ``null_ok``: Not used. Always ``None``.
+
+        This attribute will be ``None`` for operations that do not return rows or if the cursor has not had an operation invoked via the 
+        :meth:`execute()` or :meth:`executemany()` methods yet.
+        """
+        return self._description
+    
     @property
     def rowcount(self) -> int:
         """This read-only attribute specifies the number of rows that 
@@ -229,15 +259,24 @@ class Cursor:
                     f'{ve}'
                 ) from ve
         
-    def __iter__(self) -> Iterable[tuple]:
-        """Make cursors compatible to the iteration protocol.
+    def __iter__(self) -> Iterator[tuple]:
+        """Make cursors compatible with the iteration protocol.
 
-        Note:
-            This method is not tested yet. Don't use it yet.
+        .. versionchanged:: 0.5.0
+            Calling this method on a closed cursor raises the :exc:`Error`.
+
+        Raises:
+            Error: If the cusors is closed.
 
         Yields:
             Iterator[Iterable[tuple]]: The next row in the result set.
         """
+        if self._closed:
+            raise Error(
+                'This cursor is closed. '
+                'Cannot fetch rows or execute operations on a closed cursor'
+            )
+
         while self._result_set:
             next_row = self._result_set.pop(0)
             yield next_row
@@ -245,17 +284,29 @@ class Cursor:
     def fetchone(self) -> Optional[tuple]:
         """Fetch the next row of a query result set.
 
+        This method returns the next row or ``None`` when no more data is available.
+
         Note:    
             The current implementation guarantees that a call to this method will only move 
             the associated cursor forward by one row.
 
+        .. versionchanged:: 0.5.0
+            Calling this method on a closed cursor raises the :exc:`Error`.
+
         Raises:
+            Error: If the cusors is closed.
             InterfaceError: If the previous call to :meth:`.execute()` did not produce any result set
                             or no call was issued yet.
 
         Returns:
             Optional[tuple]: The next row as single tuple, or an empty tuple when no more data is available.
         """
+        if self._closed:
+            raise Error(
+                'This cursor is closed. '
+                'Cannot fetch rows or execute operations on a closed cursor'
+            )
+
         if self._result_set is None:
             # the previous call to .execute*() did not produce any result set 
             # or no call was issued yet.
@@ -286,16 +337,26 @@ class Cursor:
         parsed and cross-compiled into Python ``tuple`` objects.
 
         Important:
-        After a call to the :meth:`.fetchall()` the result set is exausted (empty). Any subsequent call
-        to this method returns an empty sequence. 
+            After a call to the :meth:`.fetchall()` the result set is exausted (empty). Any subsequent call
+            to this method returns an empty sequence. 
+
+        .. versionchanged:: 0.5.0
+            Calling this method on a closed cursor raises the :exc:`Error`.
 
         Raises:
+            Error: If the cusors is closed.
             InterfaceError: If the previous call to :meth:`.execute()` did not produce any result set
                             or no call was issued yet.
 
         Returns:
             List[tuple]: The list containing all the remaining queried rows. ``[]`` if no rows are available.
         """
+
+        if self._closed:
+            raise Error(
+                'This cursor is closed. '
+                'Cannot fetch rows or execute operations on a closed cursor'
+            )
 
         if self._result_set is None:
             # the previous call to .execute*() did not produce any result set 
@@ -335,6 +396,9 @@ class Cursor:
             result set. Always call this method prior to :meth:`Cursor.fetchone()` and :meth:`Cursor.fetchall()`,
             otherwise an :exc:`InterfaceError` error is raised. 
 
+        .. versionchanged:: 0.5.0
+            Calling this method on a closed cursor raises the :exc:`Error`.
+
         Examples:
             Create a new page as child of an exisisting database:
 
@@ -363,13 +427,20 @@ class Cursor:
             parameters (DBAPIExecuteParameters): A dictionary containing the payload for the Notion API request
 
         Raises:
-            InterfaceError: ``"properties"`` object not specified in parameters
-            InterfaceError: ``"parent"`` object not specified in parameters
+            Error: If the cursor is closed.
+            InterfaceError: ``"properties"`` object not specified in parameters.
+            InterfaceError: ``"parent"`` object not specified in parameters.
        
         Returns:
             Self: This :class:`Cursor` instance.
         """
         
+        if self._closed:
+            raise Error(
+                'This cursor is closed. '
+                'Cannot fetch rows or execute operations on a closed cursor'
+            )
+
         object_ = {}
         payload = {}
         if parameters.get('params', {}):
@@ -412,7 +483,20 @@ class Cursor:
             Self: This :class:`Cursor` instance.
         """
         raise NotImplementedError
-    
+
+    def close(self) -> None:
+        """Close the cursor now.
+
+        The cursor will be unusable from this point forward; an Error exception 
+        will be raised if any operation is attempted with the cursor.
+
+        .. versionadded:: 0.5.0
+        """
+        # set internal cursor state and close it
+        self._description = None
+        self._result_set = None
+        self._closed = True
+
     def _bind_parameters(self, parameters: DBAPIExecuteParameters) -> dict:
         """Helper for binding values to the payload."""
         

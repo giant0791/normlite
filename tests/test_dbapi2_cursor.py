@@ -2,7 +2,7 @@ import pdb
 import uuid
 
 import pytest
-from normlite.notiondbapi.dbapi2 import Cursor, InterfaceError
+from normlite.notiondbapi.dbapi2 import Cursor, Error, InterfaceError
 
 
 def test_rowcount_result_set_not_empty(dbapi_cursor: Cursor):
@@ -88,7 +88,7 @@ def test_lastrowid_one_modified_row(dbapi_cursor: Cursor):
             }
         }
     )
-
+    #pdb.set_trace()
     assert '680dee41-b447-451d-9d36-c6eaff13fb45' == str(uuid.UUID(int=dbapi_cursor.lastrowid))
 
 def test_lastrowid_many_modified_rows(dbapi_cursor: Cursor):
@@ -118,16 +118,12 @@ def test_fetchall_returning_multiple_rows(dbapi_cursor: Cursor):
 
     expected = [
         (
-            'page', '680dee41-b447-451d-9d36-c6eaff13fb45', False, False, 
-            'id', '%3AUPp', 'number', 12345,
-            'grade', 'A%40Hk', 'rich_text', 'B',
-            'name', 'BJXS', 'title', 'Isaac Newton',
+            '680dee41-b447-451d-9d36-c6eaff13fb45', False, False, 
+            12345, 'B', 'Isaac Newton',
         ),
         (
-            'page', '680dee41-b447-451d-9d36-c6eaff13fb46', True, True,
-            'id', 'Iowm', 'number', 67890,
-            'grade', 'Jsfb', 'rich_text', 'A',
-            'name', 'WOd%3B', 'title', 'Galileo Galilei',
+            '680dee41-b447-451d-9d36-c6eaff13fb46', True, True,
+            67890, 'A', 'Galileo Galilei',
         ),
     ]
     
@@ -167,10 +163,8 @@ def test_fetchone_returning_first_row(dbapi_cursor: Cursor):
     #   - .fetchone() returns first row inserted 
     #   - .rowcount returns the number of the remaining rows: 1
     expected_1 = (
-        'page', '680dee41-b447-451d-9d36-c6eaff13fb45', False, False, 
-        'id', '%3AUPp', 'number', 12345,
-        'grade', 'A%40Hk', 'rich_text', 'B',
-        'name', 'BJXS', 'title', 'Isaac Newton',
+        '680dee41-b447-451d-9d36-c6eaff13fb45', False, False, 
+        12345, 'B', 'Isaac Newton',
     )
 
     rowcount = dbapi_cursor.rowcount
@@ -191,17 +185,17 @@ def test_fetchone_until_result_set_empty(dbapi_cursor: Cursor):
     #   - .fetchone() returns the remaining row in the result set  
     #   - .rowcount returns the number of the remaining rows
     expected_1 = (
-        'page', '680dee41-b447-451d-9d36-c6eaff13fb45', False, False, 
-        'id', '%3AUPp', 'number', 12345,
-        'grade', 'A%40Hk', 'rich_text', 'B',
-        'name', 'BJXS', 'title', 'Isaac Newton',
+        '680dee41-b447-451d-9d36-c6eaff13fb45', False, False, 
+        12345,
+        'B',
+        'Isaac Newton',
     )
 
     expected_2 = (
-        'page', '680dee41-b447-451d-9d36-c6eaff13fb46', True, True,
-        'id', 'Iowm', 'number', 67890,
-        'grade', 'Jsfb', 'rich_text', 'A',
-        'name', 'WOd%3B', 'title', 'Galileo Galilei',
+        '680dee41-b447-451d-9d36-c6eaff13fb46', True, True,
+        67890,
+        'A',
+        'Galileo Galilei',
     )
 
     rowcount = dbapi_cursor.rowcount
@@ -239,3 +233,27 @@ def test_fetchone_undefined_result_set(dbapi_cursor: Cursor):
         assert new_rows is None
         assert dbapi_cursor.lastrowid is None
         assert dbapi_cursor.rowcount == -1
+
+def test_fetchone_on_closed_raises_error(dbapi_cursor: Cursor):
+    dbapi_cursor.close()
+
+    with pytest.raises(Error, match='This cursor is closed'):
+        dbapi_cursor.fetchone()
+
+def test_fetchall_on_closed_raises_error(dbapi_cursor: Cursor):
+    dbapi_cursor.close()
+
+    with pytest.raises(Error, match='This cursor is closed'):
+        dbapi_cursor.fetchall()
+
+def test_execute_on_closed_raises_error(dbapi_cursor: Cursor):
+    dbapi_cursor.close()
+
+    with pytest.raises(Error, match='This cursor is closed'):
+        dbapi_cursor.execute(
+            operation={
+                "endpoint": "pages", 
+                "request": "create"
+            },
+            parameters={}
+        )

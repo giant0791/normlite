@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>⚡ normlite: SQL Meets Notion &mdash; normlite 0.2.0 documentation</title>
+  <title>⚡ normlite: SQL Meets Notion &mdash; normlite 0.4.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
@@ -16,7 +16,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=938c9ccc"></script>
+      <script src="_static/documentation_options.js?v=6c02275b"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -116,8 +116,8 @@ All with the power of <strong>SQL</strong>, directly on your <strong>Notion</str
 <span class="n">rows</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SELECT id, name, grade FROM students&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
 <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
-<span class="c1"># Row(&#39;id&#39;: 1, &#39;name&#39;: &#39;Isaac Newton&#39;, &#39;grade&#39;: &#39;B&#39;)</span>
-<span class="c1"># Row(&#39;id&#39;: 2, &#39;name&#39;: &#39;Galileo Galilei&#39;, &#39;grade&#39;: &#39;A&#39;)</span>
+<span class="c1"># Row(1, &#39;Isaac Newton&#39;, &#39;B&#39;,)</span>
+<span class="c1"># Row(2, &#39;Galileo Galilei&#39;, &#39;A&#39;,)</span>
 </pre></div>
 </div>
 </section>
@@ -222,7 +222,7 @@ I’m eager to know if <code class="docutils literal notranslate"><span class="p
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2025, Gianmarco Antonini.</p>
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

@@ -1,0 +1,536 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.notion_sdk.client &mdash; normlite 0.4.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=6c02275b"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">normlite.notion_sdk.client</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for normlite.notion_sdk.client</h1><div class="highlight"><pre>
+<span></span><span class="c1"># notion_sdk/client.py </span>
+<span class="c1"># Copyright (C) 2025 Gianmarco Antonini</span>
+<span class="c1">#</span>
+<span class="c1"># This module is part of normlite and is released under the GNU Affero General Public License.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is free software: you can redistribute it and/or modify</span>
+<span class="c1"># it under the terms of the GNU Affero General Public License as published</span>
+<span class="c1"># by the Free Software Foundation, either version 3 of the License, or</span>
+<span class="c1"># (at your option) any later version.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is distributed in the hope that it will be useful,</span>
+<span class="c1"># but WITHOUT ANY WARRANTY; without even the implied warranty of</span>
+<span class="c1"># MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</span>
+<span class="c1"># GNU Affero General Public License for more details.</span>
+<span class="c1">#</span>
+<span class="c1"># You should have received a copy of the GNU Affero General Public License</span>
+<span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
+
+<span class="sd">&quot;&quot;&quot;Provide several client classes to the Notion API.</span>
+
+<span class="sd">This module provides high level client classes to abstract away the details</span>
+<span class="sd">of the Notion REST API.</span>
+<span class="sd">Two classes are best suited for testing: :class:`InMemoryNotionClient` which holds in memory the</span>
+<span class="sd">Notion data like pages and databases, and :class:`FileBasedNotionClient` which adds the capability</span>
+<span class="sd">to store the Notion data as a JSON file on the file system.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Self</span><span class="p">,</span> <span class="n">Set</span><span class="p">,</span> <span class="n">Type</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="kn">import</span> <span class="n">TracebackType</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">uuid</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span>
+
+<div class="viewcode-block" id="NotionError">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.NotionError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NotionError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Exception raised for all errors related to the Notion REST API.&quot;&quot;&quot;</span>
+    <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="AbstractNotionClient">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.AbstractNotionClient">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AbstractNotionClient</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for a Notion API client.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">allowed_operations</span><span class="p">:</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The set of Notion API calls.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ischema_page_id</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The object id for ``information_schema`` page.&quot;&quot;&quot;</span>
+
+        <span class="n">AbstractNotionClient</span><span class="o">.</span><span class="n">allowed_operations</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">name</span>
+            <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">AbstractNotionClient</span><span class="o">.</span><span class="n">__abstractmethods__</span>
+        <span class="p">}</span>
+
+<div class="viewcode-block" id="AbstractNotionClient.__call__">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.AbstractNotionClient.__call__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endpoint</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Enable function call style for REST Notion API client objects.</span>
+
+<span class="sd">        Example::</span>
+<span class="sd">        </span>
+<span class="sd">            # create add a new Notion page to the database with id = 680dee41-b447-451d-9d36-c6eaff13fb46</span>
+<span class="sd">            operation = {&quot;endpoint&quot;: &quot;pages&quot;, &quot;request&quot;: &quot;create&quot;}</span>
+<span class="sd">            payload = {</span>
+<span class="sd">                &#39;parent&#39;: {</span>
+<span class="sd">                    &quot;type&quot;: &quot;database_id&quot;,</span>
+<span class="sd">                    &quot;page_id&quot;: &quot;680dee41-b447-451d-9d36-c6eaff13fb46&quot;</span>
+<span class="sd">                },</span>
+<span class="sd">                &#39;properties&#39;: {</span>
+<span class="sd">                    &#39;Name&#39;: {&#39;title&#39;: [{&#39;text&#39;: {&#39;content&#39;: title}}]}</span>
+<span class="sd">                }</span>
+<span class="sd">            }</span>
+<span class="sd">            client = InMemoryNotionClient()</span>
+<span class="sd">            try:</span>
+<span class="sd">                object_ = client(</span>
+<span class="sd">                    operation[&#39;endpoint&#39;],</span>
+<span class="sd">                    operation[&#39;request&#39;],</span>
+<span class="sd">                    payload</span>
+<span class="sd">                )</span>
+<span class="sd">            except KeyError as ke:</span>
+<span class="sd">                raise NotionError(f&quot;Missing required key in operation dict: {ke.args[0]}&quot;)</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            endpoint (str): The REST API endpoint, example: ``databases``. </span>
+<span class="sd">            request (str): The REST API request, example: ``create``.</span>
+<span class="sd">            payload (dict): The JSON object as payload.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            NotionError: Unknown or unsupported operation. </span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: The JSON object returned by the NOTION API.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">method_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">endpoint</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">request</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">if</span> <span class="n">method_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="n">allowed_operations</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotionError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Unknown or unsupported operation: &#39;</span><span class="si">{</span><span class="n">method_name</span><span class="si">}</span><span class="s2">&#39;. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Allowed: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="n">allowed_operations</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="n">method</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method_name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">method</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span></div>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ischema_page_id</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ischema_page_id</span> 
+
+<div class="viewcode-block" id="AbstractNotionClient.pages_create">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.AbstractNotionClient.pages_create">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pages_create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a page object.</span>
+
+<span class="sd">        This method creates a new page that is a child of an existing page or database.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            payload (dict): The JSON object containing the required payload as specified by the Notion API.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: The page object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+
+<div class="viewcode-block" id="AbstractNotionClient.pages_retrieve">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.AbstractNotionClient.pages_retrieve">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pages_retrieve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Retrieve a page object.</span>
+
+<span class="sd">        This method is used as follows::</span>
+
+<span class="sd">            # retrieve page with id = &quot;680dee41-b447-451d-9d36-c6eaff13fb46&quot;</span>
+<span class="sd">            operation = {&quot;endpoint&quot;: &quot;pages&quot;, &quot;request&quot;: &quot;create&quot;}</span>
+<span class="sd">            payload = {&quot;id&quot;: &quot;680dee41-b447-451d-9d36-c6eaff13fb46&quot;}</span>
+<span class="sd">            client = InMemoryNotionClient()</span>
+<span class="sd">            try:</span>
+<span class="sd">                object_ = client(</span>
+<span class="sd">                    operation[&#39;endpoint&#39;],</span>
+<span class="sd">                    operation[&#39;request&#39;],</span>
+<span class="sd">                    payload</span>
+<span class="sd">                )</span>
+<span class="sd">            except KeyError as ke:</span>
+<span class="sd">                raise NotionError(f&quot;Missing required key in operation dict: {ke.args[0]}&quot;)</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            payload (dict): The JSON object containing the id to be retrieved.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: The page object containing the page properties only, not page content.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+    
+<div class="viewcode-block" id="AbstractNotionClient.databases_create">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.AbstractNotionClient.databases_create">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">databases_create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a database as a subpage in the specified parent page, with the specified properties schema.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            payload (dict): The JSON object containing the required payload as specified by the Notion API.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: The created database object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+    
+<div class="viewcode-block" id="AbstractNotionClient.databases_retrieve">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.AbstractNotionClient.databases_retrieve">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">databases_retrieve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Retrieve a database object for the provided ID</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            payload (dict): A dictionary containing the database id as key.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: The retrieved database object or and empty dictionary if no</span>
+<span class="sd">            databased object for the provided ID were found</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+</div>
+
+    
+<div class="viewcode-block" id="InMemoryNotionClient">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.InMemoryNotionClient">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InMemoryNotionClient</span><span class="p">(</span><span class="n">AbstractNotionClient</span><span class="p">):</span>
+    <span class="n">_store</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;store&quot;</span><span class="p">:</span> <span class="p">[]</span>
+    <span class="p">}</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The dictionary simulating the Notion store. It&#39;s a class attribute, so all instances share the same store.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="InMemoryNotionClient._create_store">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.InMemoryNotionClient._create_store">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_store</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">store_content</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Provide helper to create the simulated Notion store.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            store_content (List[dict], optional): The initial content for the Notion store. Defaults to ``[]``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">store_content</span><span class="p">:</span>
+            <span class="n">InMemoryNotionClient</span><span class="o">.</span><span class="n">_store</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;store&quot;</span><span class="p">:</span> <span class="n">store_content</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">InMemoryNotionClient</span><span class="o">.</span><span class="n">_store</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;store&quot;</span><span class="p">:</span> <span class="p">[],</span>
+            <span class="p">}</span>
+
+        <span class="c1"># Create the page &#39;information_schema&#39;</span>
+        <span class="c1"># Note: In the real Notion store, the &#39;parent&#39; object is the workspace,</span>
+        <span class="c1"># so the information schema page cannot be programmatically created via the API.</span>
+        <span class="c1"># In the fake store the parent&#39;s page id is just random.</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="p">{</span>                     
+                <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;page_id&#39;</span><span class="p">,</span>
+                <span class="s1">&#39;page_id&#39;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">())</span>
+            <span class="p">},</span>
+            <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;Name&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;title&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;information_schema&#39;</span><span class="p">}}]}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="n">ischema_page</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_add</span><span class="p">(</span><span class="s1">&#39;page&#39;</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span>
+
+        <span class="c1"># Update the ischema page id with the one just created</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ischema_page_id</span> <span class="o">=</span> <span class="n">ischema_page</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="InMemoryNotionClient._get">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.InMemoryNotionClient._get">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="c1"># TODO: rewrite using filter()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_store_len</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">InMemoryNotionClient</span><span class="o">.</span><span class="n">_store</span><span class="p">[</span><span class="s1">&#39;store&#39;</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">o</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="nb">id</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">o</span>
+                
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+    
+<div class="viewcode-block" id="InMemoryNotionClient._get_by_title">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.InMemoryNotionClient._get_by_title">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_by_title</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">title</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the first occurrence in the store of page or database with the passed title.&quot;&quot;&quot;</span>
+        <span class="c1"># TODO: rewrite using filter()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_store_len</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">InMemoryNotionClient</span><span class="o">.</span><span class="n">_store</span><span class="p">[</span><span class="s1">&#39;store&#39;</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">o</span><span class="p">[</span><span class="s1">&#39;object&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="nb">type</span> <span class="ow">and</span> <span class="nb">type</span> <span class="o">==</span> <span class="s1">&#39;database&#39;</span><span class="p">:</span>
+                    <span class="n">object_title</span> <span class="o">=</span> <span class="n">o</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;title&#39;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">object_title</span> <span class="ow">and</span> <span class="n">object_title</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;text&#39;</span><span class="p">][</span><span class="s1">&#39;content&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">title</span><span class="p">:</span>
+                        <span class="k">return</span> <span class="n">o</span>
+                <span class="k">elif</span> <span class="n">o</span><span class="p">[</span><span class="s1">&#39;object&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="nb">type</span> <span class="ow">and</span> <span class="nb">type</span> <span class="o">==</span> <span class="s1">&#39;page&#39;</span><span class="p">:</span>
+                    <span class="n">properties</span> <span class="o">=</span> <span class="n">o</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;properties&#39;</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">pv</span> <span class="ow">in</span> <span class="n">properties</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+                        <span class="n">prop_title</span> <span class="o">=</span> <span class="n">pv</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;title&#39;</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">prop_title</span> <span class="ow">and</span> <span class="n">prop_title</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;text&#39;</span><span class="p">][</span><span class="s1">&#39;content&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">title</span><span class="p">:</span>
+                            <span class="k">return</span> <span class="n">o</span>
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="InMemoryNotionClient._add">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.InMemoryNotionClient._add">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span> 
+        <span class="c1"># check well-formedness of payload</span>
+        <span class="c1"># Note: &quot;properties&quot; object existence is validated previously when binding parameters </span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;parent&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="c1"># objects being added need to have the parent they belog to</span>
+            <span class="k">raise</span> <span class="n">NotionError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Missing &quot;parent&quot; object in payload: </span><span class="si">{</span><span class="n">payload</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>  
+                    
+        <span class="n">new_page</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="n">new_page</span><span class="p">[</span><span class="s1">&#39;object&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">type</span>
+        <span class="n">new_page</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">())</span>
+        <span class="n">current_date</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+        <span class="n">new_page</span><span class="p">[</span><span class="s1">&#39;created_id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">current_date</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span>
+        <span class="n">new_page</span><span class="p">[</span><span class="s1">&#39;archived&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">new_page</span><span class="p">[</span><span class="s1">&#39;in_trash&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">new_page</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">type</span> <span class="o">==</span> <span class="s1">&#39;database&#39;</span><span class="p">:</span>
+            <span class="n">new_page</span><span class="p">[</span><span class="s1">&#39;is_inline&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">properties</span> <span class="o">=</span> <span class="n">new_page</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">prop_name</span><span class="p">,</span> <span class="n">prop_obj</span> <span class="ow">in</span> <span class="n">properties</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">prop_type</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">prop_obj</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+                <span class="n">properties</span><span class="p">[</span><span class="n">prop_name</span><span class="p">][</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">prop_type</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">InMemoryNotionClient</span><span class="o">.</span><span class="n">_store</span><span class="p">[</span><span class="s2">&quot;store&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_page</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">new_page</span></div>
+
+
+<div class="viewcode-block" id="InMemoryNotionClient._store_len">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.InMemoryNotionClient._store_len">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_store_len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">InMemoryNotionClient</span><span class="o">.</span><span class="n">_store</span><span class="p">[</span><span class="s1">&#39;store&#39;</span><span class="p">])</span></div>
+
+    
+<div class="viewcode-block" id="InMemoryNotionClient.pages_create">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.InMemoryNotionClient.pages_create">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pages_create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_add</span><span class="p">(</span><span class="s1">&#39;page&#39;</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="InMemoryNotionClient.pages_retrieve">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.InMemoryNotionClient.pages_retrieve">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pages_retrieve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_store_len</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">retrieved_page</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">retrieved_page</span><span class="p">[</span><span class="s1">&#39;object&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;page&#39;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">retrieved_page</span>
+        
+        <span class="k">return</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="InMemoryNotionClient.databases_create">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.InMemoryNotionClient.databases_create">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">databases_create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_add</span><span class="p">(</span><span class="s1">&#39;database&#39;</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="InMemoryNotionClient.databases_retrieve">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.InMemoryNotionClient.databases_retrieve">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">databases_retrieve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">retrieved_object</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">])</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NotionError</span><span class="p">(</span><span class="s1">&#39;Bad payload provided, missing &quot;database_id&quot;&#39;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">retrieved_object</span></div>
+</div>
+
+
+<div class="viewcode-block" id="FileBasedNotionClient">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.FileBasedNotionClient">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FileBasedNotionClient</span><span class="p">(</span><span class="n">InMemoryNotionClient</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Enhance the in-memory client with file based persistence.</span>
+
+<span class="sd">    This class extends the base :class:`InMemoryNotionClient` by providing the capability</span>
+<span class="sd">    to store and load the simulated Notion store content to and from the underlying file.</span>
+<span class="sd">    In addition, this class implements the context manager protocol allowing the following usage::</span>
+
+<span class="sd">        # persistently add new pages to my-database.json</span>
+<span class="sd">        client = FileBasedNotionClient(&quot;my-database.json&quot;)</span>
+<span class="sd">        with client as c:</span>
+<span class="sd">            c.pages_create(payload1)   # payload* are previously created JSON Notion objects to be added</span>
+<span class="sd">            c.pages_create(payload2)</span>
+<span class="sd">            c.pages_create(payload3)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">file_path</span> <span class="o">=</span> <span class="n">file_path</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The absolute path to the file storing the data contained in the file-base Notion client.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="FileBasedNotionClient.load">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.FileBasedNotionClient.load">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load the store content from the underlying file.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List[dict]: The JSON object as list of dictionaries containing the store.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">file_path</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">file</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="FileBasedNotionClient.__enter__">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.FileBasedNotionClient.__enter__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Self</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize the Notion store in memory.</span>
+
+<span class="sd">        When the context manager is entered, the Notion store is read in memory, if the corresponding</span>
+<span class="sd">        file existes. Otherwise, the store in memory is initialized with an empty list.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Self: This instance as required by the context manager protocol.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">file_path</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="c1"># The file containing the Notion store exists, read it into the _store class attribute</span>
+                <span class="n">store</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">load</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_create_store</span><span class="p">(</span><span class="n">store</span><span class="p">[</span><span class="s1">&#39;store&#39;</span><span class="p">])</span>  <span class="c1"># pass the list of objects as store content </span>
+                <span class="k">return</span> <span class="bp">self</span>
+            
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># No file exists, initialize the _store class attribute</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_create_store</span><span class="p">()</span>
+            <span class="k">return</span> <span class="bp">self</span></div>
+
+        
+<div class="viewcode-block" id="FileBasedNotionClient.dump">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.FileBasedNotionClient.dump">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">store_content</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Dump the store content onto the underlying file.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            store_content (List[dict]): The current store content present in memory.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">file_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">store_content</span><span class="p">,</span> <span class="n">file</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FileBasedNotionClient.__exit__">
+<a class="viewcode-back" href="../../../autoapi/normlite/notion_sdk/client/index.html#normlite.notion_sdk.client.FileBasedNotionClient.__exit__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">exctype</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Type</span><span class="p">[</span><span class="ne">BaseException</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">excinst</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="ne">BaseException</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">exctb</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">TracebackType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Dump the Notion stored to the file.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            exctype (Optional[Type[BaseException]]): The exception class. Defaults to ``None``.</span>
+<span class="sd">            excinst (Optional[BaseException]): The exception instance. Defaults to ``None``.</span>
+<span class="sd">            exctb (Optional[TracebackType]): The traceback object. Defaults to ``None``.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Optional[bool]: ``None`` as it is customary for context managers.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">FileBasedNotionClient</span><span class="o">.</span><span class="n">_store</span><span class="p">)</span></div>
+</div>
+
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

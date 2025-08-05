@@ -15,16 +15,21 @@
         {
           "object": "page",
           "id": "680dee41-b447-451d-9d36-c6eaff13fb45",
+          "archived": false,
+          "in_trash": null,
           "properties": {
-            "grade": {"type": "rich_text", "richt_text": [{"text": {"content": "B"}}]},
+            "grade": {"type": "rich_text", "rich_text": [{"text": {"content": "B"}}]},
             "name": {"type": "title", "title": [{"text": {"content": "Isaac Newton"}}]},
-            "id": {"type": "number", "number": "12345"}
+            "id": {"type": "number", "number": 12345}
           }
         }
       ]
     },
     "expected_row": {
-      "id": "12345",
+      "__id__": "680dee41-b447-451d-9d36-c6eaff13fb45",
+      "__archived__": false,
+      "__in_trash__": null,
+      "id": 12345,
       "name": "Isaac Newton",
       "grade": "B"
     }
@@ -49,15 +54,16 @@
           "id": "680dee41-b447-451d-9d36-c6eaff13fb46",
           "properties": {
             "name": {"type": "title", "title": [{"text": {"content": "Ada Lovelace"}}]},
-            "field": {"type": "rich_text", "richt_text": [{"text": {"content": "Mathematics"}}]},
-            "alive": {"type": "rich_text", "richt_text": [{"text": {"content": "No"}}]},
-            "id": {"type": "number", "number": "42"}
+            "field": {"type": "rich_text", "rich_text": [{"text": {"content": "Mathematics"}}]},
+            "alive": {"type": "rich_text", "rich_text": [{"text": {"content": "No"}}]},
+            "id": {"type": "number", "number": 42}
           }
         }
       ]
     },
     "expected_row": {
-      "id": "42",
+      "__id__": "680dee41-b447-451d-9d36-c6eaff13fb46",
+      "id": 42,
       "name": "Ada Lovelace",
       "field": "Mathematics",
       "alive": "No"

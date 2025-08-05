@@ -158,6 +158,7 @@ class Engine:
         In future versions, this class will be the proxy for handling different kind of clients.
 
     Examples of possible future extensions:
+    
         >>> # create a proxy object to a :memory: integration
         >>> engine = create_engine('normlite::///:memory:')
         >>> isinstance(engine.client, InMemoryNotionClient)

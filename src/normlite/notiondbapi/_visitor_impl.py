@@ -183,8 +183,6 @@ Important:
     its features outside.
 """
 
-import pdb
-from typing import Union
 from normlite.notiondbapi._model import NotionDatabase, NotionObjectVisitor, NotionPage, NotionProperty
 
 class ToRowVisitor(NotionObjectVisitor):
@@ -278,9 +276,9 @@ class ToDescVisitor(NotionObjectVisitor):
     
         # description sequence returned when a new database is created
         (
-            ('id', 'string', None,),         # object id
-            ('archived', None, None, )       # the archived flag
-            ('in_trash', None, None, )       # the in_trash flag
+            ('__id__', 'string', None,),         # object id
+            ('__archived__', None, None, )       # the archived flag
+            ('__in_trash__', None, None, )       # the in_trash flag
             ('id', 'number', 'evWq',),       # property name 'id'
             ('name', 'title', 'title',),     # property name 'name'
             ('grade', 'rich_text', 'V}lX' ), # property name 'grade'
@@ -297,8 +295,8 @@ class ToDescVisitor(NotionObjectVisitor):
 
         # sequence for page returned from a database queryreturn
         (
-            ('id', 'string', None,),         # object id
-            ('archived', None, None, )       # the archived flag
+            ('__id__', 'string', None,),         # object id
+            ('__archived__', None, None, )       # the archived flag
             ('id', None, 'evWq',),           # id only for property name 'id'
             ('name', None, 'title',),        # id only for property name 'name'
             ('grade', None, 'V}lX' ),        # id only for property name 'grade'
@@ -306,6 +304,11 @@ class ToDescVisitor(NotionObjectVisitor):
 
     .. versionchanged:: 0.4.0
         The overall cross-compilation implemented in :class:`ToDescVisitor` has been refactored to be fully DBAPI 2.0 compliant.
+
+    .. versionchanged:: 0.5.0
+        Additional metacolumns names changed to avoid name clashes with user-defined columns:
+        ``__id__`` (formerly ``__id__``), ``__archived__`` (formerly ``archived``), ``__in_trash__`` (formerly ``in_trash``),
+        ``__title__`` (formerly ``title``).
     
     """
     
@@ -326,9 +329,9 @@ class ToDescVisitor(NotionObjectVisitor):
             tuple: A DBAPI 2.0 compatible description tuple.
         """
         return (
-            self._add_not_used_seq(('id', 'string',)), 
-            self._add_not_used_seq(('archived', 'boolean',)),
-            self._add_not_used_seq(('in_trash', 'boolean',)),
+            self._add_not_used_seq(('__id__', 'string',)), 
+            self._add_not_used_seq(('__archived__', 'boolean',)),
+            self._add_not_used_seq(('__in_trash__', 'boolean',)),
             *[prop.accept(self) for prop in page.properties]             
         )
     
@@ -342,10 +345,10 @@ class ToDescVisitor(NotionObjectVisitor):
             tuple: A DBAPI 2.0 compatible description tuple.
         """
         return (
-            self._add_not_used_seq(('id', 'string',)), 
-            self._add_not_used_seq(('title', 'string',)),
-            self._add_not_used_seq(('archived', 'boolean',)),
-            self._add_not_used_seq(('in_trash', 'boolean',)),
+            self._add_not_used_seq(('__id__', 'string',)), 
+            self._add_not_used_seq(('__title__', 'string',)),
+            self._add_not_used_seq(('__archived__', 'boolean',)),
+            self._add_not_used_seq(('__in_trash__', 'boolean',)),
              *[prop.accept(self) for prop in db.properties] 
         )
     

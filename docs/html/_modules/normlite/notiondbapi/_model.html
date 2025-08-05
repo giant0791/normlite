@@ -1,0 +1,482 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.notiondbapi._model &mdash; normlite 0.4.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=6c02275b"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">normlite.notiondbapi._model</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for normlite.notiondbapi._model</h1><div class="highlight"><pre>
+<span></span><span class="c1"># notiondbapi/_model.py</span>
+<span class="c1"># Copyright (C) 2025 Gianmarco Antonini</span>
+<span class="c1">#</span>
+<span class="c1"># This module is part of normlite and is released under the GNU Affero General Public License.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is free software: you can redistribute it and/or modify</span>
+<span class="c1"># it under the terms of the GNU Affero General Public License as published</span>
+<span class="c1"># by the Free Software Foundation, either version 3 of the License, or</span>
+<span class="c1"># (at your option) any later version.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is distributed in the hope that it will be useful,</span>
+<span class="c1"># but WITHOUT ANY WARRANTY; without even the implied warranty of</span>
+<span class="c1"># MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</span>
+<span class="c1"># GNU Affero General Public License for more details.</span>
+<span class="c1">#</span>
+<span class="c1"># You should have received a copy of the GNU Affero General Public License</span>
+<span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
+
+<span class="sd">&quot;&quot;&quot;Provide the Notion API Object model.</span>
+
+<span class="sd">This module implements a simple Notion API object model for easy cross-compilation</span>
+<span class="sd">of Notion JSON objects into tuples of elements.</span>
+<span class="sd">Notion JSON obejcts like pages and databases are cross-compiled into a Python ``tuple`` object,</span>
+<span class="sd">which represents a row as returned by the DBAPI methods :meth:`notiondbapi.dbapi2.Cursor.fetchone()` or</span>
+<span class="sd">:meth:`notiondbapi.dbapi2.Cursor.fetchall()`.</span>
+
+<span class="sd">.. list-table:: Mapping between Notion and SQL Objects</span>
+<span class="sd">   :header-rows: 1</span>
+<span class="sd">   :widths: 15 10 75</span>
+<span class="sd">   :class: longtable</span>
+
+<span class="sd">   * - Notion</span>
+<span class="sd">     - SQL</span>
+<span class="sd">     - Description</span>
+<span class="sd">   * - Page</span>
+<span class="sd">     - Row</span>
+<span class="sd">     - A Notion page belonging to a database maps to an SQL row in a table. The Python implementation</span>
+<span class="sd">       of the row is a ``tuple`` containing the key elements of the Notion page (see the class</span>
+<span class="sd">       :class:`notiondbapi._model.NotionPage` for more details).</span>
+<span class="sd">   * - Database</span>
+<span class="sd">     - Table</span>
+<span class="sd">     - A Notion database maps to an SQL table. The Python implementation</span>
+<span class="sd">       of the table is a ``tuple`` containing the key elements of the Notion database </span>
+<span class="sd">       (see the class :class:`notiondbapi._model.NotionDatabase` for more details).</span>
+
+<span class="sd">Important:</span>
+<span class="sd">    This module is **private** to the package :mod:`notiondbapi`. It is intended to be used *internally*</span>
+<span class="sd">    by the class :class:`notiondbapi.dbapi2.Cursor` to cross-compile Notion JSON objects. </span>
+<span class="sd">    **Do not import directly.**</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+
+
+<div class="viewcode-block" id="AbstractNotionObject">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.AbstractNotionObject">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AbstractNotionObject</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Abstract class for Notion API objects.</span>
+
+<span class="sd">    This class starts the class hierarchy and it is used to represent the starting node</span>
+<span class="sd">    of the **Abstract Syntax Tree** built by the parser.</span>
+<span class="sd">    It implements the design pattern **Visitor**.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="AbstractNotionObject.accept">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.AbstractNotionObject.accept">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">accept</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">visitor</span><span class="p">:</span> <span class="n">NotionObjectVisitor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Provide entry point for the visitor to compile.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            visitor (NotionObjectVisitor): The compiler.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: A tuple containing a subset of values for the represented Notion object. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="NotionObjectVisitor">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionObjectVisitor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NotionObjectVisitor</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Abstract class for a Notion API objects compiler.</span>
+
+<span class="sd">    Subclasses of :class:`NotionObjectVisitor` implement the cross-compilation for each Notion object. </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="NotionObjectVisitor.visit_page">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionObjectVisitor.visit_page">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">visit_page</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">page</span><span class="p">:</span> <span class="n">NotionPage</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compile a Notion page object and extracts the relevant values.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            page (NotionPage): The Notion page object to be cross-compiled.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: A tuple containing the relevant values for this page.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+
+<div class="viewcode-block" id="NotionObjectVisitor.visit_database">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionObjectVisitor.visit_database">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">visit_database</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">db</span><span class="p">:</span> <span class="n">NotionDatabase</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compile a Notion database object and extracts the relevant values.</span>
+
+<span class="sd">        The extracted values in the tuple are:</span>
+<span class="sd">        ``(&lt;object&gt;, &lt;id&gt;, &lt;title&gt;, &lt;archived&gt;, &lt;in_trash&gt;, &lt;properties&gt;)``</span>
+
+<span class="sd">        - ``&lt;object&gt;``: ``str``, always ``&quot;database&quot;``.</span>
+<span class="sd">        - ``&lt;id&gt;``: ``str``, the unique identifier of the database.</span>
+<span class="sd">        - ``&lt;title&gt;``: ``str``, th name of the database as it appears in Notion.</span>
+<span class="sd">        - ``&lt;archived&gt;``: ``bool``, the archived status of the page. </span>
+<span class="sd">        - ``&lt;in_trash&gt;``: ``bool``, whether the page is in Trash (can be ``None``</span>
+<span class="sd">          if not returned by Notion).</span>
+<span class="sd">        - ``&lt;properties&gt;``: The schema of properties for the database as they appear in Notion. </span>
+<span class="sd">        </span>
+<span class="sd">        The database properties ``&lt;properties&gt;`` are rendered as a flattened sequence of values:</span>
+<span class="sd">        ``&lt;key&gt;, &lt;pid&gt;, &lt;type&gt;, &lt;value&gt;`` (see also :class:`NotionProperty`)</span>
+
+<span class="sd">        - ``&lt;key&gt;``: ``str``, the property key.</span>
+<span class="sd">        - ``&lt;pid&gt;``: ``str``, the underlying identifier for the property.</span>
+<span class="sd">        - ``&lt;type&gt;``: ``str``, the type that controls the behavior of the property. </span>
+<span class="sd">          Currently supported types are: </span>
+<span class="sd">          ``&quot;number&quot;``, ``&quot;rich_text&quot;``, ``&quot;title&quot;``.</span>
+
+<span class="sd">        Example:</span>
+<span class="sd">            &gt;&gt;&gt; properties = [</span>
+<span class="sd">            &gt;&gt;&gt;     NotionProperty(&#39;id&#39;, &#39;evWq&#39;, &#39;number&#39;, None)</span>
+<span class="sd">            &gt;&gt;&gt;     NotionProperty(&#39;name&#39;, &#39;title&#39;, &#39;title&#39;, None)</span>
+<span class="sd">            &gt;&gt;&gt;     NotionProperty(&#39;grade&#39;, &#39;V}lX&#39;, &#39;rich_text&#39;, None)</span>
+<span class="sd">            &gt;&gt;&gt; ]</span>
+<span class="sd">            &gt;&gt;&gt; page = NotionDatabase(</span>
+<span class="sd">            &gt;&gt;&gt;     &#39;5bc1211ca-e3f1-4939-ae34-5260b16f627c&#39;, </span>
+<span class="sd">            &gt;&gt;&gt;     &#39;students&#39;,</span>
+<span class="sd">            &gt;&gt;&gt;     properties</span>
+<span class="sd">            &gt;&gt;&gt; )</span>
+<span class="sd">            &gt;&gt;&gt; visitor = ToRowVisitor()</span>
+<span class="sd">            &gt;&gt;&gt; row = page.accept(visitor)</span>
+<span class="sd">            &gt;&gt;&gt; row</span>
+<span class="sd">            (&#39;database&#39;, &#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;, False, None,</span>
+<span class="sd">            &#39;id&#39;, &#39;evWq&#39;, &#39;number&#39;, None,</span>
+<span class="sd">            &#39;name&#39;, &#39;title&#39;, &#39;title&#39;, None,</span>
+<span class="sd">            &#39;grade&#39;, &#39;V}lX&#39;, &#39;rich_text&#39;, None,)</span>
+
+
+<span class="sd">        Args:</span>
+<span class="sd">            page (NotionDatabase): The Notion database object to be cross-compiled.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: A tuple containing the relevant values for this adatabase.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+
+<div class="viewcode-block" id="NotionObjectVisitor.visit_property">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionObjectVisitor.visit_property">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">visit_property</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prop</span><span class="p">:</span> <span class="n">NotionProperty</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
+        <span class="k">pass</span></div>
+</div>
+
+
+<div class="viewcode-block" id="NotionProperty">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionProperty">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NotionProperty</span><span class="p">(</span><span class="n">AbstractNotionObject</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide Python object implementation for Notion property objects.</span>
+
+<span class="sd">    This class implements both Notion page and database property objects.</span>
+<span class="sd">    Its :meth:`NotionProperty.accept()` compiles the property elements into a tuple as follows::</span>
+
+<span class="sd">        &gt;&gt;&gt; property = NotionProperty(&#39;name&#39;, &#39;title&#39;, &#39;title&#39;)  # no value provided</span>
+<span class="sd">        &gt;&gt;&gt; visitor = ToRowVisitor()</span>
+<span class="sd">        &gt;&gt;&gt; row = property.accept(visitor)</span>
+<span class="sd">        &gt;&gt;&gt; row</span>
+<span class="sd">        (&#39;name&#39;, &#39;title&#39;, &#39;title&#39;, None)</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        name (str): The property name.</span>
+<span class="sd">        id (str): The property id.</span>
+<span class="sd">        type (str): The property type.</span>
+<span class="sd">        value (Any, optional): The property value. Defaults to ``None`` (for example, database properties).</span>
+<span class="sd">    </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span> 
+            <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
+            <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
+            <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
+            <span class="n">value</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;name (str): The property name.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">id</span> <span class="o">=</span> <span class="nb">id</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;id (str): The property id.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">type</span> <span class="o">=</span> <span class="nb">type</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;type (str): The property type.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">value</span> <span class="o">=</span> <span class="n">value</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;value (Any): The property value. Defaults to ``None``</span>
+<span class="sd">        when a property belongs to a database object or when the parent object is a </span>
+<span class="sd">        newly created object.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="NotionProperty.accept">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionProperty.accept">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">accept</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">visitor</span><span class="p">:</span> <span class="n">NotionObjectVisitor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compile the property object to a tuple.</span>
+
+<span class="sd">        Example:</span>
+<span class="sd">            &gt;&gt;&gt; # property is a previously created NotionProperty object</span>
+<span class="sd">            &gt;&gt;&gt; visitor = ToRowVisitor()</span>
+<span class="sd">            &gt;&gt;&gt; row = visitor.accept(property)</span>
+<span class="sd">            &gt;&gt;&gt; row</span>
+<span class="sd">            (&#39;id&#39;, &#39;evWq&#39;, &#39;number&#39;, None,)</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            visitor (NotionObjectVisitor): The compiler.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: The tuple describing the property object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">visitor</span><span class="o">.</span><span class="n">visit_property</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="NotionProperty.__repr__">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionProperty.__repr__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s1">&#39;Property(name=&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s1">&quot;, id=&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">id</span><span class="si">}</span><span class="s1">&quot;, type=&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">type</span><span class="si">}</span><span class="s1">&quot;, value=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s1">)&#39;</span></div>
+</div>
+
+
+
+<span class="c1"># === Notion Objects ===</span>
+
+<div class="viewcode-block" id="NotionPage">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionPage">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NotionPage</span><span class="p">(</span><span class="n">AbstractNotionObject</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide Python object implementation for Notion page objects.</span>
+
+<span class="sd">    This class implements Notion page objects.</span>
+<span class="sd">    Its :meth:`NotionPage.accept()` compiles the page elements into a tuple as follows::</span>
+
+<span class="sd">        &gt;&gt;&gt; properties = [</span>
+<span class="sd">        &gt;&gt;&gt;     NotionProperty(&#39;Price&#39;, &#39;BJXS&#39;, &#39;number&#39;, 2.5)</span>
+<span class="sd">        &gt;&gt;&gt;     NotionProperty(&#39;Name&#39;, &#39;title&#39;, &#39;title&#39;, &#39;Tuscan kale&#39;)</span>
+<span class="sd">        &gt;&gt;&gt; ]</span>
+<span class="sd">        &gt;&gt;&gt; page = NotionPage(</span>
+<span class="sd">        &gt;&gt;&gt;     &#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;,     # page id as assigned by Notion</span>
+<span class="sd">        &gt;&gt;&gt;     False,                                      # archived flag is False for this page</span>
+<span class="sd">        &gt;&gt;&gt;     None,                                       # in_trash flag is not provided</span>
+<span class="sd">        &gt;&gt;&gt;     properties</span>
+<span class="sd">        &gt;&gt;&gt; )</span>
+<span class="sd">        &gt;&gt;&gt; visitor = ToRowVisitor()</span>
+<span class="sd">        &gt;&gt;&gt; row = page.accept(visitor)</span>
+<span class="sd">        &gt;&gt;&gt; row</span>
+<span class="sd">        (&#39;page&#39;,&#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;, False, None,</span>
+<span class="sd">        &#39;Price&#39;, &#39;BJXS&#39;, &#39;number&#39;, 2.5,</span>
+<span class="sd">        &#39;Name&#39;, &#39;title&#39;, &#39;title&#39;, &#39;Tuscan kale&#39;)</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        id (str): The page id.</span>
+<span class="sd">        properties (List[NotionProperty]): The page properties</span>
+<span class="sd">        archived (Optional[bool], optional): The ``&quot;archived&quot;`` flag for this page. Defaults to ``None``.</span>
+<span class="sd">        in_trash (Optional[bool], optional): The ``&quot;in_trash&quot;`` flag for this page. Defaults to ``None``.</span>
+<span class="sd">     &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
+        <span class="n">properties</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">NotionProperty</span><span class="p">],</span>
+        <span class="n">archived</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> 
+        <span class="n">in_trash</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">id</span> <span class="o">=</span> <span class="nb">id</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The page id as assigned by Notion.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">archived</span> <span class="o">=</span> <span class="n">archived</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The ``&quot;archived&quot;`` flag for this page. Defaults to ``None`` when </span>
+<span class="sd">        the page is a newly created object.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">in_trash</span> <span class="o">=</span> <span class="n">in_trash</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The ``&quot;in_trash&quot;`` flag for this page. Defaults to ``None`` when</span>
+<span class="sd">        the page is a newly created object.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">properties</span> <span class="o">=</span> <span class="n">properties</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The page ``&quot;properties&quot;`` object.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="NotionPage.accept">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionPage.accept">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">accept</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">visitor</span><span class="p">:</span> <span class="n">NotionObjectVisitor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compile a Notion page into a row.</span>
+
+<span class="sd">        This method cross-compiles the page object into a row, which can be further processed by</span>
+<span class="sd">        the class :class:`normlite.notiondbapi.Cursor`.</span>
+<span class="sd">        The internal Python representation of a JSON Notion page object is a ``tuple``.</span>
+<span class="sd">        </span>
+<span class="sd">        Example:</span>
+<span class="sd">            &gt;&gt;&gt; # page is a previously created NotionPage object</span>
+<span class="sd">            &gt;&gt;&gt; visitor = ToRowVisitor()</span>
+<span class="sd">            &gt;&gt;&gt; row = visitor.accept(page)</span>
+<span class="sd">            &gt;&gt;&gt; row</span>
+<span class="sd">            (&#39;page&#39;,&#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;, False, None,</span>
+<span class="sd">            &#39;Price&#39;, &#39;BJXS&#39;, &#39;number&#39;, 2.5,</span>
+<span class="sd">            &#39;Name&#39;, &#39;title&#39;, &#39;title&#39;, &#39;Tuscan kale&#39;)</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            visitor (NotionObjectVisitor): The compiler.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple: The cross-compiled row.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">visitor</span><span class="o">.</span><span class="n">visit_page</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+</div>
+
+
+<div class="viewcode-block" id="NotionDatabase">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionDatabase">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NotionDatabase</span><span class="p">(</span><span class="n">AbstractNotionObject</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide Python object implementation for Notion database objects.</span>
+
+<span class="sd">    This class implements both Notion database objects.</span>
+<span class="sd">    Its :meth:`NotionDatabase.accept()` compiles the page elements into a tuple as follows::</span>
+
+<span class="sd">        &gt;&gt;&gt; properties = [</span>
+<span class="sd">        &gt;&gt;&gt;     NotionProperty(&#39;id&#39;, &#39;evWq&#39;, &#39;number&#39;, None),</span>
+<span class="sd">        &gt;&gt;&gt;     NotionProperty(&#39;name&#39;, &#39;title&#39;, &#39;title&#39;, None),</span>
+<span class="sd">        &gt;&gt;&gt;     NotionProperty(&#39;grade&#39;, &#39;V}lX&#39;, &#39;rich_text&#39;, None),</span>
+<span class="sd">        &gt;&gt;&gt; ]</span>
+<span class="sd">        &gt;&gt;&gt; database = NotionDatabase(</span>
+<span class="sd">        &gt;&gt;&gt;     &#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;,     # page id as assigned by Notion</span>
+<span class="sd">        &gt;&gt;&gt;     &#39;students&#39;,                                 # the database name</span>
+<span class="sd">        &gt;&gt;&gt;     properties,                                 # the properties as list of NotionProperty</span>
+<span class="sd">        &gt;&gt;&gt;     False,                                      # archived flag is False for this page</span>
+<span class="sd">        &gt;&gt;&gt;     None,                                       # in_trash flag is not provided</span>
+<span class="sd">        &gt;&gt;&gt; )</span>
+<span class="sd">        &gt;&gt;&gt; visitor = ToRowVisitor()</span>
+<span class="sd">        &gt;&gt;&gt; row = database.accept(visitor)</span>
+<span class="sd">        &gt;&gt;&gt; row</span>
+<span class="sd">        (&#39;database&#39;,&#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;, &#39;students&#39;, False, None,</span>
+<span class="sd">        &#39;id&#39;, &#39;evWq&#39;, &#39;number&#39;, None,</span>
+<span class="sd">        &#39;name&#39;, &#39;title&#39;, &#39;title&#39;, None,</span>
+<span class="sd">        &#39;grade&#39;, &#39;V}lX&#39;, &#39;rich_text&#39;, None,)</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        AbstractNotionObject (_type_): _description_</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> 
+        <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
+        <span class="n">title</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
+        <span class="n">properties</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">NotionProperty</span><span class="p">],</span>
+        <span class="n">archived</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> 
+        <span class="n">in_trash</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">id</span> <span class="o">=</span> <span class="nb">id</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">title</span> <span class="o">=</span> <span class="n">title</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">archived</span> <span class="o">=</span> <span class="n">archived</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">in_trash</span> <span class="o">=</span> <span class="n">in_trash</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">properties</span> <span class="o">=</span> <span class="n">properties</span>
+
+<div class="viewcode-block" id="NotionDatabase.accept">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionDatabase.accept">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">accept</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">visitor</span><span class="p">:</span> <span class="n">NotionObjectVisitor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">visitor</span><span class="o">.</span><span class="n">visit_database</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="NotionDatabase.__repr__">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/_model/index.html#normlite.notiondbapi._model.NotionDatabase.__repr__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">db_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Database(id=&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">id</span><span class="si">}</span><span class="s1">&quot;, title=&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s1">&quot;, archived=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">archived</span><span class="si">}</span><span class="s1">, in_trash=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">in_trash</span><span class="si">}</span><span class="s1">)&#39;</span>
+        <span class="n">db_str</span> <span class="o">+=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">prop</span> <span class="k">for</span> <span class="n">prop</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">properties</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">db_str</span> <span class="o">+</span> <span class="s1">&#39;)&#39;</span> </div>
+</div>
+
+
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

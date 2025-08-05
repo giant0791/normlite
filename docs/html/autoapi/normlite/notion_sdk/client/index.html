@@ -1,0 +1,519 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.notion_sdk.client &mdash; normlite 0.4.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=6c02275b"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+    <link rel="next" title="normlite.notiondbapi" href="../../notiondbapi/index.html" />
+    <link rel="prev" title="normlite.notion_sdk" href="../index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html">normlite</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../../cursor/index.html">normlite.cursor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../engine/index.html">normlite.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../exceptions/index.html">normlite.exceptions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../future/index.html">normlite.future</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="../index.html">normlite.notion_sdk</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notiondbapi/index.html">normlite.notiondbapi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../sql/index.html">normlite.sql</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../transaction/index.html">normlite.transaction</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">normlite</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">normlite.notion_sdk</a></li>
+      <li class="breadcrumb-item active">normlite.notion_sdk.client</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../../_sources/autoapi/normlite/notion_sdk/client/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-normlite.notion_sdk.client">
+<span id="normlite-notion-sdk-client"></span><h1>normlite.notion_sdk.client<a class="headerlink" href="#module-normlite.notion_sdk.client" title="Link to this heading"></a></h1>
+<p>Provide several client classes to the Notion API.</p>
+<p>This module provides high level client classes to abstract away the details
+of the Notion REST API.
+Two classes are best suited for testing: <a class="reference internal" href="#normlite.notion_sdk.client.InMemoryNotionClient" title="normlite.notion_sdk.client.InMemoryNotionClient"><code class="xref py py-class docutils literal notranslate"><span class="pre">InMemoryNotionClient</span></code></a> which holds in memory the
+Notion data like pages and databases, and <a class="reference internal" href="#normlite.notion_sdk.client.FileBasedNotionClient" title="normlite.notion_sdk.client.FileBasedNotionClient"><code class="xref py py-class docutils literal notranslate"><span class="pre">FileBasedNotionClient</span></code></a> which adds the capability
+to store the Notion data as a JSON file on the file system.</p>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py exception">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.NotionError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notion_sdk.client.</span></span><span class="sig-name descname"><span class="pre">NotionError</span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#NotionError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.NotionError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/exceptions.html#Exception" title="(in Python v3.13)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Exception</span></code></a></p>
+<p>Exception raised for all errors related to the Notion REST API.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.AbstractNotionClient">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notion_sdk.client.</span></span><span class="sig-name descname"><span class="pre">AbstractNotionClient</span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#AbstractNotionClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.AbstractNotionClient" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/abc.html#abc.ABC" title="(in Python v3.13)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">abc.ABC</span></code></a></p>
+<p>Base class for a Notion API client.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.AbstractNotionClient.allowed_operations">
+<span class="sig-name descname"><span class="pre">allowed_operations</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Set</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.notion_sdk.client.AbstractNotionClient.allowed_operations" title="Link to this definition"></a></dt>
+<dd><p>The set of Notion API calls.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.AbstractNotionClient._ischema_page_id">
+<span class="sig-name descname"><span class="pre">_ischema_page_id</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.notion_sdk.client.AbstractNotionClient._ischema_page_id" title="Link to this definition"></a></dt>
+<dd><p>The object id for <code class="docutils literal notranslate"><span class="pre">information_schema</span></code> page.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.AbstractNotionClient.__call__">
+<span class="sig-name descname"><span class="pre">__call__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">endpoint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#AbstractNotionClient.__call__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.AbstractNotionClient.__call__" title="Link to this definition"></a></dt>
+<dd><p>Enable function call style for REST Notion API client objects.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># create add a new Notion page to the database with id = 680dee41-b447-451d-9d36-c6eaff13fb46</span>
+<span class="n">operation</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;endpoint&quot;</span><span class="p">:</span> <span class="s2">&quot;pages&quot;</span><span class="p">,</span> <span class="s2">&quot;request&quot;</span><span class="p">:</span> <span class="s2">&quot;create&quot;</span><span class="p">}</span>
+<span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;database_id&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;page_id&quot;</span><span class="p">:</span> <span class="s2">&quot;680dee41-b447-451d-9d36-c6eaff13fb46&quot;</span>
+    <span class="p">},</span>
+    <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;Name&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;title&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="n">title</span><span class="p">}}]}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+<span class="n">client</span> <span class="o">=</span> <span class="n">InMemoryNotionClient</span><span class="p">()</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">object_</span> <span class="o">=</span> <span class="n">client</span><span class="p">(</span>
+        <span class="n">operation</span><span class="p">[</span><span class="s1">&#39;endpoint&#39;</span><span class="p">],</span>
+        <span class="n">operation</span><span class="p">[</span><span class="s1">&#39;request&#39;</span><span class="p">],</span>
+        <span class="n">payload</span>
+    <span class="p">)</span>
+<span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">ke</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="n">NotionError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Missing required key in operation dict: </span><span class="si">{</span><span class="n">ke</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>endpoint</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The REST API endpoint, example: <code class="docutils literal notranslate"><span class="pre">databases</span></code>.</p></li>
+<li><p><strong>request</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The REST API request, example: <code class="docutils literal notranslate"><span class="pre">create</span></code>.</p></li>
+<li><p><strong>payload</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a>) – The JSON object as payload.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#normlite.notion_sdk.client.NotionError" title="normlite.notion_sdk.client.NotionError"><strong>NotionError</strong></a> – Unknown or unsupported operation.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The JSON object returned by the NOTION API.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.AbstractNotionClient.ischema_page_id">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ischema_page_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><a class="headerlink" href="#normlite.notion_sdk.client.AbstractNotionClient.ischema_page_id" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.AbstractNotionClient.pages_create">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">pages_create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#AbstractNotionClient.pages_create"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.AbstractNotionClient.pages_create" title="Link to this definition"></a></dt>
+<dd><p>Create a page object.</p>
+<p>This method creates a new page that is a child of an existing page or database.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>payload</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a>) – The JSON object containing the required payload as specified by the Notion API.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The page object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.AbstractNotionClient.pages_retrieve">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">pages_retrieve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#AbstractNotionClient.pages_retrieve"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.AbstractNotionClient.pages_retrieve" title="Link to this definition"></a></dt>
+<dd><p>Retrieve a page object.</p>
+<p>This method is used as follows:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># retrieve page with id = &quot;680dee41-b447-451d-9d36-c6eaff13fb46&quot;</span>
+<span class="n">operation</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;endpoint&quot;</span><span class="p">:</span> <span class="s2">&quot;pages&quot;</span><span class="p">,</span> <span class="s2">&quot;request&quot;</span><span class="p">:</span> <span class="s2">&quot;create&quot;</span><span class="p">}</span>
+<span class="n">payload</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;680dee41-b447-451d-9d36-c6eaff13fb46&quot;</span><span class="p">}</span>
+<span class="n">client</span> <span class="o">=</span> <span class="n">InMemoryNotionClient</span><span class="p">()</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">object_</span> <span class="o">=</span> <span class="n">client</span><span class="p">(</span>
+        <span class="n">operation</span><span class="p">[</span><span class="s1">&#39;endpoint&#39;</span><span class="p">],</span>
+        <span class="n">operation</span><span class="p">[</span><span class="s1">&#39;request&#39;</span><span class="p">],</span>
+        <span class="n">payload</span>
+    <span class="p">)</span>
+<span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">ke</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="n">NotionError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Missing required key in operation dict: </span><span class="si">{</span><span class="n">ke</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>payload</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a>) – The JSON object containing the id to be retrieved.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The page object containing the page properties only, not page content.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.AbstractNotionClient.databases_create">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">databases_create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#AbstractNotionClient.databases_create"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.AbstractNotionClient.databases_create" title="Link to this definition"></a></dt>
+<dd><p>Create a database as a subpage in the specified parent page, with the specified properties schema.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>payload</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a>) – The JSON object containing the required payload as specified by the Notion API.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The created database object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.AbstractNotionClient.databases_retrieve">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">databases_retrieve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#AbstractNotionClient.databases_retrieve"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.AbstractNotionClient.databases_retrieve" title="Link to this definition"></a></dt>
+<dd><p>Retrieve a database object for the provided ID</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>payload</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a>) – A dictionary containing the database id as key.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The retrieved database object or and empty dictionary if no
+databased object for the provided ID were found</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.InMemoryNotionClient">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notion_sdk.client.</span></span><span class="sig-name descname"><span class="pre">InMemoryNotionClient</span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#InMemoryNotionClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.InMemoryNotionClient" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.notion_sdk.client.AbstractNotionClient" title="normlite.notion_sdk.client.AbstractNotionClient"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AbstractNotionClient</span></code></a></p>
+<p>Base class for a Notion API client.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.InMemoryNotionClient._store">
+<span class="sig-name descname"><span class="pre">_store</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></em><a class="headerlink" href="#normlite.notion_sdk.client.InMemoryNotionClient._store" title="Link to this definition"></a></dt>
+<dd><p>The dictionary simulating the Notion store. It’s a class attribute, so all instances share the same store.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.InMemoryNotionClient._create_store">
+<span class="sig-name descname"><span class="pre">_create_store</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store_content</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">[]</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#InMemoryNotionClient._create_store"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.InMemoryNotionClient._create_store" title="Link to this definition"></a></dt>
+<dd><p>Provide helper to create the simulated Notion store.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>store_content</strong> (<em>List</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a><em>]</em><em>, </em><em>optional</em>) – The initial content for the Notion store. Defaults to <code class="docutils literal notranslate"><span class="pre">[]</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.InMemoryNotionClient._get">
+<span class="sig-name descname"><span class="pre">_get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#InMemoryNotionClient._get"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.InMemoryNotionClient._get" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.InMemoryNotionClient._get_by_title">
+<span class="sig-name descname"><span class="pre">_get_by_title</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#InMemoryNotionClient._get_by_title"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.InMemoryNotionClient._get_by_title" title="Link to this definition"></a></dt>
+<dd><p>Return the first occurrence in the store of page or database with the passed title.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.InMemoryNotionClient._add">
+<span class="sig-name descname"><span class="pre">_add</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#InMemoryNotionClient._add"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.InMemoryNotionClient._add" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.InMemoryNotionClient._store_len">
+<span class="sig-name descname"><span class="pre">_store_len</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#InMemoryNotionClient._store_len"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.InMemoryNotionClient._store_len" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.InMemoryNotionClient.pages_create">
+<span class="sig-name descname"><span class="pre">pages_create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#InMemoryNotionClient.pages_create"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.InMemoryNotionClient.pages_create" title="Link to this definition"></a></dt>
+<dd><p>Create a page object.</p>
+<p>This method creates a new page that is a child of an existing page or database.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>payload</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a>) – The JSON object containing the required payload as specified by the Notion API.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The page object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.InMemoryNotionClient.pages_retrieve">
+<span class="sig-name descname"><span class="pre">pages_retrieve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#InMemoryNotionClient.pages_retrieve"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.InMemoryNotionClient.pages_retrieve" title="Link to this definition"></a></dt>
+<dd><p>Retrieve a page object.</p>
+<p>This method is used as follows:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># retrieve page with id = &quot;680dee41-b447-451d-9d36-c6eaff13fb46&quot;</span>
+<span class="n">operation</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;endpoint&quot;</span><span class="p">:</span> <span class="s2">&quot;pages&quot;</span><span class="p">,</span> <span class="s2">&quot;request&quot;</span><span class="p">:</span> <span class="s2">&quot;create&quot;</span><span class="p">}</span>
+<span class="n">payload</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;680dee41-b447-451d-9d36-c6eaff13fb46&quot;</span><span class="p">}</span>
+<span class="n">client</span> <span class="o">=</span> <span class="n">InMemoryNotionClient</span><span class="p">()</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">object_</span> <span class="o">=</span> <span class="n">client</span><span class="p">(</span>
+        <span class="n">operation</span><span class="p">[</span><span class="s1">&#39;endpoint&#39;</span><span class="p">],</span>
+        <span class="n">operation</span><span class="p">[</span><span class="s1">&#39;request&#39;</span><span class="p">],</span>
+        <span class="n">payload</span>
+    <span class="p">)</span>
+<span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">ke</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="n">NotionError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Missing required key in operation dict: </span><span class="si">{</span><span class="n">ke</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>payload</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a>) – The JSON object containing the id to be retrieved.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The page object containing the page properties only, not page content.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.InMemoryNotionClient.databases_create">
+<span class="sig-name descname"><span class="pre">databases_create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#InMemoryNotionClient.databases_create"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.InMemoryNotionClient.databases_create" title="Link to this definition"></a></dt>
+<dd><p>Create a database as a subpage in the specified parent page, with the specified properties schema.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>payload</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a>) – The JSON object containing the required payload as specified by the Notion API.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The created database object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.InMemoryNotionClient.databases_retrieve">
+<span class="sig-name descname"><span class="pre">databases_retrieve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#InMemoryNotionClient.databases_retrieve"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.InMemoryNotionClient.databases_retrieve" title="Link to this definition"></a></dt>
+<dd><p>Retrieve a database object for the provided ID</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>payload</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a>) – A dictionary containing the database id as key.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The retrieved database object or and empty dictionary if no
+databased object for the provided ID were found</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.FileBasedNotionClient">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notion_sdk.client.</span></span><span class="sig-name descname"><span class="pre">FileBasedNotionClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#FileBasedNotionClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.FileBasedNotionClient" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.notion_sdk.client.InMemoryNotionClient" title="normlite.notion_sdk.client.InMemoryNotionClient"><code class="xref py py-obj docutils literal notranslate"><span class="pre">InMemoryNotionClient</span></code></a></p>
+<p>Enhance the in-memory client with file based persistence.</p>
+<p>This class extends the base <a class="reference internal" href="#normlite.notion_sdk.client.InMemoryNotionClient" title="normlite.notion_sdk.client.InMemoryNotionClient"><code class="xref py py-class docutils literal notranslate"><span class="pre">InMemoryNotionClient</span></code></a> by providing the capability
+to store and load the simulated Notion store content to and from the underlying file.
+In addition, this class implements the context manager protocol allowing the following usage:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># persistently add new pages to my-database.json</span>
+<span class="n">client</span> <span class="o">=</span> <span class="n">FileBasedNotionClient</span><span class="p">(</span><span class="s2">&quot;my-database.json&quot;</span><span class="p">)</span>
+<span class="k">with</span> <span class="n">client</span> <span class="k">as</span> <span class="n">c</span><span class="p">:</span>
+    <span class="n">c</span><span class="o">.</span><span class="n">pages_create</span><span class="p">(</span><span class="n">payload1</span><span class="p">)</span>   <span class="c1"># payload* are previously created JSON Notion objects to be added</span>
+    <span class="n">c</span><span class="o">.</span><span class="n">pages_create</span><span class="p">(</span><span class="n">payload2</span><span class="p">)</span>
+    <span class="n">c</span><span class="o">.</span><span class="n">pages_create</span><span class="p">(</span><span class="n">payload3</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.FileBasedNotionClient.file_path">
+<span class="sig-name descname"><span class="pre">file_path</span></span><a class="headerlink" href="#normlite.notion_sdk.client.FileBasedNotionClient.file_path" title="Link to this definition"></a></dt>
+<dd><p>The absolute path to the file storing the data contained in the file-base Notion client.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.FileBasedNotionClient.load">
+<span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#FileBasedNotionClient.load"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.FileBasedNotionClient.load" title="Link to this definition"></a></dt>
+<dd><p>Load the store content from the underlying file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The JSON object as list of dictionaries containing the store.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>List[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)">dict</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.FileBasedNotionClient.__enter__">
+<span class="sig-name descname"><span class="pre">__enter__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#FileBasedNotionClient.__enter__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.FileBasedNotionClient.__enter__" title="Link to this definition"></a></dt>
+<dd><p>Initialize the Notion store in memory.</p>
+<p>When the context manager is entered, the Notion store is read in memory, if the corresponding
+file existes. Otherwise, the store in memory is initialized with an empty list.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>This instance as required by the context manager protocol.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Self</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.FileBasedNotionClient.dump">
+<span class="sig-name descname"><span class="pre">dump</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store_content</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#FileBasedNotionClient.dump"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.FileBasedNotionClient.dump" title="Link to this definition"></a></dt>
+<dd><p>Dump the store content onto the underlying file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>store_content</strong> (<em>List</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a><em>]</em>) – The current store content present in memory.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notion_sdk.client.FileBasedNotionClient.__exit__">
+<span class="sig-name descname"><span class="pre">__exit__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">exctype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Type</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#BaseException" title="(in Python v3.13)"><span class="pre">BaseException</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">excinst</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#BaseException" title="(in Python v3.13)"><span class="pre">BaseException</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exctb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/types.html#types.TracebackType" title="(in Python v3.13)"><span class="pre">types.TracebackType</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notion_sdk/client.html#FileBasedNotionClient.__exit__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notion_sdk.client.FileBasedNotionClient.__exit__" title="Link to this definition"></a></dt>
+<dd><p>Dump the Notion stored to the file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>exctype</strong> (<em>Optional</em><em>[</em><em>Type</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#BaseException" title="(in Python v3.13)"><em>BaseException</em></a><em>]</em><em>]</em>) – The exception class. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>excinst</strong> (<em>Optional</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#BaseException" title="(in Python v3.13)"><em>BaseException</em></a><em>]</em>) – The exception instance. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>exctb</strong> (<em>Optional</em><em>[</em><em>TracebackType</em><em>]</em>) – The traceback object. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">None</span></code> as it is customary for context managers.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Optional[<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)">bool</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../index.html" class="btn btn-neutral float-left" title="normlite.notion_sdk" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../../notiondbapi/index.html" class="btn btn-neutral float-right" title="normlite.notiondbapi" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

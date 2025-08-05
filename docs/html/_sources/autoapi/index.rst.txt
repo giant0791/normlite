@@ -6,10 +6,6 @@ This page contains auto-generated API reference documentation [#f1]_.
 .. toctree::
    :titlesonly:
 
-   /autoapi/sql/index
-   /autoapi/engine/index
-   /autoapi/cursor/index
-   /autoapi/notion_sdk/index
-   /autoapi/notiondbapi/index
+   /autoapi/normlite/index
 
 .. [#f1] Created with `sphinx-autoapi <https://github.com/readthedocs/sphinx-autoapi>`_

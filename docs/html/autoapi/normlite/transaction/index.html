@@ -1,0 +1,367 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.transaction &mdash; normlite 0.4.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=6c02275b"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="prev" title="normlite.sql" href="../sql/index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">normlite</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../cursor/index.html">normlite.cursor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../engine/index.html">normlite.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../exceptions/index.html">normlite.exceptions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../future/index.html">normlite.future</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../notion_sdk/index.html">normlite.notion_sdk</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../notiondbapi/index.html">normlite.notiondbapi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../sql/index.html">normlite.sql</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">normlite.transaction</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">normlite</a></li>
+      <li class="breadcrumb-item active">normlite.transaction</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/autoapi/normlite/transaction/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-normlite.transaction">
+<span id="normlite-transaction"></span><h1>normlite.transaction<a class="headerlink" href="#module-normlite.transaction" title="Link to this heading"></a></h1>
+<p>Provide transaction management for Notion integrations.</p>
+<p>This module adds transaction management to Notion integrations. It enables multiple clients to
+concurrently perform changes while maintaining atomicity, consistency, isolation and durability.
+It achieves this by implementing shared and exclusive locking mechanisms and isolation levels.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This module is at a very early stage of proof-of-concept. Do not use it yet!</p>
+</div>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.transaction.LockMode">
+<span class="sig-prename descclassname"><span class="pre">normlite.transaction.</span></span><span class="sig-name descname"><span class="pre">LockMode</span></span><a class="headerlink" href="#normlite.transaction.LockMode" title="Link to this definition"></a></dt>
+<dd><p>Type for lock modes.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.transaction.TransitionState">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.transaction.</span></span><span class="sig-name descname"><span class="pre">TransitionState</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwds</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/transaction.html#TransitionState"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.TransitionState" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/enum.html#enum.Enum" title="(in Python v3.13)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">enum.Enum</span></code></a></p>
+<p>Provide a transition state <code class="docutils literal notranslate"><span class="pre">enum</span></code> to describe the possible states.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.transaction.TransitionState.ACTIVE">
+<span class="sig-name descname"><span class="pre">ACTIVE</span></span><a class="headerlink" href="#normlite.transaction.TransitionState.ACTIVE" title="Link to this definition"></a></dt>
+<dd><p>After being created with <code class="xref py py-meth docutils literal notranslate"><span class="pre">TransactionManager.begi()</span></code>, the transaction goes to <code class="docutils literal notranslate"><span class="pre">ACTIVE</span></code> state.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.transaction.TransitionState.COMMITTED">
+<span class="sig-name descname"><span class="pre">COMMITTED</span></span><a class="headerlink" href="#normlite.transaction.TransitionState.COMMITTED" title="Link to this definition"></a></dt>
+<dd><p>After successful <a class="reference internal" href="#normlite.transaction.Transaction.commit" title="normlite.transaction.Transaction.commit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Transaction.commit()</span></code></a>, the transaction goes to <code class="docutils literal notranslate"><span class="pre">COMMITED</span></code> state.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.transaction.TransitionState.ROLLED_BACK">
+<span class="sig-name descname"><span class="pre">ROLLED_BACK</span></span><a class="headerlink" href="#normlite.transaction.TransitionState.ROLLED_BACK" title="Link to this definition"></a></dt>
+<dd><p>After successful <a class="reference internal" href="#normlite.transaction.Transaction.rollback" title="normlite.transaction.Transaction.rollback"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Transaction.rollback()</span></code></a>, the transaction goes to <code class="docutils literal notranslate"><span class="pre">ROLLED_BACK</span></code> state.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.transaction.Operation">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.transaction.</span></span><span class="sig-name descname"><span class="pre">Operation</span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#Operation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.Operation" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">Protocol</span></code></p>
+<p>Interface for change requests that process data in the context of a transaction.</p>
+<p>Change requests follow a well-defined protocol to accomplish their task of modifying data in a consistent way.
+Each operation must define:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><a class="reference internal" href="#normlite.transaction.Operation.stage" title="normlite.transaction.Operation.stage"><code class="xref py py-meth docutils literal notranslate"><span class="pre">stage()</span></code></a>: These are the pre-commit activities to validate data prior to committing them.</p></li>
+<li><p><a class="reference internal" href="#normlite.transaction.Operation.do_commit" title="normlite.transaction.Operation.do_commit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">do_commit()</span></code></a>: All activities to commit data to the database.</p></li>
+<li><p><a class="reference internal" href="#normlite.transaction.Operation.do_rollback" title="normlite.transaction.Operation.do_rollback"><code class="xref py py-meth docutils literal notranslate"><span class="pre">do_rollback()</span></code></a>: All activities to revert changes committed prior to this failed change.</p></li>
+</ul>
+</div></blockquote>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.transaction.Operation.transaction">
+<span class="sig-name descname"><span class="pre">transaction</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#normlite.transaction.Transaction" title="normlite.transaction.Transaction"><span class="pre">Transaction</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.transaction.Operation.transaction" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.transaction.Operation.add_to">
+<span class="sig-name descname"><span class="pre">add_to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">txn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#normlite.transaction.Transaction" title="normlite.transaction.Transaction"><span class="pre">Transaction</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#Operation.add_to"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.Operation.add_to" title="Link to this definition"></a></dt>
+<dd><p>Add this operation to a trasaction context.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.transaction.Operation.stage">
+<span class="sig-name descname"><span class="pre">stage</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#Operation.stage"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.Operation.stage" title="Link to this definition"></a></dt>
+<dd><p>Stage and validate the data to be committed.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.transaction.Operation.do_commit">
+<span class="sig-name descname"><span class="pre">do_commit</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#Operation.do_commit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.Operation.do_commit" title="Link to this definition"></a></dt>
+<dd><p>Perform the commit activities associated with this operation.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.transaction.Operation.do_rollback">
+<span class="sig-name descname"><span class="pre">do_rollback</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#Operation.do_rollback"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.Operation.do_rollback" title="Link to this definition"></a></dt>
+<dd><p>Perform the rollback activities associated to this operation.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="normlite.transaction.AcquireLockFailed">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.transaction.</span></span><span class="sig-name descname"><span class="pre">AcquireLockFailed</span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#AcquireLockFailed"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.AcquireLockFailed" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/exceptions.html#Exception" title="(in Python v3.13)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Exception</span></code></a></p>
+<p>Raised when an attempt to acquire a lock for a given resource fails.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.transaction.LockManager">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.transaction.</span></span><span class="sig-name descname"><span class="pre">LockManager</span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#LockManager"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.LockManager" title="Link to this definition"></a></dt>
+<dd><p>Track which transactions hold locks on which resources and enforce access rules.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.transaction.LockManager.locks">
+<span class="sig-name descname"><span class="pre">locks</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">LockMode</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.transaction.LockManager.locks" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.transaction.LockManager.acquire">
+<span class="sig-name descname"><span class="pre">acquire</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">oid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">tid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">LockMode</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#LockManager.acquire"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.LockManager.acquire" title="Link to this definition"></a></dt>
+<dd><p>Try to acquire a lock for the requested resource and for the requesting transaction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>oid</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The object id to be locked.</p></li>
+<li><p><strong>tid</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The id of the transaction requisting the lock.</p></li>
+<li><p><strong>mode</strong> (<em>LockMode</em>) – The lock mode.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#normlite.transaction.AcquireLockFailed" title="normlite.transaction.AcquireLockFailed"><strong>AcquireLockFailed</strong></a> – If the lock request cannot be served.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.transaction.LockManager.release">
+<span class="sig-name descname"><span class="pre">release</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tx_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#LockManager.release"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.LockManager.release" title="Link to this definition"></a></dt>
+<dd><p>Release all locks held by the requesting transaction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>tid</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The id of the requesting transaction.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.transaction.Transaction">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.transaction.</span></span><span class="sig-name descname"><span class="pre">Transaction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">lock_manager</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#normlite.transaction.LockManager" title="normlite.transaction.LockManager"><span class="pre">LockManager</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/transaction.html#Transaction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.Transaction" title="Link to this definition"></a></dt>
+<dd><p>Provide a context to holds a list of change operations, their lock requirements,
+and rollback logic.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Initial implementation. UNSTABLE.</p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.transaction.Transaction.tid">
+<span class="sig-name descname"><span class="pre">tid</span></span><a class="headerlink" href="#normlite.transaction.Transaction.tid" title="Link to this definition"></a></dt>
+<dd><p>The unique transaction identifier (UUIDv4).</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.transaction.Transaction.lock_manager">
+<span class="sig-name descname"><span class="pre">lock_manager</span></span><a class="headerlink" href="#normlite.transaction.Transaction.lock_manager" title="Link to this definition"></a></dt>
+<dd><p>The lock manager to ensure locking mechanisms.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.transaction.Transaction.operations">
+<span class="sig-name descname"><span class="pre">operations</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">LockMode</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#normlite.transaction.Operation" title="normlite.transaction.Operation"><span class="pre">Operation</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#normlite.transaction.Transaction.operations" title="Link to this definition"></a></dt>
+<dd><p>The list of operations to be committed/rollbacked in the context of this transaction.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.transaction.Transaction.state">
+<span class="sig-name descname"><span class="pre">state</span></span><a class="headerlink" href="#normlite.transaction.Transaction.state" title="Link to this definition"></a></dt>
+<dd><p>The transaction state.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.transaction.Transaction.add_change">
+<span class="sig-name descname"><span class="pre">add_change</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">resource_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">LockMode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">operation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#normlite.transaction.Operation" title="normlite.transaction.Operation"><span class="pre">Operation</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#Transaction.add_change"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.Transaction.add_change" title="Link to this definition"></a></dt>
+<dd><p>Add a change request in the context of this transactions.</p>
+<p>Transactions track the list of changes they have to perform.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>resource_id</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The resource id subject of the change.</p></li>
+<li><p><strong>mode</strong> (<em>LockMode</em>) – The requested locking mode.</p></li>
+<li><p><strong>operation</strong> (<a class="reference internal" href="#normlite.transaction.Operation" title="normlite.transaction.Operation"><em>Operation</em></a>) – The operation to carry out the requested change.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.transaction.Transaction.commit">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">commit</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#Transaction.commit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.Transaction.commit" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.transaction.Transaction.rollback">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">rollback</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#Transaction.rollback"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.Transaction.rollback" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.transaction.TransactionManager">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.transaction.</span></span><span class="sig-name descname"><span class="pre">TransactionManager</span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#TransactionManager"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.TransactionManager" title="Link to this definition"></a></dt>
+<dd><p>Procure and coordinate transactions, lock acquisition, and lifecycle (start/commit/rollback).</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Initial implementation, UNSTABLE.</p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.transaction.TransactionManager.lock_manager">
+<span class="sig-name descname"><span class="pre">lock_manager</span></span><a class="headerlink" href="#normlite.transaction.TransactionManager.lock_manager" title="Link to this definition"></a></dt>
+<dd><p>The lock manager.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.transaction.TransactionManager.active_txs">
+<span class="sig-name descname"><span class="pre">active_txs</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#normlite.transaction.Transaction" title="normlite.transaction.Transaction"><span class="pre">Transaction</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.transaction.TransactionManager.active_txs" title="Link to this definition"></a></dt>
+<dd><p>The active transactions the manager orchestrates.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.transaction.TransactionManager.begin">
+<span class="sig-name descname"><span class="pre">begin</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.transaction.Transaction" title="normlite.transaction.Transaction"><span class="pre">Transaction</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/transaction.html#TransactionManager.begin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.transaction.TransactionManager.begin" title="Link to this definition"></a></dt>
+<dd><p>Procure a new transaction.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The transaction manager is repsonsible to assign to each created transaction a unique id.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Not implemented yet.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A new transaction.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#normlite.transaction.Transaction" title="normlite.transaction.Transaction">Transaction</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../sql/index.html" class="btn btn-neutral float-left" title="normlite.sql" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

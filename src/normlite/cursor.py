@@ -1,4 +1,4 @@
-# cursor.py
+# normlite/cursor.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -17,42 +17,412 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from typing import List, Sequence, Tuple
+from typing import Any, ClassVar, Iterator, Mapping, NamedTuple, NoReturn, Optional, Sequence, Union
 
-from normlite.notiondbapi.dbapi2 import Cursor
-from normlite.sql import CreateTable
+from normlite.exceptions import MultipleResultsFound, NormliteError, NoResultFound
+from normlite.notiondbapi.dbapi2 import Cursor, InterfaceError
 
-class _CursorMetaData:
-    """Provide helper metadata structures to access raw data from low level `Cursor` DBAPI 2.0."""
-    def __init__(self, desc: Sequence[tuple]):
-        self.index_to_key = {i: col[0] for i, col in enumerate(desc)}
-        self.key_to_index = {col[0]: i for i, col in enumerate(desc)}
-
-class CursorResult:
-    """Provide pythonic high level interface to result sets from SQL statements."""
-    def __init__(self, cursor: Cursor, metadata: _CursorMetaData):
-        self._cursor = cursor
-        self._metadata = metadata
-
-    def fetchall(self) -> List[Row]:
-        raw_rows = self._cursor.fetchall()  # [[(colname, type, val), ...], ...]
-        return [Row(self._metadata, row_data) for row_data in raw_rows]
+class ResourceClosedError(NormliteError):
+    """The cursor cannot deliver rows.
     
+    This exception is raised when a cursor (resource) cannot return rows because it is
+    either closed (i.e. exhausted) or it represents the result from an SQL statement that 
+    does not return values (e.g. ``INSERT``).
+
+    .. versionadded:: 0.5.0
+
+    """
+
+class _CursorColMapRecType(NamedTuple):
+    """Helper record data structure to store column metadata.
+    
+    This class provides a description record to enable value and type conversions between DBAPI 2.0 rows and 
+    higher level class:`Row` objects.
+
+    .. versionadded:: 0.5.0
+
+    """
+    column_name: str
+    """The name of the column."""
+    
+    index: int
+    """The column position in the description (first column --> index = 0)."""
+
+    column_type: str
+    """Currently, a string denoting the column type for conversion in the Python type system."""
+
+_ColMapType = dict
+
+class _NoCursorResultMetadata:
+    returns_row: ClassVar[bool] = False
+
+    def _raise_error(self) -> NoReturn:
+        raise ResourceClosedError(
+            'This result object does not return rows.'
+            'It has been automatically closed.'
+        )
+    
+    @property
+    def keys(self) -> Sequence[str]:
+        self._raise_error()
+
+    @property
+    def key_to_index(self) -> Mapping[str, int]:
+        self._raise_error()
+
+    @property
+    def index_for_key(self) -> Mapping[int, str]:
+        self._raise_error()
+
+# sentinel value for closed cursor results
+_NO_CURSOR_RESULT_METADATA = _NoCursorResultMetadata()
+
+class CursorResultMetaData(_NoCursorResultMetadata):
+    """Provide helper metadata structures to access row data from low level 
+    :class:`normlite.notionbdapi.dbapi2.Cursor` DBAPI 2.0.
+    
+    .. versionadded:: 0.5.0
+
+    """
+    
+    returns_row = True
+    """The associated cursor returns rows (e.g. ``SELECT`` statement)."""
+
+    def __init__(self, desc: Sequence[tuple]):
+        self._colmap: _ColMapType = dict()
+        """Mapping between column name and its description record :class:`_CursorColMapRecType`."""
+        
+        self._colmap = {
+            col_name: _CursorColMapRecType(col_name, index, column_type)
+            for index, (col_name, column_type, _, _, _, _, _) in enumerate(desc)
+        }
+
+        self._key_to_index: Mapping[str, int] = dict()
+        """Mapping between column name and its positional index."""
+       
+        self._key_to_index = {
+            key: rec.index
+            for key, rec in self._colmap.items()
+        } 
+        
+        self._index_for_key: Mapping[int, str] = dict()
+        """Mapping between column positional index and its name."""
+        
+        self._index_for_key = {
+            rec.index: key
+            for key, rec in self._colmap.items()
+        }
+ 
+        self._keys: Sequence[str] = [key for key in self._colmap.keys()]
+        """A sequence containing all the column names."""
+
+    @property
+    def keys(self) -> Sequence[str]:
+        """Provide all the column names for the described row."""
+        return self._keys
+
+    @property
+    def key_to_index(self) -> Mapping[str, int]:
+        """Provide the mapping between column name and its positional index."""
+        return self._key_to_index
+    
+    @property
+    def index_for_key(self) -> Mapping[int, str]:
+        """Provid the mapping beween the positional index of a column and its name."""
+        return self._index_for_key
+    
+class CursorResult:
+    """Provide pythonic high level interface to result sets from SQL statements.
+
+    This class is an adapter to the DBAPI cursor (see :class:`normlite.notiondbapi.dbapi2.Cursor`) 
+    representing state from the DBAPI cursor. It provides a high level API to
+    access returned database rows as :class:`Row` objects. 
+
+    .. versionchanged:: 0.5.0
+        The fetcher methods now check that the cursor metadata returns row prior to execution.
+        This ensures that no calls to ``None`` objects are issued.
+
+    """
+    def __init__(self, cursor: Cursor):
+        self._cursor = cursor
+        """The underlying DBAPI cursor."""
+
+        if self._cursor.description:
+            self._metadata = CursorResultMetaData(self._cursor.description)
+            """The metadata object describing the DBAPI cursor."""    
+
+        else:
+            # the cursor passed has not executed any operation yet
+            # or it does not returns row
+            self._metadata = _NO_CURSOR_RESULT_METADATA
+
+    @property
+    def returns_rows(self) -> bool:
+        """``True`` if this :class:`CursorResult` returns zero or more rows.
+
+        This attribute signals whether it is legal to call the methods: :meth:`CursorResult.fetchone()`,
+        :meth:`fetchall()`, and :meth:`fetchmany()`.
+        
+        The truthness of this attribute is strictly in sync with whether the underlying DBAPI cursor
+        had a :attr:`normlite.notiondbapi.dbapi2.Cursor.description`, which always indicates the presence
+        of result columns.
+
+        Note:
+            A cursor that returns zero rows (e.g. an empty sequence from :meth:`CursorResult.all()`) 
+            has still a :attr:`normlite.notiondbapi.dbapi2.Cursor.description`, if a row-returning 
+            statement was executed.
+
+        .. versionadded:: 0.5.0
+
+        Returns:
+            bool: ``True`` if this cursor result returns zero or more rows.
+        """
+        return self._metadata.returns_row
+
+    def __iter__(self) -> Iterator[Row]:
+        """Provide an iterator for this cursor result.
+
+        .. versionadded:: 0.5.0
+
+        Yields:
+            Iterator[Row]: The row iterator.
+        """
+        for raw_row in self._cursor:
+            yield Row(self._metadata, raw_row)
+
+        # close the result set
+        self._metadata = _NO_CURSOR_RESULT_METADATA
+        self._cursor.close()        
+    
+    def one(self) -> Row:
+        """Return exactly one row or raise an exception.
+
+        .. versionadded:: 0.5.0
+
+        Raises:
+            NoResultFound: If no row was found when one was required.
+            MultipleResultsFound: If multiple rows were found when exactly one was required.
+        
+        Returns:
+            Row: The one row required.
+        """
+        if not self._metadata.returns_row:
+            raise NoResultFound('No row was found when one was required.')
+        
+        if self._cursor.rowcount > 1:
+            raise MultipleResultsFound('Multiple rows were found when exactly one was required.')
+        
+        return self.all()[0]
+    
+    def all(self) -> Sequence[Row]:
+        """Return all rows in a sequence.
+
+        This method closes the result set after invocation. Subsequent calls will return an empty sequence.
+
+        .. versionadded:: 0.5.0
+        
+        Returns:
+            Sequence[Row]: All rows in a sequence.
+        """
+
+        if not self._metadata.returns_row:
+            return list()
+        
+        raw_rows = self._cursor.fetchall()  # [(id_val, archived_val, in_trash_val, col1_val, ...), ...]
+        row_sequence = [Row(self._metadata, row_data) for row_data in raw_rows]
+        # close the result set
+        self._metadata = _NO_CURSOR_RESULT_METADATA
+        self._cursor.close()
+        return row_sequence
+    
+    def first(self) -> Optional[Row]:
+        """Return the first row or ``None`` if no row is present.
+
+        Note:
+            This method closes the result set and discards remaining rows.
+
+        .. versionadded:: 0.5.0
+
+        Returns:
+            Optional[Row]: The first row in the result set or ``None`` if no row is present.
+        """
+        if not self._metadata.returns_row:
+            return None
+        
+        rows = list(self.all())
+        return rows[0]
+    
+    def fetchone(self) -> Optional[Row]:
+        """Fetch the next row.
+
+        When all rows are exhausted, returns ``None``.
+
+        .. versionadded:: 0.5.0
+
+        Returns:
+            Optional[Row]: The row object in the result.
+        """
+        if not self._metadata.returns_row:
+            # underlying DBAPI cursor is closed or no rows returned from a query
+            return None
+
+        try:
+            next_row = self._cursor.fetchone()
+        except InterfaceError:
+            # Either call to cursor execute() did not produce results or execute() was not called yet
+            self._metadata = _NO_CURSOR_RESULT_METADATA
+            self._cursor.close()        
+            return None
+        
+        if next_row:
+            # the next row is not empty ()
+            return Row(self._metadata, next_row)
+        
+        # next_row is an empty tuple
+        return None
+
+    def fetchall(self) -> Sequence[Row]:
+        """Synonim for :class:`CursorResult.all()` method.
+
+        .. versionchanged:: 0.5.0
+            This method has been refactored as a wrapper around :meth:`CursorResult.all()`.
+            This ensures consistent behavior across synomin methods.
+
+        Returns:
+            Sequence[Row]: The sequence of row objects. Empty sequence if the cursor result is closed.
+        """
+        return self.all()
+    
+    def fetchmany(self) -> Sequence[Row]:
+        """Fetch many rows.
+
+        When all rows are exhausted, returns an empty sequence.
+
+        .. versionadded:: 0.5.0
+
+        Raises:
+            NotImplementedError: Method not implemented yet.
+
+        Returns:
+            Sequence[Row]: All rows or an empty sequence when exhausted.
+        """
+        raise NotImplementedError
 
 class Row:
-    """Provide pythonic high level interface to a single SQL database row."""
-    def __init__(self, metadata: _CursorMetaData, row_data: List[Tuple[str, str, str]]):
+    """Provide pythonic high level interface to a single SQL database row.
+    
+    .. versionchanged:: 0.5.0
+        :class:`Row` has been significantly extended to provide iteratable capabilities
+        and a mapping-sytle object to access the values of the columns returned in the row.
+        
+    """
+    
+    def __init__(self, metadata: CursorResultMetaData, row_data: tuple):
+        # Use object.__setattr__ to bypass __setattr__ during initialization
         self._metadata = metadata
-        self._values = [None] * len(metadata.index_to_key)
+        """The metadata object to process raw rows."""
+        
+        self._values = list(row_data)
+        """Thew column values."""
+        
+    def __getitem__(self, key_or_index: Union[str, int]) -> Any:
+        """Provide keyed and indexed access to the row values. 
 
-        # Reorder row_data according to index order from metadata
-        key_to_value = {key: value for key, _, value in row_data}
-        for idx, key in metadata.index_to_key.items():
-            self._values[idx] = key_to_value.get(key)
+        Providing this method enables row object to be iterated::
+        
+            >>> for value in row:
+            ...     print(f"{value = }")
+            value = '680dee41-b447-451d-9d36-c6eaff13fb45'
+            value = False
+            value = False
+            value = 12345
+            value = 'B'
+            value = 'Isaac Newton'
 
-    def __getitem__(self, key: str) -> str:
-        idx = self._metadata.key_to_index[key]
-        return self._values[idx]
+        .. versionchanged:: 0.5.0
+            Now, it supports both keyes and indexed access. Error handling is more
+            robust and consistent.
+            
+        Args:
+            key_or_index (Union[str, int]): The value's key (column name) or index (column positional). 
+
+        Raises:
+            IndexError: If index is out or range.
+            KeyError: If row has no column named ``key_or_index``.
+            TypeError: If the provided index is neither ``str`` (column name) or ``int`` (column index).
+
+        Returns:
+            Any: The value for the column the key or index has been provided.
+        """
+
+        if isinstance(key_or_index, int):
+            try:
+                return self._values[key_or_index]
+            except IndexError:
+                raise IndexError(f"{type(self).__name__} index out of range: {key_or_index}")
+            
+        elif isinstance(key_or_index, str):
+            try:
+                col_name = self._metadata.key_to_index[key_or_index]
+                return self._values[col_name]
+            except KeyError:
+                raise KeyError(f"{type(self).__name__} has no column named {key_or_index!r}")
+            
+        else:
+            raise TypeError(
+                f"{type(self).__name__} indices must be str (column name) or int (column index), "
+                f"not {type(key_or_index).__name__}"
+            )
+        
+    def mapping(self) -> dict:
+        """Provide the mapping object for this row.
+        
+        .. versionadded:: 0.5.0
+        
+        """
+        return RowMapping(self)
 
     def __repr__(self):
         return f"Row({{ {', '.join(f'{k!r}: {self[k]!r}' for k in self._metadata.key_to_index)} }})"
+
+class RowMapping(Mapping[str, Any]):
+    """Helper to construct mapping objects for rows.
+    
+    :class:`RowMapping` provides a dedicated mapping implementation for column name, column value pairs.
+        
+    .. versionadded:: 0.5.0
+    
+    """
+
+    def __init__(self, row: Row):
+        self._row = row
+        """The underlying row object."""
+
+        self._mapping = {
+            key: value 
+            for key, value in zip(self._row._metadata.keys, self._row)
+        }
+        """The mapping object created from the row object."""
+
+    def __getitem__(self, key):
+        return self._row[key]
+
+    def __iter__(self):
+        return iter(self._row)
+
+    def __len__(self):
+        return len(self._row._metadata.keys)
+    
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, Mapping):
+            return dict(self.items()) == dict(other.items())
+        return NotImplemented
+
+    def keys(self):
+        return self._mapping.keys()
+
+    def values(self):
+        return self._mapping.values()
+
+    def items(self):
+        return self._mapping.items()
