@@ -16,7 +16,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Dict, Iterable, List, Literal, Optional, Self, Sequence, Tuple, TypeAlias, Union
+import pdb
+from typing import Any, Dict, Iterator, List, Literal, Optional, Self, Sequence, Tuple, TypeAlias
 import uuid
 
 from normlite.notion_sdk.client import AbstractNotionClient, NotionError
@@ -119,7 +120,7 @@ class Cursor:
             return None
         
         # extract the object UUID, 2nd element of the last row as str
-        lastrowid = self._result_set[-1][1]   
+        lastrowid = self._result_set[-1][0]   
         
         return uuid.UUID(lastrowid).int
 
@@ -267,14 +268,14 @@ class Cursor:
                 'or -1 if no call was issued yet.' 
             )
 
-        # assume fetched rows exausted, all results consumed
-        next_row = ()               
+        # assume fetched rows exausted, all results consumed        
         if len(self._result_set) > 0:
             # fetched rows not exausted yet, consume return next row
-            # extract the object UUID, 2nd element of the last row as str
-            next_row = self._result_set.pop(0)
+            return self._result_set.pop(0)
         
-        return next_row
+        # no more rows in the result set
+        self._result_set = None
+        return None
 
     def fetchall(self) -> List[tuple]:
         """Fetch all rows of this query result. 

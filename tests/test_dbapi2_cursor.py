@@ -49,7 +49,8 @@ def test_row_count_w_consecutive_fetchones(dbapi_cursor: Cursor):
     row = dbapi_cursor.fetchone()
     assert 0 == dbapi_cursor.rowcount
     row = dbapi_cursor.fetchone()
-    assert isinstance(row, tuple) and row == ()
+    assert row is None
+    assert dbapi_cursor.rowcount == -1
 
 def test_row_count_undefined_result_set(dbapi_cursor: Cursor):
     # Given: 
@@ -218,8 +219,8 @@ def test_fetchone_until_result_set_empty(dbapi_cursor: Cursor):
     assert dbapi_cursor.rowcount == 0
 
     row = dbapi_cursor.fetchone()
-    assert row == ()
-    assert dbapi_cursor.rowcount == 0
+    assert row is None
+    assert dbapi_cursor.rowcount == -1
 
 def test_fetchone_undefined_result_set(dbapi_cursor: Cursor):
     # Given: 
