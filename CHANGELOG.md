@@ -1,3 +1,19 @@
+## 0.5.0 (2025-08-05)
+
+### Feat
+
+- Add initial implementation proof-of-concept transaction management
+- Add fully DBAPI 2.0 compliant cursor description
+
+### Fix
+
+- Fix non compliance with DBAPI 2.0 (#41)
+- Fix cross-reference issue with fully qualified names (#38).
+
+### Refactor
+
+- Adapt `CursorResult` and `Row` (#40).
+
 ## 0.4.0 (2025-07-27)
 
 ### Feat
