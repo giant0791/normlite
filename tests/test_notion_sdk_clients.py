@@ -110,6 +110,23 @@ def test_missing_parent_raises(fresh_client):
     with pytest.raises(NotionError, match='Missing "parent" object'):
         fresh_client.pages_create({'properties': {}})
 
+def test_update_page(fresh_client):
+    new_page = fresh_client('pages', 'create', {
+        'parent': {'type': 'page_id', 'page_id': '11111111-1111-1111-1111-111111111111'},
+        'properties': {
+            'Name': {'title': [{'text': {'content': 'Page 1'}}]}
+        }        
+    })
+    page_id = new_page.get('id')
+    assert page_id
+
+    updated_page = fresh_client('pages', 'update',{
+        'id': page_id,
+        'data': {'archived': True}
+    })
+
+    assert updated_page['archived'] 
+    assert fresh_client._get(page_id) == updated_page 
 
 def test_store_isolated_between_instances():
     InMemoryNotionClient._store = {"store": []}

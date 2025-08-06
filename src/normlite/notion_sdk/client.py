@@ -59,7 +59,7 @@ class AbstractNotionClient(ABC):
 
         Example::
         
-            # create add a new Notion page to the database with id = 680dee41-b447-451d-9d36-c6eaff13fb46
+            # Add a new Notion page to the database with id = 680dee41-b447-451d-9d36-c6eaff13fb46
             operation = {"endpoint": "pages", "request": "create"}
             payload = {
                 'parent': {
@@ -143,6 +143,10 @@ class AbstractNotionClient(ABC):
         Returns:
             dict: The page object containing the page properties only, not page content.
         """
+        raise NotImplementedError
+    
+    @abstractmethod
+    def pages_update(self, payload: dict) -> dict:
         raise NotImplementedError
     
     @abstractmethod
@@ -274,6 +278,30 @@ class InMemoryNotionClient(AbstractNotionClient):
                 return retrieved_page
         
         return {}
+    
+    def pages_update(self, payload)-> dict:
+        if self._store_len() > 0:
+            page_to_update = self._get(payload.get('id'))
+            if page_to_update and page_to_update['object'] == 'page':
+                data = payload.get('data')
+                if data and 'archived' in data.keys():
+                    page_to_update['archived'] = data['archived']
+                    return page_to_update
+                elif data and 'in_trash' in data.keys():
+                    page_to_update['in_trash'] = data['in_trash']
+                elif data and 'properties' in data.keys():
+                    for prop, value in data['properties'].items():
+                        page_to_update['properties'][prop] = value
+                else:
+                    raise NotionError(
+                        f'Connot update page: {payload.get('id')}, '
+                        f'data: {payload.get('data')}'
+                    )
+            else:
+                raise NotionError(
+                    f'Object with id: {payload.get('id')} not found or not a page object.'
+                )
+
 
     def databases_create(self, payload: dict) -> dict:
         return self._add('database', payload)
