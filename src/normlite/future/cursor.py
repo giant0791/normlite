@@ -1,4 +1,4 @@
-# normlite/cursor.py
+# normlite/future/cursor.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.

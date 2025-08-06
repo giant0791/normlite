@@ -1,4 +1,4 @@
-# normlite/future/__init__.py
+# normlite/proxy/__init__.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
