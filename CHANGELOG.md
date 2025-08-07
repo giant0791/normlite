@@ -1,3 +1,14 @@
+## 0.6.0 (2025-08-07)
+
+### Feat
+
+- Add proof-of-concept for transaction management (#39)
+- Add update page functionality to the Notion clients (#46)
+
+### Fix
+
+- Add standard module header with copyright and license notes.
+
 ## 0.5.0 (2025-08-05)
 
 ### Feat

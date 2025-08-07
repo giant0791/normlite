@@ -98,7 +98,7 @@ from typing import Dict, List, Literal, Tuple
 from uuid import UUID
 import pytest
 from normlite.engine import create_engine
-from normlite.transaction import AcquireLockFailed, Operation, Transaction, TransactionManager, TransitionState
+from normlite.txmodel.transaction import AcquireLockFailed, Operation, Transaction, TransactionManager, TransitionState
 
 
 NOTION_TOKEN = 'secret_token'
