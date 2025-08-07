@@ -15,20 +15,18 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import pdb
 import pytest
 from normlite.proxy.server import create_app
-from normlite.proxy.state import transactions
-from normlite.notion_sdk.client import InMemoryNotionClient
+from normlite.proxy.state import notion, transaction_manager
+from normlite.txmodel.operations import Operation
+from normlite.txmodel.transaction import TransactionState
 
 @pytest.fixture
-def test_client(monkeypatch):
+def test_client():
     """Create Flask test client with an in-memory Notion client."""
     app = create_app()
     app.config["TESTING"] = True
-
-    # Monkeypatch the proxy's Notion client for the test
-    from normlite.proxy import state
-    state.notion = InMemoryNotionClient()  # inject test-safe mock client
 
     with app.test_client() as client:
         yield client
@@ -50,35 +48,103 @@ def test_insert_commit_flow(test_client):
     }
     response = test_client.post(f"/transactions/{tx_id}/insert", json=payload)
     assert response.status_code == 202
+    assert response.get_json()['state'] == TransactionState.ACTIVE.name
 
     # 3. Commit the transaction
     response = test_client.post(f"/transactions/{tx_id}/commit")
     assert response.status_code == 200
-    assert response.get_json()["status"] == "committed"
+    assert response.get_json()["state"] == TransactionState.COMMITTED.name
+    assert len(response.get_json()["data"]) == 1
 
     # 4. Optional: Validate that the resource was inserted (via mock state)
-    notion_client = transactions[tx_id].staged_ops[0].notion
-    inserted = [p for p in notion_client.pages if p["properties"]["Name"]["title"][0]["text"]["content"] == "Test Insert"]
+    inserted = [p for p in notion.__class__._store['store'] if p["properties"]["Name"]["title"][0]["text"]["content"] == "Test Insert"]
     assert len(inserted) == 1
 
-def test_insert_fails_and_rolls_back(test_client):
+def test_insert_stage_fails(test_client):
     # 1. Start a new transaction
     response = test_client.post("/transactions")
     tx_id = response.get_json()["transaction_id"]
 
-    # 2. Try to insert an invalid page (missing required fields)
+    # 2. Insert an invalid page (missing required fields)
     bad_payload = {
         "parent": { "database_id": "db-123" },
-        "properties": {
-            # Intentionally missing Name
-            "Status": { "select": { "name": "Done" } }
-        }
+        # Intentionally missing "properties" object
     }
     response = test_client.post(f"/transactions/{tx_id}/insert", json=bad_payload)
-    assert response.status_code == 400
+    assert response.status_code == 202      # code = 202 means: accepted but operation not started yet or not completed
+    assert response.get_json()['state'] == TransactionState.ACTIVE.name
+
+    # 3. Commit the transaction: it is expected to fail
+    response = test_client.post(f"/transactions/{tx_id}/commit")
+    assert response.status_code == 500
+    assert response.get_json()['state'] == TransactionState.FAILED.name
     assert "error" in response.get_json()
 
-    # 3. Rollback
+def test_insert_commit_fails(test_client):
+    # fake insert operation with failing do_commit()
+    class CommitFailingInsert(Operation):
+        def stage(self):
+            pass
+
+        def do_commit(self):
+            raise Exception('Unsaved data.')
+        
+        def do_rollback(self):
+            pass
+
+    # 1. Start a new transaction
+    response = test_client.post("/transactions")
+    tx_id = response.get_json()["transaction_id"]
+
+    # 2. Monkey-patch the transaction and add the commit failing insert
+    transaction_manager.active_txs.get(tx_id).add_change(
+        'bc1211ca-e3f1-4939-ae34-5260b16f627c',
+        'write',
+        CommitFailingInsert()
+    )
+
+    # 3. Commit the transaction: it is expected to fail
+    response = test_client.post(f"/transactions/{tx_id}/commit")
+    assert response.status_code == 500
+    assert response.get_json()['state'] == TransactionState.FAILED.name
+    assert "error" in response.get_json()
+
+    # 4. rollback the changes
     response = test_client.post(f"/transactions/{tx_id}/rollback")
     assert response.status_code == 200
-    assert response.get_json()["status"] == "rolled_back"
+    assert response.get_json()["state"] == TransactionState.ABORTED.name
+
+def test_insert_commit_and_rollback_flow(test_client):
+    # 1. Start a new transaction
+    response = test_client.post("/transactions")
+    assert response.status_code == 200
+    tx_id = response.get_json()["transaction_id"]
+
+    # 2. Insert a page using the Notion-compatible payload
+    payload = {
+        "parent": { "database_id": "db-123" },
+        "properties": {
+            "Name": {
+                "title": [{"text": {"content": "Test Insert"}}]
+            }
+        }
+    }
+    response = test_client.post(f"/transactions/{tx_id}/insert", json=payload)
+    assert response.status_code == 202
+    assert response.get_json()['state'] == TransactionState.ACTIVE.name
+
+    # 3. Commit the transaction
+    response = test_client.post(f"/transactions/{tx_id}/commit")
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert response.get_json()["state"] == TransactionState.COMMITTED.name
+    assert len(data) == 1
+    assert notion._get(data[0]['id']) == data[0]
+
+    # 4. Rollback the committed transaction
+    response = test_client.post(f"/transactions/{tx_id}/rollback")
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert response.get_json()["state"] == TransactionState.ABORTED.name
+    assert len(data) == 1
+    assert notion._get(data[0]['id'])['archived'] == data[0]['archived'] 

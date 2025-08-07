@@ -1,4 +1,4 @@
-# normlite/transaction.py
+# normlite/txmodel/transaction.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -24,58 +24,56 @@ It achieves this by implementing shared and exclusive locking mechanisms and iso
 
 Warning:
     This module is at a very early stage of proof-of-concept. Do not use it yet!
+
 """
 
 from __future__ import annotations
 from collections import defaultdict
 from enum import Enum, auto
-import pdb
-from typing import Dict, List, Literal, Protocol, Tuple
+from typing import Dict, List, Literal, Tuple
 import uuid
+
+from normlite.txmodel.operations import Operation
+from normlite.exceptions import NormliteError
+
+class TransactionError(NormliteError):
+    ...
 
 LockMode = Literal["read", "write"]
 """Type for lock modes."""
 
-class TransitionState(Enum):
-    """Provide a transition state ``enum`` to describe the possible states."""
+class TransactionState(Enum):
+    """Provide a transition state ``enum`` to describe the possible states of a transaction."""
     
     ACTIVE = auto()
-    """After being created with :meth:`TransactionManager.begi()`, the transaction goes to ``ACTIVE`` state."""
+    """It is the first stage of any transaction when it has begun to execute. 
+    The execution of the transaction takes place in this state.
+    """
 
+    PARTIALLY_COMMITTED = auto()
+    """The transaction has finished its final operation, 
+    but the changes are still not saved to the database."""
+    
     COMMITTED = auto()
-    """After successful :meth:`Transaction.commit()`, the transaction goes to ``COMMITED`` state."""
-    
-    ROLLED_BACK = auto()
-    """After successful :meth:`Transaction.rollback()`, the transaction goes to ``ROLLED_BACK`` state."""
-
-class Operation(Protocol):
-    """Interface for change requests that process data in the context of a transaction.
-    
-    Change requests follow a well-defined protocol to accomplish their task of modifying data in a consistent way.
-    Each operation must define:
-
-        * :meth:`stage()`: These are the pre-commit activities to validate data prior to committing them. 
-        
-        * :meth:`do_commit()`: All activities to commit data to the database.
-
-        * :meth:`do_rollback()`: All activities to revert changes committed prior to this failed change.
+    """All the transaction-related operations have been executed successfully, i.e. data is saved 
+    into the database after the required manipulations in this state. 
+    This marks the successful completion of a transaction.
     """
     
-    def __init__(self):
-        self.transaction: Transaction = None
+    FAILED = auto()
+    """If any of the transaction-related operations cause an error during the active or 
+    partially committed state, further execution of the transaction is stopped and 
+    it is brought into a failed state. 
+    """
     
-    def add_to(self, txn: Transaction) -> None:
-        """Add this operation to a trasaction context."""
-        self.transaction = txn
-    
-    def stage(self) -> None:
-        """Stage and validate the data to be committed."""
+    ABORTED = auto()
+    """When the transaction is failed, it will attempt to either rollback the transaction
+    in order to keep the database consistent. Upon successfull completion of the rollback,
+    the transaction enters the aborted state.
+
+    .. versionadded:: 0.6.0
         
-    def do_commit(self) -> None:
-        """Perform the commit activities associated with this operation."""
-        
-    def do_rollback(self) -> None:
-        """Perform the rollback activities associated to this operation."""
+    """
 
 class AcquireLockFailed(Exception):
     """Raised when an attempt to acquire a lock for a given resource fails."""
@@ -83,6 +81,9 @@ class AcquireLockFailed(Exception):
 
 class LockManager:
     """Track which transactions hold locks on which resources and enforce access rules.
+
+    .. versionadded:: 0.6.0
+
     """
     def __init__(self):
         # oid -> list of (tid, mode)
@@ -156,6 +157,9 @@ class Transaction:
 
     Warning:
         Initial implementation. UNSTABLE.
+
+    .. versionadded:: 0.6.0
+    
     """
 
     def __init__(self, tid: str, lock_manager: LockManager):
@@ -169,7 +173,7 @@ class Transaction:
         self.operations: List[Tuple[str, LockMode, Operation]] = []
         """The list of operations to be committed/rollbacked in the context of this transaction."""
 
-        self.state = TransitionState.ACTIVE
+        self.state = TransactionState.ACTIVE
         """The transaction state."""
 
     def add_change(
@@ -188,24 +192,85 @@ class Transaction:
             operation (Operation): The operation to carry out the requested change.
         """
 
-        # acquire the requeste lock on the resource to be processed
+        # acquire the requested lock on the resource to be processed
         self.lock_manager.acquire(self.tid, resource_id, mode)
 
         # lock acquired as requested (no AcquireLockFailed execption raised)
-        operation.add_to(self)
         self.operations.append((resource_id, mode, operation))    
     
     def commit(self) -> None:
-        raise NotImplementedError
+        """Commit the transaction.
+
+        Raises:
+            TransactionError: If this method is called on a transaction not in state active.
+        """
+        if self.state != TransactionState.ACTIVE:
+            raise TransactionError('Attempting to commit a transaction not in active state.')
+
+        commit_ops: List[Operation] = []
+        try:
+            # stage all operations in this transaction
+            for _, _, op  in self.operations:
+                op.stage()
+                commit_ops.append(op)
+
+            # all operations are successfully staged, but 
+            # the changes are still not saved to the database.
+            self.state = TransactionState.PARTIALLY_COMMITTED
+
+            # commit the staged operations one-by-one                
+            for commit_op in commit_ops:
+                commit_op.do_commit()
+
+            # if we came that far, the transaction is committed,
+            # i.e. all changes could be successfully saved to the database
+            self.state = TransactionState.COMMITTED
+
+        except Exception as e:
+            # at least 1 operation could not be successfully committed:
+            # the transaction is failed
+            self.state = TransactionState.FAILED
+
+            # IMPORTANT: The transaction shall re-raise the exception and not
+            # as it was previously implemented rollback.
+            # Re-raising the exception enables the caller to set the status code 
+            # correspondingly. 
+            raise
+
+        finally:
+            self.lock_manager.release(self.tid)
 
     def rollback(self) -> None:
-        raise NotImplementedError
+        """Rollback the transaction.
+
+        Raises:
+            TransactionError: If this method is called on a transaction in state aborted.
+        """
+        if self.state == TransactionState.ABORTED:
+            raise TransactionError(
+                'Attempting to rollback a transaction in aborted state.'
+            )
+        
+        for _, _, rollback_op in reversed(self.operations):
+            try:
+                rollback_op.do_rollback()
+            except Exception:
+                # TODO: What happens if a rollback fails?
+                pass
+
+        self.state = TransactionState.ABORTED
+
+        # release all locks held by the transaction
+        self.lock_manager.release(self.tid)
 
 class TransactionManager:
     """Procure and coordinate transactions, lock acquisition, and lifecycle (start/commit/rollback).
     
     Warning:
         Initial implementation, UNSTABLE.
+
+    .. versionadded:: 0.6.0
+    
     """
 
     def __init__(self):
@@ -220,9 +285,6 @@ class TransactionManager:
 
         Note:
             The transaction manager is repsonsible to assign to each created transaction a unique id.
-
-        Warning:
-            Not implemented yet.
 
         Returns:
             Transaction: A new transaction.

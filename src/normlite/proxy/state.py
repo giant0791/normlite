@@ -16,31 +16,18 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Flask-based proxy server.
-
-    This module provides a simple Flask-based RESTful proxy server to enact transactional semantics
-    on Notion resources.
+"""Simple in-memory shared stored for transactions and Notion client.
 
     Warning:
         This is part of the exploration. Prototype code, not ready for production.
 
     .. versionadded:: 0.6.0
-    
+
 """
 
-from flask import Flask
-from normlite.proxy.routes.transactions import transaction_bp
-from normlite.proxy.routes.insert import insert_bp
+from normlite.notion_sdk.client import InMemoryNotionClient
+from normlite.txmodel.transaction import TransactionManager
 
-def create_app():
-    """Factory function for the RESTful proxy server."""
-    app = Flask(__name__)
-    app.register_blueprint(transaction_bp)
-    app.register_blueprint(insert_bp)
-    return app
-
-def run():
-    """Flask proxy server entry point."""
-    app = create_app()
-    app.run(debug=True, port=5000)
-
+# Shared in-memory store for transactions and Notion client
+notion = InMemoryNotionClient()
+transaction_manager = TransactionManager()
