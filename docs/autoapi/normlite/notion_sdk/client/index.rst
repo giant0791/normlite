@@ -59,7 +59,7 @@ Module Contents
 
       Example::
 
-          # create add a new Notion page to the database with id = 680dee41-b447-451d-9d36-c6eaff13fb46
+          # Add a new Notion page to the database with id = 680dee41-b447-451d-9d36-c6eaff13fb46
           operation = {"endpoint": "pages", "request": "create"}
           payload = {
               'parent': {
@@ -141,6 +141,11 @@ Module Contents
 
       :returns: The page object containing the page properties only, not page content.
       :rtype: dict
+
+
+
+   .. py:method:: pages_update(payload: dict) -> dict
+      :abstractmethod:
 
 
 
@@ -252,6 +257,9 @@ Module Contents
       :returns: The page object containing the page properties only, not page content.
       :rtype: dict
 
+
+
+   .. py:method:: pages_update(payload) -> dict
 
 
    .. py:method:: databases_create(payload: dict) -> dict

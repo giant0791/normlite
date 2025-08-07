@@ -16,7 +16,8 @@ Submodules
    /autoapi/normlite/future/index
    /autoapi/normlite/notion_sdk/index
    /autoapi/normlite/notiondbapi/index
+   /autoapi/normlite/proxy/index
    /autoapi/normlite/sql/index
-   /autoapi/normlite/transaction/index
+   /autoapi/normlite/txmodel/index
 
 

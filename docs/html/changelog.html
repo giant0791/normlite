@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Changelog &mdash; normlite 0.4.0 documentation</title>
+  <title>Changelog &mdash; normlite 0.5.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
@@ -16,7 +16,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=6c02275b"></script>
+      <script src="_static/documentation_options.js?v=1dd76d02"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -47,19 +47,25 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Changelog</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#id1">0.4.0 (2025-07-27)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">0.5.0 (2025-08-05)</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#feat">Feat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#fix">Fix</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#refactor">Refactor</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#id2">0.3.0 (2025-07-24)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id2">0.4.0 (2025-07-27)</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#id3">Feat</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#fix">Fix</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#id4">Refactor</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#id5">0.2.0 (2025-07-12)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id5">0.3.0 (2025-07-24)</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#id6">Feat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7">Fix</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id8">Refactor</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#id9">0.2.0 (2025-07-12)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id10">Feat</a></li>
 </ul>
 </li>
 </ul>
@@ -97,9 +103,32 @@
 <p>The format is based on <a class="reference external" href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <section id="id1">
-<h2>0.4.0 (2025-07-27)<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
+<h2>0.5.0 (2025-08-05)<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
 <section id="feat">
 <h3>Feat<a class="headerlink" href="#feat" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Add initial implementation proof-of-concept transaction management</p></li>
+<li><p>Add fully DBAPI 2.0 compliant cursor description</p></li>
+</ul>
+</section>
+<section id="fix">
+<h3>Fix<a class="headerlink" href="#fix" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Fix non compliance with DBAPI 2.0 (#41)</p></li>
+<li><p>Fix cross-reference issue with fully qualified names (#38).</p></li>
+</ul>
+</section>
+<section id="refactor">
+<h3>Refactor<a class="headerlink" href="#refactor" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Adapt <code class="docutils literal notranslate"><span class="pre">CursorResult</span></code> and <code class="docutils literal notranslate"><span class="pre">Row</span></code> (#40).</p></li>
+</ul>
+</section>
+</section>
+<section id="id2">
+<h2>0.4.0 (2025-07-27)<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
+<section id="id3">
+<h3>Feat<a class="headerlink" href="#id3" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p>Provide a URI schema for <code class="docutils literal notranslate"><span class="pre">normlite</span></code> (#24)</p></li>
 <li><p>Add <code class="docutils literal notranslate"><span class="pre">WHERE</span></code> clause to AST (#13)</p></li>
@@ -107,17 +136,17 @@ and this project adheres to <a class="reference external" href="https://semver.o
 <li><p>Add ability to compile SQL nodes.</p></li>
 </ul>
 </section>
-<section id="refactor">
-<h3>Refactor<a class="headerlink" href="#refactor" title="Link to this heading"></a></h3>
+<section id="id4">
+<h3>Refactor<a class="headerlink" href="#id4" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p>Repurpose the Notion client.</p></li>
 </ul>
 </section>
 </section>
-<section id="id2">
-<h2>0.3.0 (2025-07-24)<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
-<section id="id3">
-<h3>Feat<a class="headerlink" href="#id3" title="Link to this heading"></a></h3>
+<section id="id5">
+<h2>0.3.0 (2025-07-24)<a class="headerlink" href="#id5" title="Link to this heading"></a></h2>
+<section id="id6">
+<h3>Feat<a class="headerlink" href="#id6" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p>Add DBAPI2 <code class="docutils literal notranslate"><span class="pre">Cursor</span></code> full implementation.</p></li>
 <li><p>Add parameter binding to operation execution (#15)</p></li>
@@ -128,15 +157,15 @@ and this project adheres to <a class="reference external" href="https://semver.o
 <li><p>Add fetching data capabilities</p></li>
 </ul>
 </section>
-<section id="fix">
-<h3>Fix<a class="headerlink" href="#fix" title="Link to this heading"></a></h3>
+<section id="id7">
+<h3>Fix<a class="headerlink" href="#id7" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p>Render example code in <code class="docutils literal notranslate"><span class="pre">notiondbapi.Cursor</span></code></p></li>
 <li><p>Add check for Notion JSON schema</p></li>
 </ul>
 </section>
-<section id="id4">
-<h3>Refactor<a class="headerlink" href="#id4" title="Link to this heading"></a></h3>
+<section id="id8">
+<h3>Refactor<a class="headerlink" href="#id8" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p>Redesign parsing for Notion objects.</p></li>
 <li><p>Refactor <code class="docutils literal notranslate"><span class="pre">Engine.__init__()</span></code> method.</p></li>
@@ -144,10 +173,10 @@ and this project adheres to <a class="reference external" href="https://semver.o
 </ul>
 </section>
 </section>
-<section id="id5">
-<h2>0.2.0 (2025-07-12)<a class="headerlink" href="#id5" title="Link to this heading"></a></h2>
-<section id="id6">
-<h3>Feat<a class="headerlink" href="#id6" title="Link to this heading"></a></h3>
+<section id="id9">
+<h2>0.2.0 (2025-07-12)<a class="headerlink" href="#id9" title="Link to this heading"></a></h2>
+<section id="id10">
+<h3>Feat<a class="headerlink" href="#id10" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p>Add SQL to JSON cross-compilation.</p></li>
 <li><p>Add SQL module for SQL parsing</p></li>

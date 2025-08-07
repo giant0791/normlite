@@ -1,0 +1,592 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.cursor &mdash; normlite 0.5.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=1dd76d02"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="normlite.engine" href="../engine/index.html" />
+    <link rel="prev" title="normlite" href="../index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">normlite</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">normlite.cursor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../engine/index.html">normlite.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../exceptions/index.html">normlite.exceptions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../future/index.html">normlite.future</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../notion_sdk/index.html">normlite.notion_sdk</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../notiondbapi/index.html">normlite.notiondbapi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../proxy/index.html">normlite.proxy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../sql/index.html">normlite.sql</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../txmodel/index.html">normlite.txmodel</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">normlite</a></li>
+      <li class="breadcrumb-item active">normlite.cursor</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/autoapi/normlite/cursor/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-normlite.cursor">
+<span id="normlite-cursor"></span><h1>normlite.cursor<a class="headerlink" href="#module-normlite.cursor" title="Link to this heading"></a></h1>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py exception">
+<dt class="sig sig-object py" id="normlite.cursor.ResourceClosedError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.cursor.</span></span><span class="sig-name descname"><span class="pre">ResourceClosedError</span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#ResourceClosedError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.ResourceClosedError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="../exceptions/index.html#normlite.exceptions.NormliteError" title="normlite.exceptions.NormliteError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normlite.exceptions.NormliteError</span></code></a></p>
+<p>The cursor cannot deliver rows.</p>
+<p>This exception is raised when a cursor (resource) cannot return rows because it is
+either closed (i.e. exhausted) or it represents the result from an SQL statement that
+does not return values (e.g. <code class="docutils literal notranslate"><span class="pre">INSERT</span></code>).</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.cursor._CursorColMapRecType">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.cursor.</span></span><span class="sig-name descname"><span class="pre">_CursorColMapRecType</span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#_CursorColMapRecType"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor._CursorColMapRecType" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<p>Helper record data structure to store column metadata.</p>
+<p>This class provides a description record to enable value and type conversions between DBAPI 2.0 rows and
+higher level class:<cite>Row</cite> objects.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor._CursorColMapRecType.column_name">
+<span class="sig-name descname"><span class="pre">column_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></em><a class="headerlink" href="#normlite.cursor._CursorColMapRecType.column_name" title="Link to this definition"></a></dt>
+<dd><p>The name of the column.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor._CursorColMapRecType.index">
+<span class="sig-name descname"><span class="pre">index</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a></em><a class="headerlink" href="#normlite.cursor._CursorColMapRecType.index" title="Link to this definition"></a></dt>
+<dd><p>The column position in the description (first column –&gt; index = 0).</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor._CursorColMapRecType.column_type">
+<span class="sig-name descname"><span class="pre">column_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></em><a class="headerlink" href="#normlite.cursor._CursorColMapRecType.column_type" title="Link to this definition"></a></dt>
+<dd><p>Currently, a string denoting the column type for conversion in the Python type system.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.cursor._ColMapType">
+<span class="sig-prename descclassname"><span class="pre">normlite.cursor.</span></span><span class="sig-name descname"><span class="pre">_ColMapType</span></span><a class="headerlink" href="#normlite.cursor._ColMapType" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.cursor._NoCursorResultMetadata">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.cursor.</span></span><span class="sig-name descname"><span class="pre">_NoCursorResultMetadata</span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#_NoCursorResultMetadata"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor._NoCursorResultMetadata" title="Link to this definition"></a></dt>
+<dd><dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor._NoCursorResultMetadata.returns_row">
+<span class="sig-name descname"><span class="pre">returns_row</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ClassVar</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><span class="pre">bool</span></a><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#normlite.cursor._NoCursorResultMetadata.returns_row" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor._NoCursorResultMetadata._raise_error">
+<span class="sig-name descname"><span class="pre">_raise_error</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NoReturn</span></span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#_NoCursorResultMetadata._raise_error"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor._NoCursorResultMetadata._raise_error" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.cursor._NoCursorResultMetadata.keys">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">keys</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.cursor._NoCursorResultMetadata.keys" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.cursor._NoCursorResultMetadata.key_to_index">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">key_to_index</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.cursor._NoCursorResultMetadata.key_to_index" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.cursor._NoCursorResultMetadata.index_for_key">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">index_for_key</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.cursor._NoCursorResultMetadata.index_for_key" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.cursor._NO_CURSOR_RESULT_METADATA">
+<span class="sig-prename descclassname"><span class="pre">normlite.cursor.</span></span><span class="sig-name descname"><span class="pre">_NO_CURSOR_RESULT_METADATA</span></span><a class="headerlink" href="#normlite.cursor._NO_CURSOR_RESULT_METADATA" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResultMetaData">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.cursor.</span></span><span class="sig-name descname"><span class="pre">CursorResultMetaData</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">desc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/cursor.html#CursorResultMetaData"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.CursorResultMetaData" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.cursor._NoCursorResultMetadata" title="normlite.cursor._NoCursorResultMetadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">_NoCursorResultMetadata</span></code></a></p>
+<p>Provide helper metadata structures to access row data from low level
+<code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.notionbdapi.dbapi2.Cursor</span></code> DBAPI 2.0.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResultMetaData.returns_row">
+<span class="sig-name descname"><span class="pre">returns_row</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#normlite.cursor.CursorResultMetaData.returns_row" title="Link to this definition"></a></dt>
+<dd><p>The associated cursor returns rows (e.g. <code class="docutils literal notranslate"><span class="pre">SELECT</span></code> statement).</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResultMetaData._colmap">
+<span class="sig-name descname"><span class="pre">_colmap</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">_ColMapType</span></em><a class="headerlink" href="#normlite.cursor.CursorResultMetaData._colmap" title="Link to this definition"></a></dt>
+<dd><p>Mapping between column name and its description record <a class="reference internal" href="#normlite.cursor._CursorColMapRecType" title="normlite.cursor._CursorColMapRecType"><code class="xref py py-class docutils literal notranslate"><span class="pre">_CursorColMapRecType</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResultMetaData._key_to_index">
+<span class="sig-name descname"><span class="pre">_key_to_index</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.cursor.CursorResultMetaData._key_to_index" title="Link to this definition"></a></dt>
+<dd><p>Mapping between column name and its positional index.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResultMetaData._index_for_key">
+<span class="sig-name descname"><span class="pre">_index_for_key</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.cursor.CursorResultMetaData._index_for_key" title="Link to this definition"></a></dt>
+<dd><p>Mapping between column positional index and its name.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResultMetaData._keys">
+<span class="sig-name descname"><span class="pre">_keys</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.cursor.CursorResultMetaData._keys" title="Link to this definition"></a></dt>
+<dd><p>A sequence containing all the column names.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResultMetaData.keys">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">keys</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.cursor.CursorResultMetaData.keys" title="Link to this definition"></a></dt>
+<dd><p>Provide all the column names for the described row.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResultMetaData.key_to_index">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">key_to_index</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.cursor.CursorResultMetaData.key_to_index" title="Link to this definition"></a></dt>
+<dd><p>Provide the mapping between column name and its positional index.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResultMetaData.index_for_key">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">index_for_key</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.cursor.CursorResultMetaData.index_for_key" title="Link to this definition"></a></dt>
+<dd><p>Provid the mapping beween the positional index of a column and its name.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResult">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.cursor.</span></span><span class="sig-name descname"><span class="pre">CursorResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cursor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><span class="pre">normlite.notiondbapi.dbapi2.Cursor</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/cursor.html#CursorResult"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.CursorResult" title="Link to this definition"></a></dt>
+<dd><p>Provide pythonic high level interface to result sets from SQL statements.</p>
+<p>This class is an adapter to the DBAPI cursor (see <a class="reference internal" href="../notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor</span></code></a>)
+representing state from the DBAPI cursor. It provides a high level API to
+access returned database rows as <a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row"><code class="xref py py-class docutils literal notranslate"><span class="pre">Row</span></code></a> objects.</p>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.5.0: </span>The fetcher methods now check that the cursor metadata returns row prior to execution.
+This ensures that no calls to <code class="docutils literal notranslate"><span class="pre">None</span></code> objects are issued.</p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResult._cursor">
+<span class="sig-name descname"><span class="pre">_cursor</span></span><a class="headerlink" href="#normlite.cursor.CursorResult._cursor" title="Link to this definition"></a></dt>
+<dd><p>The underlying DBAPI cursor.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResult.returns_rows">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">returns_rows</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><span class="pre">bool</span></a></em><a class="headerlink" href="#normlite.cursor.CursorResult.returns_rows" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">True</span></code> if this <a class="reference internal" href="#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">CursorResult</span></code></a> returns zero or more rows.</p>
+<p>This attribute signals whether it is legal to call the methods: <a class="reference internal" href="#normlite.cursor.CursorResult.fetchone" title="normlite.cursor.CursorResult.fetchone"><code class="xref py py-meth docutils literal notranslate"><span class="pre">CursorResult.fetchone()</span></code></a>,
+<a class="reference internal" href="#normlite.cursor.CursorResult.fetchall" title="normlite.cursor.CursorResult.fetchall"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fetchall()</span></code></a>, and <a class="reference internal" href="#normlite.cursor.CursorResult.fetchmany" title="normlite.cursor.CursorResult.fetchmany"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fetchmany()</span></code></a>.</p>
+<p>The truthness of this attribute is strictly in sync with whether the underlying DBAPI cursor
+had a <a class="reference internal" href="../notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.description" title="normlite.notiondbapi.dbapi2.Cursor.description"><code class="xref py py-attr docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor.description</span></code></a>, which always indicates the presence
+of result columns.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>A cursor that returns zero rows (e.g. an empty sequence from <a class="reference internal" href="#normlite.cursor.CursorResult.all" title="normlite.cursor.CursorResult.all"><code class="xref py py-meth docutils literal notranslate"><span class="pre">CursorResult.all()</span></code></a>)
+has still a <a class="reference internal" href="../notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.description" title="normlite.notiondbapi.dbapi2.Cursor.description"><code class="xref py py-attr docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor.description</span></code></a>, if a row-returning
+statement was executed.</p>
+</div>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">True</span></code> if this cursor result returns zero or more rows.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)">bool</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResult.__iter__">
+<span class="sig-name descname"><span class="pre">__iter__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Iterator</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row"><span class="pre">Row</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#CursorResult.__iter__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.CursorResult.__iter__" title="Link to this definition"></a></dt>
+<dd><p>Provide an iterator for this cursor result.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Yields<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Iterator[Row]</em> – The row iterator.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResult.one">
+<span class="sig-name descname"><span class="pre">one</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row"><span class="pre">Row</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#CursorResult.one"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.CursorResult.one" title="Link to this definition"></a></dt>
+<dd><p>Return exactly one row or raise an exception.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference internal" href="../exceptions/index.html#normlite.exceptions.NoResultFound" title="normlite.exceptions.NoResultFound"><strong>NoResultFound</strong></a> – If no row was found when one was required.</p></li>
+<li><p><a class="reference internal" href="../exceptions/index.html#normlite.exceptions.MultipleResultsFound" title="normlite.exceptions.MultipleResultsFound"><strong>MultipleResultsFound</strong></a> – If multiple rows were found when exactly one was required.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The one row required.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row">Row</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResult.all">
+<span class="sig-name descname"><span class="pre">all</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row"><span class="pre">Row</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#CursorResult.all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.CursorResult.all" title="Link to this definition"></a></dt>
+<dd><p>Return all rows in a sequence.</p>
+<p>This method closes the result set after invocation. Subsequent calls will return an empty sequence.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>All rows in a sequence.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Sequence[<a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row">Row</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResult.first">
+<span class="sig-name descname"><span class="pre">first</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row"><span class="pre">Row</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#CursorResult.first"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.CursorResult.first" title="Link to this definition"></a></dt>
+<dd><p>Return the first row or <code class="docutils literal notranslate"><span class="pre">None</span></code> if no row is present.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This method closes the result set and discards remaining rows.</p>
+</div>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The first row in the result set or <code class="docutils literal notranslate"><span class="pre">None</span></code> if no row is present.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Optional[<a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row">Row</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResult.fetchone">
+<span class="sig-name descname"><span class="pre">fetchone</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row"><span class="pre">Row</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#CursorResult.fetchone"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.CursorResult.fetchone" title="Link to this definition"></a></dt>
+<dd><p>Fetch the next row.</p>
+<p>When all rows are exhausted, returns <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The row object in the result.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Optional[<a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row">Row</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResult.fetchall">
+<span class="sig-name descname"><span class="pre">fetchall</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row"><span class="pre">Row</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#CursorResult.fetchall"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.CursorResult.fetchall" title="Link to this definition"></a></dt>
+<dd><p>Synonim for <a class="reference internal" href="#normlite.cursor.CursorResult.all" title="normlite.cursor.CursorResult.all"><code class="xref py py-class docutils literal notranslate"><span class="pre">CursorResult.all()</span></code></a> method.</p>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.5.0: </span>This method has been refactored as a wrapper around <a class="reference internal" href="#normlite.cursor.CursorResult.all" title="normlite.cursor.CursorResult.all"><code class="xref py py-meth docutils literal notranslate"><span class="pre">CursorResult.all()</span></code></a>.
+This ensures consistent behavior across synomin methods.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The sequence of row objects. Empty sequence if the cursor result is closed.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Sequence[<a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row">Row</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.CursorResult.fetchmany">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fetchmany</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row"><span class="pre">Row</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#CursorResult.fetchmany"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.CursorResult.fetchmany" title="Link to this definition"></a></dt>
+<dd><p>Fetch many rows.</p>
+<p>When all rows are exhausted, returns an empty sequence.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#NotImplementedError" title="(in Python v3.13)"><strong>NotImplementedError</strong></a> – Method not implemented yet.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>All rows or an empty sequence when exhausted.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Sequence[<a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row">Row</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.cursor.Row">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.cursor.</span></span><span class="sig-name descname"><span class="pre">Row</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#normlite.cursor.CursorResultMetaData" title="normlite.cursor.CursorResultMetaData"><span class="pre">CursorResultMetaData</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">row_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/cursor.html#Row"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.Row" title="Link to this definition"></a></dt>
+<dd><p>Provide pythonic high level interface to a single SQL database row.</p>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.5.0: </span><a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row"><code class="xref py py-class docutils literal notranslate"><span class="pre">Row</span></code></a> has been significantly extended to provide iteratable capabilities
+and a mapping-sytle object to access the values of the columns returned in the row.</p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor.Row._metadata">
+<span class="sig-name descname"><span class="pre">_metadata</span></span><a class="headerlink" href="#normlite.cursor.Row._metadata" title="Link to this definition"></a></dt>
+<dd><p>The metadata object to process raw rows.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor.Row._values">
+<span class="sig-name descname"><span class="pre">_values</span></span><a class="headerlink" href="#normlite.cursor.Row._values" title="Link to this definition"></a></dt>
+<dd><p>Thew column values.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.Row.__getitem__">
+<span class="sig-name descname"><span class="pre">__getitem__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key_or_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#Row.__getitem__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.Row.__getitem__" title="Link to this definition"></a></dt>
+<dd><p>Provide keyed and indexed access to the row values.</p>
+<p>Providing this method enables row object to be iterated:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">row</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="w"> </span><span class="si">= }</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="go">value = &#39;680dee41-b447-451d-9d36-c6eaff13fb45&#39;</span>
+<span class="go">value = False</span>
+<span class="go">value = False</span>
+<span class="go">value = 12345</span>
+<span class="go">value = &#39;B&#39;</span>
+<span class="go">value = &#39;Isaac Newton&#39;</span>
+</pre></div>
+</div>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.5.0: </span>Now, it supports both keyes and indexed access. Error handling is more
+robust and consistent.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>key_or_index</strong> (<em>Union</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>]</em>) – The value’s key (column name) or index (column positional).</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#IndexError" title="(in Python v3.13)"><strong>IndexError</strong></a> – If index is out or range.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#KeyError" title="(in Python v3.13)"><strong>KeyError</strong></a> – If row has no column named <code class="docutils literal notranslate"><span class="pre">key_or_index</span></code>.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.13)"><strong>TypeError</strong></a> – If the provided index is neither <code class="docutils literal notranslate"><span class="pre">str</span></code> (column name) or <code class="docutils literal notranslate"><span class="pre">int</span></code> (column index).</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The value for the column the key or index has been provided.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Any</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.Row.mapping">
+<span class="sig-name descname"><span class="pre">mapping</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#Row.mapping"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.Row.mapping" title="Link to this definition"></a></dt>
+<dd><p>Provide the mapping object for this row.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.Row.__repr__">
+<span class="sig-name descname"><span class="pre">__repr__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/cursor.html#Row.__repr__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.Row.__repr__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.cursor.RowMapping">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.cursor.</span></span><span class="sig-name descname"><span class="pre">RowMapping</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">row</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#normlite.cursor.Row" title="normlite.cursor.Row"><span class="pre">Row</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/cursor.html#RowMapping"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.RowMapping" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">Mapping</span></code>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">str</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">Any</span></code>]</p>
+<p>Helper to construct mapping objects for rows.</p>
+<p><a class="reference internal" href="#normlite.cursor.RowMapping" title="normlite.cursor.RowMapping"><code class="xref py py-class docutils literal notranslate"><span class="pre">RowMapping</span></code></a> provides a dedicated mapping implementation for column name, column value pairs.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor.RowMapping._row">
+<span class="sig-name descname"><span class="pre">_row</span></span><a class="headerlink" href="#normlite.cursor.RowMapping._row" title="Link to this definition"></a></dt>
+<dd><p>The underlying row object.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.cursor.RowMapping._mapping">
+<span class="sig-name descname"><span class="pre">_mapping</span></span><a class="headerlink" href="#normlite.cursor.RowMapping._mapping" title="Link to this definition"></a></dt>
+<dd><p>The mapping object created from the row object.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.RowMapping.__getitem__">
+<span class="sig-name descname"><span class="pre">__getitem__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/cursor.html#RowMapping.__getitem__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.RowMapping.__getitem__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.RowMapping.__iter__">
+<span class="sig-name descname"><span class="pre">__iter__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/cursor.html#RowMapping.__iter__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.RowMapping.__iter__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.RowMapping.__len__">
+<span class="sig-name descname"><span class="pre">__len__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/cursor.html#RowMapping.__len__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.RowMapping.__len__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.RowMapping.__eq__">
+<span class="sig-name descname"><span class="pre">__eq__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">other</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><span class="pre">bool</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/cursor.html#RowMapping.__eq__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.RowMapping.__eq__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.RowMapping.keys">
+<span class="sig-name descname"><span class="pre">keys</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/cursor.html#RowMapping.keys"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.RowMapping.keys" title="Link to this definition"></a></dt>
+<dd><p>D.keys() -&gt; a set-like object providing a view on D’s keys</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.RowMapping.values">
+<span class="sig-name descname"><span class="pre">values</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/cursor.html#RowMapping.values"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.RowMapping.values" title="Link to this definition"></a></dt>
+<dd><p>D.values() -&gt; an object providing a view on D’s values</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.cursor.RowMapping.items">
+<span class="sig-name descname"><span class="pre">items</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/cursor.html#RowMapping.items"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.cursor.RowMapping.items" title="Link to this definition"></a></dt>
+<dd><p>D.items() -&gt; a set-like object providing a view on D’s items</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../index.html" class="btn btn-neutral float-left" title="normlite" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../engine/index.html" class="btn btn-neutral float-right" title="normlite.engine" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

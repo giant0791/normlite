@@ -1,0 +1,325 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.engine &mdash; normlite 0.5.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=1dd76d02"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="normlite.exceptions" href="../exceptions/index.html" />
+    <link rel="prev" title="normlite.cursor" href="../cursor/index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">normlite</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../cursor/index.html">normlite.cursor</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">normlite.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../exceptions/index.html">normlite.exceptions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../future/index.html">normlite.future</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../notion_sdk/index.html">normlite.notion_sdk</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../notiondbapi/index.html">normlite.notiondbapi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../proxy/index.html">normlite.proxy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../sql/index.html">normlite.sql</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../txmodel/index.html">normlite.txmodel</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">normlite</a></li>
+      <li class="breadcrumb-item active">normlite.engine</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/autoapi/normlite/engine/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-normlite.engine">
+<span id="normlite-engine"></span><h1>normlite.engine<a class="headerlink" href="#module-normlite.engine" title="Link to this heading"></a></h1>
+<p>Provide factory function and convenient engine proxy object to connect and interact to Notion integrations.</p>
+<dl>
+<dt>Examples of supported use cases:</dt><dd><div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">NOTION_TOKEN</span> <span class="o">=</span> <span class="s2">&quot;&lt;secret-token&gt;&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">NOTION_VERSION</span> <span class="o">=</span> <span class="s2">&quot;2022-06-28&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># create an engine to connect to an internal integration</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">engine</span> <span class="o">=</span> <span class="n">create_engine</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;normlite+auth://internal?token=</span><span class="si">{</span><span class="n">NOTION_TOKEN</span><span class="si">}</span><span class="s2">&amp;version=</span><span class="si">{</span><span class="n">NOTION_VERSION</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># create an engine to connect to an in-memory test integration:</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">engine</span> <span class="o">=</span> <span class="n">create_engine</span><span class="p">(</span><span class="s2">&quot;normlite:///:memory:&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># create an engine to connect to a file-backed test integration</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">engine</span> <span class="o">=</span> <span class="n">create_engine</span><span class="p">(</span><span class="s2">&quot;normlite:///path/to/my/test-integration.db&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd>
+<dt>Experimental use case (<strong>incomplete</strong> and <strong>not tested</strong>):</dt><dd><div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">NOTION_CLIENT_ID</span> <span class="o">=</span> <span class="s2">&quot;&lt;client_id&gt;&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">NOTION_CLIENT_SECRET</span> <span class="o">=</span> <span class="s2">&quot;&lt;client_secret&gt;&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">NOTION_AUTH_URL</span> <span class="o">=</span> <span class="s2">&quot;&lt;auth_url&gt;&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># create an engine to connect to an external integration (experimental!!!)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">engine</span> <span class="o">=</span> <span class="n">create_engine</span><span class="p">(</span>
+<span class="gp">&gt;&gt;&gt; </span>   <span class="sa">f</span><span class="s2">&quot;normlite+auth://external?client_id=</span><span class="si">{</span><span class="n">NOTION_CLIENT_ID</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span>   <span class="sa">f</span><span class="s2">&quot;&amp;client_secret=</span><span class="si">{</span><span class="n">NOTION_CLIENT_SECRET</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span>   <span class="sa">f</span><span class="s2">&quot;&amp;auth_url=</span><span class="si">{</span><span class="n">NOTION_AUTH_URL</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">)</span>
+</pre></div>
+</div>
+</dd>
+</dl>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.engine.NotionAuthURI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.engine.</span></span><span class="sig-name descname"><span class="pre">NotionAuthURI</span></span><a class="reference internal" href="../../../_modules/normlite/engine.html#NotionAuthURI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.engine.NotionAuthURI" title="Link to this definition"></a></dt>
+<dd><p>Provide a helper data structure to hold URI schema elements for an internal or external Notion integration.</p>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>Experimental code! Do not use!</p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.NotionAuthURI.kind">
+<span class="sig-name descname"><span class="pre">kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'internal'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'external'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.engine.NotionAuthURI.kind" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.NotionAuthURI.token">
+<span class="sig-name descname"><span class="pre">token</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.engine.NotionAuthURI.token" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.NotionAuthURI.version">
+<span class="sig-name descname"><span class="pre">version</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.engine.NotionAuthURI.version" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.NotionAuthURI.client_id">
+<span class="sig-name descname"><span class="pre">client_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.engine.NotionAuthURI.client_id" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.NotionAuthURI.client_secret">
+<span class="sig-name descname"><span class="pre">client_secret</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.engine.NotionAuthURI.client_secret" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.NotionAuthURI.auth_url">
+<span class="sig-name descname"><span class="pre">auth_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.engine.NotionAuthURI.auth_url" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.engine.NotionSimulatedURI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.engine.</span></span><span class="sig-name descname"><span class="pre">NotionSimulatedURI</span></span><a class="reference internal" href="../../../_modules/normlite/engine.html#NotionSimulatedURI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.engine.NotionSimulatedURI" title="Link to this definition"></a></dt>
+<dd><p>Provide an a helper data structure to hold URI schema elements for test integrations.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.NotionSimulatedURI.kind">
+<span class="sig-name descname"><span class="pre">kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'simulated'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.engine.NotionSimulatedURI.kind" title="Link to this definition"></a></dt>
+<dd><p>The kind of the integration.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.NotionSimulatedURI.mode">
+<span class="sig-name descname"><span class="pre">mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'memory'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'file'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.engine.NotionSimulatedURI.mode" title="Link to this definition"></a></dt>
+<dd><p>The mode the integration.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.NotionSimulatedURI.path">
+<span class="sig-name descname"><span class="pre">path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.engine.NotionSimulatedURI.path" title="Link to this definition"></a></dt>
+<dd><p>The path to the database file (<code class="docutils literal notranslate"><span class="pre">None</span></code> for in-memory integrations).</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.NotionSimulatedURI.file">
+<span class="sig-name descname"><span class="pre">file</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.engine.NotionSimulatedURI.file" title="Link to this definition"></a></dt>
+<dd><p>The database file name (<code class="docutils literal notranslate"><span class="pre">None</span></code> for in-memory integrations).</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py type">
+<dt class="sig sig-object py" id="normlite.engine.NotionURI">
+<em class="property"><span class="k"><span class="pre">type</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.engine.</span></span><span class="sig-name descname"><span class="pre">NotionURI</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#normlite.engine.NotionAuthURI" title="normlite.engine.NotionAuthURI"><span class="pre">NotionAuthURI</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#normlite.engine.NotionSimulatedURI" title="normlite.engine.NotionSimulatedURI"><span class="pre">NotionSimulatedURI</span></a></em><a class="headerlink" href="#normlite.engine.NotionURI" title="Link to this definition"></a></dt>
+<dd><p>Type for the URI.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="normlite.engine._parse_uri">
+<span class="sig-prename descclassname"><span class="pre">normlite.engine.</span></span><span class="sig-name descname"><span class="pre">_parse_uri</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">uri</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NotionURI</span></span></span><a class="reference internal" href="../../../_modules/normlite/engine.html#_parse_uri"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.engine._parse_uri" title="Link to this definition"></a></dt>
+<dd><p>Provide helper function to parse a normlite URI.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="normlite.engine.create_engine">
+<span class="sig-prename descclassname"><span class="pre">normlite.engine.</span></span><span class="sig-name descname"><span class="pre">create_engine</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">uri</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.engine.Engine" title="normlite.engine.Engine"><span class="pre">Engine</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/engine.html#create_engine"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.engine.create_engine" title="Link to this definition"></a></dt>
+<dd><p>Create a new engine proxy object to connect and interact to the Notion integration denoted by the supplied URI.</p>
+<p>This is a factory function to create :class:<code class="docutils literal notranslate"><span class="pre">Engine</span></code> proxy object based on the parameters
+specified in the supplied URI.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>uri</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The URI denoting the integration to connect to.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The engine proxy object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#normlite.engine.Engine" title="normlite.engine.Engine">Engine</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.engine.Engine">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.engine.</span></span><span class="sig-name descname"><span class="pre">Engine</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">uri</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NotionURI</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/normlite/engine.html#Engine"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.engine.Engine" title="Link to this definition"></a></dt>
+<dd><p>Provide a convenient proxy object to connect and interact with Notion integrations.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>In future versions, this class will be the proxy for handling different kind of clients.</p>
+</div>
+<p>Examples of possible future extensions:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># create a proxy object to a :memory: integration</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">engine</span> <span class="o">=</span> <span class="n">create_engine</span><span class="p">(</span><span class="s1">&#39;normlite::///:memory:&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">isinstance</span><span class="p">(</span><span class="n">engine</span><span class="o">.</span><span class="n">client</span><span class="p">,</span> <span class="n">InMemoryNotionClient</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.Engine._uri">
+<span class="sig-name descname"><span class="pre">_uri</span></span><a class="headerlink" href="#normlite.engine.Engine._uri" title="Link to this definition"></a></dt>
+<dd><p>The Notion URI denoting the integration to connect to.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.Engine._database">
+<span class="sig-name descname"><span class="pre">_database</span></span><a class="headerlink" href="#normlite.engine.Engine._database" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">'memory'</span></code> if mode is memory, the file name without extension if mode is file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The database name</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.Engine.client">
+<span class="sig-name descname"><span class="pre">client</span></span><a class="headerlink" href="#normlite.engine.Engine.client" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.Engine._database_id">
+<span class="sig-name descname"><span class="pre">_database_id</span></span><a class="headerlink" href="#normlite.engine.Engine._database_id" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.engine.Engine._create_sim_client">
+<span class="sig-name descname"><span class="pre">_create_sim_client</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">uri</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#normlite.engine.NotionSimulatedURI" title="normlite.engine.NotionSimulatedURI"><span class="pre">NotionSimulatedURI</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../notion_sdk/client/index.html#normlite.notion_sdk.client.InMemoryNotionClient" title="normlite.notion_sdk.client.InMemoryNotionClient"><span class="pre">normlite.notion_sdk.client.InMemoryNotionClient</span></a></span></span><a class="reference internal" href="../../../_modules/normlite/engine.html#Engine._create_sim_client"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.engine.Engine._create_sim_client" title="Link to this definition"></a></dt>
+<dd><p>Provide helper method to instantiate the correct client based on the URI provided.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.engine.Engine.database">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">database</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></em><a class="headerlink" href="#normlite.engine.Engine.database" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.engine.Engine.database_id">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">database_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></em><a class="headerlink" href="#normlite.engine.Engine.database_id" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../cursor/index.html" class="btn btn-neutral float-left" title="normlite.cursor" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../exceptions/index.html" class="btn btn-neutral float-right" title="normlite.exceptions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
