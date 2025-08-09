@@ -16,9 +16,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
 import pdb
 from typing import Any, Dict, Iterator, List, Literal, Optional, Self, Sequence, Tuple, TypeAlias
 import uuid
+from flask.testing import FlaskClient
 
 from normlite.notion_sdk.client import AbstractNotionClient, NotionError
 from normlite.notiondbapi._model import NotionDatabase, NotionPage
@@ -61,8 +63,16 @@ class InternalError(Error):
     the underlying database driver (i.e. the Notion API).
    """
 
-class Cursor:
-    """Provide database cursor functionalty according to the DBAPI 2.0 specification (PEP 249)."""
+class BaseCursor:
+    """Provide database base cursor functionalty according to the DBAPI 2.0 specification (PEP 249).
+    
+    Note:
+        the :class:`BaseCursor` does not support transaction awareness. Use :class:`Cursor` for fully
+        DBAPI 2.0 compliant cursor.
+
+    .. versionadded:: 0.7.0
+
+    """
     def __init__(self, client: AbstractNotionClient):
         self._client = client
         """The client implementing the Notion API."""
@@ -380,7 +390,7 @@ class Cursor:
 
         return results
     
-    def execute(self, operation: Dict[str, Any], parameters: DBAPIExecuteParameters) -> Self:
+    def execute(self, operation: dict, parameters: DBAPIExecuteParameters) -> Self:
         """Prepare and execute a database operation (query or command).
 
         Parameters may be provided as a mapping and will be bound to variables in the operation.
@@ -545,8 +555,77 @@ class Cursor:
                 
         return payload
                 
+class Cursor(BaseCursor):
+    """Transaction-aware DBAPI cursor
+    
+    This is how the new Cursor class will work in tandem with :class:`Connection`.
 
+    Note:
+        Unfortunately, the DBAPI 2.0 does not forsee an execute() method for the Connection class.
+        This leads to a suboptimal separation of concerns: The Connection clas should be responsible to manage the
+        transaction and to execute operations, while Cursor should only be concerned with providing access to
+        the results. In the lack of an execute() method at connection level, the Cursor class needs to have a reference 
+        to the connection, so it can start a new transaction on the first call to its execute() method.
 
+    .. versionchanged:: 0.7.0
+    
+    """
+    def __init__(
+            self, 
+            dbapi_connection: Connection,
+            client: AbstractNotionClient
+    ):
+        super().__init__(client)
+        self._dbapi_connection = dbapi_connection
+
+    def execute(self, operation: dict, parameters: DBAPIExecuteParameters):
+        # begin a new transaction if the connection is not in transaction state
+        if not self._dbapi_connection._in_transaction():
+            self._dbapi_connection._begin_transaction()
+
+        # execute the operation as usual
+        return super().execute(operation, parameters)
+
+class Connection:
+    """Provide database base connection functionalty according to the DBAPI 2.0 specification (PEP 249).
+
+    Warning:
+        This class is still proof-of-concept stage. It needs to be initialized with a Flask testing client (:class:`FlaskClient`).
+        **DO NOT USE YET!**
+
+    .. versionadded:: 0.7.0
+
+    """
+    def __init__(self, proxy_client: FlaskClient, client: AbstractNotionClient):
+        self._proxy_client = proxy_client
+        self._client = client
+        self._tx_id: str = None 
+
+    def cursor(self) -> Cursor:
+        """Return a new :class:`normlite.notiondbapi.dbapi2.Cursor` object using the connection."""
+        return Cursor(self, self._client)
+    
+    def _begin_transaction(self) -> None:
+        """Begin a new transaction."""
+        
+        # Assumption: The caller implements correctly the internal API.
+        # Call _begin_transaction() only if _in_transaction() returns False
+        # => No checks consistency to avoid multiple txn here!
+        response = self._proxy_client.post('/transactions')
+        if response.status_code != 200:
+            raise InterfaceError(
+                f'Unable to start a new transaction in the proxy server. '
+                f'Reason: {response.get_json()['error']}'
+            )
+        
+        self._tx_id = response.get_json()['transaction_id']
+
+    def _in_transaction(self) -> bool:
+        """True if the connection has already initiated a transaction.
+        
+        This method is used by the cursor to determin whether to begin a new transaction or not.
+        """
+        return self._tx_id
              
                 
 
