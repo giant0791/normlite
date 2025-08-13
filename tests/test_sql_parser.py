@@ -1,4 +1,4 @@
-from normlite.sql import Parser, tokenize, CreateTable, InsertStatement, ColumnDef
+from normlite.sql.sql import Parser, tokenize, CreateTable, InsertStatement, ColumnDef
 
 def test_parse_create_table_ast():
     sql = "create table students (id int, name title_varchar(255), grade varchar(1))"

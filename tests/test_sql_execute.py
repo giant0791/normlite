@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 import pytest
 
-from normlite.sql import ColumnDef, CreateTable, MetaData, SqlToJsonVisitor, Visitor, Where, text
+from normlite.sql.sql import ColumnDef, CreateTable, MetaData, SqlToJsonVisitor, Visitor, Where, text
 
 @pytest.fixture
 def create_table_stmt() -> str:

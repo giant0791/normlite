@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from normlite.sql import ColumnDef, CreateTable, InsertStatement, MetaData, tokenize, Parser, SqlToJsonVisitor
+from normlite.sql.sql import ColumnDef, CreateTable, InsertStatement, MetaData, tokenize, Parser, SqlToJsonVisitor
 
 
 def test_create_table_to_json():

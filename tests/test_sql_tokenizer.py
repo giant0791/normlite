@@ -1,7 +1,7 @@
 # tests/test_sqlparser.py
 
 import pytest
-from normlite.sql import tokenize, TokenType
+from normlite.sql.sql import tokenize, TokenType
 
 @pytest.mark.parametrize("sql,expected_tokens", [
     (
