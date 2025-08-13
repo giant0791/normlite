@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Any, ClassVar, Iterator, Mapping, NamedTuple, NoReturn, Optional, Sequence, Union
 
 from normlite.exceptions import MultipleResultsFound, NormliteError, NoResultFound
-from normlite.notiondbapi.dbapi2 import Cursor, InterfaceError
+from normlite.notiondbapi.dbapi2 import CompositeCursor, Cursor, InterfaceError
 
 class ResourceClosedError(NormliteError):
     """The cursor cannot deliver rows.
@@ -58,7 +58,7 @@ class _NoCursorResultMetadata:
 
     def _raise_error(self) -> NoReturn:
         raise ResourceClosedError(
-            'This result object does not return rows.'
+            'This result object does not return rows. '
             'It has been automatically closed.'
         )
     
@@ -131,21 +131,35 @@ class CursorResultMetaData(_NoCursorResultMetadata):
         """Provid the mapping beween the positional index of a column and its name."""
         return self._index_for_key
     
-class CursorResult:
+class BaseCursorResult:
     """Provide pythonic high level interface to result sets from SQL statements.
 
     This class is an adapter to the DBAPI cursor (see :class:`normlite.notiondbapi.dbapi2.Cursor`) 
     representing state from the DBAPI cursor. It provides a high level API to
     access returned database rows as :class:`Row` objects. 
 
+    Note:
+        If a closed DBAPI cursor is passed to the init method, this cursor result automatically
+        transitions to the closed state.
+
     .. versionchanged:: 0.5.0
         The fetcher methods now check that the cursor metadata returns row prior to execution.
         This ensures that no calls to ``None`` objects are issued.
+
+    .. versionchanged:: 0.7.0   This class has been renamed to reflect the base API and behaviour
+        of results. Now, the base implementation of a cursor result can be composed in the derived
+        subclass :class:`CursorResult`. Additionally, the :meth:`close()` is now available to close
+        the underlying DBAPI cursor. Therefore, all methods returning rows now check whether the cursor
+        is closed and raise the exc:`ResourceClosedError`. The attribute :attr:`CursorResult.return_rows` 
+        of closed cursor result always return ``False``.
 
     """
     def __init__(self, cursor: Cursor):
         self._cursor = cursor
         """The underlying DBAPI cursor."""
+
+        self._closed = False
+        """``True`` if this cursor result is closed."""
 
         if self._cursor.description:
             self._metadata = CursorResultMetaData(self._cursor.description)
@@ -155,6 +169,7 @@ class CursorResult:
             # the cursor passed has not executed any operation yet
             # or it does not returns row
             self._metadata = _NO_CURSOR_RESULT_METADATA
+            self._closed = self._cursor._closed
 
     @property
     def returns_rows(self) -> bool:
@@ -184,9 +199,15 @@ class CursorResult:
 
         .. versionadded:: 0.5.0
 
+        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
+
+        Raises:
+            ClosedResourceError: If it was previously closed.
+
         Yields:
             Iterator[Row]: The row iterator.
         """
+        self._check_if_closed()
         for raw_row in self._cursor:
             yield Row(self._metadata, raw_row)
 
@@ -199,9 +220,12 @@ class CursorResult:
 
         .. versionadded:: 0.5.0
 
+        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
+
         Raises:
             NoResultFound: If no row was found when one was required.
             MultipleResultsFound: If multiple rows were found when exactly one was required.
+            ClosedResourceError: If it was previously closed.
         
         Returns:
             Row: The one row required.
@@ -212,6 +236,7 @@ class CursorResult:
         if self._cursor.rowcount > 1:
             raise MultipleResultsFound('Multiple rows were found when exactly one was required.')
         
+        self._check_if_closed()
         return self.all()[0]
     
     def all(self) -> Sequence[Row]:
@@ -220,6 +245,11 @@ class CursorResult:
         This method closes the result set after invocation. Subsequent calls will return an empty sequence.
 
         .. versionadded:: 0.5.0
+        
+        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
+
+        Raises:
+            ClosedResourceError: If it was previously closed.
         
         Returns:
             Sequence[Row]: All rows in a sequence.
@@ -243,6 +273,11 @@ class CursorResult:
 
         .. versionadded:: 0.5.0
 
+        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
+
+        Raises:
+            ClosedResourceError: If it was previously closed.
+        
         Returns:
             Optional[Row]: The first row in the result set or ``None`` if no row is present.
         """
@@ -307,6 +342,57 @@ class CursorResult:
             Sequence[Row]: All rows or an empty sequence when exhausted.
         """
         raise NotImplementedError
+    
+    def close(self) -> None:
+        # TODO: implement close method
+        pass
+
+    def _check_if_closed(self) -> None:
+        """Raise ResourceClosedError if this cursor result is closed."""
+        # TODO: implement _check_if_closed
+
+    
+class CursorResult(BaseCursorResult):
+    """Prototype for new and refactored CursorResult class with composite cursor feature.
+    
+    .. versionadded:: 0.7.0
+
+    """
+
+    # TODO: 
+    # DECIDE: Composition over inheritance?
+    # THINK: CursorResultBase or better just Result in case of composition?
+    # --------------------------------------------------------------------------------------
+    # 1. Put current CursorResult implementation into CursorResultBase
+    # 2. Refactor CursorResult as subclass of CursorResultBase and use this implementation
+    # 3. Add CursorResultBase.close() and CursorResult.close() methods 
+    # --------------------------------------------------------------------------------------
+    
+    def __init__(self, dbapi_cursor: CompositeCursor):
+        self._dbapi_cursor = dbapi_cursor
+        self._current_result = CursorResult(self._dbapi_cursor._current_cursor)
+
+    def next_result(self) -> bool:
+        """Advance to the next cursor, if available."""
+        if self._dbapi_cursor.nextset():
+            # next result set is available
+            # first close the current cursor result
+            # TODO: Replace with self._current_cursor.close()
+            self._current_result._metadata = _NO_CURSOR_RESULT_METADATA
+
+            # update the current cursor result
+            self._current_result = CursorResult(self._dbapi_cursor._current_cursor)
+            return True
+        
+        # all result sets depleted
+        # TODO: add self.close()
+        return False
+    
+    def one(self) -> Row:
+        return self._current_result.one()
+    
+    def all(self) -> Sequence[Row]:
+        return self._current_result.all()
 
 class Row:
     """Provide pythonic high level interface to a single SQL database row.
