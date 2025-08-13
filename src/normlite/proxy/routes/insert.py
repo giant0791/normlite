@@ -46,6 +46,6 @@ def insert(tx_id):
         )
         return _make_response_obj({}, tx_id), 202
 
-    except Exception as e:
+    except KeyError as ke:
         # the only reason why Transaction.add_change() can fail is no database_id found
-        return _make_response_obj({"error": str(e)}), 400
+        return _make_response_obj({"error": f'Missing "{ke.args[0]}" in payload'}), 400

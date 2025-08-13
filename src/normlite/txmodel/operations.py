@@ -62,8 +62,14 @@ class StagedInsert(Operation):
 
     def stage(self) -> None:
         # Pre-check — validate payload minimally
-        if "parent" not in self.page_payload or "properties" not in self.page_payload:
-            raise ValueError("Invalid Notion page insert payload")
+        try:
+            self.page_payload['parent']
+            self.page_payload['properties']
+        except KeyError as ke:
+            raise ValueError(
+                f'Invalid Notion page pages.create payload: '
+                f'Missing "{ke.args[0]}".'
+            )
 
     def do_commit(self) -> None:
         self._result = self.notion('pages', 'create', self.page_payload)
@@ -79,4 +85,27 @@ class StagedInsert(Operation):
 
     def get_result(self) -> dict:
         return self._result
+    
+class StagedSelect(Operation):
+    """Operation to query the database."""
+    def __init__(self, notion: AbstractNotionClient, payload: dict, tx_id: str):
+        self.notion = notion
+        self.payload = payload
+        self.tx_id = self.tx_id
+        self._result = None
+
+    def stage(self) -> None:
+        if 'database_id' not in self.payload or 'filter' not in self.payload:
+            raise ValueError('Missing database id or filters or both.')
+        
+    def do_commit(self) -> None:
+        self._result = self.notion('databases', 'query', self.payload)
+
+    def do_rollback(self):
+        """Nothing to rollback, ``SELECT`` is non mutating."""
+        ...
+
+    def get_result(self) -> dict:
+        return self._result
+
             

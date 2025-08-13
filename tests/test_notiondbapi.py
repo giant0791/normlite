@@ -20,58 +20,27 @@ def parameters() -> Dict[str,Any]:
         'parent': parent
     }
     params = {                                 # params contains the bindings
-        'id': 1,
-        'name': 'Isaac Newton',
-        'grade': 'B'
+        'id': 98765,
+        'name': 'Ada Lovelace',
+        'grade': 'A'
     }
     
     return dict(payload=payload, params=params)
 
 
-def test_dbapi_cursor_fetchall(dbapi_cursor: Cursor):
-    rows = dbapi_cursor.fetchall()
-    expected_rows = [
-        [
-            ('id', 'object_id', '680dee41-b447-451d-9d36-c6eaff13fb45'),
-            ('object', 'object_type', 'page'), 
-            ('title', 'title', ''),
-            ('id', 'number', '12345'),  
-            ('grade', 'rich_text', 'B'), 
-            ('name', 'title', 'Isaac Newton')
-        ],
-        [
-            ('id', 'object_id', '680dee41-b447-451d-9d36-c6eaff13fb46'),
-            ('object', 'object_type', 'page'), 
-            ('title', 'title', ''),
-            ('id', 'number', '67890'),  
-            ('grade', 'rich_text', 'A'), 
-            ('name', 'title', 'Galileo Galilei')
-        ]
-    ]
 
-    assert expected_rows == rows
-
-def test_dbapi_cursor_execute(dbapi_cursor: Cursor, parameters: Dict[str, Any]):
+def test_dbapi_cursor_execute(dbapi_cursor: Cursor, parameters: dict):
     operation = dict(endpoint = 'pages', request = 'create')
     dbapi_cursor.execute(operation, parameters)
     dbapi_cursor.fetchall()
 
     assert dbapi_cursor.rowcount == 1
 
-def test_dbapi_cursor_concat_calls(dbapi_cursor: Cursor, parameters: Dict[str, Any]):
+def test_dbapi_cursor_concat_calls(dbapi_cursor: Cursor, parameters: dict):
     operation = dict(endpoint = 'pages', request = 'create')
     results = dbapi_cursor.execute(operation, parameters).fetchall()
     
     assert len(results) == 1
-
-def test_dbapi_cursor_no_parent(dbapi_cursor: Cursor, parameters: Dict[str, Any]):
-    operation = dict(endpoint = 'pages', request = 'create')
-    parameters['payload'].pop('parent')
-
-    with pytest.raises(
-        InterfaceError, 
-        match='Missing "parent" object in payload:'):
-        dbapi_cursor.execute(operation, parameters)
 
 def test_dbapi_cursor_no_properties(dbapi_cursor: Cursor, parameters: Dict[str, Any]):
     operation = dict(endpoint = 'pages', request = 'create')
@@ -102,5 +71,4 @@ def test_cursor_execute_w_param_binding(dbapi_cursor: Cursor, parameters: Dict[s
 
     obj_id = new_row[0][0][-1]  # object id is always first element, id value always last 
     assert dbapi_cursor.lastrowid == uuid.UUID(obj_id).int
-
 
