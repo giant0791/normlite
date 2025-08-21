@@ -1,4 +1,4 @@
-# sql.py
+# normlite/sql/sql.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.

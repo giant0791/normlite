@@ -1,4 +1,4 @@
-# sql/__init__.py
+# normlite/sql/__init__.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -15,3 +15,21 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from .schema import Column as Column
+from .schema import Table as Table
+from .schema import ColumnCollection as ColumnCollection
+from .schema import ReadOnlyCollectionMixin as ReadOnlyCollectionMixin
+from .schema import Constraint as Constraint
+from .schema import PrimaryKeyConstraint as PrimaryKeyConstraint
+from .type_api import TypeEngine as TypeEngine
+from .type_api import Currency as Currency
+from .type_api import Number as Number
+from .type_api import Integer as Integer
+from .type_api import Numeric as Numeric
+from .type_api import Money as Money
+from .type_api import String as String
+from .type_api import Boolean as Boolean
+from .type_api import Date as Date
+from .type_api import UUID as UUID
+from .type_api import ObjectId as ObjectId
+from .type_api import ArchivalFlag as ArchivalFlag

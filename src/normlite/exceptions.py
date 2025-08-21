@@ -16,6 +16,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+"""Provide ``normlite`` specific exceptions.
+
+.. versionadded:: 0.5.0
+"""
+
 class NormliteError(Exception):
     """Base exception class for all ``normlite`` exceptions.
     
@@ -24,7 +29,7 @@ class NormliteError(Exception):
     ...
 
 class NoResultFound(NormliteError):
-    """Raised when exaclty one result row is expected, but none was found.
+    """Raised when exactly one result row is expected, but none was found.
     
     .. versionadded: 0.5.0
     """
@@ -34,5 +39,26 @@ class MultipleResultsFound(NormliteError):
     """Raised if multiple rows were found when exactly one was required.
     
     .. versionadded: 0.5.0
+    """
+    ...
+
+class DuplicateColumnError(NormliteError):
+    """Raised when an already existing column is added to a table.
+    
+    .. versionadded:: 0.7.0
+    """
+    ...
+
+class ArgumentError(NormliteError):
+    """Raised when an erroneous argument is passed.
+    
+    .. versionadded:: 0.7.0
+    """
+    ...
+
+class InvalidRequestError(NormliteError):
+    """Raised when a ``normlite`` method or function is cannot perform as requested.
+    
+    .. versionadded:: 0.7.0
     """
     ...
