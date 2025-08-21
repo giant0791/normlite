@@ -109,3 +109,49 @@ Module Contents
 
 
 
+.. py:class:: StagedSelect(notion: normlite.notion_sdk.client.AbstractNotionClient, payload: dict, tx_id: str)
+
+   Bases: :py:obj:`Operation`
+
+
+   Operation to query the database.
+
+
+   .. py:attribute:: notion
+
+
+   .. py:attribute:: payload
+
+
+   .. py:attribute:: tx_id
+
+
+   .. py:attribute:: _result
+      :value: None
+
+
+
+   .. py:method:: stage() -> None
+
+      Stage and validate the data to be committed.
+
+
+
+   .. py:method:: do_commit() -> None
+
+      Perform the commit activities associated with this operation.
+
+
+
+   .. py:method:: do_rollback()
+
+      Nothing to rollback, ``SELECT`` is non mutating.
+
+
+
+   .. py:method:: get_result() -> dict
+
+      Return the result of the last executed :class:`Operation.do_commit()` or :class:`Operation.do_rollback()`.
+
+
+

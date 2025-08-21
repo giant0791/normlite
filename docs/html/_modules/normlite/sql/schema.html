@@ -1,0 +1,702 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.sql.schema &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">normlite.sql.schema</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for normlite.sql.schema</h1><div class="highlight"><pre>
+<span></span><span class="c1"># normlite/sql/schema.py</span>
+<span class="c1"># Copyright (C) 2025 Gianmarco Antonini</span>
+<span class="c1">#</span>
+<span class="c1"># This module is part of normlite and is released under the GNU Affero General Public License.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is free software: you can redistribute it and/or modify</span>
+<span class="c1"># it under the terms of the GNU Affero General Public License as published</span>
+<span class="c1"># by the Free Software Foundation, either version 3 of the License, or</span>
+<span class="c1"># (at your option) any later version.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is distributed in the hope that it will be useful,</span>
+<span class="c1"># but WITHOUT ANY WARRANTY; without even the implied warranty of</span>
+<span class="c1"># MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</span>
+<span class="c1"># GNU Affero General Public License for more details.</span>
+<span class="c1">#</span>
+<span class="c1"># You should have received a copy of the GNU Affero General Public License</span>
+<span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
+
+<span class="sd">&quot;&quot;&quot;Provide the key abstractions for database metadata.</span>
+<span class="sd">Each class in this module describe a database entity: tables, columns, constraints, etc.</span>
+
+<span class="sd">Example of a table creation:</span>
+<span class="sd">    &gt;&gt;&gt; students = Table(</span>
+<span class="sd">    &gt;&gt;&gt;     &#39;students&#39;,</span>
+<span class="sd">    &gt;&gt;&gt;     Column(&#39;id&#39;, Integer(), primary_key=True),</span>
+<span class="sd">    &gt;&gt;&gt;     Column(&#39;name&#39;, String(is_title=True)),</span>
+<span class="sd">    &gt;&gt;&gt;     Columns(&#39;grade&#39;, String()),</span>
+<span class="sd">    &gt;&gt;&gt;     Columns(&#39;since&#39; Date())</span>
+<span class="sd">    &gt;&gt;&gt; )</span>
+
+<span class="sd">``normlite`` automatically adds the Notion object id as additional primary key:</span>
+<span class="sd">    &gt;&gt;&gt; print(repr(students))</span>
+<span class="sd">    Table(&#39;students&#39;, </span>
+<span class="sd">        Column(&#39;student_id&#39;, Integer, table=&lt;students&gt;, primary_key=True), </span>
+<span class="sd">        Column(&#39;name&#39;, String(is_title=True), table=&lt;students&gt;), </span>
+<span class="sd">        Column(&#39;grade&#39;, String(), table=&lt;students&gt;), </span>
+<span class="sd">        Column(&#39;since&#39;, Date, table=&lt;students&gt;), </span>
+<span class="sd">        Column(&#39;_no_id&#39;, ObjectId, table=None, primary_key=True), </span>
+<span class="sd">        Column(&#39;_no_archived&#39;, ArchivalFlag, table=None))</span>
+
+<span class="sd">Note: </span>
+<span class="sd">    The Notion archived property is automatically added too. By default, the ``_no_id`` column</span>
+<span class="sd">    is a primary key. Notion always generates unique object ids, so it is guarateed that no 2 pages with </span>
+<span class="sd">    the same object identifiers exist. The primary key constraint automatically contains all columns with</span>
+<span class="sd">    primary key set to ``True``. That is, if you define your own primary key column (in the above example, the </span>
+<span class="sd">    column ``student_id``), the primary key constraint will add it to its collection of columns as well along</span>
+<span class="sd">    with the ``_no_id``.</span>
+
+<span class="sd">You can inspect the table&#39;s primary key constraints by calling the :attr:`primary_key` as follows:</span>
+<span class="sd">    &gt;&gt;&gt; print(repr(stundents.primary_key))</span>
+<span class="sd">    PrimaryKeyConstraint(name=None, </span>
+<span class="sd">        (Column(&#39;student_id&#39;, Integer, table=&lt;students&gt;, primary_key=True), </span>
+<span class="sd">        (Column(&#39;_no_id&#39;, ObjectId, table=None, primary_key=True)))</span>
+
+<span class="sd">.. versionadded:: 0.7.0</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">Iterator</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">NoReturn</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Set</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span><span class="p">,</span> <span class="n">overload</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ArgumentError</span><span class="p">,</span> <span class="n">DuplicateColumnError</span><span class="p">,</span> <span class="n">InvalidRequestError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.type_api</span><span class="w"> </span><span class="kn">import</span> <span class="n">ArchivalFlag</span><span class="p">,</span> <span class="n">ObjectId</span><span class="p">,</span> <span class="n">TypeEngine</span>
+
+<div class="viewcode-block" id="Column">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.Column">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Column</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A single table column specifying the type and its constraints.</span>
+
+<span class="sd">    The :class:`Column` objects model Notion properties. You define a column by assigning it a name</span>
+<span class="sd">    and a type (for available types, refer to :mod:`normlite.sql.type_api.py`). </span>
+<span class="sd">    If a column is intended to act as a primary key in your database, then set the</span>
+<span class="sd">    argument ``primary_key`` to true (refer to :class:`PrimaryKeyConstraint` for more details).</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; col = Column(&#39;name&#39;, String(is_title=True))</span>
+<span class="sd">        &gt;&gt;&gt; print(repr(col))</span>
+<span class="sd">        ... Column(&#39;name&#39;, String(is_title=True), table=None)</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        Currently, only the primary key constraint is supported.</span>
+<span class="sd">        In the future, the ``nullable`` constraint might be supported too.</span>
+
+<span class="sd">    .. versionadded:: 0.7.0</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">type_</span><span class="p">:</span> <span class="n">TypeEngine</span><span class="p">,</span> <span class="n">primary_key</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The column name. This must be unique within the same table.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">type_</span> <span class="o">=</span> <span class="n">type_</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The column type as a concrete subclass of :class:`normlite.sql.type_api.TypeEnging`.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span> <span class="o">=</span> <span class="n">primary_key</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Whether this column is a primary key or not.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">parent</span><span class="p">:</span> <span class="n">Table</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The table this column belongs to. </span>
+<span class="sd">        Initially ``None``, it is set when this column is appended to its table.</span>
+<span class="sd">        See :meth:`Table.append_column()` for more details.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Column._set_parent">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.Column._set_parent">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_parent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parent</span><span class="p">:</span> <span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Set the table this columns belongs to.</span>
+<span class="sd">        This method is not intended to be called by users of the :class:`Column`,</span>
+<span class="sd">        because it is automatically set by the :class:`Table`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parent</span> <span class="o">=</span> <span class="n">parent</span></div>
+
+
+<div class="viewcode-block" id="Column.__repr__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.Column.__repr__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">kwarg</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span><span class="p">:</span>
+            <span class="n">kwarg</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;primary_key&#39;</span><span class="p">)</span>
+        
+        <span class="k">return</span> <span class="s2">&quot;Column(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+            <span class="p">[</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)]</span>
+            <span class="o">+</span> <span class="p">[</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">type_</span><span class="p">)]</span>
+            <span class="o">+</span> <span class="p">[</span>
+                <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                    <span class="ow">and</span> <span class="s2">&quot;table=&lt;</span><span class="si">%s</span><span class="s2">&gt;&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">name</span>
+                    <span class="ow">or</span> <span class="s2">&quot;table=None&quot;</span>
+                <span class="p">)</span>
+            <span class="p">]</span>
+            <span class="o">+</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">=</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k</span><span class="p">)))</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">kwarg</span><span class="p">]</span>
+        <span class="p">)</span></div>
+</div>
+
+
+<div class="viewcode-block" id="Table">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.Table">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A database table.</span>
+<span class="sd">    </span>
+<span class="sd">    The :class:`Table` models a Notion database object. It provides the central abstraction in </span>
+<span class="sd">    ``normlite`` core to manage database objects.</span>
+<span class="sd">    A table contains a collection of columns (see :class:`ColumnCollection` which provides dictionary-like</span>
+<span class="sd">    and indexed access to a table&#39;s columns).</span>
+<span class="sd">    </span>
+<span class="sd">    Tables are defined as follows:</span>
+<span class="sd">        &gt;&gt;&gt; students = Table(</span>
+<span class="sd">        &gt;&gt;&gt;     &#39;students&#39;,</span>
+<span class="sd">        &gt;&gt;&gt;     Column(&#39;student_id&#39;, Integer(), primary_key=True),</span>
+<span class="sd">        &gt;&gt;&gt;     Column(&#39;name&#39;, String(is_title=True)),</span>
+<span class="sd">        &gt;&gt;&gt;     Column(&#39;grade&#39;, String()),</span>
+<span class="sd">        &gt;&gt;&gt;     Column(&#39;since&#39; Date())</span>
+<span class="sd">        &gt;&gt;&gt; )</span>
+
+<span class="sd">    Tables have to attributes :attr:`Table.columns` and its convenient short version :attr:`Table.c` which</span>
+<span class="sd">    provide dictionary-like and indexed accessors to its columns:</span>
+
+<span class="sd">        &gt;&gt;&gt; # access column &quot;name&quot;</span>
+<span class="sd">        &gt;&gt;&gt; students.columns.name</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # or just</span>
+<span class="sd">        &gt;&gt;&gt; students.c.name</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # via string</span>
+<span class="sd">        &gt;&gt;&gt; students.c[&#39;name&#39;] </span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # indexed access</span>
+<span class="sd">        &gt;&gt;&gt; students.c[1]       # --&gt; &#39;name&#39;</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # via a slice</span>
+<span class="sd">        &gt;&gt;&gt; students.c[0:2]     # --&gt; a readonly collection of the columns: &#39;student_id&#39; and &#39;name&#39;</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # access a column&#39;s table</span>
+<span class="sd">        &gt;&gt;&gt; students.c.since.parent is students</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # iterate through the columns</span>
+<span class="sd">        &gt;&gt;&gt; for col in students.columns:</span>
+<span class="sd">        &gt;&gt;&gt;     print(repr(col))</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # check whether a given column belongs to the table&#39;s columns</span>
+<span class="sd">        &gt;&gt;&gt; &#39;name&#39; in students.c            # --&gt; True</span>
+<span class="sd">        &gt;&gt;&gt; &#39;_no_archived&#39; in students.c    # --&gt; True</span>
+<span class="sd">        &gt;&gt;&gt; &#39;non_existing&#39; in students.c    # --&gt; False</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # get the number of colums</span>
+<span class="sd">        &gt;&gt;&gt; len(students.columns)           # --&gt; 4 user defined + 2 auto-added = 6</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        Since Notion automatically generates several special properties to its pages, </span>
+<span class="sd">        the :class:`Table` automatically adds the following two columns:</span>
+
+<span class="sd">            &gt;&gt;&gt; print(repr(students))</span>
+<span class="sd">            &gt;&gt;&gt; Table(&#39;students&#39;, </span>
+<span class="sd">            ...     Column(&#39;student_id&#39;, Integer, table=&lt;students&gt;, primary_key=True), </span>
+<span class="sd">            ...     Column(&#39;name&#39;, String(is_title=True), table=&lt;students&gt;), </span>
+<span class="sd">            ...     Column(&#39;grade&#39;, String(), table=&lt;students&gt;), </span>
+<span class="sd">            ...     Column(&#39;since&#39;, Date, table=&lt;students&gt;), </span>
+<span class="sd">            ...     Column(&#39;_no_id&#39;, ObjectId, table=None, primary_key=True), </span>
+<span class="sd">            ...     Column(&#39;_no_archived&#39;, ArchivalFlag, table=None))</span>
+
+<span class="sd">        </span>
+<span class="sd">    .. versionadded: 0.7.0</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="n">columns</span><span class="p">:</span> <span class="n">Column</span><span class="p">,</span> <span class="n">dialect</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Table name.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="p">:</span> <span class="n">ColumnCollection</span> <span class="o">=</span> <span class="n">ColumnCollection</span><span class="p">()</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The underlying column collections for this table&#39;s column.</span>
+<span class="sd">        </span>
+<span class="sd">        .. seealso::</span>
+
+<span class="sd">            :class:`ColumnCollection`</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_constraints</span><span class="p">:</span> <span class="n">Set</span><span class="p">[</span><span class="n">Constraint</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The set of constraints associated to this table&#39;s columns.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span><span class="p">:</span> <span class="n">PrimaryKeyConstraint</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The primary key constraint</span>
+<span class="sd">        </span>
+<span class="sd">        .. seealso::</span>
+
+<span class="sd">            :class:`PrimaryKeyConstraint`</span>
+
+<span class="sd">            :attr:`Table.primary_key`</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Add user-declared columns</span>
+        <span class="c1">#pdb.set_trace()</span>
+        <span class="k">if</span> <span class="n">columns</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">append_column</span><span class="p">(</span><span class="n">col</span><span class="p">)</span>
+
+        <span class="c1"># Always add implicit Notion columns</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_implicit_columns</span><span class="p">()</span>
+
+        <span class="c1"># Generate primary key constraint object</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_create_pk_constraint</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">add_constraint</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">columns</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReadOnlyColumnCollection</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Accessor for this table&#39;s columns.</span>
+<span class="sd">        </span>
+<span class="sd">        It returns a ready-only copy column collection.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="o">.</span><span class="n">as_readonly</span><span class="p">()</span>
+    
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">c</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReadOnlyColumnCollection</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Short form synonim for :attr:`columns`.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="o">.</span><span class="n">as_readonly</span><span class="p">()</span>
+    
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">primary_key</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PrimaryKeyConstraint</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the primary key constraint object associated to this table.</span>
+
+<span class="sd">        Example:</span>
+<span class="sd">            &gt;&gt;&gt; print(repr(stundents.primary_key))</span>
+<span class="sd">            &gt;&gt;&gt; PrimaryKeyConstraint(name=None, </span>
+<span class="sd">            ...     (Column(&#39;student_id&#39;, Integer, table=&lt;students&gt;, primary_key=True), </span>
+<span class="sd">            ...     (Column(&#39;_no_id&#39;, ObjectId, table=None, primary_key=True)))</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span>
+    
+<div class="viewcode-block" id="Table.add_constraint">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.Table.add_constraint">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_constraint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">constraint</span><span class="p">:</span> <span class="n">Constraint</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Add a constraint to this table.&quot;&quot;&quot;</span>
+        <span class="n">constraint</span><span class="o">.</span><span class="n">_set_parent</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_constraints</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">constraint</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Table.append_column">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.Table.append_column">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">append_column</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">column</span><span class="p">:</span> <span class="n">Column</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Append a column to this table.&quot;&quot;&quot;</span>
+        <span class="n">column</span><span class="o">.</span><span class="n">_set_parent</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">column</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Table._ensure_implicit_columns">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.Table._ensure_implicit_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_implicit_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Notion object ID: always primary key</span>
+        <span class="k">if</span> <span class="s2">&quot;_no_id&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">Column</span><span class="p">(</span><span class="s2">&quot;_no_id&quot;</span><span class="p">,</span> <span class="n">ObjectId</span><span class="p">(),</span> <span class="n">primary_key</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+
+        <span class="c1"># Archival flag: always present</span>
+        <span class="k">if</span> <span class="s2">&quot;_no_archived&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">Column</span><span class="p">(</span><span class="s2">&quot;_no_archived&quot;</span><span class="p">,</span> <span class="n">ArchivalFlag</span><span class="p">()))</span></div>
+
+
+<div class="viewcode-block" id="Table._create_pk_constraint">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.Table._create_pk_constraint">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_pk_constraint</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">table_pks</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span> <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">primary_key</span><span class="p">]</span>
+        <span class="c1"># IMPORTANT: Here you have to unpack the table_pks list</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span> <span class="o">=</span> <span class="n">PrimaryKeyConstraint</span><span class="p">(</span><span class="o">*</span><span class="n">table_pks</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Table.__repr__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.Table.__repr__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;Table(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+            <span class="p">[</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)]</span>
+            <span class="o">+</span> <span class="p">[</span><span class="nb">repr</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
+        <span class="p">)</span></div>
+</div>
+
+    
+<div class="viewcode-block" id="ColumnCollection">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ColumnCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide a container to efficiently store and conveniently access a table&#39;s columns.</span>
+
+<span class="sd">    This class provides a table&#39;s column accessor with dictionary-like and indexed interface.</span>
+<span class="sd">    It allows unique column names only. </span>
+<span class="sd">    Column collection objects provide an iterator interface (incl. :meth:`__len__()`) as well as</span>
+<span class="sd">    a method to test column existence in the collection (see :meth:`__contains__()`).</span>
+
+<span class="sd">    .. versionadded:: 0.7.0</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;_collection&#39;</span><span class="p">,</span> <span class="s1">&#39;_index&#39;</span><span class="p">,</span> <span class="s1">&#39;_colset&#39;</span><span class="p">)</span>
+
+    <span class="n">_collection</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Column</span><span class="p">]]</span>
+    <span class="n">_index</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Column</span><span class="p">]]</span>
+    <span class="n">_colset</span><span class="p">:</span> <span class="n">Set</span><span class="p">[</span><span class="n">Column</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">columns</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Iterable</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Column</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_colset&#39;</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_index&#39;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_collection&#39;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="k">if</span> <span class="n">columns</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_populate_separate_keys</span><span class="p">(</span><span class="n">columns</span><span class="p">)</span>
+
+<div class="viewcode-block" id="ColumnCollection.add">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.add">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">column</span><span class="p">:</span> <span class="n">Column</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Add a new column to the collection.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            column (Column): The column to be added.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            DuplicateColumnError: If a column with the same name as the column to be added </span>
+<span class="sd">                                  already exists in the collection.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">colkey</span> <span class="o">=</span> <span class="n">column</span><span class="o">.</span><span class="n">name</span>
+        <span class="k">if</span> <span class="n">colkey</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">DuplicateColumnError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;ColumnCollection does not allow duplicate columns: </span><span class="si">{</span><span class="n">colkey</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+        <span class="n">l</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">colkey</span><span class="p">,</span> <span class="n">column</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_colset</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">column</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">[</span><span class="n">l</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">colkey</span><span class="p">,</span> <span class="n">column</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">[</span><span class="n">colkey</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">colkey</span><span class="p">,</span> <span class="n">column</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ColumnCollection._populate_separate_keys">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection._populate_separate_keys">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_populate_separate_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">iter_</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Column</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">cols</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">iter_</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">colname</span><span class="p">,</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">colname</span> <span class="o">!=</span> <span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ArgumentError</span><span class="p">(</span>
+                    <span class="s1">&#39;ColumnCollection requires columns be under &#39;</span>
+                    <span class="s1">&#39;the same name as their .name&#39;</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="n">colname</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">DuplicateColumnError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s1">&#39;ColumnCollection does not allow duplicate columns: </span><span class="si">{</span><span class="n">colname</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="p">)</span>
+            
+            <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">[</span><span class="n">colname</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">colname</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">colname</span><span class="p">,</span> <span class="n">col</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_colset</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">c</span> <span class="k">for</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">c</span><span class="p">))</span> <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ColumnCollection.__contains__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.__contains__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__contains__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">ArgumentError</span><span class="p">(</span>
+                    <span class="s2">&quot;__contains__ requires a string argument&quot;</span>
+                <span class="p">)</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span></div>
+
+<div class="viewcode-block" id="ColumnCollection.__len__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.__len__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ColumnCollection.__iter__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.__iter__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="n">Column</span><span class="p">]:</span>
+        <span class="c1"># turn to a list first to maintain over a course of changes</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">([</span><span class="n">col</span> <span class="k">for</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="p">])</span></div>
+
+
+<div class="viewcode-block" id="ColumnCollection.__getattr__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.__getattr__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Column</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">err</span></div>
+
+        
+<div class="viewcode-block" id="ColumnCollection.__str__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.__str__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="si">%s</span><span class="s2">(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+            <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+    
+    <span class="nd">@overload</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Column</span><span class="p">:</span>
+        <span class="o">...</span>
+
+    <span class="nd">@overload</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">slice</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReadOnlyColumnCollection</span><span class="p">:</span>
+        <span class="o">...</span>
+
+<div class="viewcode-block" id="ColumnCollection.__getitem__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.__getitem__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">slice</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">Column</span><span class="p">,</span> <span class="n">ReadOnlyColumnCollection</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Indexed accessor to the columns in the collection.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            key (Union[str, int, slice]): The index key.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            IndexError: If the index key provided is incorrect.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Union[Column, ReadOnlyColumnCollection]: A single column if an int index or a read-only collection for a slice index. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+                <span class="n">cols</span> <span class="o">=</span> <span class="p">((</span><span class="n">sub_key</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">sub_key</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
+                <span class="k">return</span> <span class="n">ColumnCollection</span><span class="p">(</span><span class="n">cols</span><span class="p">)</span><span class="o">.</span><span class="n">as_readonly</span><span class="p">()</span>
+            
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">ke</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ke</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">int</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="n">ke</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="kn">from</span><span class="w"> </span><span class="nn">ke</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span></div>
+
+
+<div class="viewcode-block" id="ColumnCollection.__setitem__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.__setitem__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__setitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ColumnCollection.__delitem__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.__delitem__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__delitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ColumnCollection.__setattr__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.__setattr__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">obj</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ColumnCollection.clear">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.clear">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clear</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ColumnCollection.remove">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.remove">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">column</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ColumnCollection.update">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.update">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">iter_</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ColumnCollection.as_readonly">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ColumnCollection.as_readonly">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_readonly</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReadOnlyColumnCollection</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a read-only collection.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">ReadOnlyColumnCollection</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+</div>
+
+    
+<div class="viewcode-block" id="ReadOnlyCollectionMixin">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ReadOnlyCollectionMixin">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ReadOnlyCollectionMixin</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Mixin for read-only collections.&quot;&quot;&quot;</span>
+    <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">()</span>
+
+<div class="viewcode-block" id="ReadOnlyCollectionMixin._readonly">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ReadOnlyCollectionMixin._readonly">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_readonly</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+        <span class="n">cls_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">cls_name</span><span class="si">}</span><span class="s1"> object is immutable and/or readonly.&#39;</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="ReadOnlyCollectionMixin.__delitem__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ReadOnlyCollectionMixin.__delitem__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__delitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_readonly</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ReadOnlyCollectionMixin.__setitem__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ReadOnlyCollectionMixin.__setitem__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__setitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_readonly</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="ReadOnlyCollectionMixin.__setattr__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ReadOnlyCollectionMixin.__setattr__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_readonly</span><span class="p">()</span></div>
+</div>
+
+
+<div class="viewcode-block" id="ReadOnlyColumnCollection">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.ReadOnlyColumnCollection">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ReadOnlyColumnCollection</span><span class="p">(</span><span class="n">ReadOnlyCollectionMixin</span><span class="p">,</span> <span class="n">ColumnCollection</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Read-only version of a column collection.&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">collection</span><span class="p">:</span> <span class="n">ColumnCollection</span><span class="p">):</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_parent&#39;</span><span class="p">,</span> <span class="n">collection</span><span class="p">)</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_colset&#39;</span><span class="p">,</span> <span class="n">collection</span><span class="o">.</span><span class="n">_colset</span><span class="p">)</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_index&#39;</span><span class="p">,</span> <span class="n">collection</span><span class="o">.</span><span class="n">_index</span><span class="p">)</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_collection&#39;</span><span class="p">,</span> <span class="n">collection</span><span class="o">.</span><span class="n">_collection</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Constraint">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.Constraint">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Constraint</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Ancestor class for all column constraints.&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parent</span><span class="p">:</span> <span class="n">Table</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="nd">@property</span>    
+    <span class="k">def</span><span class="w"> </span><span class="nf">table</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Table</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parent</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InvalidRequestError</span><span class="p">(</span><span class="s1">&#39;This constraint is not bound to a table.&#39;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parent</span>
+    
+<div class="viewcode-block" id="Constraint._set_parent">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.Constraint._set_parent">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_parent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parent</span><span class="p">:</span> <span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parent</span> <span class="o">=</span> <span class="n">parent</span></div>
+</div>
+
+
+<div class="viewcode-block" id="PrimaryKeyConstraint">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.PrimaryKeyConstraint">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PrimaryKeyConstraint</span><span class="p">(</span><span class="n">Constraint</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide primary key constraint for columns.&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">columns</span><span class="p">:</span> <span class="n">Column</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span> <span class="o">=</span> <span class="n">ColumnCollection</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">col</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">columns</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReadOnlyColumnCollection</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="o">.</span><span class="n">as_readonly</span><span class="p">()</span>
+    
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">c</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReadOnlyColumnCollection</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="o">.</span><span class="n">as_readonly</span><span class="p">()</span>
+    
+<div class="viewcode-block" id="PrimaryKeyConstraint.__repr__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/schema/index.html#normlite.sql.schema.PrimaryKeyConstraint.__repr__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> 
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;PrimaryKeyConstraint(name=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="si">}</span><span class="s2">, (</span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="nb">repr</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="bp">self</span><span class="o">.</span><span class="n">columns</span><span class="p">])</span><span class="si">}</span><span class="s2">))&quot;</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

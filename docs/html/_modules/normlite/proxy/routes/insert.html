@@ -123,9 +123,9 @@
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">_make_response_obj</span><span class="p">({},</span> <span class="n">tx_id</span><span class="p">),</span> <span class="mi">202</span>
 
-    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">ke</span><span class="p">:</span>
         <span class="c1"># the only reason why Transaction.add_change() can fail is no database_id found</span>
-        <span class="k">return</span> <span class="n">_make_response_obj</span><span class="p">({</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)}),</span> <span class="mi">400</span></div>
+        <span class="k">return</span> <span class="n">_make_response_obj</span><span class="p">({</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s1">&#39;Missing &quot;</span><span class="si">{</span><span class="n">ke</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s1">&quot; in payload&#39;</span><span class="p">}),</span> <span class="mi">400</span></div>
 
 </pre></div>
 

@@ -154,7 +154,7 @@ Module Contents
       Provid the mapping beween the positional index of a column and its name.
 
 
-.. py:class:: CursorResult(cursor: normlite.notiondbapi.dbapi2.Cursor)
+.. py:class:: BaseCursorResult(cursor: normlite.notiondbapi.dbapi2.Cursor)
 
    Provide pythonic high level interface to result sets from SQL statements.
 
@@ -162,15 +162,34 @@ Module Contents
    representing state from the DBAPI cursor. It provides a high level API to
    access returned database rows as :class:`Row` objects.
 
+   .. note::
+
+      If a closed DBAPI cursor is passed to the init method, this cursor result automatically
+      transitions to the closed state.
+
    .. versionchanged:: 0.5.0
        The fetcher methods now check that the cursor metadata returns row prior to execution.
        This ensures that no calls to ``None`` objects are issued.
+
+   .. versionchanged:: 0.7.0   This class has been renamed to reflect the base API and behaviour
+       of results. Now, the base implementation of a cursor result can be composed in the derived
+       subclass :class:`CursorResult`. Additionally, the :meth:`close()` is now available to close
+       the underlying DBAPI cursor. Therefore, all methods returning rows now check whether the cursor
+       is closed and raise the exc:`ResourceClosedError`. The attribute :attr:`CursorResult.return_rows`
+       of closed cursor result always return ``False``.
 
 
 
    .. py:attribute:: _cursor
 
       The underlying DBAPI cursor.
+
+
+   .. py:attribute:: _closed
+      :value: False
+
+
+      ``True`` if this cursor result is closed.
 
 
    .. py:property:: returns_rows
@@ -204,6 +223,10 @@ Module Contents
 
       .. versionadded:: 0.5.0
 
+      .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
+
+      :raises ClosedResourceError: If it was previously closed.
+
       :Yields: *Iterator[Row]* -- The row iterator.
 
 
@@ -214,8 +237,11 @@ Module Contents
 
       .. versionadded:: 0.5.0
 
+      .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
+
       :raises NoResultFound: If no row was found when one was required.
       :raises MultipleResultsFound: If multiple rows were found when exactly one was required.
+      :raises ClosedResourceError: If it was previously closed.
 
       :returns: The one row required.
       :rtype: Row
@@ -230,6 +256,10 @@ Module Contents
 
       .. versionadded:: 0.5.0
 
+      .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
+
+      :raises ClosedResourceError: If it was previously closed.
+
       :returns: All rows in a sequence.
       :rtype: Sequence[Row]
 
@@ -242,6 +272,10 @@ Module Contents
       .. note:: This method closes the result set and discards remaining rows.
 
       .. versionadded:: 0.5.0
+
+      .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
+
+      :raises ClosedResourceError: If it was previously closed.
 
       :returns: The first row in the result set or ``None`` if no row is present.
       :rtype: Optional[Row]
@@ -287,6 +321,72 @@ Module Contents
       :raises NotImplementedError: Method not implemented yet.
 
       :returns: All rows or an empty sequence when exhausted.
+      :rtype: Sequence[Row]
+
+
+
+   .. py:method:: close() -> None
+
+
+   .. py:method:: _check_if_closed() -> None
+
+      Raise ResourceClosedError if this cursor result is closed.
+
+
+
+.. py:class:: CursorResult(dbapi_cursor: normlite.notiondbapi.dbapi2.CompositeCursor)
+
+   Bases: :py:obj:`BaseCursorResult`
+
+
+   Prototype for new and refactored CursorResult class with composite cursor feature.
+
+   .. versionadded:: 0.7.0
+
+
+
+   .. py:attribute:: _dbapi_cursor
+
+
+   .. py:attribute:: _current_result
+
+
+   .. py:method:: next_result() -> bool
+
+      Advance to the next cursor, if available.
+
+
+
+   .. py:method:: one() -> Row
+
+      Return exactly one row or raise an exception.
+
+      .. versionadded:: 0.5.0
+
+      .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
+
+      :raises NoResultFound: If no row was found when one was required.
+      :raises MultipleResultsFound: If multiple rows were found when exactly one was required.
+      :raises ClosedResourceError: If it was previously closed.
+
+      :returns: The one row required.
+      :rtype: Row
+
+
+
+   .. py:method:: all() -> Sequence[Row]
+
+      Return all rows in a sequence.
+
+      This method closes the result set after invocation. Subsequent calls will return an empty sequence.
+
+      .. versionadded:: 0.5.0
+
+      .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
+
+      :raises ClosedResourceError: If it was previously closed.
+
+      :returns: All rows in a sequence.
       :rtype: Sequence[Row]
 
 

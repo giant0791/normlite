@@ -9,7 +9,7 @@
   <title>normlite.exceptions &mdash; normlite 0.6.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
-      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
       <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
       <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
 
@@ -50,6 +50,7 @@
 <li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
 <li class="toctree-l2 current"><a class="reference internal" href="../index.html">normlite</a><ul class="current">
 <li class="toctree-l3 current"><a class="reference internal" href="../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../connection/index.html">normlite.connection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../cursor/index.html">normlite.cursor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../engine/index.html">normlite.engine</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">normlite.exceptions</a></li>
@@ -95,6 +96,10 @@
              
   <section id="module-normlite.exceptions">
 <span id="normlite-exceptions"></span><h1>normlite.exceptions<a class="headerlink" href="#module-normlite.exceptions" title="Link to this heading"></a></h1>
+<p>Provide <code class="docutils literal notranslate"><span class="pre">normlite</span></code> specific exceptions.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.5.0.</span></p>
+</div>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
 <dl class="py exception">
@@ -108,7 +113,7 @@
 <dt class="sig sig-object py" id="normlite.exceptions.NoResultFound">
 <em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.exceptions.</span></span><span class="sig-name descname"><span class="pre">NoResultFound</span></span><a class="reference internal" href="../../../_modules/normlite/exceptions.html#NoResultFound"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.exceptions.NoResultFound" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#normlite.exceptions.NormliteError" title="normlite.exceptions.NormliteError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NormliteError</span></code></a></p>
-<p>Raised when exaclty one result row is expected, but none was found.</p>
+<p>Raised when exactly one result row is expected, but none was found.</p>
 </dd></dl>
 
 <dl class="py exception">
@@ -116,6 +121,36 @@
 <em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.exceptions.</span></span><span class="sig-name descname"><span class="pre">MultipleResultsFound</span></span><a class="reference internal" href="../../../_modules/normlite/exceptions.html#MultipleResultsFound"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.exceptions.MultipleResultsFound" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#normlite.exceptions.NormliteError" title="normlite.exceptions.NormliteError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NormliteError</span></code></a></p>
 <p>Raised if multiple rows were found when exactly one was required.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="normlite.exceptions.DuplicateColumnError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.exceptions.</span></span><span class="sig-name descname"><span class="pre">DuplicateColumnError</span></span><a class="reference internal" href="../../../_modules/normlite/exceptions.html#DuplicateColumnError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.exceptions.DuplicateColumnError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.exceptions.NormliteError" title="normlite.exceptions.NormliteError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NormliteError</span></code></a></p>
+<p>Raised when an already existing column is added to a table.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0.</span></p>
+</div>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="normlite.exceptions.ArgumentError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.exceptions.</span></span><span class="sig-name descname"><span class="pre">ArgumentError</span></span><a class="reference internal" href="../../../_modules/normlite/exceptions.html#ArgumentError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.exceptions.ArgumentError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.exceptions.NormliteError" title="normlite.exceptions.NormliteError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NormliteError</span></code></a></p>
+<p>Raised when an erroneous argument is passed.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0.</span></p>
+</div>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="normlite.exceptions.InvalidRequestError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.exceptions.</span></span><span class="sig-name descname"><span class="pre">InvalidRequestError</span></span><a class="reference internal" href="../../../_modules/normlite/exceptions.html#InvalidRequestError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.exceptions.InvalidRequestError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.exceptions.NormliteError" title="normlite.exceptions.NormliteError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NormliteError</span></code></a></p>
+<p>Raised when a <code class="docutils literal notranslate"><span class="pre">normlite</span></code> method or function is cannot perform as requested.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0.</span></p>
+</div>
 </dd></dl>
 
 </section>

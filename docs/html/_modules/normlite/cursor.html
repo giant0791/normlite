@@ -94,7 +94,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">ClassVar</span><span class="p">,</span> <span class="n">Iterator</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">NamedTuple</span><span class="p">,</span> <span class="n">NoReturn</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">MultipleResultsFound</span><span class="p">,</span> <span class="n">NormliteError</span><span class="p">,</span> <span class="n">NoResultFound</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.notiondbapi.dbapi2</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cursor</span><span class="p">,</span> <span class="n">InterfaceError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.notiondbapi.dbapi2</span><span class="w"> </span><span class="kn">import</span> <span class="n">CompositeCursor</span><span class="p">,</span> <span class="n">Cursor</span><span class="p">,</span> <span class="n">InterfaceError</span>
 
 <div class="viewcode-block" id="ResourceClosedError">
 <a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.ResourceClosedError">[docs]</a>
@@ -142,7 +142,7 @@
 <a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor._NoCursorResultMetadata._raise_error">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">_raise_error</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
         <span class="k">raise</span> <span class="n">ResourceClosedError</span><span class="p">(</span>
-            <span class="s1">&#39;This result object does not return rows.&#39;</span>
+            <span class="s1">&#39;This result object does not return rows. &#39;</span>
             <span class="s1">&#39;It has been automatically closed.&#39;</span>
         <span class="p">)</span></div>
 
@@ -220,23 +220,37 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index_for_key</span></div>
 
     
-<div class="viewcode-block" id="CursorResult">
-<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">CursorResult</span><span class="p">:</span>
+<div class="viewcode-block" id="BaseCursorResult">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.BaseCursorResult">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseCursorResult</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide pythonic high level interface to result sets from SQL statements.</span>
 
 <span class="sd">    This class is an adapter to the DBAPI cursor (see :class:`normlite.notiondbapi.dbapi2.Cursor`) </span>
 <span class="sd">    representing state from the DBAPI cursor. It provides a high level API to</span>
 <span class="sd">    access returned database rows as :class:`Row` objects. </span>
 
+<span class="sd">    Note:</span>
+<span class="sd">        If a closed DBAPI cursor is passed to the init method, this cursor result automatically</span>
+<span class="sd">        transitions to the closed state.</span>
+
 <span class="sd">    .. versionchanged:: 0.5.0</span>
 <span class="sd">        The fetcher methods now check that the cursor metadata returns row prior to execution.</span>
 <span class="sd">        This ensures that no calls to ``None`` objects are issued.</span>
+
+<span class="sd">    .. versionchanged:: 0.7.0   This class has been renamed to reflect the base API and behaviour</span>
+<span class="sd">        of results. Now, the base implementation of a cursor result can be composed in the derived</span>
+<span class="sd">        subclass :class:`CursorResult`. Additionally, the :meth:`close()` is now available to close</span>
+<span class="sd">        the underlying DBAPI cursor. Therefore, all methods returning rows now check whether the cursor</span>
+<span class="sd">        is closed and raise the exc:`ResourceClosedError`. The attribute :attr:`CursorResult.return_rows` </span>
+<span class="sd">        of closed cursor result always return ``False``.</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursor</span><span class="p">:</span> <span class="n">Cursor</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span> <span class="o">=</span> <span class="n">cursor</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;The underlying DBAPI cursor.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;``True`` if this cursor result is closed.&quot;&quot;&quot;</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span><span class="o">.</span><span class="n">description</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_metadata</span> <span class="o">=</span> <span class="n">CursorResultMetaData</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span><span class="o">.</span><span class="n">description</span><span class="p">)</span>
@@ -246,6 +260,7 @@
             <span class="c1"># the cursor passed has not executed any operation yet</span>
             <span class="c1"># or it does not returns row</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_metadata</span> <span class="o">=</span> <span class="n">_NO_CURSOR_RESULT_METADATA</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span><span class="o">.</span><span class="n">_closed</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">returns_rows</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
@@ -270,16 +285,22 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_metadata</span><span class="o">.</span><span class="n">returns_row</span>
 
-<div class="viewcode-block" id="CursorResult.__iter__">
-<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult.__iter__">[docs]</a>
+<div class="viewcode-block" id="BaseCursorResult.__iter__">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.BaseCursorResult.__iter__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="n">Row</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Provide an iterator for this cursor result.</span>
 
 <span class="sd">        .. versionadded:: 0.5.0</span>
 
+<span class="sd">        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ClosedResourceError: If it was previously closed.</span>
+
 <span class="sd">        Yields:</span>
 <span class="sd">            Iterator[Row]: The row iterator.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_if_closed</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">raw_row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span><span class="p">:</span>
             <span class="k">yield</span> <span class="n">Row</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_metadata</span><span class="p">,</span> <span class="n">raw_row</span><span class="p">)</span>
 
@@ -288,16 +309,19 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>        </div>
 
     
-<div class="viewcode-block" id="CursorResult.one">
-<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult.one">[docs]</a>
+<div class="viewcode-block" id="BaseCursorResult.one">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.BaseCursorResult.one">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">one</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Row</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return exactly one row or raise an exception.</span>
 
 <span class="sd">        .. versionadded:: 0.5.0</span>
 
+<span class="sd">        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.</span>
+
 <span class="sd">        Raises:</span>
 <span class="sd">            NoResultFound: If no row was found when one was required.</span>
 <span class="sd">            MultipleResultsFound: If multiple rows were found when exactly one was required.</span>
+<span class="sd">            ClosedResourceError: If it was previously closed.</span>
 <span class="sd">        </span>
 <span class="sd">        Returns:</span>
 <span class="sd">            Row: The one row required.</span>
@@ -308,17 +332,23 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span><span class="o">.</span><span class="n">rowcount</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">MultipleResultsFound</span><span class="p">(</span><span class="s1">&#39;Multiple rows were found when exactly one was required.&#39;</span><span class="p">)</span>
         
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_if_closed</span><span class="p">()</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">all</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span></div>
 
     
-<div class="viewcode-block" id="CursorResult.all">
-<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult.all">[docs]</a>
+<div class="viewcode-block" id="BaseCursorResult.all">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.BaseCursorResult.all">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">all</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Row</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return all rows in a sequence.</span>
 
 <span class="sd">        This method closes the result set after invocation. Subsequent calls will return an empty sequence.</span>
 
 <span class="sd">        .. versionadded:: 0.5.0</span>
+<span class="sd">        </span>
+<span class="sd">        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ClosedResourceError: If it was previously closed.</span>
 <span class="sd">        </span>
 <span class="sd">        Returns:</span>
 <span class="sd">            Sequence[Row]: All rows in a sequence.</span>
@@ -335,8 +365,8 @@
         <span class="k">return</span> <span class="n">row_sequence</span></div>
 
     
-<div class="viewcode-block" id="CursorResult.first">
-<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult.first">[docs]</a>
+<div class="viewcode-block" id="BaseCursorResult.first">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.BaseCursorResult.first">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">first</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Row</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the first row or ``None`` if no row is present.</span>
 
@@ -345,6 +375,11 @@
 
 <span class="sd">        .. versionadded:: 0.5.0</span>
 
+<span class="sd">        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ClosedResourceError: If it was previously closed.</span>
+<span class="sd">        </span>
 <span class="sd">        Returns:</span>
 <span class="sd">            Optional[Row]: The first row in the result set or ``None`` if no row is present.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -355,8 +390,8 @@
         <span class="k">return</span> <span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
 
     
-<div class="viewcode-block" id="CursorResult.fetchone">
-<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult.fetchone">[docs]</a>
+<div class="viewcode-block" id="BaseCursorResult.fetchone">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.BaseCursorResult.fetchone">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">fetchone</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Row</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Fetch the next row.</span>
 
@@ -387,8 +422,8 @@
         <span class="k">return</span> <span class="kc">None</span></div>
 
 
-<div class="viewcode-block" id="CursorResult.fetchall">
-<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult.fetchall">[docs]</a>
+<div class="viewcode-block" id="BaseCursorResult.fetchall">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.BaseCursorResult.fetchall">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">fetchall</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Row</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Synonim for :class:`CursorResult.all()` method.</span>
 
@@ -402,8 +437,8 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">all</span><span class="p">()</span></div>
 
     
-<div class="viewcode-block" id="CursorResult.fetchmany">
-<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult.fetchmany">[docs]</a>
+<div class="viewcode-block" id="BaseCursorResult.fetchmany">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.BaseCursorResult.fetchmany">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">fetchmany</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Row</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Fetch many rows.</span>
 
@@ -418,6 +453,75 @@
 <span class="sd">            Sequence[Row]: All rows or an empty sequence when exhausted.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+    
+<div class="viewcode-block" id="BaseCursorResult.close">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.BaseCursorResult.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># TODO: implement close method</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="BaseCursorResult._check_if_closed">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.BaseCursorResult._check_if_closed">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_if_closed</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Raise ResourceClosedError if this cursor result is closed.&quot;&quot;&quot;</span></div>
+</div>
+
+        <span class="c1"># TODO: implement _check_if_closed</span>
+
+    
+<div class="viewcode-block" id="CursorResult">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CursorResult</span><span class="p">(</span><span class="n">BaseCursorResult</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Prototype for new and refactored CursorResult class with composite cursor feature.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># TODO: </span>
+    <span class="c1"># DECIDE: Composition over inheritance?</span>
+    <span class="c1"># THINK: CursorResultBase or better just Result in case of composition?</span>
+    <span class="c1"># --------------------------------------------------------------------------------------</span>
+    <span class="c1"># 1. Put current CursorResult implementation into CursorResultBase</span>
+    <span class="c1"># 2. Refactor CursorResult as subclass of CursorResultBase and use this implementation</span>
+    <span class="c1"># 3. Add CursorResultBase.close() and CursorResult.close() methods </span>
+    <span class="c1"># --------------------------------------------------------------------------------------</span>
+    
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dbapi_cursor</span><span class="p">:</span> <span class="n">CompositeCursor</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dbapi_cursor</span> <span class="o">=</span> <span class="n">dbapi_cursor</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_current_result</span> <span class="o">=</span> <span class="n">CursorResult</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dbapi_cursor</span><span class="o">.</span><span class="n">_current_cursor</span><span class="p">)</span>
+
+<div class="viewcode-block" id="CursorResult.next_result">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult.next_result">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">next_result</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Advance to the next cursor, if available.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dbapi_cursor</span><span class="o">.</span><span class="n">nextset</span><span class="p">():</span>
+            <span class="c1"># next result set is available</span>
+            <span class="c1"># first close the current cursor result</span>
+            <span class="c1"># TODO: Replace with self._current_cursor.close()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_current_result</span><span class="o">.</span><span class="n">_metadata</span> <span class="o">=</span> <span class="n">_NO_CURSOR_RESULT_METADATA</span>
+
+            <span class="c1"># update the current cursor result</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_current_result</span> <span class="o">=</span> <span class="n">CursorResult</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dbapi_cursor</span><span class="o">.</span><span class="n">_current_cursor</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        
+        <span class="c1"># all result sets depleted</span>
+        <span class="c1"># TODO: add self.close()</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+    
+<div class="viewcode-block" id="CursorResult.one">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult.one">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">one</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Row</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_result</span><span class="o">.</span><span class="n">one</span><span class="p">()</span></div>
+
+    
+<div class="viewcode-block" id="CursorResult.all">
+<a class="viewcode-back" href="../../autoapi/normlite/cursor/index.html#normlite.cursor.CursorResult.all">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Row</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_result</span><span class="o">.</span><span class="n">all</span><span class="p">()</span></div>
 </div>
 
 

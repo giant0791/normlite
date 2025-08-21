@@ -9,7 +9,7 @@
   <title>normlite.notiondbapi.dbapi2 &mdash; normlite 0.6.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
-      <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
       <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
       <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=f7e3ec4f" />
 
@@ -50,6 +50,7 @@
 <li class="toctree-l1 current"><a class="reference internal" href="../../../index.html">API Reference</a><ul class="current">
 <li class="toctree-l2 current"><a class="reference internal" href="../../index.html">normlite</a><ul class="current">
 <li class="toctree-l3 current"><a class="reference internal" href="../../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../../connection/index.html">normlite.connection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../cursor/index.html">normlite.cursor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../engine/index.html">normlite.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../exceptions/index.html">normlite.exceptions</a></li>
@@ -142,43 +143,64 @@
 the underlying database driver (i.e. the Notion API).</p>
 </dd></dl>
 
+<dl class="py exception">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.OperationalError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">OperationalError</span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#OperationalError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.OperationalError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.notiondbapi.dbapi2.DatabaseError" title="normlite.notiondbapi.dbapi2.DatabaseError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DatabaseError</span></code></a></p>
+<p>Exception raised for errors that are related to the database’s operation and not necessarily under
+the control of the programmer.</p>
+<p>Example situations are an unexpected disconnect occurs, the data source name is not found,
+a transaction could not be processed, a memory allocation error occurred during processing, etc.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0.</span></p>
+</div>
+</dd></dl>
+
 <dl class="py class">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">Cursor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../notion_sdk/client/index.html#normlite.notion_sdk.client.AbstractNotionClient" title="normlite.notion_sdk.client.AbstractNotionClient"><span class="pre">normlite.notion_sdk.client.AbstractNotionClient</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor" title="Link to this definition"></a></dt>
-<dd><p>Provide database cursor functionalty according to the DBAPI 2.0 specification (PEP 249).</p>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">BaseCursor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../notion_sdk/client/index.html#normlite.notion_sdk.client.AbstractNotionClient" title="normlite.notion_sdk.client.AbstractNotionClient"><span class="pre">normlite.notion_sdk.client.AbstractNotionClient</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#BaseCursor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor" title="Link to this definition"></a></dt>
+<dd><p>Provide database base cursor functionalty according to the DBAPI 2.0 specification (PEP 249).</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>the <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor" title="normlite.notiondbapi.dbapi2.BaseCursor"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseCursor</span></code></a> does not support transaction awareness. Use <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Cursor</span></code></a> for fully
+DBAPI 2.0 compliant cursor.</p>
+</div>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0.</span></p>
+</div>
 <dl class="py attribute">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor._client">
-<span class="sig-name descname"><span class="pre">_client</span></span><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor._client" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor._client">
+<span class="sig-name descname"><span class="pre">_client</span></span><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor._client" title="Link to this definition"></a></dt>
 <dd><p>The client implementing the Notion API.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor._result_set">
-<span class="sig-name descname"><span class="pre">_result_set</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor._result_set" title="Link to this definition"></a></dt>
-<dd><p>The result set returned by the last <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.execute" title="normlite.notiondbapi.dbapi2.Cursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a>. It is set by <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor._parse_result_set" title="normlite.notiondbapi.dbapi2.Cursor._parse_result_set"><code class="xref py py-meth docutils literal notranslate"><span class="pre">_parse_result_set()</span></code></a></p>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor._result_set">
+<span class="sig-name descname"><span class="pre">_result_set</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor._result_set" title="Link to this definition"></a></dt>
+<dd><p>The result set returned by the last <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.execute" title="normlite.notiondbapi.dbapi2.BaseCursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a>. It is set by <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor._parse_result_set" title="normlite.notiondbapi.dbapi2.BaseCursor._parse_result_set"><code class="xref py py-meth docutils literal notranslate"><span class="pre">_parse_result_set()</span></code></a></p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor._paramstyle">
-<span class="sig-name descname"><span class="pre">_paramstyle</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DBAPIParamStyle</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'named'</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor._paramstyle" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor._paramstyle">
+<span class="sig-name descname"><span class="pre">_paramstyle</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DBAPIParamStyle</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'named'</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor._paramstyle" title="Link to this definition"></a></dt>
 <dd><p>The default parameter style applied.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor._description">
-<span class="sig-name descname"><span class="pre">_description</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor._description" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor._description">
+<span class="sig-name descname"><span class="pre">_description</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor._description" title="Link to this definition"></a></dt>
 <dd><p>Provide information describing one result column.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor._closed">
-<span class="sig-name descname"><span class="pre">_closed</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor._closed" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor._closed">
+<span class="sig-name descname"><span class="pre">_closed</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor._closed" title="Link to this definition"></a></dt>
 <dd><p>Whether this cursor is closed. Always <code class="docutils literal notranslate"><span class="pre">False</span></code> after initialitation.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor.description">
-<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">description</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor.description" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor.description">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">description</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor.description" title="Link to this definition"></a></dt>
 <dd><p>Provide the cursor description.</p>
 <p>This read-only attribute is a sequence of 7-item sequences.</p>
 <p>Each of these sequences contains information describing one result column:</p>
@@ -192,20 +214,20 @@ the underlying database driver (i.e. the Notion API).</p>
 <li><p><code class="docutils literal notranslate"><span class="pre">null_ok</span></code>: Not used. Always <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
 </ul>
 <p>This attribute will be <code class="docutils literal notranslate"><span class="pre">None</span></code> for operations that do not return rows or if the cursor has not had an operation invoked via the
-<a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.execute" title="normlite.notiondbapi.dbapi2.Cursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> or <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.executemany" title="normlite.notiondbapi.dbapi2.Cursor.executemany"><code class="xref py py-meth docutils literal notranslate"><span class="pre">executemany()</span></code></a> methods yet.</p>
+<a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.execute" title="normlite.notiondbapi.dbapi2.BaseCursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> or <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.executemany" title="normlite.notiondbapi.dbapi2.BaseCursor.executemany"><code class="xref py py-meth docutils literal notranslate"><span class="pre">executemany()</span></code></a> methods yet.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor.rowcount">
-<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">rowcount</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor.rowcount" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor.rowcount">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">rowcount</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor.rowcount" title="Link to this definition"></a></dt>
 <dd><dl class="simple">
-<dt>This read-only attribute specifies the number of rows that</dt><dd><p>the last <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.execute" title="normlite.notiondbapi.dbapi2.Cursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> produced.</p>
+<dt>This read-only attribute specifies the number of rows that</dt><dd><p>the last <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.execute" title="normlite.notiondbapi.dbapi2.BaseCursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> produced.</p>
 </dd>
 </dl>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p><dl class="simple">
-<dt>Number of rows. <cite>-1</cite> if in case no <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.execute" title="normlite.notiondbapi.dbapi2.Cursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> has been performed</dt><dd><p>on the cursor or the rowcount of the last operation cannot be
+<dt>Number of rows. <cite>-1</cite> if in case no <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.execute" title="normlite.notiondbapi.dbapi2.BaseCursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> has been performed</dt><dd><p>on the cursor or the rowcount of the last operation cannot be
 determined by the interface.</p>
 </dd>
 </dl>
@@ -218,20 +240,20 @@ determined by the interface.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor.lastrowid">
-<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">lastrowid</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor.lastrowid" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor.lastrowid">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">lastrowid</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor.lastrowid" title="Link to this definition"></a></dt>
 <dd><p>This read-only attribute provides the rowid of the last modified row.</p>
 <p>Most Notion API calls return an object with an id, which is used as rowid.
 If the operation does not set a rowid, this attribute is set to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p><code class="docutils literal notranslate"><span class="pre">normlite</span></code> considers both inserted and updated rows as modified rows.
-This means that <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.lastrowid" title="normlite.notiondbapi.dbapi2.Cursor.lastrowid"><code class="xref py py-attr docutils literal notranslate"><span class="pre">lastrowid</span></code></a> returns non <code class="docutils literal notranslate"><span class="pre">None</span></code> values after either
+This means that <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.lastrowid" title="normlite.notiondbapi.dbapi2.BaseCursor.lastrowid"><code class="xref py py-attr docutils literal notranslate"><span class="pre">lastrowid</span></code></a> returns non <code class="docutils literal notranslate"><span class="pre">None</span></code> values after either
 an <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> or <code class="docutils literal notranslate"><span class="pre">UPDATE</span></code> statement.</p>
 <p><code class="docutils literal notranslate"><span class="pre">normlite</span></code> also defines semantics of ::attr::<cite>.lastrowid</cite> in case the last executed
-statement modified more than one row, e.g. when using <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> with <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.executemany" title="normlite.notiondbapi.dbapi2.Cursor.executemany"><code class="xref py py-meth docutils literal notranslate"><span class="pre">executemany()</span></code></a> or
+statement modified more than one row, e.g. when using <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> with <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.executemany" title="normlite.notiondbapi.dbapi2.BaseCursor.executemany"><code class="xref py py-meth docutils literal notranslate"><span class="pre">executemany()</span></code></a> or
 <code class="docutils literal notranslate"><span class="pre">UPDATE</span></code> and its <code class="docutils literal notranslate"><span class="pre">SELECT</span></code> clause returns multiple rows.</p>
-<p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.lastrowid" title="normlite.notiondbapi.dbapi2.Cursor.lastrowid"><code class="xref py py-attr docutils literal notranslate"><span class="pre">lastrowid</span></code></a> returns a 128-bit integer representation of the object id, which can be
+<p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.lastrowid" title="normlite.notiondbapi.dbapi2.BaseCursor.lastrowid"><code class="xref py py-attr docutils literal notranslate"><span class="pre">lastrowid</span></code></a> returns a 128-bit integer representation of the object id, which can be
 used to driectly access Notion objects.</p>
 </div>
 <p class="rubric">Example</p>
@@ -251,8 +273,8 @@ used to driectly access Notion objects.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor.paramstyle">
-<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">paramstyle</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DBAPIParamStyle</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor.paramstyle" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor.paramstyle">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">paramstyle</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DBAPIParamStyle</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor.paramstyle" title="Link to this definition"></a></dt>
 <dd><p>String constant stating the type of parameter marker formatting expected by the interface.</p>
 <dl class="simple">
 <dt>Supported values are:</dt><dd><p><code class="docutils literal notranslate"><span class="pre">named</span></code>: Named mark style, e.g. <code class="docutils literal notranslate"><span class="pre">WHERE</span> <span class="pre">name=:name</span></code></p>
@@ -271,8 +293,8 @@ used to driectly access Notion objects.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor._parse_object">
-<span class="sig-name descname"><span class="pre">_parse_object</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor._parse_object"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor._parse_object" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor._parse_object">
+<span class="sig-name descname"><span class="pre">_parse_object</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#BaseCursor._parse_object"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor._parse_object" title="Link to this definition"></a></dt>
 <dd><p>Parse a Notion database or page from a list object into a list of tuples.</p>
 <p class="rubric">Examples</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># parse database object returned from databases.create</span>
@@ -318,14 +340,14 @@ used to driectly access Notion objects.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor._parse_result_set">
-<span class="sig-name descname"><span class="pre">_parse_result_set</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">returned_obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor._parse_result_set"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor._parse_result_set" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor._parse_result_set">
+<span class="sig-name descname"><span class="pre">_parse_result_set</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">returned_obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#BaseCursor._parse_result_set"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor._parse_result_set" title="Link to this definition"></a></dt>
 <dd><p>Parse the JSON object returned by the command execution into the cursor’s result set.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor.__iter__">
-<span class="sig-name descname"><span class="pre">__iter__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Iterator</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor.__iter__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor.__iter__" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor.__iter__">
+<span class="sig-name descname"><span class="pre">__iter__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Iterator</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#BaseCursor.__iter__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor.__iter__" title="Link to this definition"></a></dt>
 <dd><p>Make cursors compatible with the iteration protocol.</p>
 <div class="versionchanged">
 <p><span class="versionmodified changed">Changed in version 0.5.0: </span>Calling this method on a closed cursor raises the <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Error" title="normlite.notiondbapi.dbapi2.Error"><code class="xref py py-exc docutils literal notranslate"><span class="pre">Error</span></code></a>.</p>
@@ -341,8 +363,8 @@ used to driectly access Notion objects.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor.fetchone">
-<span class="sig-name descname"><span class="pre">fetchone</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor.fetchone"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor.fetchone" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor.fetchone">
+<span class="sig-name descname"><span class="pre">fetchone</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#BaseCursor.fetchone"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor.fetchone" title="Link to this definition"></a></dt>
 <dd><p>Fetch the next row of a query result set.</p>
 <p>This method returns the next row or <code class="docutils literal notranslate"><span class="pre">None</span></code> when no more data is available.</p>
 <div class="admonition note">
@@ -357,7 +379,7 @@ the associated cursor forward by one row.</p>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.Error" title="normlite.notiondbapi.dbapi2.Error"><strong>Error</strong></a> – If the cusors is closed.</p></li>
-<li><p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.InterfaceError" title="normlite.notiondbapi.dbapi2.InterfaceError"><strong>InterfaceError</strong></a> – If the previous call to <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.execute" title="normlite.notiondbapi.dbapi2.Cursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> did not produce any result set
+<li><p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.InterfaceError" title="normlite.notiondbapi.dbapi2.InterfaceError"><strong>InterfaceError</strong></a> – If the previous call to <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.execute" title="normlite.notiondbapi.dbapi2.BaseCursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> did not produce any result set
 or no call was issued yet.</p></li>
 </ul>
 </dd>
@@ -371,8 +393,8 @@ or no call was issued yet.</p></li>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor.fetchall">
-<span class="sig-name descname"><span class="pre">fetchall</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor.fetchall"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor.fetchall" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor.fetchall">
+<span class="sig-name descname"><span class="pre">fetchall</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#BaseCursor.fetchall"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor.fetchall" title="Link to this definition"></a></dt>
 <dd><p>Fetch all rows of this query result.</p>
 <p>This method returns all the remaining rows contained in this query result as a sequence of sequences
 (e.g. a list of tuples).
@@ -380,7 +402,7 @@ Please refer to <code class="xref py py-mod docutils literal notranslate"><span 
 parsed and cross-compiled into Python <code class="docutils literal notranslate"><span class="pre">tuple</span></code> objects.</p>
 <div class="admonition important">
 <p class="admonition-title">Important</p>
-<p>After a call to the <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.fetchall" title="normlite.notiondbapi.dbapi2.Cursor.fetchall"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fetchall()</span></code></a> the result set is exausted (empty). Any subsequent call
+<p>After a call to the <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.fetchall" title="normlite.notiondbapi.dbapi2.BaseCursor.fetchall"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fetchall()</span></code></a> the result set is exausted (empty). Any subsequent call
 to this method returns an empty sequence.</p>
 </div>
 <div class="versionchanged">
@@ -389,8 +411,8 @@ to this method returns an empty sequence.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.Error" title="normlite.notiondbapi.dbapi2.Error"><strong>Error</strong></a> – If the cusors is closed.</p></li>
-<li><p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.InterfaceError" title="normlite.notiondbapi.dbapi2.InterfaceError"><strong>InterfaceError</strong></a> – If the previous call to <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.execute" title="normlite.notiondbapi.dbapi2.Cursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> did not produce any result set
+<li><p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.Error" title="normlite.notiondbapi.dbapi2.Error"><strong>Error</strong></a> – If the cursor is closed.</p></li>
+<li><p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.InterfaceError" title="normlite.notiondbapi.dbapi2.InterfaceError"><strong>InterfaceError</strong></a> – If the previous call to <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.execute" title="normlite.notiondbapi.dbapi2.BaseCursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> did not produce any result set
 or no call was issued yet.</p></li>
 </ul>
 </dd>
@@ -404,20 +426,20 @@ or no call was issued yet.</p></li>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor.execute">
-<span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DBAPIExecuteParameters</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor.execute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor.execute" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor.execute">
+<span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DBAPIExecuteParameters</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#BaseCursor.execute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor.execute" title="Link to this definition"></a></dt>
 <dd><p>Prepare and execute a database operation (query or command).</p>
 <p>Parameters may be provided as a mapping and will be bound to variables in the operation.
 In Notion, the use of placeholders for variable is redundant, since the properties to
 which the values are to be bound are known by name.
 In the current implementation, the parameter style implemented in the cursor is:
 <cite>named</cite>.
-The <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.execute" title="normlite.notiondbapi.dbapi2.Cursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> methods implements a return interface to enable concatenating
+The <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.execute" title="normlite.notiondbapi.dbapi2.BaseCursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> methods implements a return interface to enable concatenating
 calls on <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><code class="xref py py-class docutils literal notranslate"><span class="pre">Cursor</span></code></a> methods.</p>
 <div class="admonition important">
 <p class="admonition-title">Important</p>
-<p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.execute" title="normlite.notiondbapi.dbapi2.Cursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> stores the executed command result(s) in the internal
-result set. Always call this method prior to <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.fetchone" title="normlite.notiondbapi.dbapi2.Cursor.fetchone"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Cursor.fetchone()</span></code></a> and <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor.fetchall" title="normlite.notiondbapi.dbapi2.Cursor.fetchall"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Cursor.fetchall()</span></code></a>,
+<p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.execute" title="normlite.notiondbapi.dbapi2.BaseCursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> stores the executed command result(s) in the internal
+result set. Always call this method prior to <code class="xref py py-meth docutils literal notranslate"><span class="pre">Cursor.fetchone()</span></code> and <code class="xref py py-meth docutils literal notranslate"><span class="pre">Cursor.fetchall()</span></code>,
 otherwise an <a class="reference internal" href="#normlite.notiondbapi.dbapi2.InterfaceError" title="normlite.notiondbapi.dbapi2.InterfaceError"><code class="xref py py-exc docutils literal notranslate"><span class="pre">InterfaceError</span></code></a> error is raised.</p>
 </div>
 <div class="versionchanged">
@@ -470,8 +492,8 @@ otherwise an <a class="reference internal" href="#normlite.notiondbapi.dbapi2.In
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor.executemany">
-<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">executemany</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor.executemany"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor.executemany" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor.executemany">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">executemany</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#BaseCursor.executemany"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor.executemany" title="Link to this definition"></a></dt>
 <dd><p>Prepare a database operation (query or command) and then execute it against all parameter sequences or
 mappings found in the sequence seq_of_parameters.</p>
 <div class="admonition note">
@@ -496,8 +518,8 @@ Calling it raises <a class="reference external" href="https://docs.python.org/3/
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor.close">
-<span class="sig-name descname"><span class="pre">close</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor.close"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor.close" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor.close">
+<span class="sig-name descname"><span class="pre">close</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#BaseCursor.close"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor.close" title="Link to this definition"></a></dt>
 <dd><p>Close the cursor now.</p>
 <p>The cursor will be unusable from this point forward; an Error exception
 will be raised if any operation is attempted with the cursor.</p>
@@ -507,9 +529,264 @@ will be raised if any operation is attempted with the cursor.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor._bind_parameters">
-<span class="sig-name descname"><span class="pre">_bind_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DBAPIExecuteParameters</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor._bind_parameters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor._bind_parameters" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.BaseCursor._bind_parameters">
+<span class="sig-name descname"><span class="pre">_bind_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DBAPIExecuteParameters</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#BaseCursor._bind_parameters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.BaseCursor._bind_parameters" title="Link to this definition"></a></dt>
 <dd><p>Helper for binding values to the payload.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">Cursor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dbapi_connection</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#normlite.notiondbapi.dbapi2.Connection" title="normlite.notiondbapi.dbapi2.Connection"><span class="pre">Connection</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor" title="normlite.notiondbapi.dbapi2.BaseCursor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BaseCursor</span></code></a></p>
+<p>Transaction-aware DBAPI cursor</p>
+<p>This is how the new Cursor class will work in tandem with <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Connection" title="normlite.notiondbapi.dbapi2.Connection"><code class="xref py py-class docutils literal notranslate"><span class="pre">Connection</span></code></a>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Unfortunately, the DBAPI 2.0 does not forsee an execute() method for the Connection class.
+This leads to a suboptimal separation of concerns: The Connection clas should be responsible to manage the
+transaction and to execute operations, while Cursor should only be concerned with providing access to
+the results. In the lack of an execute() method at connection level, the Cursor class needs to have a reference
+to the connection, so it can start a new transaction on the first call to its execute() method.</p>
+</div>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.7.0.</span></p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor._dbapi_connection">
+<span class="sig-name descname"><span class="pre">_dbapi_connection</span></span><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor._dbapi_connection" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Cursor.execute">
+<span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DBAPIExecuteParameters</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Cursor.execute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Cursor.execute" title="Link to this definition"></a></dt>
+<dd><p>Execute the operation within the currently opened transaction.</p>
+<p>This method is similar to <a class="reference internal" href="#normlite.notiondbapi.dbapi2.BaseCursor.execute" title="normlite.notiondbapi.dbapi2.BaseCursor.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">BaseCursor.execute()</span></code></a> with the additional feature of
+executing the operation within the currently opened transaction.
+This means that it does not execute immediately the operation, but it add the operation
+to the operations list of the opened transaction.
+Execution is deferred to the point in time when the <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Connection.commit" title="normlite.notiondbapi.dbapi2.Connection.commit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Connection.commit()</span></code></a> is called.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>operation</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a>) – A dictionary containing the Notion API request to be executed.</p></li>
+<li><p><strong>parameters</strong> (<em>DBAPIExecuteParameters</em>) – A dictionary containing the payload for the Notion API request</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.OperationalError" title="normlite.notiondbapi.dbapi2.OperationalError"><strong>OperationalError</strong></a> – If it fails to add the operation to the transaction.</p></li>
+<li><p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.InternalError" title="normlite.notiondbapi.dbapi2.InternalError"><strong>InternalError</strong></a> – If the operation is not supported or not recognized.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>This cursor instance.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>_type_</p>
+</dd>
+</dl>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0.</span></p>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">Connection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">proxy_client</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">flask.testing.FlaskClient</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">client</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../notion_sdk/client/index.html#normlite.notion_sdk.client.AbstractNotionClient" title="normlite.notion_sdk.client.AbstractNotionClient"><span class="pre">normlite.notion_sdk.client.AbstractNotionClient</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Connection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection" title="Link to this definition"></a></dt>
+<dd><p>Provide database base connection functionalty according to the DBAPI 2.0 specification (PEP 249).</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This class is still proof-of-concept stage. It needs to be initialized with a Flask testing client (<code class="xref py py-class docutils literal notranslate"><span class="pre">FlaskClient</span></code>).
+<strong>DO NOT USE YET!</strong></p>
+</div>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0.</span></p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection._proxy_client">
+<span class="sig-name descname"><span class="pre">_proxy_client</span></span><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection._proxy_client" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection._client">
+<span class="sig-name descname"><span class="pre">_client</span></span><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection._client" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection._tx_id">
+<span class="sig-name descname"><span class="pre">_tx_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection._tx_id" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection._cursor">
+<span class="sig-name descname"><span class="pre">_cursor</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><span class="pre">Cursor</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection._cursor" title="Link to this definition"></a></dt>
+<dd><p>Classic DBAPI cursor to execute operations and fetch rows.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection._comp_cursor">
+<span class="sig-name descname"><span class="pre">_comp_cursor</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#normlite.notiondbapi.dbapi2.CompositeCursor" title="normlite.notiondbapi.dbapi2.CompositeCursor"><span class="pre">CompositeCursor</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection._comp_cursor" title="Link to this definition"></a></dt>
+<dd><p>Composite cursor holding all cursors created out of committed changes in the transaction.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection._cursors">
+<span class="sig-name descname"><span class="pre">_cursors</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><span class="pre">Cursor</span></a><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection._cursors" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection.cursor">
+<span class="sig-name descname"><span class="pre">cursor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">composite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><span class="pre">Cursor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#normlite.notiondbapi.dbapi2.CompositeCursor" title="normlite.notiondbapi.dbapi2.CompositeCursor"><span class="pre">CompositeCursor</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Connection.cursor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection.cursor" title="Link to this definition"></a></dt>
+<dd><p>Procure a new cursor object using the connection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>composite</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><em>bool</em></a><em>, </em><em>optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code> procure a <a class="reference internal" href="#normlite.notiondbapi.dbapi2.CompositeCursor" title="normlite.notiondbapi.dbapi2.CompositeCursor"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.CompositeCursor</span></code></a>, else</p></li>
+<li><p><strong>last</strong> (<em>a normlite.notiondbapi.dbapi2.Cursor instance holding the last result set returned by the</em>)</p></li>
+<li><p><strong>False.</strong> (<em>committed statement. Defaults to</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Either a cursor or a composite depending on the argument value.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Union[<a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor">Cursor</a>, <a class="reference internal" href="#normlite.notiondbapi.dbapi2.CompositeCursor" title="normlite.notiondbapi.dbapi2.CompositeCursor">CompositeCursor</a>]</p>
+</dd>
+</dl>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.7.0.</span></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection._begin_transaction">
+<span class="sig-name descname"><span class="pre">_begin_transaction</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Connection._begin_transaction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection._begin_transaction" title="Link to this definition"></a></dt>
+<dd><p>Begin a new transaction.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection._in_transaction">
+<span class="sig-name descname"><span class="pre">_in_transaction</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><span class="pre">bool</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Connection._in_transaction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection._in_transaction" title="Link to this definition"></a></dt>
+<dd><p>True if the connection has already initiated a transaction.</p>
+<p>This method is used by the cursor to determin whether to begin a new transaction or not.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection._execute_in_transaction">
+<span class="sig-name descname"><span class="pre">_execute_in_transaction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">operation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DBAPIExecuteParameters</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Connection._execute_in_transaction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection._execute_in_transaction" title="Link to this definition"></a></dt>
+<dd><p>Execute the operation in the context of the opened transaction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>operation</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a>) – A dictionary containing the Notion API request to be executed.</p></li>
+<li><p><strong>parameters</strong> (<em>DBAPIExecuteParameters</em>) – A dictionary containing the payload for the Notion API request</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.OperationalError" title="normlite.notiondbapi.dbapi2.OperationalError"><strong>OperationalError</strong></a> – If it fails to add the operation to the transaction.</p></li>
+<li><p><a class="reference internal" href="#normlite.notiondbapi.dbapi2.InternalError" title="normlite.notiondbapi.dbapi2.InternalError"><strong>InternalError</strong></a> – If the operation is not supported or not recognized.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0.</span></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection.commit">
+<span class="sig-name descname"><span class="pre">commit</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Connection.commit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection.commit" title="Link to this definition"></a></dt>
+<dd><p>Commit any pending transaction to the database.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If the database supports an auto-commit feature, this must be initially off.
+An interface method may be provided to turn it back on.</p>
+</div>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0.</span></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.Connection._create_cursors">
+<span class="sig-name descname"><span class="pre">_create_cursors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result_sets</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#Connection._create_cursors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.Connection._create_cursors" title="Link to this definition"></a></dt>
+<dd><p>Helper to populate the _cursors attribute holding the cursors to access all rows returned in the transaction.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0.</span></p>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.CompositeCursor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notiondbapi.dbapi2.</span></span><span class="sig-name descname"><span class="pre">CompositeCursor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cursors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><span class="pre">Cursor</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#CompositeCursor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.CompositeCursor" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Cursor</span></code></a></p>
+<p>Extend a DBAPI cursor to manage multiple child cursors, one per result set returned
+from a multi-statement transaction commit.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.CompositeCursor._cursors">
+<span class="sig-name descname"><span class="pre">_cursors</span></span><a class="headerlink" href="#normlite.notiondbapi.dbapi2.CompositeCursor._cursors" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.CompositeCursor._current_index">
+<span class="sig-name descname"><span class="pre">_current_index</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.CompositeCursor._current_index" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.CompositeCursor._current_cursor">
+<span class="sig-name descname"><span class="pre">_current_cursor</span></span><a class="headerlink" href="#normlite.notiondbapi.dbapi2.CompositeCursor._current_cursor" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.CompositeCursor.nextset">
+<span class="sig-name descname"><span class="pre">nextset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><span class="pre">bool</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#CompositeCursor.nextset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.CompositeCursor.nextset" title="Link to this definition"></a></dt>
+<dd><p>Advance to the next result set if available.</p>
+<p>This method makes the cursor skip to the next available set, discarding any remaining rows from the current set.
+It returns <code class="docutils literal notranslate"><span class="pre">False</span></code> if there are no more sets or returns <code class="docutils literal notranslate"><span class="pre">True</span></code> and subsequent calls to the cursor.fetch*() methods
+returns rows from the next result set.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.CompositeCursor.rowcount">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">rowcount</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.CompositeCursor.rowcount" title="Link to this definition"></a></dt>
+<dd><p>Return the row count of the current cursor.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.CompositeCursor.lastrowid">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">lastrowid</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><span class="pre">int</span></a></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.CompositeCursor.lastrowid" title="Link to this definition"></a></dt>
+<dd><p>Return the last row id of the current cursor.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.CompositeCursor.description">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">description</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.CompositeCursor.description" title="Link to this definition"></a></dt>
+<dd><p>Return the description of the current cursor.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.CompositeCursor.paramstyle">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">paramstyle</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DBAPIParamStyle</span></em><a class="headerlink" href="#normlite.notiondbapi.dbapi2.CompositeCursor.paramstyle" title="Link to this definition"></a></dt>
+<dd><p>Return the row parameter style of the current cursor.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.CompositeCursor.fetchone">
+<span class="sig-name descname"><span class="pre">fetchone</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#CompositeCursor.fetchone"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.CompositeCursor.fetchone" title="Link to this definition"></a></dt>
+<dd><p>Fetch the next row of the current cursor’s result set.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi.dbapi2.CompositeCursor.fetchall">
+<span class="sig-name descname"><span class="pre">fetchall</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><span class="pre">tuple</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/dbapi2.html#CompositeCursor.fetchall"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi.dbapi2.CompositeCursor.fetchall" title="Link to this definition"></a></dt>
+<dd><p>Fetch all rows of the current cursor’s result set.</p>
 </dd></dl>
 
 </dd></dl>

@@ -155,8 +155,14 @@
 <a class="viewcode-back" href="../../../autoapi/normlite/txmodel/operations/index.html#normlite.txmodel.operations.StagedInsert.stage">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">stage</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="c1"># Pre-check — validate payload minimally</span>
-        <span class="k">if</span> <span class="s2">&quot;parent&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">page_payload</span> <span class="ow">or</span> <span class="s2">&quot;properties&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">page_payload</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid Notion page insert payload&quot;</span><span class="p">)</span></div>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">page_payload</span><span class="p">[</span><span class="s1">&#39;parent&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">page_payload</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">ke</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s1">&#39;Invalid Notion page pages.create payload: &#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;Missing &quot;</span><span class="si">{</span><span class="n">ke</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s1">&quot;.&#39;</span>
+            <span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="StagedInsert.do_commit">
@@ -182,6 +188,44 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">get_result</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_result</span></div>
 </div>
+
+    
+<div class="viewcode-block" id="StagedSelect">
+<a class="viewcode-back" href="../../../autoapi/normlite/txmodel/operations/index.html#normlite.txmodel.operations.StagedSelect">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">StagedSelect</span><span class="p">(</span><span class="n">Operation</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Operation to query the database.&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">notion</span><span class="p">:</span> <span class="n">AbstractNotionClient</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">tx_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">notion</span> <span class="o">=</span> <span class="n">notion</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">payload</span> <span class="o">=</span> <span class="n">payload</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tx_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tx_id</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_result</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="StagedSelect.stage">
+<a class="viewcode-back" href="../../../autoapi/normlite/txmodel/operations/index.html#normlite.txmodel.operations.StagedSelect.stage">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">stage</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="s1">&#39;database_id&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">payload</span> <span class="ow">or</span> <span class="s1">&#39;filter&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">payload</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Missing database id or filters or both.&#39;</span><span class="p">)</span></div>
+
+        
+<div class="viewcode-block" id="StagedSelect.do_commit">
+<a class="viewcode-back" href="../../../autoapi/normlite/txmodel/operations/index.html#normlite.txmodel.operations.StagedSelect.do_commit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">do_commit</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">notion</span><span class="p">(</span><span class="s1">&#39;databases&#39;</span><span class="p">,</span> <span class="s1">&#39;query&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">payload</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="StagedSelect.do_rollback">
+<a class="viewcode-back" href="../../../autoapi/normlite/txmodel/operations/index.html#normlite.txmodel.operations.StagedSelect.do_rollback">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">do_rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Nothing to rollback, ``SELECT`` is non mutating.&quot;&quot;&quot;</span>
+        <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="StagedSelect.get_result">
+<a class="viewcode-back" href="../../../autoapi/normlite/txmodel/operations/index.html#normlite.txmodel.operations.StagedSelect.get_result">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_result</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_result</span></div>
+</div>
+
 
             
 </pre></div>

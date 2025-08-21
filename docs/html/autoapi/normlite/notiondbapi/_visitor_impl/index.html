@@ -9,7 +9,7 @@
   <title>normlite.notiondbapi._visitor_impl &mdash; normlite 0.6.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
-      <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
       <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
       <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=f7e3ec4f" />
 
@@ -50,6 +50,7 @@
 <li class="toctree-l1 current"><a class="reference internal" href="../../../index.html">API Reference</a><ul class="current">
 <li class="toctree-l2 current"><a class="reference internal" href="../../index.html">normlite</a><ul class="current">
 <li class="toctree-l3 current"><a class="reference internal" href="../../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../../connection/index.html">normlite.connection</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../cursor/index.html">normlite.cursor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../engine/index.html">normlite.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../exceptions/index.html">normlite.exceptions</a></li>
@@ -106,11 +107,11 @@ JSON object return by the Notion API:</p>
 <li><p>Create a DBAPI description: <a class="reference internal" href="#normlite.notiondbapi._visitor_impl.ToDescVisitor" title="normlite.notiondbapi._visitor_impl.ToDescVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.notiondbapi._visitor_impl.ToDescVisitor</span></code></a>.</p></li>
 </ol>
 </div></blockquote>
-<p><a class="reference internal" href="#normlite.notiondbapi._visitor_impl.ToRowVisitor" title="normlite.notiondbapi._visitor_impl.ToRowVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ToRowVisitor</span></code></a> constructs the row objects returned by <a class="reference internal" href="../dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.fetchone" title="normlite.notiondbapi.dbapi2.Cursor.fetchone"><code class="xref py py-meth docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor.fetchone()</span></code></a> and
-<a class="reference internal" href="../dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.fetchall" title="normlite.notiondbapi.dbapi2.Cursor.fetchall"><code class="xref py py-meth docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor.fetchall()</span></code></a>. A row object is a Python <code class="docutils literal notranslate"><span class="pre">tuple</span></code> containing one value for each column
+<p><a class="reference internal" href="#normlite.notiondbapi._visitor_impl.ToRowVisitor" title="normlite.notiondbapi._visitor_impl.ToRowVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ToRowVisitor</span></code></a> constructs the row objects returned by <code class="xref py py-meth docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor.fetchone()</span></code> and
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor.fetchall()</span></code>. A row object is a Python <code class="docutils literal notranslate"><span class="pre">tuple</span></code> containing one value for each column
 in the table representing the corresponding Notion object.</p>
 <p><a class="reference internal" href="#normlite.notiondbapi._visitor_impl.ToDescVisitor" title="normlite.notiondbapi._visitor_impl.ToDescVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ToDescVisitor</span></code></a> construct the cursor description object returned by the read-only attribute
-<a class="reference internal" href="../dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.description" title="normlite.notiondbapi.dbapi2.Cursor.description"><code class="xref py py-attr docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor.description</span></code></a>. A description object is a sequence of Python tuples containing metadata
+<code class="xref py py-attr docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor.description</span></code>. A description object is a sequence of Python tuples containing metadata
 used by the <a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult</span></code></a> to construct <a class="reference internal" href="../../cursor/index.html#normlite.cursor.Row" title="normlite.cursor.Row"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.Row</span></code></a> objects for a more pythonic hanlding
 of the query results.</p>
 <p>For example, given the following page object is returned from a query to Notion (non
@@ -279,7 +280,7 @@ or queried. The following table shows how the row tuples look like in each case.
 <p><code class="docutils literal notranslate"><span class="pre">normlite</span></code> DBAPI 2.0 layer returns all data provided by the Notion API.
 The higher abtraction layer implemented by <a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult</span></code></a> filters the
 values contained in the DBAPI row. That is, the <a class="reference internal" href="../../cursor/index.html#normlite.cursor.Row" title="normlite.cursor.Row"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.Row</span></code></a> objects produced by the
-cursor result fetch methods (e.g. <a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult.fetchone" title="normlite.cursor.CursorResult.fetchone"><code class="xref py py-meth docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult.fetchone()</span></code></a>) provide a subset only
+cursor result fetch methods (e.g. <code class="xref py py-meth docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult.fetchone()</span></code>) provide a subset only
 of the values contained in the DBAPI row. For example, when a new page is created,
 the object id of the new page only is available in the cursor result row.</p>
 </div>

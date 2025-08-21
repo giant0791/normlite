@@ -1,9 +1,22 @@
 
 from datetime import datetime
 from decimal import Decimal
+import pdb
+from typing import Optional, Union
+
 import pytest
 
-from normlite.sql.type_api import Boolean, Date, Integer, Money, Numeric, String, TypeEngine
+from normlite import (
+    ArchivalFlag, 
+    Boolean, 
+    Date, 
+    Integer, 
+    Money, 
+    Numeric, 
+    ObjectId, 
+    String, 
+    TypeEngine
+)
 
 
 @pytest.mark.parametrize('type_obj, no_obj, py_obj, no_type', [
@@ -54,9 +67,21 @@ from normlite.sql.type_api import Boolean, Date, Integer, Money, Numeric, String
         [{"plain_text": "A nice, woderful day with you"}], 
         "A nice, woderful day with you", 
         {"type": "title"}
+    ),
+    (
+        ObjectId(),
+        "59833787-2cf9-4fdf-8782-e53db20768a5",
+        "59833787-2cf9-4fdf-8782-e53db20768a5",
+        "id"
+    ),
+    (
+        ArchivalFlag(),
+        True,
+        True,
+        "archived"
     )
 ])
-def test_typeengine_bind_pydata(type_obj: TypeEngine, no_obj: dict, py_obj: object, no_type: dict):
+def test_typeengine_datatypes(type_obj: TypeEngine, no_obj: dict, py_obj: object, no_type: dict):
     bind = type_obj.bind_processor(dialect=None)
     result = type_obj.result_processor(dialect=None, coltype=None)
 
@@ -67,5 +92,4 @@ def test_typeengine_bind_pydata(type_obj: TypeEngine, no_obj: dict, py_obj: obje
     assert bound == no_obj
     assert restored == py_obj
     assert type_obj.get_col_spec(dialect=None) == no_type
-    
 

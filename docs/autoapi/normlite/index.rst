@@ -10,6 +10,7 @@ Submodules
 .. toctree::
    :maxdepth: 1
 
+   /autoapi/normlite/connection/index
    /autoapi/normlite/cursor/index
    /autoapi/normlite/engine/index
    /autoapi/normlite/exceptions/index

@@ -90,9 +90,11 @@
 <span class="c1"># You should have received a copy of the GNU Affero General Public License</span>
 <span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
 
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pdb</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterator</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Self</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">TypeAlias</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterator</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Self</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">TypeAlias</span><span class="p">,</span> <span class="n">Union</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">uuid</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">flask.testing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FlaskClient</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.notion_sdk.client</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractNotionClient</span><span class="p">,</span> <span class="n">NotionError</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.notiondbapi._model</span><span class="w"> </span><span class="kn">import</span> <span class="n">NotionDatabase</span><span class="p">,</span> <span class="n">NotionPage</span>
@@ -146,11 +148,33 @@
 <span class="sd">    the underlying database driver (i.e. the Notion API).</span>
 <span class="sd">   &quot;&quot;&quot;</span></div>
 
+    
+<div class="viewcode-block" id="OperationalError">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.OperationalError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">OperationalError</span><span class="p">(</span><span class="n">DatabaseError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Exception raised for errors that are related to the database’s operation and not necessarily under </span>
+<span class="sd">    the control of the programmer.</span>
 
-<div class="viewcode-block" id="Cursor">
-<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">Cursor</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide database cursor functionalty according to the DBAPI 2.0 specification (PEP 249).&quot;&quot;&quot;</span>
+<span class="sd">    Example situations are an unexpected disconnect occurs, the data source name is not found, </span>
+<span class="sd">    a transaction could not be processed, a memory allocation error occurred during processing, etc. </span>
+
+<span class="sd">    .. versionadded:: 0.7.0</span>
+
+<span class="sd">    &quot;&quot;&quot;</span></div>
+
+
+<div class="viewcode-block" id="BaseCursor">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.BaseCursor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseCursor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide database base cursor functionalty according to the DBAPI 2.0 specification (PEP 249).</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        the :class:`BaseCursor` does not support transaction awareness. Use :class:`Cursor` for fully</span>
+<span class="sd">        DBAPI 2.0 compliant cursor.</span>
+
+<span class="sd">    .. versionadded:: 0.7.0</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">:</span> <span class="n">AbstractNotionClient</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_client</span> <span class="o">=</span> <span class="n">client</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;The client implementing the Notion API.&quot;&quot;&quot;</span>
@@ -258,8 +282,8 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_paramstyle</span>
 
-<div class="viewcode-block" id="Cursor._parse_object">
-<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor._parse_object">[docs]</a>
+<div class="viewcode-block" id="BaseCursor._parse_object">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.BaseCursor._parse_object">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">_parse_object</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse a Notion database or page from a list object into a list of tuples.</span>
 
@@ -325,8 +349,8 @@
         <span class="k">return</span> <span class="n">row</span></div>
 
 
-<div class="viewcode-block" id="Cursor._parse_result_set">
-<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor._parse_result_set">[docs]</a>
+<div class="viewcode-block" id="BaseCursor._parse_result_set">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.BaseCursor._parse_result_set">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">_parse_result_set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">returned_obj</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse the JSON object returned by the command execution into the cursor&#39;s result set.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -353,8 +377,8 @@
                 <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">ve</span></div>
 
         
-<div class="viewcode-block" id="Cursor.__iter__">
-<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.__iter__">[docs]</a>
+<div class="viewcode-block" id="BaseCursor.__iter__">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.BaseCursor.__iter__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Make cursors compatible with the iteration protocol.</span>
 
@@ -378,8 +402,8 @@
             <span class="k">yield</span> <span class="n">next_row</span></div>
 
 
-<div class="viewcode-block" id="Cursor.fetchone">
-<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.fetchone">[docs]</a>
+<div class="viewcode-block" id="BaseCursor.fetchone">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.BaseCursor.fetchone">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">fetchone</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Fetch the next row of a query result set.</span>
 
@@ -428,8 +452,8 @@
         <span class="k">return</span> <span class="kc">None</span></div>
 
 
-<div class="viewcode-block" id="Cursor.fetchall">
-<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.fetchall">[docs]</a>
+<div class="viewcode-block" id="BaseCursor.fetchall">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.BaseCursor.fetchall">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">fetchall</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Fetch all rows of this query result. </span>
 <span class="sd">        </span>
@@ -446,7 +470,7 @@
 <span class="sd">            Calling this method on a closed cursor raises the :exc:`Error`.</span>
 
 <span class="sd">        Raises:</span>
-<span class="sd">            Error: If the cusors is closed.</span>
+<span class="sd">            Error: If the cursor is closed.</span>
 <span class="sd">            InterfaceError: If the previous call to :meth:`.execute()` did not produce any result set</span>
 <span class="sd">                            or no call was issued yet.</span>
 
@@ -465,11 +489,11 @@
             <span class="c1"># or no call was issued yet.</span>
             <span class="k">raise</span> <span class="n">InterfaceError</span><span class="p">(</span>
                 <span class="s1">&#39;Cursor result set is empty. &#39;</span>
-                <span class="s1">&#39;The previous call to .execute*() did not produce any result set&#39;</span>
+                <span class="s1">&#39;The previous call to .execute*() did not produce any result set &#39;</span>
                 <span class="s1">&#39;or no call was issued yet &#39;</span>
                 <span class="s1">&#39;or you are attempting to fetch from an empty result set. &#39;</span>
                 <span class="s1">&#39;Hint: .rowcount is 0 if .execute*() did not produce any result set &#39;</span>
-                <span class="s1">&#39;or 1 if no call was issued yet.&#39;</span> 
+                <span class="s1">&#39;or -1 if no call was issued yet.&#39;</span> 
             <span class="p">)</span>
 
         <span class="c1"># assume result set is empty</span>
@@ -483,9 +507,9 @@
         <span class="k">return</span> <span class="n">results</span></div>
 
     
-<div class="viewcode-block" id="Cursor.execute">
-<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.execute">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">operation</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">DBAPIExecuteParameters</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Self</span><span class="p">:</span>
+<div class="viewcode-block" id="BaseCursor.execute">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.BaseCursor.execute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">operation</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">DBAPIExecuteParameters</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Self</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare and execute a database operation (query or command).</span>
 
 <span class="sd">        Parameters may be provided as a mapping and will be bound to variables in the operation.</span>
@@ -573,8 +597,8 @@
         <span class="k">return</span> <span class="bp">self</span></div>
 
     
-<div class="viewcode-block" id="Cursor.executemany">
-<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.executemany">[docs]</a>
+<div class="viewcode-block" id="BaseCursor.executemany">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.BaseCursor.executemany">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">executemany</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">operation</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Self</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare a database operation (query or command) and then execute it against all parameter sequences or </span>
 <span class="sd">        mappings found in the sequence seq_of_parameters.</span>
@@ -593,8 +617,8 @@
         <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
 
 
-<div class="viewcode-block" id="Cursor.close">
-<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.close">[docs]</a>
+<div class="viewcode-block" id="BaseCursor.close">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.BaseCursor.close">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Close the cursor now.</span>
 
@@ -609,8 +633,8 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span> <span class="o">=</span> <span class="kc">True</span></div>
 
 
-<div class="viewcode-block" id="Cursor._bind_parameters">
-<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor._bind_parameters">[docs]</a>
+<div class="viewcode-block" id="BaseCursor._bind_parameters">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.BaseCursor._bind_parameters">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">_bind_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">DBAPIExecuteParameters</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Helper for binding values to the payload.&quot;&quot;&quot;</span>
         
@@ -661,10 +685,285 @@
 </div>
 
                 
+<div class="viewcode-block" id="Cursor">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Cursor</span><span class="p">(</span><span class="n">BaseCursor</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Transaction-aware DBAPI cursor</span>
+<span class="sd">    </span>
+<span class="sd">    This is how the new Cursor class will work in tandem with :class:`Connection`.</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        Unfortunately, the DBAPI 2.0 does not forsee an execute() method for the Connection class.</span>
+<span class="sd">        This leads to a suboptimal separation of concerns: The Connection clas should be responsible to manage the</span>
+<span class="sd">        transaction and to execute operations, while Cursor should only be concerned with providing access to</span>
+<span class="sd">        the results. In the lack of an execute() method at connection level, the Cursor class needs to have a reference </span>
+<span class="sd">        to the connection, so it can start a new transaction on the first call to its execute() method.</span>
+
+<span class="sd">    .. versionchanged:: 0.7.0</span>
+<span class="sd">    </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dbapi_connection</span><span class="p">:</span> <span class="n">Connection</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dbapi_connection</span> <span class="o">=</span> <span class="n">dbapi_connection</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dbapi_connection</span><span class="o">.</span><span class="n">_client</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Cursor.execute">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.execute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">operation</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">DBAPIExecuteParameters</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Self</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Execute the operation within the currently opened transaction.</span>
+
+<span class="sd">        This method is similar to :meth:`BaseCursor.execute()` with the additional feature of</span>
+<span class="sd">        executing the operation within the currently opened transaction. </span>
+<span class="sd">        This means that it does not execute immediately the operation, but it add the operation</span>
+<span class="sd">        to the operations list of the opened transaction.</span>
+<span class="sd">        Execution is deferred to the point in time when the :meth:`Connection.commit()` is called.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            operation (dict): A dictionary containing the Notion API request to be executed.</span>
+<span class="sd">            parameters (DBAPIExecuteParameters): A dictionary containing the payload for the Notion API request</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            OperationalError: If it fails to add the operation to the transaction.</span>
+<span class="sd">            InternalError: If the operation is not supported or not recognized.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            _type_: This cursor instance.</span>
+
+<span class="sd">        .. versionadded:: 0.7.0</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># begin a new transaction if the connection is not in transaction state</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dbapi_connection</span><span class="o">.</span><span class="n">_in_transaction</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dbapi_connection</span><span class="o">.</span><span class="n">_begin_transaction</span><span class="p">()</span>
+
+        <span class="c1"># IMPORTANT =&gt; DO NOT CALL the parent&#39;s method implementation!</span>
+        <span class="c1"># Otherwise the operation will be executed immediately and outside the transaction context.</span>
+        <span class="c1"># Add the operation and parameters to the transaction operations list</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">parameters</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;params&#39;</span><span class="p">,</span> <span class="p">{}):</span>
+            <span class="c1"># bind the params and construct the final payload</span>
+            <span class="n">payload</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bind_parameters</span><span class="p">(</span><span class="n">parameters</span><span class="p">)</span>
+        
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># no binding necessary, extract the payload</span>
+            <span class="n">payload</span> <span class="o">=</span> <span class="n">parameters</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;payload&#39;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dbapi_connection</span><span class="o">.</span><span class="n">_execute_in_transaction</span><span class="p">(</span><span class="n">operation</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span></div>
+</div>
 
 
+<div class="viewcode-block" id="Connection">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Connection">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Connection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide database base connection functionalty according to the DBAPI 2.0 specification (PEP 249).</span>
+
+<span class="sd">    Warning:</span>
+<span class="sd">        This class is still proof-of-concept stage. It needs to be initialized with a Flask testing client (:class:`FlaskClient`).</span>
+<span class="sd">        **DO NOT USE YET!**</span>
+
+<span class="sd">    .. versionadded:: 0.7.0</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">proxy_client</span><span class="p">:</span> <span class="n">FlaskClient</span><span class="p">,</span> <span class="n">client</span><span class="p">:</span> <span class="n">AbstractNotionClient</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_client</span> <span class="o">=</span> <span class="n">proxy_client</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span> <span class="o">=</span> <span class="n">client</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tx_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span> 
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span><span class="p">:</span> <span class="n">Cursor</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Classic DBAPI cursor to execute operations and fetch rows.&quot;&quot;&quot;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_comp_cursor</span><span class="p">:</span> <span class="n">CompositeCursor</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Composite cursor holding all cursors created out of committed changes in the transaction.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cursors</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Cursor</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+<div class="viewcode-block" id="Connection.cursor">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Connection.cursor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">composite</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">Cursor</span><span class="p">,</span> <span class="n">CompositeCursor</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Procure a new cursor object using the connection.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            composite (bool, optional): If ``True`` procure a :class:`normlite.notiondbapi.dbapi2.CompositeCursor`, else </span>
+<span class="sd">            a `normlite.notiondbapi.dbapi2.Cursor` instance holding the last result set returned by the last</span>
+<span class="sd">            committed statement. Defaults to ``False``.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Union[Cursor, CompositeCursor]: Either a cursor or a composite depending on the argument value.</span>
+
+<span class="sd">        .. versionchanged:: 0.7.0</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">composite</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span> <span class="o">=</span> <span class="n">CompositeCursor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cursors</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cursors</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># last_only = True =&gt; only return the last result set</span>
+        
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span></div>
+
+    
+<div class="viewcode-block" id="Connection._begin_transaction">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Connection._begin_transaction">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_begin_transaction</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Begin a new transaction.&quot;&quot;&quot;</span>
+        
+        <span class="c1"># Assumption: The caller implements correctly the internal API.</span>
+        <span class="c1"># Call _begin_transaction() only if _in_transaction() returns False</span>
+        <span class="c1"># =&gt; No checks consistency to avoid multiple txn here!</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s1">&#39;/transactions&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">!=</span> <span class="mi">200</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InterfaceError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s1">&#39;Unable to start a new transaction in the proxy server. &#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;Reason: </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">get_json</span><span class="p">()[</span><span class="s1">&#39;error&#39;</span><span class="p">]</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="p">)</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tx_id</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">get_json</span><span class="p">()[</span><span class="s1">&#39;transaction_id&#39;</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="Connection._in_transaction">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Connection._in_transaction">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_in_transaction</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;True if the connection has already initiated a transaction.</span>
+<span class="sd">        </span>
+<span class="sd">        This method is used by the cursor to determin whether to begin a new transaction or not.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tx_id</span></div>
+
+    
+<div class="viewcode-block" id="Connection._execute_in_transaction">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Connection._execute_in_transaction">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_execute_in_transaction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">operation</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">DBAPIExecuteParameters</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Execute the operation in the context of the opened transaction.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            operation (dict): A dictionary containing the Notion API request to be executed.</span>
+<span class="sd">            parameters (DBAPIExecuteParameters): A dictionary containing the payload for the Notion API request</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            OperationalError: If it fails to add the operation to the transaction.</span>
+<span class="sd">            InternalError: If the operation is not supported or not recognized.</span>
+
+<span class="sd">        .. versionadded:: 0.7.0</span>
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
              
+        <span class="k">if</span> <span class="n">operation</span><span class="p">[</span><span class="s1">&#39;endpoint&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;pages&#39;</span> <span class="ow">and</span> <span class="n">operation</span><span class="p">[</span><span class="s1">&#39;request&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;create&#39;</span><span class="p">:</span>
+            <span class="c1"># add insert operation</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;/transactions/</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_tx_id</span><span class="si">}</span><span class="s2">/insert&quot;</span><span class="p">,</span> 
+                <span class="n">json</span><span class="o">=</span><span class="n">parameters</span>
+            <span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">!=</span> <span class="mi">202</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">OperationalError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Failed to add insert operation to transaction. Reason: </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">get_json</span><span class="p">()[</span><span class="s1">&#39;error&#39;</span><span class="p">]</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InternalError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Unsupported or bad operation: </span><span class="si">{</span><span class="n">operation</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
+
                 
+<div class="viewcode-block" id="Connection.commit">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Connection.commit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">commit</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Commit any pending transaction to the database.</span>
+
+<span class="sd">        Note:</span>
+<span class="sd">            If the database supports an auto-commit feature, this must be initially off. </span>
+<span class="sd">            An interface method may be provided to turn it back on.</span>
+
+<span class="sd">        .. versionadded:: 0.7.0</span>
+
+<span class="sd">        &quot;&quot;&quot;</span> 
+        <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_proxy_client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s1">&#39;/transactions/</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_tx_id</span><span class="si">}</span><span class="s1">/commit&#39;</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">!=</span> <span class="mi">200</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">DatabaseError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s1">&#39;Failed to commit transaction: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_tx_id</span><span class="si">}</span><span class="s1">. &#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;Reason: </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">get_json</span><span class="p">()[</span><span class="s1">&#39;error&#39;</span><span class="p">]</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="p">)</span>
+        
+        <span class="c1"># create cursors</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_create_cursors</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">get_json</span><span class="p">()[</span><span class="s1">&#39;data&#39;</span><span class="p">])</span></div>
+
+
+<div class="viewcode-block" id="Connection._create_cursors">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Connection._create_cursors">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_cursors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">result_sets</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Helper to populate the _cursors attribute holding the cursors to access all rows returned in the transaction.</span>
+<span class="sd">        </span>
+<span class="sd">        .. versionadded:: 0.7.0</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">result_set</span> <span class="ow">in</span> <span class="n">result_sets</span><span class="p">:</span>
+            <span class="n">cursor</span> <span class="o">=</span> <span class="n">Cursor</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+            <span class="n">cursor</span><span class="o">.</span><span class="n">_parse_result_set</span><span class="p">(</span><span class="n">result_set</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cursors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cursor</span><span class="p">)</span></div>
+</div>
+
+
+<div class="viewcode-block" id="CompositeCursor">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.CompositeCursor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CompositeCursor</span><span class="p">(</span><span class="n">Cursor</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extend a DBAPI cursor to manage multiple child cursors, one per result set returned</span>
+<span class="sd">    from a multi-statement transaction commit.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cursors</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Cursor</span><span class="p">]):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cursors</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">cursors</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_current_index</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_current_cursor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cursors</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_current_index</span><span class="p">]</span>
+
+<div class="viewcode-block" id="CompositeCursor.nextset">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.CompositeCursor.nextset">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">nextset</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Advance to the next result set if available.</span>
+<span class="sd">        </span>
+<span class="sd">        This method makes the cursor skip to the next available set, discarding any remaining rows from the current set. </span>
+<span class="sd">        It returns ``False`` if there are no more sets or returns ``True`` and subsequent calls to the cursor.fetch*() methods </span>
+<span class="sd">        returns rows from the next result set. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_index</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cursors</span><span class="p">):</span>
+            <span class="c1"># close the current cursor, advance and forget</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_current_cursor</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_current_index</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_current_cursor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cursors</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_current_index</span><span class="p">]</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+    
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">rowcount</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the row count of the current cursor.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_cursor</span><span class="o">.</span><span class="n">rowcount</span>
+    
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lastrowid</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the last row id of the current cursor.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_cursor</span><span class="o">.</span><span class="n">lastrowid</span>
+    
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">description</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the description of the current cursor.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_cursor</span><span class="o">.</span><span class="n">description</span>
+    
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">paramstyle</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DBAPIParamStyle</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the row parameter style of the current cursor.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_cursor</span><span class="o">.</span><span class="n">paramstyle</span>
+    
+<div class="viewcode-block" id="CompositeCursor.fetchone">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.CompositeCursor.fetchone">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fetchone</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Fetch the next row of the current cursor&#39;s result set.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span></div>
+
+    
+<div class="viewcode-block" id="CompositeCursor.fetchall">
+<a class="viewcode-back" href="../../../autoapi/normlite/notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.CompositeCursor.fetchall">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fetchall</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Fetch all rows of the current cursor&#39;s result set. &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_current_cursor</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span></div>
+</div>
+
 
 
 

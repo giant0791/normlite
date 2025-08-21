@@ -1,0 +1,264 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.sql.dml &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">normlite.sql.dml</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for normlite.sql.dml</h1><div class="highlight"><pre>
+<span></span><span class="c1"># sql/dml.py</span>
+<span class="c1"># Copyright (C) 2025 Gianmarco Antonini</span>
+<span class="c1">#</span>
+<span class="c1"># This module is part of normlite and is released under the GNU Affero General Public License.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is free software: you can redistribute it and/or modify</span>
+<span class="c1"># it under the terms of the GNU Affero General Public License as published</span>
+<span class="c1"># by the Free Software Foundation, either version 3 of the License, or</span>
+<span class="c1"># (at your option) any later version.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is distributed in the hope that it will be useful,</span>
+<span class="c1"># but WITHOUT ANY WARRANTY; without even the implied warranty of</span>
+<span class="c1"># MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</span>
+<span class="c1"># GNU Affero General Public License for more details.</span>
+<span class="c1">#</span>
+<span class="c1"># You should have received a copy of the GNU Affero General Public License</span>
+<span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Executable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.sql</span><span class="w"> </span><span class="kn">import</span> <span class="n">CreateTable</span>
+
+<div class="viewcode-block" id="SQLCompiler">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.SQLCompiler">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SQLCompiler</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide the central compiler for all SQL executables.&quot;&quot;&quot;</span>
+    
+    <span class="n">_stmt_map</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;Insert&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;endpoint&#39;</span><span class="p">:</span> <span class="s1">&#39;pages&#39;</span><span class="p">,</span> <span class="s1">&#39;request&#39;</span><span class="p">:</span> <span class="s1">&#39;create&#39;</span><span class="p">}</span>
+    <span class="p">}</span>
+
+<div class="viewcode-block" id="SQLCompiler.compile_insert">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.SQLCompiler.compile_insert">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compile_insert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ins_stmt</span><span class="p">:</span> <span class="n">Insert</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="c1"># construct the operation object</span>
+        <span class="n">operation</span> <span class="o">=</span> <span class="n">SQLCompiler</span><span class="o">.</span><span class="n">_stmt_map</span><span class="p">[</span><span class="s1">&#39;Insert&#39;</span><span class="p">]</span>
+
+        <span class="c1"># construct the payload</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;parent&quot;</span><span class="p">:</span> <span class="p">{</span> 
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;database_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;database_id&quot;</span><span class="p">:</span> <span class="n">ins_stmt</span><span class="o">.</span><span class="n">_table</span><span class="o">.</span><span class="n">_database_id</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="c1"># construct the properties wih placeholder values</span>
+        <span class="n">properties</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">ins_stmt</span><span class="o">.</span><span class="n">_table</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="n">col_val</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;:</span><span class="si">{</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s1">:&#39;</span>
+
+            <span class="k">if</span> <span class="n">col</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s1">&#39;int&#39;</span><span class="p">:</span>
+                <span class="c1"># IMPORTANT: </span>
+                <span class="c1"># Currently the col.type member contains the SQL type</span>
+                <span class="c1"># not the Notion type</span>
+                <span class="n">properties</span><span class="p">[</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;number&quot;</span><span class="p">:</span> <span class="n">col_val</span><span class="p">}</span>
+            <span class="k">elif</span> <span class="n">col</span><span class="o">.</span><span class="n">type</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;title_varchar&quot;</span><span class="p">):</span>
+                <span class="n">properties</span><span class="p">[</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">col_val</span><span class="p">}}]</span>
+                <span class="p">}</span>
+            <span class="k">elif</span> <span class="n">col</span><span class="o">.</span><span class="n">type</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;varchar&quot;</span><span class="p">):</span>
+                <span class="n">properties</span><span class="p">[</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;rich_text&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">col_val</span><span class="p">}}]</span>
+                <span class="p">}</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported type for column &#39;</span><span class="si">{</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39;: </span><span class="si">{</span><span class="n">col</span><span class="o">.</span><span class="n">type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">payload</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">properties</span>
+
+        <span class="c1"># construct the parameters</span>
+        <span class="n">parameters</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">parameters</span><span class="p">[</span><span class="s1">&#39;payload&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">payload</span>
+        <span class="n">parameters</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ins_stmt</span><span class="o">.</span><span class="n">_values</span>
+
+        <span class="k">return</span> <span class="p">{</span><span class="s1">&#39;operation&#39;</span><span class="p">:</span> <span class="n">operation</span><span class="p">,</span> <span class="s1">&#39;parameters&#39;</span><span class="p">:</span> <span class="n">parameters</span><span class="p">}</span></div>
+</div>
+
+
+<div class="viewcode-block" id="Insert">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Insert</span><span class="p">(</span><span class="n">Executable</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide an insert statement to add rows to the associated table.</span>
+
+<span class="sd">    This class respresents an SQL ``INSERT`` statement. Every insert statement is associated</span>
+<span class="sd">    to the table it adds rows to.</span>
+
+<span class="sd">    .. versionadded:: 0.7.0</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">:</span> <span class="n">CreateTable</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_table</span> <span class="o">=</span> <span class="n">table</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The table subject of the insert.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_values</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The mapping column name, column value.&quot;&quot;&quot;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_operation</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The dictionary containing the compiled operation.&quot;&quot;&quot;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parameters</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The dictionary containing the compiled parameters.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Insert.prepare">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert.prepare">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># cross-compile the insert statement. At the end:</span>
+        <span class="c1"># self._operation contains the keys &quot;endpoint&quot; and &quot;request&quot;</span>
+        <span class="c1"># self._parameters contains the keys &quot;payload&quot; and &quot;params&quot;</span>
+        <span class="c1"># 1. cross-compile</span>
+        <span class="n">sql_compiler</span><span class="p">:</span> <span class="n">SQLCompiler</span> <span class="o">=</span> <span class="n">SQLCompiler</span><span class="p">()</span>
+        <span class="n">compiled_stmt</span> <span class="o">=</span> <span class="n">sql_compiler</span><span class="o">.</span><span class="n">compile_insert</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+        <span class="c1"># the cross-compilation result is a dictionary containing the following keys:</span>
+        <span class="c1"># &quot;operation&quot;: {&quot;endpoint&quot;: &quot;&lt;some_ep&gt;&quot;, &quot;request&quot;: &quot;&lt;some_req&gt;&quot;}</span>
+        <span class="c1"># &quot;parameters&quot;: {&quot;payload&quot;: {&lt;payload object&gt;}, &quot;parameters&quot;: {&lt;parameters object&gt;}} </span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_operation</span> <span class="o">=</span> <span class="n">compiled_stmt</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;operation&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parameters</span> <span class="o">=</span> <span class="n">compiled_stmt</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;parameters&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Insert.bindparams">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert.bindparams">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bindparams</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Bind (assign) the parameters to the insert values clause.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">parameters</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span>
+                <span class="s1">&#39;Expected bind parameters for this statement. &#39;</span>
+                <span class="s1">&#39;None was supplied or no binding performed yet.&#39;</span>
+            <span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_values</span><span class="p">[</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">parameters</span><span class="p">[</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="Insert.operation">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert.operation">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">operation</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operation</span></div>
+
+
+<div class="viewcode-block" id="Insert.parameters">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert.parameters">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parameters</span></div>
+</div>
+
+
+<div class="viewcode-block" id="insert">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.insert">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">insert</span><span class="p">(</span><span class="n">table</span><span class="p">:</span> <span class="n">CreateTable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Insert</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Construct an insert statement.</span>
+
+<span class="sd">    This class constructs an SQL ``INSERT`` statement capable of inserting rows</span>
+<span class="sd">    to this table.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Insert: A new insert statement for this table. </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">Insert</span><span class="p">(</span><span class="n">table</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

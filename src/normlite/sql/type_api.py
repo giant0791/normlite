@@ -35,9 +35,8 @@ This allows to define datatypes without the Notion specific details.
 The Notion type system is thus treated as an SQL dialect.
 Subclasses of :class:`TypeEngine` are used to define the datatype of table columns.
 
-Usage:
+Usage::
 
-.. codeblock:: python
     # define an integer SQL datatype
     int_dt = Integer()
     
@@ -66,7 +65,6 @@ Usage:
     # get columns specification (Notion type representation)
     str_dt.get_col_spec(dialect=None)   # -> {"type": "title"}
 
-
 .. versionadded:: 0.7.0
 
 """
@@ -75,9 +73,13 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Callable, List, Literal, Optional, Protocol, TypeAlias, Union
+import uuid
 
 class TypeEngine(Protocol):
-    """Base class for all Notion/SQL datatypes."""
+    """Base class for all Notion/SQL datatypes.
+    
+    .. versionadded:: 0.7.0
+    """
 
     def bind_processor(self, dialect) -> Optional[Callable[[Any], Any]]:
         """Python → SQL/Notion (prepare before sending)."""
@@ -91,6 +93,9 @@ class TypeEngine(Protocol):
         """Return a string for the SQL-like type name."""
         raise NotImplementedError
     
+    def __repr__(self):
+        return self.__class__.__name__
+    
 _NumericType: TypeAlias = Union[int, Decimal]
 """Type alias for numeric datatypes. It is not part of the public API."""
 
@@ -98,9 +103,15 @@ _DateTimeRangeType: TypeAlias = Union[tuple[datetime, datetime], datetime]
 """Type alias for datetime datatypes. It is not part of the publich API."""
 
 Currency = Literal['dollar', 'euro', 'franc', 'krona', 'pound', 'yuan']
+"""Literal alias for the currently supported currencies. 
+These are the same literal strings as defined by Notion.
+"""
     
 class Number(TypeEngine):
-    """Notion-specific number type. Can represent integer, decimal, percent, or currency."""
+    """Notion-specific number type. Can represent integer, decimal, percent, or currency.
+    
+    .. versionadded:: 0.7.0
+    """
 
     def __init__(self, format: str):
         """
@@ -131,25 +142,49 @@ class Number(TypeEngine):
         return process
 
 class Integer(Number):
-    """Covenient type engine for Notion "number" objetcs with format = "number"."""
+    """Covenient type engine for Notion "number" objetcs with format = "number".
+    
+    .. versionadded:: 0.7.0
+    """
 
     def __init__(self):
         super().__init__('number')
 
 class Numeric(Number):
-    """Convenient type engine for Notion "number" objects with format ="number_with_commas"."""
+    """Convenient type engine for Notion "number" objects with format ="number_with_commas".
+    
+    .. versionadded:: 0.7.0
+    """
 
     def __init__(self):
         super().__init__('number_with_commas')
 
 class Money(Number):
-    """Convenitent type engine for Notion "number" objects handling currencies."""
+    """Convenient type engine for Notion "number" objects handling currencies.
+    
+    .. versionadded:: 0.7.0
+    """
     def __init__(self, currency: Currency):
         super().__init__(currency)
 
 class String(TypeEngine):
+    """Textual type for Notion title and rich text properties.
+    
+    Usage:
+        >>> # create a title property
+        >>> title_txt = String(is_title=True)
+        >>> title_text.get_col_spec(None)
+        {"type": "title"}
+
+        >>> # create a rich text property
+        >>> rich_text = String()
+        >>> rich_text.get_col_spec(None)
+        {"type": "rich_text"}
+
+    .. versionadded:: 0.7.0
+    """
     def __init__(self, is_title: bool = False):
-        self._is_title = is_title
+        self.is_title = is_title
         """``True`` if it is a "title", ``False`` if it is a "richt_text"."""
 
     def bind_processor(self, dialect):
@@ -170,9 +205,22 @@ class String(TypeEngine):
         return process
 
     def get_col_spec(self, dialect):
-        return {"type": "title"} if self._is_title else {"type": "rich_text"}
+        return {"type": "title"} if self.is_title else {"type": "rich_text"}
+    
+    def __repr__(self) -> str:
+        kwarg = []
+        if self.is_title:
+            kwarg.append('is_title')
+        
+        return "String(%s)" % ", ".join(
+            ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
+        )
     
 class Boolean(TypeEngine):
+    """Covenient type engine class for "checkbox" objects.
+    
+    .. versionadded:: 0.7.0
+    """
     def get_col_spec(self, dialect):
         return {"type": "checkbox"}
 
@@ -191,6 +239,10 @@ class Boolean(TypeEngine):
         return process
     
 class Date(TypeEngine):
+    """Convenient type engine class for "date" objects.
+    
+    .. versionadded:: 0.7.0
+    """
     def bind_processor(self, dialect):
         def process(value: Optional[_DateTimeRangeType]) -> Optional[dict]:
             if value is None:
@@ -240,3 +292,60 @@ class Date(TypeEngine):
 
     def get_col_spec(self, dialect):
         return {"type": "date"}
+
+class UUID(TypeEngine):
+    """Base type engine class for UUID ids.
+    
+    .. versionadded:: 0.7.0
+    """
+    def bind_processor(self, dialect):
+        def process(value: Optional[Union[str, uuid.UUID]]) -> Optional[str]:
+            if value is None:
+                return None
+            if isinstance(value, uuid.UUID):
+                return str(value)   # JSON-safe
+            return str(uuid.UUID(value))      # parse from string
+        return process
+
+    def result_processor(self, dialect, coltype=None):
+        def process(value: Optional[str]) -> Optional[str]:
+            if value is None:
+                return None
+            return str(uuid.UUID(value))      # parse from string
+        return process
+
+    def get_col_spec(self, dialect):
+        return "UUID"
+
+class ObjectId(UUID):
+    """Special UUID type representing Notion's "id" property.
+    
+    .. versionadded:: 0.7.0
+    """
+    def get_col_spec(self, dialect):
+        return "id"
+
+class ArchivalFlag(Boolean):
+    """Special Boolean type representing Notion's "archived" property.
+    
+    .. versionadded:: 0.7.0
+    """
+
+    def get_col_spec(self, dialect):
+        # In Notion JSON, this is always stored under property 'archived'
+        return "archived"
+
+    def bind_processor(self, dialect):
+        def process(value: Optional[bool]) -> Optional[bool]:
+            if value is None:
+                return None
+            return bool(value)
+        return process
+
+    def result_processor(self, dialect, coltype=None):
+        def process(value: Optional[bool]) -> Optional[bool]:
+            if value is None:
+                return None
+            return bool(value)
+        return process
+

@@ -63,9 +63,32 @@ Module Contents
    the underlying database driver (i.e. the Notion API).
 
 
-.. py:class:: Cursor(client: normlite.notion_sdk.client.AbstractNotionClient)
+.. py:exception:: OperationalError
 
-   Provide database cursor functionalty according to the DBAPI 2.0 specification (PEP 249).
+   Bases: :py:obj:`DatabaseError`
+
+
+   Exception raised for errors that are related to the database’s operation and not necessarily under
+   the control of the programmer.
+
+   Example situations are an unexpected disconnect occurs, the data source name is not found,
+   a transaction could not be processed, a memory allocation error occurred during processing, etc.
+
+   .. versionadded:: 0.7.0
+
+
+
+.. py:class:: BaseCursor(client: normlite.notion_sdk.client.AbstractNotionClient)
+
+   Provide database base cursor functionalty according to the DBAPI 2.0 specification (PEP 249).
+
+   .. note::
+
+      the :class:`BaseCursor` does not support transaction awareness. Use :class:`Cursor` for fully
+      DBAPI 2.0 compliant cursor.
+
+   .. versionadded:: 0.7.0
+
 
 
    .. py:attribute:: _client
@@ -299,7 +322,7 @@ Module Contents
       .. versionchanged:: 0.5.0
           Calling this method on a closed cursor raises the :exc:`Error`.
 
-      :raises Error: If the cusors is closed.
+      :raises Error: If the cursor is closed.
       :raises InterfaceError: If the previous call to :meth:`.execute()` did not produce any result set
           or no call was issued yet.
 
@@ -308,7 +331,7 @@ Module Contents
 
 
 
-   .. py:method:: execute(operation: Dict[str, Any], parameters: DBAPIExecuteParameters) -> Self
+   .. py:method:: execute(operation: dict, parameters: DBAPIExecuteParameters) -> Self
 
       Prepare and execute a database operation (query or command).
 
@@ -403,6 +426,243 @@ Module Contents
    .. py:method:: _bind_parameters(parameters: DBAPIExecuteParameters) -> dict
 
       Helper for binding values to the payload.
+
+
+
+.. py:class:: Cursor(dbapi_connection: Connection)
+
+   Bases: :py:obj:`BaseCursor`
+
+
+   Transaction-aware DBAPI cursor
+
+   This is how the new Cursor class will work in tandem with :class:`Connection`.
+
+   .. note::
+
+      Unfortunately, the DBAPI 2.0 does not forsee an execute() method for the Connection class.
+      This leads to a suboptimal separation of concerns: The Connection clas should be responsible to manage the
+      transaction and to execute operations, while Cursor should only be concerned with providing access to
+      the results. In the lack of an execute() method at connection level, the Cursor class needs to have a reference
+      to the connection, so it can start a new transaction on the first call to its execute() method.
+
+   .. versionchanged:: 0.7.0
+
+
+
+   .. py:attribute:: _dbapi_connection
+
+
+   .. py:method:: execute(operation: dict, parameters: DBAPIExecuteParameters) -> Self
+
+      Execute the operation within the currently opened transaction.
+
+      This method is similar to :meth:`BaseCursor.execute()` with the additional feature of
+      executing the operation within the currently opened transaction.
+      This means that it does not execute immediately the operation, but it add the operation
+      to the operations list of the opened transaction.
+      Execution is deferred to the point in time when the :meth:`Connection.commit()` is called.
+
+      :param operation: A dictionary containing the Notion API request to be executed.
+      :type operation: dict
+      :param parameters: A dictionary containing the payload for the Notion API request
+      :type parameters: DBAPIExecuteParameters
+
+      :raises OperationalError: If it fails to add the operation to the transaction.
+      :raises InternalError: If the operation is not supported or not recognized.
+
+      :returns: This cursor instance.
+      :rtype: _type_
+
+      .. versionadded:: 0.7.0
+
+
+
+.. py:class:: Connection(proxy_client: flask.testing.FlaskClient, client: normlite.notion_sdk.client.AbstractNotionClient)
+
+   Provide database base connection functionalty according to the DBAPI 2.0 specification (PEP 249).
+
+   .. warning::
+
+      This class is still proof-of-concept stage. It needs to be initialized with a Flask testing client (:class:`FlaskClient`).
+      **DO NOT USE YET!**
+
+   .. versionadded:: 0.7.0
+
+
+
+   .. py:attribute:: _proxy_client
+
+
+   .. py:attribute:: _client
+
+
+   .. py:attribute:: _tx_id
+      :type:  str
+      :value: None
+
+
+
+   .. py:attribute:: _cursor
+      :type:  Cursor
+      :value: None
+
+
+      Classic DBAPI cursor to execute operations and fetch rows.
+
+
+   .. py:attribute:: _comp_cursor
+      :type:  CompositeCursor
+      :value: None
+
+
+      Composite cursor holding all cursors created out of committed changes in the transaction.
+
+
+   .. py:attribute:: _cursors
+      :type:  List[Cursor]
+      :value: []
+
+
+
+   .. py:method:: cursor(composite=False) -> Union[Cursor, CompositeCursor]
+
+      Procure a new cursor object using the connection.
+
+      :param composite: If ``True`` procure a :class:`normlite.notiondbapi.dbapi2.CompositeCursor`, else
+      :type composite: bool, optional
+      :param a `normlite.notiondbapi.dbapi2.Cursor` instance holding the last result set returned by the last:
+      :param committed statement. Defaults to ``False``.:
+
+      :returns: Either a cursor or a composite depending on the argument value.
+      :rtype: Union[Cursor, CompositeCursor]
+
+      .. versionchanged:: 0.7.0
+
+
+
+
+   .. py:method:: _begin_transaction() -> None
+
+      Begin a new transaction.
+
+
+
+   .. py:method:: _in_transaction() -> bool
+
+      True if the connection has already initiated a transaction.
+
+      This method is used by the cursor to determin whether to begin a new transaction or not.
+
+
+
+   .. py:method:: _execute_in_transaction(operation: dict, parameters: DBAPIExecuteParameters) -> None
+
+      Execute the operation in the context of the opened transaction.
+
+      :param operation: A dictionary containing the Notion API request to be executed.
+      :type operation: dict
+      :param parameters: A dictionary containing the payload for the Notion API request
+      :type parameters: DBAPIExecuteParameters
+
+      :raises OperationalError: If it fails to add the operation to the transaction.
+      :raises InternalError: If the operation is not supported or not recognized.
+
+      .. versionadded:: 0.7.0
+
+
+
+
+   .. py:method:: commit() -> None
+
+      Commit any pending transaction to the database.
+
+      .. note::
+
+         If the database supports an auto-commit feature, this must be initially off.
+         An interface method may be provided to turn it back on.
+
+      .. versionadded:: 0.7.0
+
+
+
+
+   .. py:method:: _create_cursors(result_sets: Sequence[dict]) -> None
+
+      Helper to populate the _cursors attribute holding the cursors to access all rows returned in the transaction.
+
+      .. versionadded:: 0.7.0
+
+
+
+
+.. py:class:: CompositeCursor(cursors: Sequence[Cursor])
+
+   Bases: :py:obj:`Cursor`
+
+
+   Extend a DBAPI cursor to manage multiple child cursors, one per result set returned
+   from a multi-statement transaction commit.
+
+
+   .. py:attribute:: _cursors
+
+
+   .. py:attribute:: _current_index
+      :value: 0
+
+
+
+   .. py:attribute:: _current_cursor
+
+
+   .. py:method:: nextset() -> bool
+
+      Advance to the next result set if available.
+
+      This method makes the cursor skip to the next available set, discarding any remaining rows from the current set.
+      It returns ``False`` if there are no more sets or returns ``True`` and subsequent calls to the cursor.fetch*() methods
+      returns rows from the next result set.
+
+
+
+   .. py:property:: rowcount
+      :type: int
+
+
+      Return the row count of the current cursor.
+
+
+   .. py:property:: lastrowid
+      :type: int
+
+
+      Return the last row id of the current cursor.
+
+
+   .. py:property:: description
+      :type: tuple
+
+
+      Return the description of the current cursor.
+
+
+   .. py:property:: paramstyle
+      :type: DBAPIParamStyle
+
+
+      Return the row parameter style of the current cursor.
+
+
+   .. py:method:: fetchone() -> Optional[tuple]
+
+      Fetch the next row of the current cursor's result set.
+
+
+
+   .. py:method:: fetchall() -> List[tuple]
+
+      Fetch all rows of the current cursor's result set.
 
 
 

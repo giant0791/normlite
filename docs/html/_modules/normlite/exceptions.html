@@ -90,6 +90,11 @@
 <span class="c1"># You should have received a copy of the GNU Affero General Public License</span>
 <span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
 
+<span class="sd">&quot;&quot;&quot;Provide ``normlite`` specific exceptions.</span>
+
+<span class="sd">.. versionadded:: 0.5.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
 <div class="viewcode-block" id="NormliteError">
 <a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.NormliteError">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">NormliteError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
@@ -103,7 +108,7 @@
 <div class="viewcode-block" id="NoResultFound">
 <a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.NoResultFound">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">NoResultFound</span><span class="p">(</span><span class="n">NormliteError</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when exaclty one result row is expected, but none was found.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when exactly one result row is expected, but none was found.</span>
 <span class="sd">    </span>
 <span class="sd">    .. versionadded: 0.5.0</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -116,6 +121,36 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised if multiple rows were found when exactly one was required.</span>
 <span class="sd">    </span>
 <span class="sd">    .. versionadded: 0.5.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="DuplicateColumnError">
+<a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.DuplicateColumnError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DuplicateColumnError</span><span class="p">(</span><span class="n">NormliteError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when an already existing column is added to a table.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="ArgumentError">
+<a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.ArgumentError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ArgumentError</span><span class="p">(</span><span class="n">NormliteError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when an erroneous argument is passed.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="InvalidRequestError">
+<a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.InvalidRequestError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidRequestError</span><span class="p">(</span><span class="n">NormliteError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when a ``normlite`` method or function is cannot perform as requested.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="o">...</span></div>
 
