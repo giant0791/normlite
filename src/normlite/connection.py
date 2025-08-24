@@ -43,8 +43,9 @@ class Connection:
 
         Note:
             **Non-mutating** statements like ``SELECT`` returns their result immediately after the
-            :meth:`Connection.execute()` returns. All **mutating** statements like ``INSERT``, 
-            ``UPDATE`` or ``DELETE`` return an **empty** result immediately.
+            :meth:`Connection.execute()` returns. All **mutating** statements like ``INSERT`` 
+            (see :class:`normlite.sql.dml.Insert`),``UPDATE`` or ``DELETE`` return an 
+            **empty** result immediately.
 
         Important:
             The cursor result object associated with the last :meth:`Connection.execute()` contains
@@ -53,7 +54,7 @@ class Connection:
         Args:
             stmt (SqlNode): The statement to execute.
             parameters (Optional[dict]): An optional dictionary containing the parameters to be
-            bound to the SQL statement.   
+                bound to the SQL statement.   
 
         Returns:
             CursorResult: The result of the statement execution as cursor result.

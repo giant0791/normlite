@@ -33,8 +33,9 @@ Module Contents
       .. note::
 
          **Non-mutating** statements like ``SELECT`` returns their result immediately after the
-         :meth:`Connection.execute()` returns. All **mutating** statements like ``INSERT``,
-         ``UPDATE`` or ``DELETE`` return an **empty** result immediately.
+         :meth:`Connection.execute()` returns. All **mutating** statements like ``INSERT``
+         (see :class:`normlite.sql.dml.Insert`),``UPDATE`` or ``DELETE`` return an
+         **empty** result immediately.
 
       .. important::
 
@@ -44,8 +45,8 @@ Module Contents
       :param stmt: The statement to execute.
       :type stmt: SqlNode
       :param parameters: An optional dictionary containing the parameters to be
+                         bound to the SQL statement.
       :type parameters: Optional[dict]
-      :param bound to the SQL statement.:
 
       :returns: The result of the statement execution as cursor result.
       :rtype: CursorResult

@@ -24,8 +24,8 @@ Example of a table creation:
     >>>     'students',
     >>>     Column('id', Integer(), primary_key=True),
     >>>     Column('name', String(is_title=True)),
-    >>>     Columns('grade', String()),
-    >>>     Columns('since' Date())
+    >>>     Column('grade', String()),
+    >>>     Column('since' Date())
     >>> )
 
 ``normlite`` automatically adds the Notion object id as additional primary key:
@@ -35,8 +35,8 @@ Example of a table creation:
         Column('name', String(is_title=True), table=<students>), 
         Column('grade', String(), table=<students>), 
         Column('since', Date, table=<students>), 
-        Column('_no_id', ObjectId, table=None, primary_key=True), 
-        Column('_no_archived', ArchivalFlag, table=None))
+        Column('_no_id', ObjectId, table=<students>, primary_key=True), 
+        Column('_no_archived', ArchivalFlag, table=<students>))
 
 Note: 
     The Notion archived property is automatically added too. By default, the ``_no_id`` column
@@ -56,9 +56,10 @@ You can inspect the table's primary key constraints by calling the :attr:`primar
 
 """
 from __future__ import annotations
-from typing import Any, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, Tuple, Union, overload
+from typing import Any, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, Tuple, Union, overload, TYPE_CHECKING
 from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError
 from normlite.sql.type_api import ArchivalFlag, ObjectId, TypeEngine
+from normlite.sql.dml import Insert
 
 class Column:
     """A single table column specifying the type and its constraints.
@@ -264,14 +265,25 @@ class Table:
         column._set_parent(self)
         self._columns.add(column)
 
+    def insert(self) -> Insert:
+        """Generate a new SQL insert statement for this table."""
+
+        insert_stmt = Insert()
+        insert_stmt._set_table(self)
+        return insert_stmt
+
     def _ensure_implicit_columns(self):
         # Notion object ID: always primary key
         if "_no_id" not in self._columns:
-            self._columns.add(Column("_no_id", ObjectId(), primary_key=True))
+            _no_id_col = Column("_no_id", ObjectId(), primary_key=True)
+            _no_id_col._set_parent(self)
+            self._columns.add(_no_id_col)
 
         # Archival flag: always present
         if "_no_archived" not in self._columns:
-            self._columns.add(Column("_no_archived", ArchivalFlag()))
+            _no_archived_col = Column("_no_archived", ArchivalFlag())
+            _no_archived_col._set_parent(self)
+            self._columns.add(_no_archived_col)
 
     def _create_pk_constraint(self) -> None:
         table_pks = [c for c in self._columns if c.primary_key]
@@ -359,8 +371,19 @@ class ColumnCollection:
             return False
         else:
             return True
+        
     def __len__(self) -> int:
         return len(self._collection)
+    
+    def len(self, usr_def_only: Optional[bool] = True) -> int:
+        if usr_def_only:
+            non_no_cols = [
+                colname 
+                for colname, _ in self._collection 
+                if not colname.startswith('_no_')
+            ]
+            return len(non_no_cols)
+        return self.__len__()
 
     def __iter__(self) -> Iterator[Column]:
         # turn to a list first to maintain over a course of changes

@@ -17,9 +17,150 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from typing import Optional
+from types import MappingProxyType
+from typing import Any, Optional, Self, Sequence, Union, TYPE_CHECKING
+from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable
-from normlite.sql.sql import CreateTable
+from normlite.sql.sql import CreateTable, SqlNode
+
+if TYPE_CHECKING:
+    from normlite.sql.schema import Column, Table
+
+class Insert(SqlNode):
+    """Provide the SQL ``INSERT`` node to create a new row in the specified table. 
+
+    This class provide a generative implementation of the SQL ``INSERT`` node to be executed on a
+    :class:`normlite.connection.Connection`.
+
+    Usage:
+        >>> # create a new insert statement for the table students
+        >>> stmt = Insert(students)
+        ...
+        >>> # create a new insert statement and specify the ``RETURNING`` clause.
+        >>> stmt = Insert(students).returning(students.c.id, students.c.name)
+        ...
+        >>> # specify the values to be inserted as keyword arguments
+        >>> stmt.values(id=123456, name='Isaac Newton', grade='B')
+        ...
+        >>> # specify the values to be inserted as dictionary
+        >>> stmt.values({'id': 123456, 'name':'Isaac Newton', 'grade': 'B'})
+        ...
+        >>> # specify the values to be inserted as tuple
+        >>> stmt.values((123456, 'Isaac Newton', 'B'))
+
+    Important:
+        The :class:`Insert` has always by default the Notion specific columns as ``RETURNING`` clause.
+        That is, the :class:`normlite.CursorResult` methods of an insert statement always returns rows with the
+        columns corresponding to the Notion specific ones.
+        You specify the :meth:`Insert.returning()` to get additional columns in the rows returned by the 
+        :class:`normlite.CursorResult` methods.
+    
+    Note:
+        The :class:`Insert`  can also be constructed without specifying the values.
+        In this case, the parameters passed in the :meth:`normlite.connection.Connection.execute()` are bound
+        as ``VALUES`` clause parameters at execution time.
+
+    .. versionchanged:: 0.7.0 The old construct has been completely redesigned and refactored.
+        Now, the new class provides all features of the SQL ``INSERT`` statement.
+
+    """
+    def __init__(self):
+        self._values: MappingProxyType = None
+        """The immutable mapping holding the values."""
+
+        self._table: Table = None
+        """The table object to insert a new row to."""
+
+        self._returning = ('_no_id', '_no_archived', )
+        """The tuple holding the """
+
+    def accept(self, visitor):
+        """Not supperted yet."""
+        ...
+
+    def _set_table(self, table: Table) -> None:
+        self._table = table
+
+    def values(self, *args: Union[dict, Sequence[Any]], **kwargs: Any) -> Self:
+        """Provide the ``VALUES`` clause to specify the values to be inserted in the new row.
+
+        Raises:
+            ArgumentError: If both positional and keyword arguments are passes, or
+                if not enough values are supplied for all columns, or if values are passed 
+                with a class that is neither a dictionary not a tuple. 
+
+        Returns:
+            Self: This instance for generative usage.
+
+       """
+        if args:
+            # positional args have been passed:
+            # either a dict or a sequence has been provided
+            # IMPORTANT: args is a tuple containing the dict or sequence as first element
+            arg = args[0]
+            if kwargs:
+                # either positional or kwargs but not both are allowed
+                raise ArgumentError(
+                    'Cannot pass positional and keyword arguments '
+                    'to values() simultanesously'
+                )
+
+            if isinstance(arg, dict):
+                self._values = self._process_dict_values(arg)
+
+            elif isinstance(arg, tuple):
+                if len(arg) != self._table.c.len():
+                    raise ArgumentError(
+                        'Not enough values supplied for all columns: '
+                        f'Required: {self._table.c.len()}, '
+                        f'supplied: {len(arg)}'
+                    )
+                
+                kv_pairs = {col.name: value for col, value in zip(self._table.c, arg)}
+                self._values = self._process_dict_values(kv_pairs)
+            else:
+                raise ArgumentError(
+                    f'dict or tuple values are supported only: {arg.__class__.__name__}'
+                )
+
+        else:
+            # kwargs have been passed        
+            self._values = self._process_dict_values(kwargs)
+
+        return self
+    
+    def returning(self, *cols: Column) -> Self:
+        """Provide the ``RETURNING`` clause to specify the column to be returned.
+
+        Raises:
+            ArgumentError: If a specified column does not belong to the table this insert statement
+                is applied to.
+
+        Returns:
+            Self: This instance for generative usage.
+        """
+        if cols:
+            for col in cols:
+                if col.parent is not self._table:
+                    raise ArgumentError(
+                        f'Column: {col.name} does not belong to table: {self._table.name}'
+                    )
+                self._returning += (col.name,)
+        
+        return self
+    
+    def _process_dict_values(self, dict_arg: dict) -> MappingProxyType:
+        kv_pairs = {}
+        try:
+            for col in self._table.c:
+                if col.name in ['_no_id', '_no_archived']:
+                    # skip Notion-managed columns
+                    continue
+                kv_pairs[col.name] = dict_arg[col.name]
+        except KeyError as ke:
+            raise KeyError(f'Missing value for: {ke.args[0]}')
+        
+        return MappingProxyType(kv_pairs)
 
 class SQLCompiler:
     """Provide the central compiler for all SQL executables."""
@@ -71,13 +212,15 @@ class SQLCompiler:
 
         return {'operation': operation, 'parameters': parameters}
 
-class Insert(Executable):
+class OldInsert(Executable):
     """Provide an insert statement to add rows to the associated table.
 
     This class respresents an SQL ``INSERT`` statement. Every insert statement is associated
     to the table it adds rows to.
 
-    .. versionadded:: 0.7.0
+    Warning:
+        This is going to be removed. Don't use!
+        Use :class:`Insert` instead.
 
     """
     def __init__(self, table: CreateTable):
@@ -124,13 +267,33 @@ class Insert(Executable):
     def parameters(self):
         return self._parameters
 
-def insert(table: CreateTable) -> Insert:
+def old_insert(table: CreateTable) -> OldInsert:
     """Construct an insert statement.
 
     This class constructs an SQL ``INSERT`` statement capable of inserting rows
     to this table.
 
     Returns:
+        OldInsert: A new insert statement for this table. 
+
+    Warning:
+        This is going to be removed. Don't use!
+        Use :func:`insert()` instead.
+    """
+    return OldInsert(table)
+
+def insert(table: Table) -> Insert:
+    """Construct an insert statement.
+
+    This class constructs an SQL ``INSERT`` statement capable of inserting rows
+    to this table.
+
+    .. versionchanged:: 0.7.0
+        Now, it uses the :class:`normlite.sql.schema.Table` as table object.
+
+    Returns:
         Insert: A new insert statement for this table. 
     """
-    return Insert(table)
+    insert_stmt = Insert()
+    insert_stmt._set_table(table)
+    return insert_stmt

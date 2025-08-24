@@ -8,7 +8,7 @@
   <title>normlite.sql.dml &mdash; normlite 0.6.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
-      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
       <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
       <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
 
@@ -91,9 +91,168 @@
 <span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="kn">import</span> <span class="n">MappingProxyType</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Self</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Union</span><span class="p">,</span> <span class="n">TYPE_CHECKING</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ArgumentError</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Executable</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.sql</span><span class="w"> </span><span class="kn">import</span> <span class="n">CreateTable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.sql</span><span class="w"> </span><span class="kn">import</span> <span class="n">CreateTable</span><span class="p">,</span> <span class="n">SqlNode</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">Column</span><span class="p">,</span> <span class="n">Table</span>
+
+<div class="viewcode-block" id="Insert">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Insert</span><span class="p">(</span><span class="n">SqlNode</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide the SQL ``INSERT`` node to create a new row in the specified table. </span>
+
+<span class="sd">    This class provide a generative implementation of the SQL ``INSERT`` node to be executed on a</span>
+<span class="sd">    :class:`normlite.connection.Connection`.</span>
+
+<span class="sd">    Usage:</span>
+<span class="sd">        &gt;&gt;&gt; # create a new insert statement for the table students</span>
+<span class="sd">        &gt;&gt;&gt; stmt = Insert(students)</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # create a new insert statement and specify the ``RETURNING`` clause.</span>
+<span class="sd">        &gt;&gt;&gt; stmt = Insert(students).returning(students.c.id, students.c.name)</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # specify the values to be inserted as keyword arguments</span>
+<span class="sd">        &gt;&gt;&gt; stmt.values(id=123456, name=&#39;Isaac Newton&#39;, grade=&#39;B&#39;)</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # specify the values to be inserted as dictionary</span>
+<span class="sd">        &gt;&gt;&gt; stmt.values({&#39;id&#39;: 123456, &#39;name&#39;:&#39;Isaac Newton&#39;, &#39;grade&#39;: &#39;B&#39;})</span>
+<span class="sd">        ...</span>
+<span class="sd">        &gt;&gt;&gt; # specify the values to be inserted as tuple</span>
+<span class="sd">        &gt;&gt;&gt; stmt.values((123456, &#39;Isaac Newton&#39;, &#39;B&#39;))</span>
+
+<span class="sd">    Important:</span>
+<span class="sd">        The :class:`Insert` has always by default the Notion specific columns as ``RETURNING`` clause.</span>
+<span class="sd">        That is, the :class:`normlite.CursorResult` methods of an insert statement always returns rows with the</span>
+<span class="sd">        columns corresponding to the Notion specific ones.</span>
+<span class="sd">        You specify the :meth:`Insert.returning()` to get additional columns in the rows returned by the </span>
+<span class="sd">        :class:`normlite.CursorResult` methods.</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        The :class:`Insert`  can also be constructed without specifying the values.</span>
+<span class="sd">        In this case, the parameters passed in the :meth:`normlite.connection.Connection.execute()` are bound</span>
+<span class="sd">        as ``VALUES`` clause parameters at execution time.</span>
+
+<span class="sd">    .. versionchanged:: 0.7.0 The old construct has been completely redesigned and refactored.</span>
+<span class="sd">        Now, the new class provides all features of the SQL ``INSERT`` statement.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_values</span><span class="p">:</span> <span class="n">MappingProxyType</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The immutable mapping holding the values.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="p">:</span> <span class="n">Table</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The table object to insert a new row to.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_returning</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;_no_id&#39;</span><span class="p">,</span> <span class="s1">&#39;_no_archived&#39;</span><span class="p">,</span> <span class="p">)</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The tuple holding the &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Insert.accept">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert.accept">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">accept</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">visitor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Not supperted yet.&quot;&quot;&quot;</span>
+        <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="Insert._set_table">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert._set_table">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">:</span> <span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_table</span> <span class="o">=</span> <span class="n">table</span></div>
+
+
+<div class="viewcode-block" id="Insert.values">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert.values">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">values</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">]],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Self</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Provide the ``VALUES`` clause to specify the values to be inserted in the new row.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ArgumentError: If both positional and keyword arguments are passes, or</span>
+<span class="sd">                if not enough values are supplied for all columns, or if values are passed </span>
+<span class="sd">                with a class that is neither a dictionary not a tuple. </span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Self: This instance for generative usage.</span>
+
+<span class="sd">       &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">args</span><span class="p">:</span>
+            <span class="c1"># positional args have been passed:</span>
+            <span class="c1"># either a dict or a sequence has been provided</span>
+            <span class="c1"># IMPORTANT: args is a tuple containing the dict or sequence as first element</span>
+            <span class="n">arg</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">kwargs</span><span class="p">:</span>
+                <span class="c1"># either positional or kwargs but not both are allowed</span>
+                <span class="k">raise</span> <span class="n">ArgumentError</span><span class="p">(</span>
+                    <span class="s1">&#39;Cannot pass positional and keyword arguments &#39;</span>
+                    <span class="s1">&#39;to values() simultanesously&#39;</span>
+                <span class="p">)</span>
+
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_values</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_dict_values</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="o">.</span><span class="n">c</span><span class="o">.</span><span class="n">len</span><span class="p">():</span>
+                    <span class="k">raise</span> <span class="n">ArgumentError</span><span class="p">(</span>
+                        <span class="s1">&#39;Not enough values supplied for all columns: &#39;</span>
+                        <span class="sa">f</span><span class="s1">&#39;Required: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="o">.</span><span class="n">c</span><span class="o">.</span><span class="n">len</span><span class="p">()</span><span class="si">}</span><span class="s1">, &#39;</span>
+                        <span class="sa">f</span><span class="s1">&#39;supplied: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span>
+                    <span class="p">)</span>
+                
+                <span class="n">kv_pairs</span> <span class="o">=</span> <span class="p">{</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">:</span> <span class="n">value</span> <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="o">.</span><span class="n">c</span><span class="p">,</span> <span class="n">arg</span><span class="p">)}</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_values</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_dict_values</span><span class="p">(</span><span class="n">kv_pairs</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ArgumentError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s1">&#39;dict or tuple values are supported only: </span><span class="si">{</span><span class="n">arg</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># kwargs have been passed        </span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_values</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_dict_values</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+    
+<div class="viewcode-block" id="Insert.returning">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert.returning">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">returning</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">cols</span><span class="p">:</span> <span class="n">Column</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Self</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Provide the ``RETURNING`` clause to specify the column to be returned.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ArgumentError: If a specified column does not belong to the table this insert statement</span>
+<span class="sd">                is applied to.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Self: This instance for generative usage.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">cols</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">col</span><span class="o">.</span><span class="n">parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">ArgumentError</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s1">&#39;Column: </span><span class="si">{</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s1"> does not belong to table: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s1">&#39;</span>
+                    <span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_returning</span> <span class="o">+=</span> <span class="p">(</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">,)</span>
+        
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+    
+<div class="viewcode-block" id="Insert._process_dict_values">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert._process_dict_values">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_process_dict_values</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dict_arg</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MappingProxyType</span><span class="p">:</span>
+        <span class="n">kv_pairs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_table</span><span class="o">.</span><span class="n">c</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">col</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;_no_id&#39;</span><span class="p">,</span> <span class="s1">&#39;_no_archived&#39;</span><span class="p">]:</span>
+                    <span class="c1"># skip Notion-managed columns</span>
+                    <span class="k">continue</span>
+                <span class="n">kv_pairs</span><span class="p">[</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">dict_arg</span><span class="p">[</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">ke</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Missing value for: </span><span class="si">{</span><span class="n">ke</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        
+        <span class="k">return</span> <span class="n">MappingProxyType</span><span class="p">(</span><span class="n">kv_pairs</span><span class="p">)</span></div>
+</div>
+
 
 <div class="viewcode-block" id="SQLCompiler">
 <a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.SQLCompiler">[docs]</a>
@@ -151,15 +310,17 @@
 </div>
 
 
-<div class="viewcode-block" id="Insert">
-<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">Insert</span><span class="p">(</span><span class="n">Executable</span><span class="p">):</span>
+<div class="viewcode-block" id="OldInsert">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.OldInsert">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">OldInsert</span><span class="p">(</span><span class="n">Executable</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide an insert statement to add rows to the associated table.</span>
 
 <span class="sd">    This class respresents an SQL ``INSERT`` statement. Every insert statement is associated</span>
 <span class="sd">    to the table it adds rows to.</span>
 
-<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    Warning:</span>
+<span class="sd">        This is going to be removed. Don&#39;t use!</span>
+<span class="sd">        Use :class:`Insert` instead.</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">:</span> <span class="n">CreateTable</span><span class="p">):</span>
@@ -175,8 +336,8 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_parameters</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;The dictionary containing the compiled parameters.&quot;&quot;&quot;</span>
 
-<div class="viewcode-block" id="Insert.prepare">
-<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert.prepare">[docs]</a>
+<div class="viewcode-block" id="OldInsert.prepare">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.OldInsert.prepare">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="c1"># cross-compile the insert statement. At the end:</span>
         <span class="c1"># self._operation contains the keys &quot;endpoint&quot; and &quot;request&quot;</span>
@@ -192,8 +353,8 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_parameters</span> <span class="o">=</span> <span class="n">compiled_stmt</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;parameters&#39;</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="Insert.bindparams">
-<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert.bindparams">[docs]</a>
+<div class="viewcode-block" id="OldInsert.bindparams">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.OldInsert.bindparams">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">bindparams</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Bind (assign) the parameters to the insert values clause.&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">parameters</span><span class="p">:</span>
@@ -206,31 +367,54 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">_values</span><span class="p">[</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">parameters</span><span class="p">[</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">]</span></div>
 
 
-<div class="viewcode-block" id="Insert.operation">
-<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert.operation">[docs]</a>
+<div class="viewcode-block" id="OldInsert.operation">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.OldInsert.operation">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">operation</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operation</span></div>
 
 
-<div class="viewcode-block" id="Insert.parameters">
-<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.Insert.parameters">[docs]</a>
+<div class="viewcode-block" id="OldInsert.parameters">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.OldInsert.parameters">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parameters</span></div>
 </div>
 
 
-<div class="viewcode-block" id="insert">
-<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.insert">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">insert</span><span class="p">(</span><span class="n">table</span><span class="p">:</span> <span class="n">CreateTable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Insert</span><span class="p">:</span>
+<div class="viewcode-block" id="old_insert">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.old_insert">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">old_insert</span><span class="p">(</span><span class="n">table</span><span class="p">:</span> <span class="n">CreateTable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">OldInsert</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Construct an insert statement.</span>
 
 <span class="sd">    This class constructs an SQL ``INSERT`` statement capable of inserting rows</span>
 <span class="sd">    to this table.</span>
 
 <span class="sd">    Returns:</span>
+<span class="sd">        OldInsert: A new insert statement for this table. </span>
+
+<span class="sd">    Warning:</span>
+<span class="sd">        This is going to be removed. Don&#39;t use!</span>
+<span class="sd">        Use :func:`insert()` instead.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">OldInsert</span><span class="p">(</span><span class="n">table</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="insert">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/dml/index.html#normlite.sql.dml.insert">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">insert</span><span class="p">(</span><span class="n">table</span><span class="p">:</span> <span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Insert</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Construct an insert statement.</span>
+
+<span class="sd">    This class constructs an SQL ``INSERT`` statement capable of inserting rows</span>
+<span class="sd">    to this table.</span>
+
+<span class="sd">    .. versionchanged:: 0.7.0</span>
+<span class="sd">        Now, it uses the :class:`normlite.sql.schema.Table` as table object.</span>
+
+<span class="sd">    Returns:</span>
 <span class="sd">        Insert: A new insert statement for this table. </span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="n">Insert</span><span class="p">(</span><span class="n">table</span><span class="p">)</span></div>
+    <span class="n">insert_stmt</span> <span class="o">=</span> <span class="n">Insert</span><span class="p">()</span>
+    <span class="n">insert_stmt</span><span class="o">.</span><span class="n">_set_table</span><span class="p">(</span><span class="n">table</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">insert_stmt</span></div>
 
 </pre></div>
 

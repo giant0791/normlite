@@ -100,6 +100,123 @@
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
 <dl class="py class">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.sql.dml.</span></span><span class="sig-name descname"><span class="pre">Insert</span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="../sql/index.html#normlite.sql.sql.SqlNode" title="normlite.sql.sql.SqlNode"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normlite.sql.sql.SqlNode</span></code></a></p>
+<p>Provide the SQL <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> node to create a new row in the specified table.</p>
+<p>This class provide a generative implementation of the SQL <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> node to be executed on a
+<a class="reference internal" href="../../connection/index.html#normlite.connection.Connection" title="normlite.connection.Connection"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.connection.Connection</span></code></a>.</p>
+<dl>
+<dt>Usage:</dt><dd><div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># create a new insert statement for the table students</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">stmt</span> <span class="o">=</span> <span class="n">Insert</span><span class="p">(</span><span class="n">students</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># create a new insert statement and specify the ``RETURNING`` clause.</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">stmt</span> <span class="o">=</span> <span class="n">Insert</span><span class="p">(</span><span class="n">students</span><span class="p">)</span><span class="o">.</span><span class="n">returning</span><span class="p">(</span><span class="n">students</span><span class="o">.</span><span class="n">c</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">students</span><span class="o">.</span><span class="n">c</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># specify the values to be inserted as keyword arguments</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">stmt</span><span class="o">.</span><span class="n">values</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="mi">123456</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;Isaac Newton&#39;</span><span class="p">,</span> <span class="n">grade</span><span class="o">=</span><span class="s1">&#39;B&#39;</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># specify the values to be inserted as dictionary</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">stmt</span><span class="o">.</span><span class="n">values</span><span class="p">({</span><span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="mi">123456</span><span class="p">,</span> <span class="s1">&#39;name&#39;</span><span class="p">:</span><span class="s1">&#39;Isaac Newton&#39;</span><span class="p">,</span> <span class="s1">&#39;grade&#39;</span><span class="p">:</span> <span class="s1">&#39;B&#39;</span><span class="p">})</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># specify the values to be inserted as tuple</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">stmt</span><span class="o">.</span><span class="n">values</span><span class="p">((</span><span class="mi">123456</span><span class="p">,</span> <span class="s1">&#39;Isaac Newton&#39;</span><span class="p">,</span> <span class="s1">&#39;B&#39;</span><span class="p">))</span>
+</pre></div>
+</div>
+</dd>
+</dl>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>The <a class="reference internal" href="#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><code class="xref py py-class docutils literal notranslate"><span class="pre">Insert</span></code></a> has always by default the Notion specific columns as <code class="docutils literal notranslate"><span class="pre">RETURNING</span></code> clause.
+That is, the <code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.CursorResult</span></code> methods of an insert statement always returns rows with the
+columns corresponding to the Notion specific ones.
+You specify the <a class="reference internal" href="#normlite.sql.dml.Insert.returning" title="normlite.sql.dml.Insert.returning"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Insert.returning()</span></code></a> to get additional columns in the rows returned by the
+<code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.CursorResult</span></code> methods.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <a class="reference internal" href="#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><code class="xref py py-class docutils literal notranslate"><span class="pre">Insert</span></code></a>  can also be constructed without specifying the values.
+In this case, the parameters passed in the <a class="reference internal" href="../../connection/index.html#normlite.connection.Connection.execute" title="normlite.connection.Connection.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">normlite.connection.Connection.execute()</span></code></a> are bound
+as <code class="docutils literal notranslate"><span class="pre">VALUES</span></code> clause parameters at execution time.</p>
+</div>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.7.0: </span>The old construct has been completely redesigned and refactored.
+Now, the new class provides all features of the SQL <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> statement.</p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert._values">
+<span class="sig-name descname"><span class="pre">_values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/types.html#types.MappingProxyType" title="(in Python v3.13)"><span class="pre">types.MappingProxyType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.sql.dml.Insert._values" title="Link to this definition"></a></dt>
+<dd><p>The immutable mapping holding the values.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert._table">
+<span class="sig-name descname"><span class="pre">_table</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../schema/index.html#normlite.sql.schema.Table" title="normlite.sql.schema.Table"><span class="pre">normlite.sql.schema.Table</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.sql.dml.Insert._table" title="Link to this definition"></a></dt>
+<dd><p>The table object to insert a new row to.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert._returning">
+<span class="sig-name descname"><span class="pre">_returning</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">('_no_id',</span> <span class="pre">'_no_archived')</span></em><a class="headerlink" href="#normlite.sql.dml.Insert._returning" title="Link to this definition"></a></dt>
+<dd><p>The tuple holding the</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert.accept">
+<span class="sig-name descname"><span class="pre">accept</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">visitor</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert.accept"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert.accept" title="Link to this definition"></a></dt>
+<dd><p>Not supperted yet.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert._set_table">
+<span class="sig-name descname"><span class="pre">_set_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../schema/index.html#normlite.sql.schema.Table" title="normlite.sql.schema.Table"><span class="pre">normlite.sql.schema.Table</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert._set_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert._set_table" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert.values">
+<span class="sig-name descname"><span class="pre">values</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert.values"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert.values" title="Link to this definition"></a></dt>
+<dd><p>Provide the <code class="docutils literal notranslate"><span class="pre">VALUES</span></code> clause to specify the values to be inserted in the new row.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../../exceptions/index.html#normlite.exceptions.ArgumentError" title="normlite.exceptions.ArgumentError"><strong>ArgumentError</strong></a> – If both positional and keyword arguments are passes, or
+if not enough values are supplied for all columns, or if values are passed
+with a class that is neither a dictionary not a tuple.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>This instance for generative usage.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Self</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert.returning">
+<span class="sig-name descname"><span class="pre">returning</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">cols</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../schema/index.html#normlite.sql.schema.Column" title="normlite.sql.schema.Column"><span class="pre">normlite.sql.schema.Column</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert.returning"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert.returning" title="Link to this definition"></a></dt>
+<dd><p>Provide the <code class="docutils literal notranslate"><span class="pre">RETURNING</span></code> clause to specify the column to be returned.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../../exceptions/index.html#normlite.exceptions.ArgumentError" title="normlite.exceptions.ArgumentError"><strong>ArgumentError</strong></a> – If a specified column does not belong to the table this insert statement
+is applied to.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>This instance for generative usage.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Self</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert._process_dict_values">
+<span class="sig-name descname"><span class="pre">_process_dict_values</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dict_arg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/types.html#types.MappingProxyType" title="(in Python v3.13)"><span class="pre">types.MappingProxyType</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert._process_dict_values"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert._process_dict_values" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="normlite.sql.dml.SQLCompiler">
 <em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.sql.dml.</span></span><span class="sig-name descname"><span class="pre">SQLCompiler</span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#SQLCompiler"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.SQLCompiler" title="Link to this definition"></a></dt>
 <dd><p>Provide the central compiler for all SQL executables.</p>
@@ -116,71 +233,97 @@
 </dd></dl>
 
 <dl class="py class">
-<dt class="sig sig-object py" id="normlite.sql.dml.Insert">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.sql.dml.</span></span><span class="sig-name descname"><span class="pre">Insert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../sql/index.html#normlite.sql.sql.CreateTable" title="normlite.sql.sql.CreateTable"><span class="pre">normlite.sql.sql.CreateTable</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.sql.dml.OldInsert">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.sql.dml.</span></span><span class="sig-name descname"><span class="pre">OldInsert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../sql/index.html#normlite.sql.sql.CreateTable" title="normlite.sql.sql.CreateTable"><span class="pre">normlite.sql.sql.CreateTable</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#OldInsert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.OldInsert" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="../base/index.html#normlite.sql.base.Executable" title="normlite.sql.base.Executable"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normlite.sql.base.Executable</span></code></a></p>
 <p>Provide an insert statement to add rows to the associated table.</p>
 <p>This class respresents an SQL <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> statement. Every insert statement is associated
 to the table it adds rows to.</p>
-<div class="versionadded">
-<p><span class="versionmodified added">Added in version 0.7.0.</span></p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This is going to be removed. Don’t use!
+Use <a class="reference internal" href="#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><code class="xref py py-class docutils literal notranslate"><span class="pre">Insert</span></code></a> instead.</p>
 </div>
 <dl class="py attribute">
-<dt class="sig sig-object py" id="normlite.sql.dml.Insert._table">
-<span class="sig-name descname"><span class="pre">_table</span></span><a class="headerlink" href="#normlite.sql.dml.Insert._table" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.sql.dml.OldInsert._table">
+<span class="sig-name descname"><span class="pre">_table</span></span><a class="headerlink" href="#normlite.sql.dml.OldInsert._table" title="Link to this definition"></a></dt>
 <dd><p>The table subject of the insert.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="normlite.sql.dml.Insert._values">
-<span class="sig-name descname"><span class="pre">_values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></em><a class="headerlink" href="#normlite.sql.dml.Insert._values" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.sql.dml.OldInsert._values">
+<span class="sig-name descname"><span class="pre">_values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></em><a class="headerlink" href="#normlite.sql.dml.OldInsert._values" title="Link to this definition"></a></dt>
 <dd><p>The mapping column name, column value.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="normlite.sql.dml.Insert._operation">
-<span class="sig-name descname"><span class="pre">_operation</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></em><a class="headerlink" href="#normlite.sql.dml.Insert._operation" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.sql.dml.OldInsert._operation">
+<span class="sig-name descname"><span class="pre">_operation</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></em><a class="headerlink" href="#normlite.sql.dml.OldInsert._operation" title="Link to this definition"></a></dt>
 <dd><p>The dictionary containing the compiled operation.</p>
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="normlite.sql.dml.Insert._parameters">
-<span class="sig-name descname"><span class="pre">_parameters</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></em><a class="headerlink" href="#normlite.sql.dml.Insert._parameters" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.sql.dml.OldInsert._parameters">
+<span class="sig-name descname"><span class="pre">_parameters</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></em><a class="headerlink" href="#normlite.sql.dml.OldInsert._parameters" title="Link to this definition"></a></dt>
 <dd><p>The dictionary containing the compiled parameters.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.sql.dml.Insert.prepare">
-<span class="sig-name descname"><span class="pre">prepare</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert.prepare"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert.prepare" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.sql.dml.OldInsert.prepare">
+<span class="sig-name descname"><span class="pre">prepare</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#OldInsert.prepare"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.OldInsert.prepare" title="Link to this definition"></a></dt>
 <dd><p>Prepare this executable for execution.</p>
 <p>This method is used to populate the internal structures needed for execution.
 That is compiling and constructing the operation and parameters dictionaries.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.sql.dml.Insert.bindparams">
-<span class="sig-name descname"><span class="pre">bindparams</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert.bindparams"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert.bindparams" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.sql.dml.OldInsert.bindparams">
+<span class="sig-name descname"><span class="pre">bindparams</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.13)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#OldInsert.bindparams"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.OldInsert.bindparams" title="Link to this definition"></a></dt>
 <dd><p>Bind (assign) the parameters to the insert values clause.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.sql.dml.Insert.operation">
-<span class="sig-name descname"><span class="pre">operation</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert.operation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert.operation" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.sql.dml.OldInsert.operation">
+<span class="sig-name descname"><span class="pre">operation</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#OldInsert.operation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.OldInsert.operation" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="normlite.sql.dml.Insert.parameters">
-<span class="sig-name descname"><span class="pre">parameters</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert.parameters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert.parameters" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.sql.dml.OldInsert.parameters">
+<span class="sig-name descname"><span class="pre">parameters</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#OldInsert.parameters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.OldInsert.parameters" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="normlite.sql.dml.insert">
-<span class="sig-prename descclassname"><span class="pre">normlite.sql.dml.</span></span><span class="sig-name descname"><span class="pre">insert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../sql/index.html#normlite.sql.sql.CreateTable" title="normlite.sql.sql.CreateTable"><span class="pre">normlite.sql.sql.CreateTable</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><span class="pre">Insert</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#insert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.insert" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="normlite.sql.dml.old_insert">
+<span class="sig-prename descclassname"><span class="pre">normlite.sql.dml.</span></span><span class="sig-name descname"><span class="pre">old_insert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../sql/index.html#normlite.sql.sql.CreateTable" title="normlite.sql.sql.CreateTable"><span class="pre">normlite.sql.sql.CreateTable</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.sql.dml.OldInsert" title="normlite.sql.dml.OldInsert"><span class="pre">OldInsert</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#old_insert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.old_insert" title="Link to this definition"></a></dt>
 <dd><p>Construct an insert statement.</p>
 <p>This class constructs an SQL <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> statement capable of inserting rows
 to this table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A new insert statement for this table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#normlite.sql.dml.OldInsert" title="normlite.sql.dml.OldInsert">OldInsert</a></p>
+</dd>
+</dl>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This is going to be removed. Don’t use!
+Use <a class="reference internal" href="#normlite.sql.dml.insert" title="normlite.sql.dml.insert"><code class="xref py py-func docutils literal notranslate"><span class="pre">insert()</span></code></a> instead.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="normlite.sql.dml.insert">
+<span class="sig-prename descclassname"><span class="pre">normlite.sql.dml.</span></span><span class="sig-name descname"><span class="pre">insert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../schema/index.html#normlite.sql.schema.Table" title="normlite.sql.schema.Table"><span class="pre">normlite.sql.schema.Table</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><span class="pre">Insert</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#insert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.insert" title="Link to this definition"></a></dt>
+<dd><p>Construct an insert statement.</p>
+<p>This class constructs an SQL <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> statement capable of inserting rows
+to this table.</p>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.7.0: </span>Now, it uses the <a class="reference internal" href="../schema/index.html#normlite.sql.schema.Table" title="normlite.sql.schema.Table"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.schema.Table</span></code></a> as table object.</p>
+</div>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>A new insert statement for this table.</p>

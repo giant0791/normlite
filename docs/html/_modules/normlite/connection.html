@@ -8,7 +8,7 @@
   <title>normlite.connection &mdash; normlite 0.6.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
-      <link rel="stylesheet" type="text/css" href="../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css?v=6644e6bb" />
       <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
       <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=f7e3ec4f" />
 
@@ -121,8 +121,9 @@
 
 <span class="sd">        Note:</span>
 <span class="sd">            **Non-mutating** statements like ``SELECT`` returns their result immediately after the</span>
-<span class="sd">            :meth:`Connection.execute()` returns. All **mutating** statements like ``INSERT``, </span>
-<span class="sd">            ``UPDATE`` or ``DELETE`` return an **empty** result immediately.</span>
+<span class="sd">            :meth:`Connection.execute()` returns. All **mutating** statements like ``INSERT`` </span>
+<span class="sd">            (see :class:`normlite.sql.dml.Insert`),``UPDATE`` or ``DELETE`` return an </span>
+<span class="sd">            **empty** result immediately.</span>
 
 <span class="sd">        Important:</span>
 <span class="sd">            The cursor result object associated with the last :meth:`Connection.execute()` contains</span>
@@ -131,7 +132,7 @@
 <span class="sd">        Args:</span>
 <span class="sd">            stmt (SqlNode): The statement to execute.</span>
 <span class="sd">            parameters (Optional[dict]): An optional dictionary containing the parameters to be</span>
-<span class="sd">            bound to the SQL statement.   </span>
+<span class="sd">                bound to the SQL statement.   </span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            CursorResult: The result of the statement execution as cursor result.</span>

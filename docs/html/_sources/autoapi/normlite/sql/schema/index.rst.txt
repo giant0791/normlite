@@ -13,8 +13,8 @@ normlite.sql.schema
        >>>     'students',
        >>>     Column('id', Integer(), primary_key=True),
        >>>     Column('name', String(is_title=True)),
-       >>>     Columns('grade', String()),
-       >>>     Columns('since' Date())
+       >>>     Column('grade', String()),
+       >>>     Column('since' Date())
        >>> )
 
    ``normlite`` automatically adds the Notion object id as additional primary key:
@@ -24,8 +24,8 @@ normlite.sql.schema
            Column('name', String(is_title=True), table=<students>),
            Column('grade', String(), table=<students>),
            Column('since', Date, table=<students>),
-           Column('_no_id', ObjectId, table=None, primary_key=True),
-           Column('_no_archived', ArchivalFlag, table=None))
+           Column('_no_id', ObjectId, table=<students>, primary_key=True),
+           Column('_no_archived', ArchivalFlag, table=<students>))
 
    .. note::
 
@@ -259,6 +259,12 @@ Module Contents
 
 
 
+   .. py:method:: insert() -> normlite.sql.dml.Insert
+
+      Generate a new SQL insert statement for this table.
+
+
+
    .. py:method:: _ensure_implicit_columns()
 
 
@@ -317,6 +323,9 @@ Module Contents
 
 
    .. py:method:: __len__() -> int
+
+
+   .. py:method:: len(usr_def_only: Optional[bool] = True) -> int
 
 
    .. py:method:: __iter__() -> Iterator[Column]

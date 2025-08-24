@@ -119,8 +119,9 @@ rollback.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p><strong>Non-mutating</strong> statements like <code class="docutils literal notranslate"><span class="pre">SELECT</span></code> returns their result immediately after the
-<a class="reference internal" href="#normlite.connection.Connection.execute" title="normlite.connection.Connection.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Connection.execute()</span></code></a> returns. All <strong>mutating</strong> statements like <code class="docutils literal notranslate"><span class="pre">INSERT</span></code>,
-<code class="docutils literal notranslate"><span class="pre">UPDATE</span></code> or <code class="docutils literal notranslate"><span class="pre">DELETE</span></code> return an <strong>empty</strong> result immediately.</p>
+<a class="reference internal" href="#normlite.connection.Connection.execute" title="normlite.connection.Connection.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Connection.execute()</span></code></a> returns. All <strong>mutating</strong> statements like <code class="docutils literal notranslate"><span class="pre">INSERT</span></code>
+(see <a class="reference internal" href="../sql/dml/index.html#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.dml.Insert</span></code></a>),``UPDATE`` or <code class="docutils literal notranslate"><span class="pre">DELETE</span></code> return an
+<strong>empty</strong> result immediately.</p>
 </div>
 <div class="admonition important">
 <p class="admonition-title">Important</p>
@@ -131,8 +132,8 @@ a list of all result sets of the statements executed within the enclosing transa
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>stmt</strong> (<a class="reference internal" href="../sql/sql/index.html#normlite.sql.sql.SqlNode" title="normlite.sql.sql.SqlNode"><em>SqlNode</em></a>) – The statement to execute.</p></li>
-<li><p><strong>parameters</strong> (<em>Optional</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a><em>]</em>) – An optional dictionary containing the parameters to be</p></li>
-<li><p><strong>statement.</strong> (<em>bound to the SQL</em>)</p></li>
+<li><p><strong>parameters</strong> (<em>Optional</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a><em>]</em>) – An optional dictionary containing the parameters to be
+bound to the SQL statement.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
