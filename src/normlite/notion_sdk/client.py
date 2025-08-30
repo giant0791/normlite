@@ -26,9 +26,11 @@ to store the Notion data as a JSON file on the file system.
 """
 
 from __future__ import annotations
+from dataclasses import dataclass
 import json
+import operator
 from pathlib import Path
-from typing import List, Optional, Self, Set, Type
+from typing import List, Optional, Protocol, Self, Sequence, Set, Type
 from types import TracebackType
 from abc import ABC, abstractmethod
 import uuid
@@ -48,6 +50,8 @@ class AbstractNotionClient(ABC):
     def __init__(self):
         self._ischema_page_id = None
         """The object id for ``information_schema`` page."""
+
+        self._tables_db_id = None
 
         AbstractNotionClient.allowed_operations = {
             name
@@ -174,11 +178,54 @@ class AbstractNotionClient(ABC):
         """
         raise NotImplementedError
     
+    @abstractmethod
+    def databases_query(self, payload: dict) -> List[dict]:
+        """Get a list pages contained in the database.
+
+        Args:
+            payload (dict): A dictionary that must contain a "database_id" key for the database to
+                query and "filter" object to select.
+
+        Returns:
+            List[dict]: The list containing the page pbjects or ``[]``, if no pages have been found.
+        """
+        raise NotImplementedError
+    
 class InMemoryNotionClient(AbstractNotionClient):
-    _store: dict = {
-        "store": []
-    }
-    """The dictionary simulating the Notion store. It's a class attribute, so all instances share the same store."""
+    def __init__(
+            self, 
+            ws_id: Optional[str] = None,
+            ischema_page_id: Optional[str] = None,
+            tables_db_id: Optional[str] = None
+    ):
+        super().__init__()
+        if ws_id:
+            self._ws_id = ws_id
+        else:
+            self._ws_id = '00000000-0000-0000-0000-000000000000'
+
+        if ischema_page_id:
+            self._ischema_page_id = ischema_page_id
+        else:
+            self._ischema_page_id = '66666666-6666-6666-6666-666666666666'
+
+        if self._tables_db_id:
+            self._tables_db_id = tables_db_id
+        else: 
+            self._tables_db_id = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+
+        self._store: dict = {
+            "store": []
+        }
+        """The dictionary simulating the Notion store. 
+        It's an instance attribute to avoid unwanted side effects and 
+        provide more behavioral predictability.
+
+        .. versionchanged:: 0.7.0 Fix https://github.com/giant0791/normlite/issues/45
+            Fix issue with asymmetric file based Notion client.
+        """
+
+        self._create_store()
 
     def _create_store(self, store_content: List[dict] = []) -> None:
         """Provide helper to create the simulated Notion store.
@@ -187,11 +234,11 @@ class InMemoryNotionClient(AbstractNotionClient):
             store_content (List[dict], optional): The initial content for the Notion store. Defaults to ``[]``.
         """
         if store_content:
-            InMemoryNotionClient._store = {
+            self._store = {
                 "store": store_content,
             }
         else:
-            InMemoryNotionClient._store = {
+            self._store = {
                 "store": [],
             }
 
@@ -199,24 +246,54 @@ class InMemoryNotionClient(AbstractNotionClient):
         # Note: In the real Notion store, the 'parent' object is the workspace,
         # so the information schema page cannot be programmatically created via the API.
         # In the fake store the parent's page id is just random.
+        if self._ws_id is None:
+            self._ws_id = str(uuid.uuid4())
+
         payload = {
             'parent': {                     
                 'type': 'page_id',
-                'page_id': str(uuid.uuid4())
+                'page_id': self._ws_id
             },
             'properties': {
                 'Name': {'title': [{'text': {'content': 'information_schema'}}]}
             }
         }
-        ischema_page = self._add('page', payload)
+        ischema_page = self._add('page', payload, self._ischema_page_id)
 
         # Update the ischema page id with the one just created
         self._ischema_page_id = ischema_page['id']
 
+        # Create the database 'tables'
+        payload = {
+            'parent': {
+                'type': 'page_id',
+                'page_id': self._ischema_page_id
+            },
+            "title": [
+                {
+                    "type": "text",
+                    "text": {
+                        "content": "tables",
+                        "link": None
+                    },
+                    "plain_text": "tables",
+                    "href": None
+                }
+            ],
+            'properties': {
+                'table_name': {'title': {}},
+                'table_schema': {'rich_text': {}},
+                'table_catalog': {'rich_text': {}},
+                'table_id': {'rich_text': {}}
+            }
+        }
+        tables = self._add('database', payload, self._tables_db_id)
+        self._tables_db_id = tables['id']
+
     def _get(self, id: str) -> dict:
         # TODO: rewrite using filter()
         if self._store_len() > 0:
-            for o in InMemoryNotionClient._store['store']:
+            for o in self._store['store']:
                 if o['id'] == id:
                     return o
                 
@@ -226,7 +303,7 @@ class InMemoryNotionClient(AbstractNotionClient):
         """Return the first occurrence in the store of page or database with the passed title."""
         # TODO: rewrite using filter()
         if self._store_len() > 0:
-            for o in InMemoryNotionClient._store['store']:
+            for o in self._store['store']:
                 if o['object'] == type and type == 'database':
                     object_title = o.get('title')
                     if object_title and object_title[0]['text']['content'] == title:
@@ -239,7 +316,7 @@ class InMemoryNotionClient(AbstractNotionClient):
                             return o
         return {}
 
-    def _add(self, type: str, payload: dict) -> dict: 
+    def _add(self, type: str, payload: dict, id: Optional[str] = None) -> dict: 
         # check well-formedness of payload
         # Note: "properties" object existence is validated previously when binding parameters 
         if not payload.get('parent', None):
@@ -248,7 +325,9 @@ class InMemoryNotionClient(AbstractNotionClient):
                     
         new_page = dict()
         new_page['object'] = type
-        new_page['id'] = str(uuid.uuid4())
+
+        # use the provided id for behavioral predictability if available 
+        new_page['id'] = id if id else str(uuid.uuid4())
         current_date = datetime.now()
         new_page['created_id'] = current_date.isoformat()
         new_page['archived'] = False
@@ -261,12 +340,12 @@ class InMemoryNotionClient(AbstractNotionClient):
                 prop_type = list(prop_obj.keys())
                 properties[prop_name]['type'] = prop_type[0]
 
-        InMemoryNotionClient._store["store"].append(new_page)
+        self._store["store"].append(new_page)
 
         return new_page
 
     def _store_len(self) -> int:
-        return len(InMemoryNotionClient._store['store'])
+        return len(self._store['store'])
     
     def pages_create(self, payload: dict) -> dict:
         return self._add('page', payload)
@@ -313,6 +392,19 @@ class InMemoryNotionClient(AbstractNotionClient):
             raise NotionError('Bad payload provided, missing "database_id"')
 
         return retrieved_object
+    
+    def databases_query(self, payload: dict) -> List[dict]:
+        query_result = []
+        if self._store_len() > 0:        
+            db_id = payload['database_id']
+            for obj in self._store:
+                if obj['object'] == 'page' and obj['parent']['type'] == 'database_id':
+                    # select only pages whose parent is a database
+                    if obj['parent']['database_id'] == db_id:
+                        # select only pages belonging to the db specified in the payload
+                        filter = _Filter(obj
+
+
 
 class FileBasedNotionClient(InMemoryNotionClient):
     """Enhance the in-memory client with file based persistence.
@@ -392,3 +484,79 @@ class FileBasedNotionClient(InMemoryNotionClient):
 
         self.dump(FileBasedNotionClient._store)
 
+#--------------------------------------------------
+# Private classes for implementing database queries
+#--------------------------------------------------
+
+class _Condition:
+    _op_map: dict = {
+        'equals': operator.eq,
+        'greater_than': operator.gt,
+        'less_than': operator.lt,
+        'contains': operator.contains,
+        'or': operator.or_,
+        'and': operator.and_,
+        'not': operator.not_
+    }
+
+    def __init__(self, page: dict, condition: dict):
+        prop_name = condition['property']
+        self.property_obj = page['properties'][prop_name]
+        self.type_name, self.type_filter = self._extract_filter(condition)
+
+    def _extract_filter(self, cond: dict) -> tuple[str, dict]:
+        """Return (type_name, filter_dict) from a Notion condition."""
+        return next((k, v) for k, v in cond.items() if k != "property")
+
+    def eval(self) -> bool:
+        #pdb.set_trace()
+        op, val = next(iter(self.type_filter.items()))
+        try:
+            func = _Condition._op_map[op]
+            if self.type_name in ['title', 'rich_text']:
+                operand = self.property_obj[self.type_name][0]['text']['content']
+            else:
+                operand = self.property_obj[self.type_name]
+            result = func(operand, val)
+            return result
+        except KeyError as ke:
+            raise Exception(f'Operator: {ke.args[0]} not supported or unknown') 
+
+class _CompositeCondition(_Condition):
+    def __init__(self, logical_op: str, conditions: Sequence[_Condition]):
+        self.logical_op = logical_op
+        self.conditions = conditions
+
+    def eval(self) -> bool:
+        if self.logical_op == 'and':
+            result = all(self.conditions)
+        elif self.logical_op == 'or':
+            result = any(self.conditions)
+        else:
+            raise Exception(f'Logical operator {self.logical_op} not supported or unknown')
+        
+        return result
+
+class _Filter(_Condition):
+    """Initial implementation, it **does not supported nested composite conditions**."""
+    def __init__(self, page: dict, filter: dict):
+        self.page = page
+        self.filter = filter
+        self.compiled: _Condition = None
+        
+    def _compile(self) -> None:
+        filter_obj: dict = self.filter['filter']
+        is_composite = filter_obj.get('and') or filter_obj.get('or')
+        if is_composite:
+            conditions = []
+            logical_op, conds = next(iter(filter_obj.items()))
+            conditions = [_Condition(self.page, cond) for cond in conds]
+            self.compiled = _CompositeCondition(logical_op, conditions)
+        else:
+            self.compiled = _Condition(self.page, filter_obj)
+
+    def eval(self) -> bool:
+        if not self.compiled:
+            self._compile()
+
+        return self.compiled.eval()

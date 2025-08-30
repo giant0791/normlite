@@ -2,6 +2,9 @@ from collections import namedtuple
 import pytest
 
 from normlite.engine import Engine, NotionAuthURI, NotionURI, _parse_uri, create_engine, NotionSimulatedURI
+from normlite.notion_sdk.client import InMemoryNotionClient
+from normlite.sql.schema import Table
+
 """
 Quick mapping between Notion and the database world.
 
@@ -61,6 +64,57 @@ def test_parse_uri_for_internal_integration(int_env: Environment):
     assert uri.client_id is None
     assert uri.client_secret is None
     assert uri.auth_url is None
+
+def test_create_in_memory_engine():
+    engine: Engine = create_engine(
+        'normlite:///:memory:',
+        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
+        _mock_db_parent_id = '87654321-4444-4444-4444-210987654321',
+        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
+        _mock_tables_id = '66666666-6666-6666-6666-666666666666'
+        )
+
+    assert engine._database == 'memory'
+    assert engine._ws_id == '12345678-0000-0000-1111-123456789012'
+    assert engine._db_parent_id == engine._client._get_by_title(engine._database, 'page').get('id')
+
+def test_engine_inspect_has_table():
+    engine: Engine = create_engine(
+        'normlite:///:memory:',
+        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
+        _mock_db_parent_id = '87654321-4444-4444-4444-210987654321',
+        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
+        _mock_tables_id = '66666666-6666-6666-6666-666666666666'
+        )
+    
+    # create a row in tables for the table 'students' to be looked up
+    payload = {
+        'parent': {
+            'type': 'database_id',
+            'database_id': engine._tables_id
+        },
+        'properties': {
+            'table_name': {'title': [{'text': {'content': 'students'}}]},
+            'table_schema': {'rich_text': [{'text': {'content': ''}}]},
+            'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
+            'table_id': {'rich_text': [{'text': {'content': '66666666-6666-6666-6666-666666666699'}}]}
+        } 
+
+    }
+    students_ischema_row = engine._client.pages_create(payload)
+    
+    inspector = engine.inspect()
+    # TODO: Decide whether tables should also have a row in the itself.
+    # Why is this important?
+    # inspector.has_table() could be implemented as a lookup in tables, and if tables is not
+    # in there, it will not be found.
+    assert inspector.has_table('tables')
+
+def test_engine_inspector_reflect_table():
+    engine: Engine = create_engine('normlite:///:memory:')
+    inspector = engine.inspect()
+    tables = Table('tables')
+    tables =  inspector.reflect_table('tables')
 
     
 
