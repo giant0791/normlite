@@ -202,9 +202,12 @@ class Table:
     .. versionadded: 0.7.0
 
     """
-    def __init__(self, name: str, *columns: Column, dialect=None, **kwargs: Any):
+    def __init__(self, name: str, metadata: MetaData, *columns: Column, **kwargs: Any):
         self.name = name
         """Table name."""
+
+        self.metadata = metadata
+        """The metadata object this table is associated with."""
 
         self._columns: ColumnCollection = ColumnCollection()
         """The underlying column collections for this table's column.
@@ -250,6 +253,9 @@ class Table:
             # Generate primary key constraint object
             self._create_pk_constraint()
             self.add_constraint(self._primary_key)
+
+        # add this table to the associated metadata object
+        self.metadata._add_table(self)
 
     @property
     def columns(self) -> ReadOnlyColumnCollection:
@@ -542,3 +548,60 @@ class PrimaryKeyConstraint(Constraint):
     
     def __repr__(self): 
         return f"PrimaryKeyConstraint(name={self._name}, ({', '.join([repr(c) for c in self.columns])}))"
+
+class MetaData:
+    """A central registry for Table objects.
+    
+    .. versionadded:: 0.7.0
+    
+    """
+
+    def __init__(self) -> None:
+        self.tables: Dict[str, Table] = {}
+        """The dictionary storing the tables."""
+
+    @property
+    def sorted_tables(self) -> List[Table]:
+        return sorted(self.tables.values(), key=lambda t: t.name)
+
+    def _add_table(self, table: Table) -> None:
+        """Register a new table with this MetaData."""
+        if table.name in self.tables:
+            raise InvalidRequestError(f"Table '{table.name}' already exists in MetaData")
+        self.tables[table.name] = table
+        #table.metadata = self  # back-reference
+
+    def remove(self, table_name: str) -> None:
+        """Remove a table by name."""
+        if table_name in self.tables:
+            table = self.tables.pop(table_name)
+            table.metadata = None
+
+    def clear(self) -> None:
+        """Remove all tables."""
+        for table in self.tables.values():
+            table.metadata = None
+        self.tables.clear()
+
+    def reflect(self, engine: Engine) -> None:
+        """Reflect all tables associated to this metadata object."""
+        for table in self.tables.values():
+            table._autoload(engine)        
+
+    def __getitem__(self, name: str) -> Table:
+        """Lookup a table by name."""
+        return self.tables[name]
+
+    def __iter__(self) -> Iterator[Table]:
+        """Iterate over all tables."""
+        return iter(self.tables.values())
+
+    def __contains__(self, name: str) -> bool:
+        return name in self.tables
+
+    def __len__(self) -> int:
+        return len(self.tables)
+
+    def __repr__(self) -> str:
+        tables = ", ".join(self.tables.keys()) or "no tables"
+        return f"<MetaData({tables})>"

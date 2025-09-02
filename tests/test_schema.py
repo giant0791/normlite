@@ -9,6 +9,7 @@ from normlite import (
     ArchivalFlag, Date, Integer, ObjectId, String
 )
 from normlite.engine import Engine, create_engine
+from normlite.sql.schema import MetaData
 
 @pytest.fixture
 def sc() -> ColumnCollection:
@@ -103,8 +104,10 @@ def test_columncollection_no_duplicates(sc: ColumnCollection):
         sc.add(Column('student_id', String()))
         
 def test_table_construct():
+    metadata = MetaData()
     students = Table(
         'students',
+        metadata,
         Column('student_id', Integer(), primary_key=True),
         Column('name', String(is_title=True)),
         Column('grade', String()),
@@ -117,8 +120,10 @@ def test_table_construct():
     assert students.c._no_archived == students.columns._no_archived
 
 def test_table_primary_key():
+    metadata = MetaData()
     students = Table(
         'students',
+        metadata,
         Column('student_id', Integer(), primary_key=True),
         Column('name', String(is_title=True)),
         Column('grade', String()),
@@ -149,8 +154,68 @@ def test_table_autoload():
         _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
     )
     create_students_db(engine)
-    students = Table('students', autoload_with=engine)
+    metadata = MetaData()
+    students = Table('students', metadata, autoload_with=engine)
     columns = [c.name for c in students.columns]
     assert includes_all(columns, ['student_id', 'name', 'grade', 'is_active'])
     assert '_no_id' in columns
     assert '_no_archived' in columns
+
+def test_metadata_contains():
+    metadata = MetaData()
+    students = Table(
+        'students', 
+        metadata, 
+        Column('id', Integer()),
+        Column('name', String(is_title=True))
+    )
+    teachers = Table(
+        'teachers',
+        metadata,
+        Column('id', Integer()),
+        Column('name', String(is_title=True))
+    )
+
+    assert 'students' in metadata.tables
+    assert 'teachers' in metadata.tables
+
+def test_metadata_sorted_tables():
+    metadata = MetaData()
+    students = Table(
+        'students', 
+        metadata, 
+        Column('id', Integer()),
+        Column('name', String(is_title=True))
+    )
+    teachers = Table(
+        'teachers',
+        metadata,
+        Column('id', Integer()),
+        Column('name', String(is_title=True))
+    )
+    classes = Table(
+        'classes',
+        metadata,
+        Column('id', Integer()),
+        Column('name', String(is_title=True))
+    )
+
+    assert metadata.sorted_tables == [classes, students, teachers]
+
+def test_metadata_reflect():
+    engine = create_engine(
+        'normlite:///:memory:',
+        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
+        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
+        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
+        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
+    )
+    create_students_db(engine)
+    metadata = MetaData()
+    students = Table('students', metadata)
+    metadata.reflect(engine)
+    columns = [c.name for c in students.columns]
+    assert includes_all(columns, ['student_id', 'name', 'grade', 'is_active'])
+    assert '_no_id' in columns
+    assert '_no_archived' in columns
+
