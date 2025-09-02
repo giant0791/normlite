@@ -49,10 +49,12 @@ from dataclasses import dataclass
 from typing import Optional, Literal, Union
 from urllib.parse import urlparse, parse_qs, unquote
 import os
+import uuid
 
-from normlite.exceptions import ArgumentError
+from normlite.exceptions import ArgumentError, NormliteError
 from normlite.notion_sdk.client import InMemoryNotionClient
-from normlite.sql.schema import Table
+from normlite.sql.schema import Column, Table
+from normlite.sql.type_api import Boolean, Number, String
 
 @dataclass
 class NotionAuthURI:
@@ -169,25 +171,26 @@ class Engine:
         True 
     """
     def __init__(self, uri: NotionURI, **kwargs: Any) -> None:
-        #pdb.set_trace()
+
+        if isinstance(uri, NotionAuthURI):
+            raise NotImplementedError(
+                f'Neither internal nor external integration URIs are supported yet (simulated only).'
+            )        
 
         if kwargs is None:
             raise ArgumentError('Expected keyword arguments, but none were provided.')
 
         self._uri = uri
         """The Notion URI denoting the integration to connect to."""
-        
-        self._database = uri.mode if uri.mode == 'memory' else uri.file.split('.')[0]
-        """The database name: ``memory`` if mode is memory, the file name without extension if mode is file."""
+
+        self._database = None
+        """The database name: For simulated URIs, ``memory`` if mode is memory, the file name without extension if mode is file."""
+
+        self._db_page_id = None
+        """The page id for the database this engine is connected to."""
 
         self._ws_id = None
         """The workspace id to which all the pages are added to."""
-
-        self._db_parent_id = None
-        """Parent id for the current database."""
-
-        self._database_id = None
-        """The id of the current database."""
 
         self._ischema_page_id = None
         """Id for the information schema page."""
@@ -195,81 +198,238 @@ class Engine:
         self._tables_id = None
         """Id for the Notion database tables."""
 
+        self._client = None
+        """The Notion client this engine interacts with."""
+
         if 'ws_id' in kwargs:
             self._ws_id = kwargs['ws_id']
-
-        if isinstance(uri, NotionAuthURI):
-            raise NotImplementedError(
-                f'Neither internal nor external integration URIs are supported yet (simulated only).'
-            )
         
-        if isinstance(uri, NotionSimulatedURI):
-            if uri.mode == 'memory':
-                if '_mock_ws_id' in kwargs:
-                    self._ws_id = kwargs['_mock_ws_id']
-
-                if '_mock_db_parent_id' in kwargs:
-                    self._database_id = kwargs['_mock_db_parent_id']
-
-                if '_mock_ischema_page_id' in kwargs:
-                    self._ischema_page_id = kwargs['_mock_ischema_page_id']
-
-                if '_mock_tables_id' in kwargs:
-                    self._tables_id = kwargs['_mock_tables_id']
- 
-                self._client = InMemoryNotionClient(self._ws_id, self._ischema_page_id, self._tables_id)
-
-            if uri.mode == 'file':
-                raise NotImplementedError
+        self._process_args(**kwargs)
+        self._create_client(uri)
             
         if self._ws_id is None:
             raise ArgumentError('Missing "ws_id" in passed keyword arguments.')
 
-        page_for_database = self._get_page_for_database(self._database)
-        self._db_parent_id = page_for_database.get('id')
+    def _process_args(self, **kwargs: Any) -> None:
+        if '_mock_ws_id' in kwargs:
+            self._ws_id = kwargs['_mock_ws_id']
 
-    def _create_sim_client(self, uri: NotionSimulatedURI) -> InMemoryNotionClient:
+        if '_mock_ischema_page_id' in kwargs:
+            self._ischema_page_id = kwargs['_mock_ischema_page_id']
+
+        if '_mock_tables_id' in kwargs:
+            self._tables_id = kwargs['_mock_tables_id']
+
+        if '_mock_db_page_id' in kwargs:
+            self._db_page_id = kwargs['_mock_db_page_id']
+
+    def _create_client(self, uri: NotionSimulatedURI) -> None:
         """Provide helper method to instantiate the correct client based on the URI provided."""
-        return InMemoryNotionClient(self._ws_id, self._ischema_page_id, self._tables_id)
-       
+
+        if uri.mode != 'memory':
+            raise NotImplementedError
+        
+        self._database = uri.mode if uri.mode == 'memory' else uri.file.split('.')[0]
+
+        # create client
+        self._client = InMemoryNotionClient()
+
+        # create information_schema page
+        # Create the page 'information_schema'
+        # Note: In the real Notion store, the 'parent' object is the workspace,
+        # so the information schema page cannot be programmatically created via the API.
+        # In the fake store the parent's page id is just random.
+        if self._ws_id is None:
+            self._ws_id = str(uuid.uuid4())
+
+        self._init_info_schema()
+        self._init_tables()
+        self._init_database()
+      
     def inspect(self) -> Inspector:
+        """Return an inspector object.
+        
+        .. versionadded:: 0.7.0
+
+        """
         return Inspector(self)
     
-    def _get_page_for_database(self, name: str) -> dict:
-        # lookup the page: open an existing database
-        page_for_database = self._client._get_by_title(name, 'page')
-        if page_for_database:
-            # found the database page
-            return page_for_database
-        
-        # no existing pages found: create a new database
+
+    def _init_info_schema(self) -> None:
+        # Currently it always create the information_schema page
+        # In the future, it shall first check if it exists
+        payload = {
+            'parent': {                     
+                'type': 'page_id',
+                'page_id': self._ws_id
+            },
+            'properties': {
+                'Name': {'title': [{'text': {'content': 'information_schema'}}]}
+            }
+        }
+        self._client._add('page', payload, self._ischema_page_id)
+
+    def _init_tables(self) -> None:
+        # create the database 'tables'
         payload = {
             'parent': {
                 'type': 'page_id',
-                'page_id': self._ws_id  
+                'page_id': self._ischema_page_id
             },
+            "title": [
+                {
+                    "type": "text",
+                    "text": {
+                        "content": "tables",
+                        "link": None
+                    },
+                    "plain_text": "tables",
+                    "href": None
+                }
+            ],
             'properties': {
-                'Name': {'title': [{'text': {'content': name}}]}
+                'table_name': {'title': {}},
+                'table_schema': {'rich_text': {}},
+                'table_catalog': {'rich_text': {}},
+                'table_id': {'rich_text': {}}
             }
         }
+        self._client._add('database', payload, self._tables_id)
 
-        return self._client._add('page', payload)
-        
+        # add tables itself to tables
+        # Note: By construction, normlite always has a tables database (the table name tables) and 
+        # a tables page (the row in the tables database)
+        self._client._add('page', {
+            'parent': {
+                'type': 'database_id',
+                'database_id': self._tables_id
+            },
+            'properties': {
+                'table_name': {'title': [{'text': {'content': 'tables'}}]},
+                'table_schema': {'rich_text': [{'text': {'content': 'information'}}]},
+                'table_catalog': {'rich_text': [{'text': {'content': 'normlite'}}]},
+                'table_id': {'rich_text': [{'text': {'content': self._tables_id}}]}
+            }
+        })
+
+    def _init_database(self) -> None:
+        payload = {
+            'parent': {
+                'type': 'page_id',
+                'page_id': self._ws_id
+
+            },
+            'properties': {
+                'Name': {'title': [{'text': {'content': self._database}}]}
+            }
+        }
+        self._client._add('page', payload, self._db_page_id)
+               
 class Inspector:
+    """Provide an inspector facilities for inspecting ``normlite`` objects.
+
+    .. versionadded:: 0.7.0
+    
+    """
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
+        """The engine it connects to."""
 
     def has_table(self, table_name: str) -> bool:
-        pass
+        """Check whether the specified table name exists in the database being inspected.
 
-    def reflect_table(self, table: Table) -> None:
-        # 1. Get the table id by looking up the table name
-        page = self._engine._client.databases_
-        if not page:
-            # table not found, it cannot be reflected
+        Args:
+            table_name (str): The name of the table to search for.
 
+        Raises:
+            NormliteError: If more than one table with the same name is found in the same catalog (database).
+
+        Returns:
+            bool: ``True`` if the table exists, ``False`` otherwise. 
+        """
+
+        # query all rows with the table_name in tables
+        result = self._find_table_in_catalog(
+            table_name,
+            'normlite' if table_name == 'tables' else self._engine._database
+        )
         
+        if len(result) > 1:
+            raise NormliteError(f'Internal error. Found: {len(result)} {table_name} in catalog: {self._engine._database}')
+
+        if len(result) == 0:
+            return False
+        
+        return True
+            
+    def reflect_table(self, table: Table) -> None:
+        """Construct a table by reflecting it from the database.
+
+        Args:
+            table (Table): The table object to reflect.
+
+        Raises:
+            NormliteError: If more than one table exists in the database or if the table does not exist.
+            NormliteError: If an unsupported property type is detected during reflection.
+        """
+        # 1. Get the table id by looking up the table name
+        pages = self._find_table_in_catalog(
+            table.name, 
+            'normlite' if table.name == 'tables' else self._engine._database
+        )
+
+        if len(pages) != 1:
+            raise NormliteError(f'Reflection of multiple or non existing tables not supported yet: {pages}')
+        
+        #pdb.set_trace()
+        table_id_prop = pages[0]['properties']['table_id']
+        table._database_id = table_id_prop['rich_text'][0]['text']['content']
 
         # 2. Get the Notion database object
-        # 3. Construct the table by parsing the properties
+        database = self._engine._client.databases_retrieve({'id': table._database_id})
 
+        # 3. Construct the table by parsing the properties
+        for col_name, col_spec in database['properties'].items():
+            col_type = col_spec['type']
+            col = None
+            if col_type in ['title', 'rich_text']:
+                col = Column(col_name, String(is_title=(col_type == 'title')))
+            elif col_type == 'number':
+                format = col_spec.get('format')
+                col = Column(col_name, Number(format)) if format else Column(col_name, Number('number'))
+            elif col_type == 'checkbox':
+                col = Column(col_name, Boolean())
+            else:
+                raise NormliteError(f'Unsupported property type during table reflection: {col_spec}')
+            
+            table.append_column(col)
+
+        # 4. ensure implicit columns are created
+        table._ensure_implicit_columns()
+
+        # 5. reflect primary keys
+        # Not implemented yet
+
+        # 6. reflect foreign keys
+        # Not implemented yet
+
+    def _find_table_in_catalog(self, name: str, catalog: str) -> dict:
+        return self._engine._client.databases_query({
+            'database_id': self._engine._tables_id,
+            'filter': {
+                'and': [
+                    {
+                        'property': 'table_name',
+                        'title' : {
+                            'equals': name
+                        }
+                    },
+                    {
+                        'property': 'table_catalog',
+                        'rich_text': {
+                            'equals': catalog
+                        }
+                    }
+                ]
+            }
+        })

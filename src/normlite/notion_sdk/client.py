@@ -30,6 +30,7 @@ from dataclasses import dataclass
 import json
 import operator
 from pathlib import Path
+import pdb
 from typing import List, Optional, Protocol, Self, Sequence, Set, Type
 from types import TracebackType
 from abc import ABC, abstractmethod
@@ -192,6 +193,14 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
 class InMemoryNotionClient(AbstractNotionClient):
+    """Provide a simple but complete in-memory Notion client
+    
+    :class:`InMemoryNotionClient` fully implements the Notion API and mimics the Notion's store behavior.
+    It automatically creates the database management datastructures.
+
+    .. versionchanged:: 0.7.0 :class:`InMemoryNotionClient` automatically creates the `information_schema` page and the `tables` database.
+
+    """
     def __init__(
             self, 
             ws_id: Optional[str] = None,
@@ -242,54 +251,6 @@ class InMemoryNotionClient(AbstractNotionClient):
                 "store": [],
             }
 
-        # Create the page 'information_schema'
-        # Note: In the real Notion store, the 'parent' object is the workspace,
-        # so the information schema page cannot be programmatically created via the API.
-        # In the fake store the parent's page id is just random.
-        if self._ws_id is None:
-            self._ws_id = str(uuid.uuid4())
-
-        payload = {
-            'parent': {                     
-                'type': 'page_id',
-                'page_id': self._ws_id
-            },
-            'properties': {
-                'Name': {'title': [{'text': {'content': 'information_schema'}}]}
-            }
-        }
-        ischema_page = self._add('page', payload, self._ischema_page_id)
-
-        # Update the ischema page id with the one just created
-        self._ischema_page_id = ischema_page['id']
-
-        # Create the database 'tables'
-        payload = {
-            'parent': {
-                'type': 'page_id',
-                'page_id': self._ischema_page_id
-            },
-            "title": [
-                {
-                    "type": "text",
-                    "text": {
-                        "content": "tables",
-                        "link": None
-                    },
-                    "plain_text": "tables",
-                    "href": None
-                }
-            ],
-            'properties': {
-                'table_name': {'title': {}},
-                'table_schema': {'rich_text': {}},
-                'table_catalog': {'rich_text': {}},
-                'table_id': {'rich_text': {}}
-            }
-        }
-        tables = self._add('database', payload, self._tables_db_id)
-        self._tables_db_id = tables['id']
-
     def _get(self, id: str) -> dict:
         # TODO: rewrite using filter()
         if self._store_len() > 0:
@@ -335,10 +296,12 @@ class InMemoryNotionClient(AbstractNotionClient):
         new_page.update(payload)
         if type == 'database':
             new_page['is_inline'] = False
-            properties = new_page['properties']
-            for prop_name, prop_obj in properties.items():
-                prop_type = list(prop_obj.keys())
-                properties[prop_name]['type'] = prop_type[0]
+
+        # add the type key to each property for both pages and databases
+        properties = new_page['properties']
+        for prop_name, prop_obj in properties.items():
+            prop_type = list(prop_obj.keys())
+            properties[prop_name]['type'] = prop_type[0]
 
         self._store["store"].append(new_page)
 
@@ -397,14 +360,16 @@ class InMemoryNotionClient(AbstractNotionClient):
         query_result = []
         if self._store_len() > 0:        
             db_id = payload['database_id']
-            for obj in self._store:
+            for obj in self._store['store']:
                 if obj['object'] == 'page' and obj['parent']['type'] == 'database_id':
                     # select only pages whose parent is a database
                     if obj['parent']['database_id'] == db_id:
                         # select only pages belonging to the db specified in the payload
-                        filter = _Filter(obj
+                        filter = _Filter(obj, payload)
+                        if filter.eval():
+                            query_result.append(obj)
 
-
+        return query_result
 
 class FileBasedNotionClient(InMemoryNotionClient):
     """Enhance the in-memory client with file based persistence.
@@ -528,10 +493,12 @@ class _CompositeCondition(_Condition):
         self.conditions = conditions
 
     def eval(self) -> bool:
+        # IMPORTANT: You have to first eval all the conditions in an iterable!
+        iterable_cond = [cond.eval() for cond in self.conditions]
         if self.logical_op == 'and':
-            result = all(self.conditions)
+            result = all(iterable_cond)
         elif self.logical_op == 'or':
-            result = any(self.conditions)
+            result = any(iterable_cond)
         else:
             raise Exception(f'Logical operator {self.logical_op} not supported or unknown')
         

@@ -216,18 +216,20 @@ class Table:
 
         """
 
-        # Add user-declared columns
-        #pdb.set_trace()
+        self._database_id = None
+        """The Notion id corresponding to this table."""
+
         if columns:
+            # add user-declared columns
             for col in columns:
                 self.append_column(col)
 
-        # Always add implicit Notion columns
-        self._ensure_implicit_columns()
+            # Always add implicit Notion columns
+            self._ensure_implicit_columns()
 
-        # Generate primary key constraint object
-        self._create_pk_constraint()
-        self.add_constraint(self._primary_key)
+            # Generate primary key constraint object
+            self._create_pk_constraint()
+            self.add_constraint(self._primary_key)
 
     @property
     def columns(self) -> ReadOnlyColumnCollection:

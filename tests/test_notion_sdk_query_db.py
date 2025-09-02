@@ -34,7 +34,7 @@ def test_conditions(page: dict):
     assert num_cond.eval()
     assert title_cond.eval()
 
-def test_composite_condition(page: dict):
+def test_composite_condition_true(page: dict):
     num_cond = _Condition(
         page, 
         {'property': 'student_id', 'number': {'greater_than': 666}}
@@ -47,6 +47,21 @@ def test_composite_condition(page: dict):
 
     comp_cond = _CompositeCondition('and', [num_cond, title_cond])
     assert comp_cond.eval()
+
+def test_composite_condition_false(page: dict):
+    num_cond = _Condition(
+        page, 
+        {'property': 'student_id', 'number': {'less_than': 666}}
+    )
+
+    title_cond = _Condition(
+        page,
+        {'property': 'name', 'title': {'contains': 'Isaac'}}
+    )
+    
+    comp_cond = _CompositeCondition('and', [num_cond, title_cond])
+    assert not comp_cond.eval()
+
 
 def test_filter_simple(page: dict):
     filter = _Filter(page, {
@@ -68,6 +83,12 @@ def test_filter_composite(page: dict):
                     'property': 'name',
                     'title': {
                         'contains': 'Isaac'
+                    }
+                },
+                {
+                    'property': 'grade',
+                    'rich_text': {
+                        'equals': 'B'
                     }
                 },
                 {
