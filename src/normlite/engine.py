@@ -44,17 +44,19 @@ Experimental use case (**incomplete** and **not tested**):
 from __future__ import annotations
 from pathlib import Path
 import pdb
-from typing import Dict, Any, List, Optional, TypeAlias
+from typing import Any, Optional, TypeAlias, TYPE_CHECKING
 from dataclasses import dataclass
 from typing import Optional, Literal, Union
 from urllib.parse import urlparse, parse_qs, unquote
-import os
 import uuid
 
 from normlite.exceptions import ArgumentError, NormliteError
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.sql.schema import Column, Table
 from normlite.sql.type_api import Boolean, Number, String
+
+if TYPE_CHECKING:
+    from normlite.sql.schema import Table, Column
 
 @dataclass
 class NotionAuthURI:
@@ -69,7 +71,6 @@ class NotionAuthURI:
     client_id: Optional[str] = None
     client_secret: Optional[str] = None
     auth_url: Optional[str] = None
-
 
 @dataclass
 class NotionSimulatedURI:

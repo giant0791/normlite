@@ -1,4 +1,6 @@
 from __future__ import annotations
+import pdb
+from typing import Iterable
 import pytest
 
 from normlite import (
@@ -6,6 +8,7 @@ from normlite import (
     Column, ColumnCollection, PrimaryKeyConstraint, Table,
     ArchivalFlag, Date, Integer, ObjectId, String
 )
+from normlite.engine import Engine, create_engine
 
 @pytest.fixture
 def sc() -> ColumnCollection:
@@ -15,6 +18,46 @@ def sc() -> ColumnCollection:
         ('grade', Column('grade', String())),
         ('since', Column('since', Date()))
     ])
+
+def create_students_db(engine: Engine) -> None:
+    # create a new table students in memory
+    db = engine._client._add('database', {
+        'parent': {
+            'type': 'page_id',
+            'page_id': engine._db_page_id
+        },
+        "title": [
+            {
+                "type": "text",
+                "text": {
+                    "content": "students",
+                    "link": None
+                },
+                "plain_text": "students",
+                "href": None
+            }
+        ],
+        'properties': {
+            'student_id': {'number': {}},
+            'name': {'title': {}},
+            'grade': {'rich_text': {}},
+            'is_active': {'checkbox': {}}
+        }
+    })
+
+    # add the students to tables
+    engine._client._add('page', {
+        'parent': {
+            'type': 'database_id',
+            'database_id': engine._tables_id
+        },
+        'properties': {
+            'table_name': {'title': [{'text': {'content': 'students'}}]},
+            'table_schema': {'rich_text': [{'text': {'content': ''}}]},
+            'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
+            'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]}
+        }
+    })
 
 def test_columncollection_getattr(sc: ColumnCollection):
     assert isinstance(sc.since, Column)
@@ -91,4 +134,23 @@ def test_table_primary_key():
     assert students.c._no_id == primary_key.c._no_id
     assert students.c.student_id == primary_key.c.student_id
 
-    
+def includes_all(l: list[str], values: Iterable[str]) -> bool:
+    for v in values:
+        if v not in l:
+            return False
+    return True
+
+def test_table_autoload():
+    engine = create_engine(
+        'normlite:///:memory:',
+        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
+        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
+        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
+        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
+    )
+    create_students_db(engine)
+    students = Table('students', autoload_with=engine)
+    columns = [c.name for c in students.columns]
+    assert includes_all(columns, ['student_id', 'name', 'grade', 'is_active'])
+    assert '_no_id' in columns
+    assert '_no_archived' in columns

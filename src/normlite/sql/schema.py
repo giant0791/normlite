@@ -57,9 +57,13 @@ You can inspect the table's primary key constraints by calling the :attr:`primar
 """
 from __future__ import annotations
 from typing import Any, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, Tuple, Union, overload, TYPE_CHECKING
+
 from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError
 from normlite.sql.type_api import ArchivalFlag, ObjectId, TypeEngine
 from normlite.sql.dml import Insert
+
+if TYPE_CHECKING:
+    from normlite.engine import Engine
 
 class Column:
     """A single table column specifying the type and its constraints.
@@ -172,6 +176,15 @@ class Table:
         >>> # get the number of colums
         >>> len(students.columns)           # --> 4 user defined + 2 auto-added = 6
 
+    Tables can also be reflected using the keyword argument ``autoload_with`` as follows:
+
+        >>> students = Table('students', autoload_with=engine)
+        >>> [c.name for c in students.columns]
+        ['student_id', 'name', 'grade', 'is_active', '_no_id', '_no_archived']
+
+    If you use ``autoload_with``, you cannot specify the columns. 
+    Doing so results in a :exc:`normlite.exceptions.ArgumentError` being raised.
+
     Note:
         Since Notion automatically generates several special properties to its pages, 
         the :class:`Table` automatically adds the following two columns:
@@ -183,13 +196,13 @@ class Table:
             ...     Column('grade', String(), table=<students>), 
             ...     Column('since', Date, table=<students>), 
             ...     Column('_no_id', ObjectId, table=None, primary_key=True), 
-            ...     Column('_no_archived', ArchivalFlag, table=None))
+            ...     Column('_no_archived', ArchivalFlag, table=<students>))
 
         
     .. versionadded: 0.7.0
 
     """
-    def __init__(self, name: str, *columns: Column, dialect=None):
+    def __init__(self, name: str, *columns: Column, dialect=None, **kwargs: Any):
         self.name = name
         """Table name."""
 
@@ -219,6 +232,13 @@ class Table:
         self._database_id = None
         """The Notion id corresponding to this table."""
 
+        if kwargs:
+            if columns:
+                raise ArgumentError('Columns cannot be specified when using autoload_with keyword argument')
+            
+            if 'autoload_with' in kwargs:
+                self._autoload(kwargs['autoload_with'])
+        
         if columns:
             # add user-declared columns
             for col in columns:
@@ -291,6 +311,12 @@ class Table:
         table_pks = [c for c in self._columns if c.primary_key]
         # IMPORTANT: Here you have to unpack the table_pks list
         self._primary_key = PrimaryKeyConstraint(*table_pks)
+
+    def _autoload(self, engine: Engine) -> None:
+        from normlite.engine import Inspector
+
+        inspector: Inspector = engine.inspect()
+        inspector.reflect_table(self)
 
     def __repr__(self) -> str:
         return "Table(%s)" % ", ".join(
