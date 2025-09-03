@@ -235,6 +235,11 @@ class Table:
         self._database_id = None
         """The Notion id corresponding to this table."""
 
+        self._db_parent_id = None
+        """The parent page this database belongs to.
+        This is the Notion page id containing all the tables which belong to the same database. 
+        """
+
         if kwargs:
             if columns:
                 raise ArgumentError('Columns cannot be specified when using autoload_with keyword argument')
@@ -299,6 +304,10 @@ class Table:
         insert_stmt = Insert()
         insert_stmt._set_table(self)
         return insert_stmt
+
+    def create(self, bind: Engine) -> None:
+        from normlite.sql.ddl import CreateTable
+        bind._run_ddl_visitor(CreateTable(self))
 
     def _ensure_implicit_columns(self):
         # Notion object ID: always primary key
@@ -373,6 +382,20 @@ class ColumnCollection:
         self._colset.add(column)
         self._index[l] = (colkey, column)
         self._index[colkey] = (colkey, column)
+
+    def keys(self) -> List[str]:
+        """Return a sequence of string column names for all columns in this collection."""
+        return [k for (k, _) in self._collection]
+    
+    def values(self) -> List[Column]:
+        """Return a sequence of :class:`Column` for all columns in this collection."""
+        return [col for (_, col) in self._collection]
+    
+    def items(self) -> List[Tuple[str, Column]]:
+        """Return a sequence  of (column name, column) tuples for all columns in this collection
+        each consisting of a string column name and a :class:`Column`.
+        """
+        return [(k, col) for (k, col) in self._collection]
 
     def _populate_separate_keys(self, iter_: Iterable[Tuple[str, Column]]) -> None:
         cols = list(iter_)

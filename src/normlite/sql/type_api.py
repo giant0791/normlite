@@ -205,7 +205,7 @@ class String(TypeEngine):
         return process
 
     def get_col_spec(self, dialect):
-        return {"type": "title"} if self.is_title else {"type": "rich_text"}
+        return {"type": "title", "title": {}} if self.is_title else {"type": "rich_text", "rich_text": {}}
     
     def __repr__(self) -> str:
         kwarg = []
@@ -222,7 +222,7 @@ class Boolean(TypeEngine):
     .. versionadded:: 0.7.0
     """
     def get_col_spec(self, dialect):
-        return {"type": "checkbox"}
+        return {"type": "checkbox", "checkbox": {}}
 
     def bind_processor(self, dialect):
         def process(value: Optional[bool]) -> Optional[dict]:
@@ -291,7 +291,7 @@ class Date(TypeEngine):
         return process
 
     def get_col_spec(self, dialect):
-        return {"type": "date"}
+        return {"type": "date", 'date': {}}
 
 class UUID(TypeEngine):
     """Base type engine class for UUID ids.

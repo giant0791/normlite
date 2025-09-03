@@ -52,6 +52,8 @@ import uuid
 
 from normlite.exceptions import ArgumentError, NormliteError
 from normlite.notion_sdk.client import InMemoryNotionClient
+from normlite.sql.base import DDLVisitor, Visitable
+from normlite.sql.ddl import CreateTable, NotionDDLVisitor
 from normlite.sql.schema import Column, Table
 from normlite.sql.type_api import Boolean, Number, String
 
@@ -202,8 +204,14 @@ class Engine:
         self._client = None
         """The Notion client this engine interacts with."""
 
+        self._init_client = True
+        """Whether the client shall be initialized with the ``normlite`` datastructures. Defaults to ``True``."""
+
         if 'ws_id' in kwargs:
             self._ws_id = kwargs['ws_id']
+
+        if 'init_client' in kwargs:
+            self._init_client = kwargs['init_client']
         
         self._process_args(**kwargs)
         self._create_client(uri)
@@ -243,9 +251,10 @@ class Engine:
         if self._ws_id is None:
             self._ws_id = str(uuid.uuid4())
 
-        self._init_info_schema()
-        self._init_tables()
-        self._init_database()
+        if self._init_client:
+            self._init_info_schema()
+            self._init_tables()
+            self._init_database()
       
     def inspect(self) -> Inspector:
         """Return an inspector object.
@@ -325,6 +334,29 @@ class Engine:
             }
         }
         self._client._add('page', payload, self._db_page_id)
+
+    def _run_ddl_visitor(self, ddl_stmt: Visitable) -> None:
+        if isinstance(ddl_stmt, CreateTable):
+            ddl_stmt.table._db_parent_id = self._db_page_id
+            ddl_stmt.accept(NotionDDLVisitor())
+            new_db = self._client.databases_create(ddl_stmt.compiled)
+            ddl_stmt.table._database_id = new_db.get('id')
+            self._client._add('page', {
+                'parent': {
+                    'type': 'database_id',
+                    'database_id': self._tables_id
+                },
+                'properties': {
+                    'table_name': {'title': [{'text': {'content': ddl_stmt.table.name}}]},
+                    'table_schema': {'rich_text': [{'text': {'content': ''}}]},
+                    'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
+                    'table_id': {'rich_text': [{'text': {'content': ddl_stmt.table._database_id}}]}
+                }
+            })
+
+        else:
+            raise NotImplementedError('CreateTable DDL statements supported only')
+            
                
 class Inspector:
     """Provide an inspector facilities for inspecting ``normlite`` objects.

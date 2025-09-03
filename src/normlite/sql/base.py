@@ -15,8 +15,13 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from __future__ import annotations
+from abc import ABC, abstractmethod
+import json
+from typing import Optional, Protocol, TYPE_CHECKING
 
-from typing import Optional, Protocol
+if TYPE_CHECKING:
+    from normlite.sql.ddl import CreateTable, CreateColumn
 
 class Executable(Protocol):
     """Provide the interface for all executable SQL statements."""
@@ -36,5 +41,33 @@ class Executable(Protocol):
         ...
 
     def parameters(self) -> dict:
+        ...
+
+class Visitable(ABC):
+    def __init__(self):
+        self._compiled = None
+
+    @property
+    def compiled(self) -> dict:
+        return self._compiled
+
+    @property
+    def string(self) -> str:
+        if self._compiled:
+            return json.dumps(self._compiled, indent=2)
+        return None
+    
+    def accept(self, visitor: DDLVisitor) -> None:
+        self._compiled = self._accept_impl(visitor)
+
+    @abstractmethod
+    def _accept_impl(self, visitor: DDLVisitor) -> dict:
+        raise NotImplementedError
+
+class DDLVisitor(Protocol):
+    def visit_create_table(self, table: CreateTable) -> dict:
+        ...
+
+    def visit_create_column(self, column: CreateColumn) -> dict:
         ...
 

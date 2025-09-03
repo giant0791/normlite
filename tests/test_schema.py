@@ -10,6 +10,7 @@ from normlite import (
 )
 from normlite.engine import Engine, create_engine
 from normlite.sql.schema import MetaData
+from normlite.sql.type_api import Boolean
 
 @pytest.fixture
 def sc() -> ColumnCollection:
@@ -218,4 +219,32 @@ def test_metadata_reflect():
     assert includes_all(columns, ['student_id', 'name', 'grade', 'is_active'])
     assert '_no_id' in columns
     assert '_no_archived' in columns
+
+def test_create_table():
+    engine = create_engine(
+        'normlite:///:memory:',
+        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
+        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
+        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
+        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
+    )
+
+    metadata = MetaData()
+    students = Table(
+        'students',
+        metadata,
+        Column('id', Integer()),
+        Column('name', String(is_title=True)),
+        Column('grade', String()),
+        Column('is_active', Boolean()),
+        Column('started_on', Date())
+    )
+
+    #pdb.set_trace()
+    students.create(engine)
+
+    inspector = engine.inspect()
+
+    assert inspector.has_table(students.name)
+
 
