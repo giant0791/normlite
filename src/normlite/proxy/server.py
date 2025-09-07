@@ -29,12 +29,14 @@
 """
 
 from flask import Flask
+from normlite.proxy.routes.health import health_bp
 from normlite.proxy.routes.transactions import transaction_bp
 from normlite.proxy.routes.insert import insert_bp
 
 def create_app():
     """Factory function for the RESTful proxy server."""
     app = Flask(__name__)
+    app.register_blueprint(health_bp)
     app.register_blueprint(transaction_bp)
     app.register_blueprint(insert_bp)
     return app
