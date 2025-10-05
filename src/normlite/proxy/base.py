@@ -28,4 +28,53 @@ class BaseProxyClient(ABC):
         Must raise ProxyError on failure.
         """
         raise NotImplementedError
+    
+    @abstractmethod
+    def begin(self) -> requests.Response:
+        """Begin a new transaction.
+
+        Returns:
+            requests.Response: The returned response object.
+        """
+        raise NotImplementedError
+    
+    @abstractmethod
+    def insert(self, tx_id: str, payload: dict) -> requests.Response:
+        """Add an insert operation to the specified transaction.
+
+        This method is a wrapper around the REST API `transactions/<id>/insert`.
+
+        Args:
+            txn (str): The transaction to add the insert operation to.
+            payload (dict): The payload of the insert operation.
+
+        Returns:
+            requests.Response: The returned response object. 
+        """
+
+    @abstractmethod
+    def commit(self, tx_id: str) -> requests.Response:
+        """Commit the specified transaction.
+
+        This method is a wrapper around the REST API `transactions/<id>/commit`.
+
+        Args:
+            tx_id (str): The transaction to be committed.
+
+        Returns:
+            requests.Response: The returned response object.
+        """
+
+    @abstractmethod
+    def rollback(self, tx_id: str) -> requests.Response:
+        """Roll back the specified transaction.
+
+        This method is a wrapper around the REST API `transactions/<id>/rollback`.
+
+        Args:
+            tx_id (str): The transaction to be rolled back.
+
+        Returns:
+            requests.Response: The returned response object.
+        """
 

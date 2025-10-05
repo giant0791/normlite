@@ -19,20 +19,48 @@
 """Transaction Proxy Server Routes.
 
 This module provides the Flask routes that constitute the REST API for the transaction proxy server.
-All endpoints return JSON objects of the following form:
+All endpoints return JSON objects according to the following schema.
+** Success (health)**:
+
+..code-block:: json
+  {
+    "state": "ALIVE"
+  }
+
+**Success (non-commit, e.g. insert)**:
 
 .. code-block:: json
 
-    {
-        "transaction_id", "<tx_id>",    // <tx_id> = uuid4 string, returned by POST /transactions only
-        "state": "<tx_state>",          // <tx_state> = transaction state, returned by
-                                        // POST /transactions/<id>/insert
-                                        // POST /transactions/<id>/commit
-                                        // POST /transactions/<id>/rollback
-        "data": "<result_sets>",        // <result_sets> = a list containing all results returned by each operation committed/rolled back
-        "error": "<error>"              // <error> = error message string, returned in case of error only    
-    }
+  {
+    "transaction_id", "<tx_id>",    // <tx_id> = uuid4 string, returned by POST /transactions only
+    "state": "<tx_state>",          // <tx_state> = transaction state, returned by
+                                    // POST /transactions/<id>/insert
+                                    // POST /transactions/<id>/commit
+                                    // POST /transactions/<id>/rollback
+  }
+    
+**Success (commit)**:
 
+.. code-block:: json
+  {
+    "transaction_id", "<tx_id>",    // <tx_id> = uuid4 string, id  of the committed transaction
+    "state": "<tx_state>",          // <tx_state> = "COMMITTED"
+    "data": "<result_sets>",        // <result_sets> = a list containing all results returned by each operation committed/rolled back
+  }
+
+**Error**:
+
+..code-block:: json
+  {
+    "error": {
+      "code": "<error_code>",       // <error_code> = e.g. "invalid_payload"    
+      "message": "<error message"   // <error_message>" = e.g. "Missing parent in payload"
+    },
+    "transaction_id": "<tx_id>",    // optional, if error occurred in a transaction that was already started
+    "state": "<tx_state>"           // optional, if error occurred in a transaction that was already started
+  }
+
+    
 .. list-table:: Transaction Proxy Server REST API
    :header-rows: 1
    :widths: 15, 25, 60
@@ -41,6 +69,9 @@ All endpoints return JSON objects of the following form:
    * - Method
      - Endpoint
      - Description
+   * - ``GET``
+     - ``/health``
+     - Let clients enquiry server health.
    * - ``POST``
      - ``/transactions``
      - Begin a new transaction (see :func:`normlite.proxy.routes.transactions.begin_transaction()` for more details).
@@ -56,23 +87,7 @@ All endpoints return JSON objects of the following form:
     
 .. versionadded:: 0.6.0
 
+.. versionchanged:: 0.7.0
+  ``GET /health`` added, response schema redefin
+
 """
-from typing import Optional
-from flask import Response, jsonify
-
-from normlite.proxy.state import transaction_manager
-
-def _make_response_obj(obj: dict, tx_id: Optional[str] = None) -> Response:
-    """Helper to generate standard response objects."""
-    
-    if tx_id:
-        # the transaction exists, state is defined
-        tx = transaction_manager.active_txs.get(tx_id)
-        state = tx.state.name
-
-    else:
-        # the transaction does not exists, state is undefined, add fictious state
-        state = 'NOT_ACTIVE'
-
-    obj['state'] = state
-    return jsonify(obj)

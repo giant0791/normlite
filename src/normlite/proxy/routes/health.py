@@ -1,4 +1,4 @@
-# normlite/proxy/routes/healt.py
+# normlite/proxy/routes/health.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -15,15 +15,12 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from flask import Blueprint
+from flask import Blueprint, jsonify
 
-from normlite.proxy.routes import _make_response_obj
+from normlite.proxy.state import transaction_manager
 
 health_bp = Blueprint("health", __name__)
 
 @health_bp.route("/health", methods=["GET"])
 def health():
-    return _make_response_obj({
-        "status": "ok",
-        "message": "Proxy server is alive"
-    }), 200
+    return jsonify({"state": "ALIVE"}), 200

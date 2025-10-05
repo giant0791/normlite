@@ -76,12 +76,9 @@ class StagedInsert(Operation):
         self.page_id = self._result.get("id")
 
     def do_rollback(self) -> None:
-        # Only rollback if commit actually happened
+        # Only rollback if commit actually happened: page_id is not None
         if self.page_id:
-            try:
-                self._result = self.notion('pages', 'update', {'id': self.page_id, 'data': {'archived': True}})
-            except Exception:
-                pass  # best-effort rollback
+            self._result = self.notion('pages', 'update', {'id': self.page_id, 'data': {'archived': True}})
 
     def get_result(self) -> dict:
         return self._result
@@ -91,7 +88,7 @@ class StagedSelect(Operation):
     def __init__(self, notion: AbstractNotionClient, payload: dict, tx_id: str):
         self.notion = notion
         self.payload = payload
-        self.tx_id = self.tx_id
+        self.tx_id = tx_id
         self._result = None
 
     def stage(self) -> None:
@@ -107,5 +104,34 @@ class StagedSelect(Operation):
 
     def get_result(self) -> dict:
         return self._result
+    
+class StagedCreateTable(Operation):
+    """Operation to create a new table."""
 
+    def __init__(self, notion: AbstractNotionClient, payload: dict, tx_id: str):
+        self.notion = notion
+        self.payload = payload
+        self.tx_id = tx_id
+        self.database_id = None  # Will be set on commit
+        self._result = None # will be set on commit or on rollback
+
+    def stage(self):
+        if 'parent' not in self.payload:
+            raise ValueError(f'Missing parent object in payload: {self.payload}')
+        
+        if 'page_id' not in self.payload.get('parent'):
+            raise ValueError(f'Missing page_id in parent object: {self.payload.get('parent')}')
+        
+        if 'properties' not in self.payload:
+            raise ValueError(f'Missing properties object in payload: {self.payload}')
+        
+    def do_commit(self) -> None:
+        self._result = self.notion('database', 'create', self.payload)
+        self.database_id = self._result.get('id')
+
+    def do_rollback(self) -> None:
+        if self.database_id:
+            # Only rollback if commit actually happened
+            self.notion('')
+        
             

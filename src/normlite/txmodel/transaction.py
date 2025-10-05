@@ -30,7 +30,8 @@ Warning:
 from __future__ import annotations
 from collections import defaultdict
 from enum import Enum, auto
-from typing import Dict, List, Literal, Tuple
+import pdb
+from typing import Any, Dict, List, Literal, Tuple
 import uuid
 
 from normlite.txmodel.operations import Operation
@@ -176,6 +177,20 @@ class Transaction:
         self.state = TransactionState.ACTIVE
         """The transaction state."""
 
+        self.rollback_errors: list[dict[str, str]] = []
+        """A list of error context information for a failed rollback.
+        
+        .. versionadded:: 0.7.0
+
+        """
+
+        self.results: list[dict[str, Any]] = []
+        """A list of containing all results of the operations executed in the context of this transaction.
+        
+        .. versionadded:: 0.7.0
+
+        """
+
     def add_change(
         self,
         resource_id: str,
@@ -193,7 +208,7 @@ class Transaction:
         """
 
         # acquire the requested lock on the resource to be processed
-        self.lock_manager.acquire(self.tid, resource_id, mode)
+        self.lock_manager.acquire(resource_id, self.tid, mode)
 
         # lock acquired as requested (no AcquireLockFailed execption raised)
         self.operations.append((resource_id, mode, operation))    
@@ -221,6 +236,7 @@ class Transaction:
             # commit the staged operations one-by-one                
             for commit_op in commit_ops:
                 commit_op.do_commit()
+                self.results.append(dict(commit_op.get_result()))           # deep copy via dict() constructor of the result to avoid modifications by do_rollback() in case of failed commit
 
             # if we came that far, the transaction is committed,
             # i.e. all changes could be successfully saved to the database
@@ -229,13 +245,23 @@ class Transaction:
         except Exception as e:
             # at least 1 operation could not be successfully committed:
             # the transaction is failed
+            # Mark transaction as failed
             self.state = TransactionState.FAILED
 
-            # IMPORTANT: The transaction shall re-raise the exception and not
-            # as it was previously implemented rollback.
-            # Re-raising the exception enables the caller to set the status code 
-            # correspondingly. 
-            raise
+            # Try automatic rollback to guarantee atomicity only if something has been already committed
+            # If a stage phase fails, not commit operations are tried, so nothing has been committed at all
+            if len(commit_ops) > 0:                   
+                try:
+                    self.rollback()
+                except Exception as rb_exc:
+                    # rollback() itself already records rollback_errors
+                    raise TransactionError(
+                        f"Commit failed and rollback also encountered errors: {rb_exc}"
+                    ) from e
+
+            # Reraise the original commit failure
+            raise TransactionError(
+                f"Commit failed. Transaction rolled back. Error: {e}") from e
 
         finally:
             self.lock_manager.release(self.tid)
@@ -254,13 +280,28 @@ class Transaction:
         for _, _, rollback_op in reversed(self.operations):
             try:
                 rollback_op.do_rollback()
-            except Exception:
-                # TODO: What happens if a rollback fails?
-                pass
+                # get_result() is also used by the do_rollback() method, rolled back operations may have valuable results
+                # and those shall not be reported
+                result = rollback_op.get_result()
+                if result:
+                    # add a result only if there is one
+                    self.results.append(result)
 
-        self.state = TransactionState.ABORTED
+            except Exception as exc:
+                # something went wrong during rollback,
+                # record the error in rollback_errors so clients can inspect what went wrong
+                error_info = {
+                    'op': repr(rollback_op),
+                    'error': str(exc)
+                }
+                self.rollback_errors.append(error_info)
 
-        # release all locks held by the transaction
+        if self.rollback_errors:
+            self.state = TransactionState.FAILED
+        else:
+            self.state = TransactionState.ABORTED
+
+        # release all locks held by the transaction and clear the list of results
         self.lock_manager.release(self.tid)
 
 class TransactionManager:

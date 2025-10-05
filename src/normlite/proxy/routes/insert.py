@@ -17,12 +17,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import pdb
-from flask import Blueprint, request
+from flask import Blueprint, request, jsonify
 
 from normlite.proxy.state import transaction_manager, notion
-from normlite.proxy.routes import _make_response_obj
 from normlite.txmodel.operations import StagedInsert
-from normlite.txmodel.transaction import TransactionState
 
 insert_bp = Blueprint("insert", __name__)
 
@@ -31,8 +29,12 @@ insert_bp = Blueprint("insert", __name__)
 def insert(tx_id):
     tx = transaction_manager.active_txs.get(tx_id)
     if not tx:
-        err_msg = f'Transaction not found: "{tx_id}"'
-        return _make_response_obj({"error": err_msg}), 404
+        return jsonify({
+            "error": {
+                "code": "invalid_tx_id",
+                "message": f"Transaction with id:{tx_id} not found"
+            }
+        }), 400
 
     try:
         page_payload = request.get_json()
@@ -44,8 +46,20 @@ def insert(tx_id):
             mode="write",
             operation=insert_op
         )
-        return _make_response_obj({}, tx_id), 202
+        return jsonify(
+            {
+                'state': transaction_manager.active_txs[tx_id].state.name, 
+                'transaction_id': tx_id
+            }
+        ), 202
 
     except KeyError as ke:
         # the only reason why Transaction.add_change() can fail is no database_id found
-        return _make_response_obj({"error": f'Missing "{ke.args[0]}" in payload'}), 400
+        return jsonify(
+            {
+                "error": {
+                    "code": "invalid_payload",
+                    "message": f'Missing "{ke.args[0]}" in payload'
+                }
+            }
+        ), 400

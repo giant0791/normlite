@@ -16,9 +16,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from flask import Blueprint
+import pdb
+from flask import Blueprint, jsonify
 
-from normlite.proxy.routes import _make_response_obj
 from normlite.proxy.state import transaction_manager
 
 transaction_bp = Blueprint("transactions", __name__)
@@ -26,29 +26,75 @@ transaction_bp = Blueprint("transactions", __name__)
 @transaction_bp.route("/transactions", methods=["POST"])
 def begin_transaction():
     tx = transaction_manager.begin()
-    return _make_response_obj({"transaction_id": tx.tid}), 200
+    return jsonify(
+        {"transaction_id": tx.tid, "state": tx.state.name}
+    ), 200
 
 @transaction_bp.route("/transactions/<tx_id>/commit", methods=["POST"])
 def commit_transaction(tx_id):
     tx = transaction_manager.active_txs.get(tx_id)
     if not tx:
-        return _make_response_obj({"error": "Transaction not found"}), 404
+        return jsonify(
+            {
+                "error": {
+                    "code": "txn_not_found", 
+                    "message": f"Transaction: {tx_id} not found"
+                }
+            }
+        ), 404
     try:
-        tx.commit()
-        data = [op.get_result() for _, _, op in tx.operations] 
-        return _make_response_obj({"data": data}, tx_id), 200
+        tx.commit() 
+        return jsonify(
+            {
+                "transaction_id": tx_id,
+                "state": tx.state.name,
+                "data": tx.results
+            }
+        ), 200
     
     except Exception as e:
-        return _make_response_obj({"error": str(e)}, tx_id), 500
+        return jsonify(
+            {
+                "transaction_id": tx_id,
+                "state": tx.state.name,
+                "error": {
+                    "code": "commit_failed",
+                    "message": str(e)
+                },
+                "data": tx.results if tx.results else None
+            }
+        ), 500
 
 @transaction_bp.route("/transactions/<tx_id>/rollback", methods=["POST"])
 def rollback_transaction(tx_id):
     tx = transaction_manager.active_txs.get(tx_id)
     if not tx:
-        return _make_response_obj({"error": "Transaction not found"}), 404
+        return jsonify(
+            {
+                "error": {
+                    "code": "txn_not_found", 
+                    "message": f"Transaction: {tx_id} not found"
+                }
+            }
+        ), 404
+    try:
+        tx.rollback()
+        return jsonify({
+            "transaction_id": tx_id,
+            "state": tx.state.name,
 
-    tx.rollback()
-
-    data = [op.get_result() for _, _, op in tx.operations]
-    return _make_response_obj({"data": data}, tx_id), 200
+        })
+    except Exception as e:
+        data = tx.results if tx.results else None           # if residual results are available, return them
+        return jsonify(
+            {
+                "transaction_id": tx_id,
+                "state": tx.state.name,
+                "error": {
+                    "code": "rollback_failed",
+                    "message": str(e)
+                },
+                "data": data
+            }
+        ), 500
 
