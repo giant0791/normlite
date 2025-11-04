@@ -81,7 +81,7 @@ class TypeEngine(Protocol):
     .. versionadded:: 0.7.0
     """
 
-    def bind_processor(self, dialect) -> Optional[Callable[[Any], Any]]:
+    def bind_processor(self, dialect=None) -> Optional[Callable[[Any], Any]]:
         """Python → SQL/Notion (prepare before sending)."""
         return None
 
@@ -124,9 +124,9 @@ class Number(TypeEngine):
         self.format = format
 
     def get_col_spec(self, dialect):
-        return {"type": "number", "number": {"format": self.format}}
+        return {"number": {"format": self.format}}
 
-    def bind_processor(self, dialect):
+    def bind_processor(self, dialect=None):
         def process(value: Optional[_NumericType]) -> Optional[dict]:
             if value is None:
                 return None
@@ -174,12 +174,12 @@ class String(TypeEngine):
         >>> # create a title property
         >>> title_txt = String(is_title=True)
         >>> title_text.get_col_spec(None)
-        {"type": "title"}
+        {"title": {}}
 
         >>> # create a rich text property
         >>> rich_text = String()
         >>> rich_text.get_col_spec(None)
-        {"type": "rich_text"}
+        {"rich_text": {}}
 
     .. versionadded:: 0.7.0
     """
@@ -187,12 +187,12 @@ class String(TypeEngine):
         self.is_title = is_title
         """``True`` if it is a "title", ``False`` if it is a "richt_text"."""
 
-    def bind_processor(self, dialect):
+    def bind_processor(self, dialect=None):
         def process(value: Optional[str]) -> Optional[List[dict]]:
             if value is None:
                 return None
             block = {}
-            block['plain_text'] = str(value)
+            block['text'] = {'content': str(value)}
             return [block]
         return process
 
@@ -201,11 +201,11 @@ class String(TypeEngine):
             if value is None:
                 return None
              # Notion rich_text is a list of text objects → extract plain_text
-            return "".join([block.get("plain_text", "") for block in value])
+            return "".join([block.get("text").get("content") for block in value])
         return process
 
     def get_col_spec(self, dialect):
-        return {"type": "title", "title": {}} if self.is_title else {"type": "rich_text", "rich_text": {}}
+        return {"title": {}} if self.is_title else {"rich_text": {}}
     
     def __repr__(self) -> str:
         kwarg = []
@@ -221,8 +221,8 @@ class Boolean(TypeEngine):
     
     .. versionadded:: 0.7.0
     """
-    def get_col_spec(self, dialect):
-        return {"type": "checkbox", "checkbox": {}}
+    def get_col_spec(self, dialect=None):
+        return {"checkbox": {}}
 
     def bind_processor(self, dialect):
         def process(value: Optional[bool]) -> Optional[dict]:
@@ -291,7 +291,7 @@ class Date(TypeEngine):
         return process
 
     def get_col_spec(self, dialect):
-        return {"type": "date", 'date': {}}
+        return {"date": {}}
 
 class UUID(TypeEngine):
     """Base type engine class for UUID ids.
