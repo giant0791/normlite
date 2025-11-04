@@ -1,4 +1,4 @@
-# notiondbapi/_model.py
+# notiondbapi/_parser.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -31,12 +31,15 @@ from typing import Tuple, Union
 from normlite.notiondbapi._model import NotionDatabase, NotionPage, NotionProperty
 
 
-def parse_text_content(values: list) -> str:
-    if values:
-        contents = [value.get("text", {}).get("content", "") for value in values]
+def parse_text_content(value_or_list: Union[list[dict], dict]) -> str:
+    text_value = None
+    if value_or_list and isinstance(value_or_list, list):
+        contents = [value.get("text", {}).get("content", "") for value in value_or_list]
         text_value = "".join(contents)
-        return text_value
-    return None
+    elif value_or_list and isinstance(value_or_list, dict):
+        text_value = value_or_list.get("text", {}).get("content", "")
+
+    return text_value
 
 def parse_number(number: Union[dict, int, float]) -> Tuple[str, Union[int, float, None]]:
     """Parse a number object.
