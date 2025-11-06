@@ -46,25 +46,25 @@ from normlite import (
     ),
     (
         Date(), 
-        {"start": "2023-02-23T00:00:00", "end": None}, 
+        {"date": {"start": "2023-02-23T00:00:00", "end": None}}, 
         datetime(2023, 2, 23), 
         {"date": {}}
     ),
     (
         Date(), 
-        {"start": "2023-02-23T00:00:00", "end": "2023-04-23T00:00:00"}, 
+        {"date": {"start": "2023-02-23T00:00:00", "end": "2023-04-23T00:00:00"}}, 
         (datetime(2023,2,23), datetime(2023,4,23)), 
         {"date": {}}
     ),
     (
         String(), 
-        [{"text": {"content": "A nice, woderful day with you"}}], 
+        {'rich_text':[{"text": {"content": "A nice, woderful day with you"}}]},
         "A nice, woderful day with you", 
         {"rich_text": {}}
     ),
     (
         String(is_title=True), 
-        [{"text": {"content": "A nice, woderful day with you"}}], 
+        {'title':[{"text": {"content": "A nice, woderful day with you"}}]}, 
         "A nice, woderful day with you", 
         {"title": {}}
     ),

@@ -193,15 +193,18 @@ class String(TypeEngine):
                 return None
             block = {}
             block['text'] = {'content': str(value)}
-            return [block]
+            text_type = list(self.get_col_spec(None))[-1]
+            return {text_type: [block]}
         return process
 
     def result_processor(self, dialect, coltype=None):
         def process(value: Optional[dict]) -> Optional[str]:
             if value is None:
                 return None
-             # Notion rich_text is a list of text objects → extract plain_text
-            return "".join([block.get("text").get("content") for block in value])
+             # Notion rich_text is a list of text objects → extract 'text'
+            text_type = list(self.get_col_spec(None))[-1]
+            text_value = value.get(text_type) 
+            return "".join([block.get("text").get("content") for block in text_value])
         return process
 
     def get_col_spec(self, dialect):
@@ -259,13 +262,13 @@ class Date(TypeEngine):
                 if not end and not isinstance(end, datetime):
                     raise ValueError(f'End date must be a valid datetime, received: {end}')
 
-                return {
+                return {"date": {
                     "start": start.isoformat(),
                     "end": end.isoformat() if end else None,
-                }
+                }}
             
             if isinstance(value, datetime):
-                return {"start": value.isoformat(), "end": None}
+                return {"date": {"start": value.isoformat(), "end": None}}
             
             raise TypeError("Date must be datetime or (start, end) tuple")
         return process
@@ -275,9 +278,10 @@ class Date(TypeEngine):
             if value is None:
                 return None
             
+            date_value = value.get("date")
             if isinstance(value, dict):
-                start = datetime.fromisoformat(value["start"]) if value.get("start") else None
-                end = datetime.fromisoformat(value["end"]) if value.get("end") else None
+                start = datetime.fromisoformat(date_value["start"]) if date_value.get("start") else None
+                end = datetime.fromisoformat(date_value["end"]) if date_value.get("end") else None
                 restored = (start, end)
             
                 if restored == (None, None):
