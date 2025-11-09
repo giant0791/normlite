@@ -183,6 +183,7 @@ Important:
     its features outside.
 """
 
+from normlite._constants import SpecialColumns
 from normlite.notiondbapi._model import NotionDatabase, NotionObjectVisitor, NotionPage, NotionProperty
 
 class ToRowVisitor(NotionObjectVisitor):
@@ -312,15 +313,15 @@ class ToDescVisitor(NotionObjectVisitor):
     
     """
     
-    def _add_not_used_seq(self, col_desc: tuple) -> tuple:
+    def _add_not_used_seq(self, col_desc: tuple, count: int = 5) -> tuple:
         """Helper to fill in the missing elements with ``None`` values."""
-        for _ in range(5):
+        for _ in range(count):
             col_desc += (None,)
 
         return col_desc
     
     def visit_page(self, page: NotionPage) -> tuple:
-        """Cross-compile a Notion page iinto a description ``tuple``.
+        """Cross-compile a Notion page into a description ``tuple``.
 
         Args:
             page (NotionPage): The page to be cross-compiled.
@@ -329,9 +330,9 @@ class ToDescVisitor(NotionObjectVisitor):
             tuple: A DBAPI 2.0 compatible description tuple.
         """
         return (
-            self._add_not_used_seq(('__id__', 'string',)), 
-            self._add_not_used_seq(('__archived__', 'boolean',)),
-            self._add_not_used_seq(('__in_trash__', 'boolean',)),
+            self._add_not_used_seq((SpecialColumns.NO_ID, 'string',)), 
+            self._add_not_used_seq((SpecialColumns.NO_ARCHIVED, 'boolean',)),
+            self._add_not_used_seq((SpecialColumns.NO_IN_TRASH, 'boolean',)),
             *[prop.accept(self) for prop in page.properties]             
         )
     
@@ -345,13 +346,13 @@ class ToDescVisitor(NotionObjectVisitor):
             tuple: A DBAPI 2.0 compatible description tuple.
         """
         return (
-            self._add_not_used_seq(('__id__', 'string',)), 
-            self._add_not_used_seq(('__title__', 'string',)),
-            self._add_not_used_seq(('__archived__', 'boolean',)),
-            self._add_not_used_seq(('__in_trash__', 'boolean',)),
+            self._add_not_used_seq((SpecialColumns.NO_ID, 'string',)), 
+            self._add_not_used_seq((SpecialColumns.NO_TITLE, 'string',)),
+            self._add_not_used_seq((SpecialColumns.NO_ARCHIVED, 'boolean',)),
+            self._add_not_used_seq((SpecialColumns.NO_IN_TRASH, 'boolean',)),
              *[prop.accept(self) for prop in db.properties] 
         )
     
     def visit_property(self, prop):
-        return self._add_not_used_seq((prop.name, prop.type,))
+        return self._add_not_used_seq((prop.name, prop.type, prop.id, ), 4)
  

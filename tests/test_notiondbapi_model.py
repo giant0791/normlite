@@ -3,6 +3,7 @@ import pdb
 from typing import Any, Dict
 import pytest
 
+from normlite._constants import SpecialColumns
 from normlite.notiondbapi._model import NotionDatabase, NotionPage, NotionProperty
 from normlite.notiondbapi._parser import parse_database, parse_page, parse_property
 from normlite.notiondbapi._visitor_impl import ToDescVisitor, ToRowVisitor
@@ -365,7 +366,7 @@ def float_number_val() -> Dict[str, Any]:
 def test_parse_dollar_number_def_property(dollar_number_def: dict):
     """Test that the description visitor correctly parses the number definition"""
     expected =  (
-        'Price', 'number.dollar', None, None, None, None, None,
+        'Price', 'number.dollar', 'evWq', None, None, None, None,
     )
 
     property: NotionProperty = parse_property('Price', dollar_number_def['Price'])
@@ -373,7 +374,7 @@ def test_parse_dollar_number_def_property(dollar_number_def: dict):
 
 def test_parse_number_def_property(number_def: dict):
     expected = (
-        'id', 'number', None, None, None, None, None,
+        'id', 'number', '_e:Wq', None, None, None, None,
     )
 
     property: NotionProperty = parse_property('id', number_def['id'])
@@ -381,7 +382,7 @@ def test_parse_number_def_property(number_def: dict):
 
 def test_parse_int_or_float_number_def_property(int_or_float_number_def: dict):
     expected = (
-        'Price', 'number.number', None, None, None, None, None, 
+        'Price', 'number.number', '%7B%5D_P', None, None, None, None, 
     )
 
     property: NotionProperty = parse_property('Price', int_or_float_number_def['Price'])
@@ -485,13 +486,13 @@ def test_to_desc_visitor_for_database_created(created_database):
     
     """
     expected = (
-        ('id', 'string', None, None, None, None, None,),
-        ('title', 'string', None, None, None, None, None,),
-        ('archived', 'boolean', None, None, None, None, None,),
-        ('in_trash', 'boolean', None, None, None, None, None),
-        ('id', 'number', None, None, None, None, None,),
-        ('name', 'title', None, None, None, None, None,),
-        ('grade', 'rich_text', None, None, None, None, None,),
+        (SpecialColumns.NO_ID, 'string', None, None, None, None, None,),
+        (SpecialColumns.NO_TITLE, 'string', None, None, None, None, None,),
+        (SpecialColumns.NO_ARCHIVED, 'boolean', None, None, None, None, None,),
+        (SpecialColumns.NO_IN_TRASH, 'boolean', None, None, None, None, None),
+        ('id', 'number', 'evWq', None, None, None, None,),
+        ('name', 'title', 'title', None, None, None, None,),
+        ('grade', 'rich_text', 'V}lX', None, None, None, None,),
     )
     
     database: NotionDatabase = parse_database(created_database)
@@ -502,12 +503,12 @@ def test_to_desc_visitor_for_database_created(created_database):
 
 def test_desc_visitor_for_page_created(created_page: dict):
     expected = (
-        ('id', 'string',  None, None, None, None, None,),
-        ('archived', 'boolean', None, None, None, None, None,),
-        ('in_trash', 'boolean', None, None, None, None, None),
-        ('id', None, None, None, None, None, None),
-        ('name', None, None, None, None, None, None),
-        ('grade', None, None, None, None, None, None),
+        (SpecialColumns.NO_ID, 'string',  None, None, None, None, None,),
+        (SpecialColumns.NO_ARCHIVED, 'boolean', None, None, None, None, None,),
+        (SpecialColumns.NO_IN_TRASH, 'boolean', None, None, None, None, None),
+        ('id', None, '%3AUPp', None, None, None, None),
+        ('name', None, 'A%40Hk', None, None, None, None),
+        ('grade', None, 'BJXS', None, None, None, None),
     )
 
     page: NotionPage = parse_page(created_page)
@@ -518,12 +519,12 @@ def test_desc_visitor_for_page_created(created_page: dict):
 
 def test_desc_visitor_for_page_retrieved(retrieved_page: dict):
     expected = (
-        ('id', 'string', None, None, None, None, None,),
-        ('archived', 'boolean', None, None, None, None, None,),
-        ('in_trash', 'boolean', None, None, None, None, None,),
-        ('Price', 'number', None, None, None, None, None,),
-        ('Description', 'rich_text', None, None, None, None, None,),
-        ('Name', 'title', None, None, None, None, None,),
+        (SpecialColumns.NO_ID, 'string', None, None, None, None, None,),
+        (SpecialColumns.NO_ARCHIVED, 'boolean', None, None, None, None, None,),
+        (SpecialColumns.NO_IN_TRASH, 'boolean', None, None, None, None, None),
+        ('Price', 'number', 'BJXS', None, None, None, None,),
+        ('Description', 'rich_text', '_Tc_', None, None, None, None,),
+        ('Name', 'title', 'title', None, None, None, None,),
     )
 
     page: NotionPage = parse_page(retrieved_page)
@@ -534,12 +535,12 @@ def test_desc_visitor_for_page_retrieved(retrieved_page: dict):
 
 def test_desc_visitor_for_page_updated(updated_page: dict):
     expected = (
-        ('id', 'string',  None, None, None, None, None,),
-        ('archived', 'boolean', None, None, None, None, None,),
-        ('in_trash', 'boolean', None, None, None, None, None),
-        ('Price', None, None, None, None, None, None,),
-        ('Description', None, None, None, None, None, None,),
-        ('Name', None, None, None, None, None, None,),
+        (SpecialColumns.NO_ID, 'string', None, None, None, None, None,),
+        (SpecialColumns.NO_ARCHIVED, 'boolean', None, None, None, None, None,),
+        (SpecialColumns.NO_IN_TRASH, 'boolean', None, None, None, None, None),
+        ('Price', None, 'BJXS', None, None, None, None,),
+        ('Description', None, '_Tc_', None, None, None, None,),
+        ('Name', None, 'title', None, None, None, None,),
     )
 
     page: NotionPage = parse_page(updated_page)
@@ -550,13 +551,13 @@ def test_desc_visitor_for_page_updated(updated_page: dict):
 
 def test_desc_visitor_for_retrieved_database(database_retrieved: dict):
     expected = (
-        ('id', 'string', None, None, None, None, None,),
-        ('title', 'string', None, None, None, None, None,),
-        ('archived', 'boolean', None, None, None, None, None,),
-        ('in_trash', 'boolean', None, None, None, None, None),
-        ('Price', 'number.dollar', None, None, None, None, None,),
-        ('Description', 'rich_text', None, None, None, None, None,),
-        ('Name', 'title', None, None, None, None, None,),
+        (SpecialColumns.NO_ID, 'string', None, None, None, None, None,),
+        (SpecialColumns.NO_TITLE, 'string', None, None, None, None, None,),
+        (SpecialColumns.NO_ARCHIVED, 'boolean', None, None, None, None, None,),
+        (SpecialColumns.NO_IN_TRASH, 'boolean', None, None, None, None, None),
+        ('Price', 'number.dollar', 'evWq', None, None, None, None,),
+        ('Description', 'rich_text', 'V}lX', None, None, None, None,),
+        ('Name', 'title', 'title', None, None, None, None,),
     )
 
     database: NotionDatabase = parse_database(database_retrieved)
