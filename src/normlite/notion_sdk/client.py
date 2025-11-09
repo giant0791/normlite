@@ -26,16 +26,20 @@ to store the Notion data as a JSON file on the file system.
 """
 
 from __future__ import annotations
+import copy
 from dataclasses import dataclass
 import json
 import operator
 from pathlib import Path
 import pdb
-from typing import List, Optional, Protocol, Self, Sequence, Set, Type
+from typing import List, Optional, Self, Sequence, Set, Type
 from types import TracebackType
 from abc import ABC, abstractmethod
 import uuid
 from datetime import datetime
+import random
+import string
+import urllib.parse
 
 class NotionError(Exception):
     """Exception raised for all errors related to the Notion REST API."""
@@ -276,36 +280,122 @@ class InMemoryNotionClient(AbstractNotionClient):
                         if prop_title and prop_title[0]['text']['content'] == title:
                             return o
         return {}
-
-    def _add(self, type: str, payload: dict, id: Optional[str] = None) -> dict: 
-        # check well-formedness of payload
-        # Note: "properties" object existence is validated previously when binding parameters 
-        if not payload.get('parent', None):
-            # objects being added need to have the parent they belog to
-            raise NotionError(f'Missing "parent" object in payload: {payload}')  
-                    
-        new_page = dict()
-        new_page['object'] = type
+    
+    def _new_object(self, type_: str, payload: dict, id: Optional[str] = None) -> dict:
+        new_page_or_db = dict()
+        new_page_or_db['object'] = type_
 
         # use the provided id for behavioral predictability if available 
-        new_page['id'] = id if id else str(uuid.uuid4())
+        new_page_or_db['id'] = id if id else str(uuid.uuid4())
         current_date = datetime.now()
-        new_page['created_id'] = current_date.isoformat()
-        new_page['archived'] = False
-        new_page['in_trash'] = False
-        new_page.update(payload)
-        if type == 'database':
-            new_page['is_inline'] = False
+        new_page_or_db['created_id'] = current_date.isoformat()
+        new_page_or_db['archived'] = False
+        new_page_or_db['in_trash'] = False
+        new_page_or_db.update(payload)
+    
+        return new_page_or_db
 
-        # add the type key to each property for both pages and databases
-        properties = new_page['properties']
+    def _add_database(self, new_object: dict) -> dict:
+        new_object['is_inline'] = False
+        property_keys = [key for key in new_object.get('properties').keys()]
+        ret_new_db = copy.deepcopy(new_object)
+        ret_new_db.pop('properties')
+        ret_new_db['properties'] = {name: {} for name in property_keys}
+        properties = new_object['properties']
         for prop_name, prop_obj in properties.items():
             prop_type = list(prop_obj.keys())
             properties[prop_name]['type'] = prop_type[0]
+            # database objects contain the keys 'type' and 'id' instead
+            # ids are generated for databases
+            properties[prop_name]['id'] = 'title' if prop_type[0] == 'title' else self._generate_property_id()
+            ret_new_db['properties'][prop_name] = properties[prop_name]
 
-        self._store["store"].append(new_page)
+        return ret_new_db
+        
+    def _add_page(self, new_object: dict) -> dict:
+        ret_new_pg = copy.deepcopy(new_object)
+        ret_new_pg.pop('properties')
+        property_keys = [key for key in new_object.get('properties').keys()]
+        ret_new_pg['properties'] = {name: {} for name in property_keys}
+        parent = new_object.get('parent')
+        properties = new_object['properties']
+        if parent.get('type') == 'database_id':
+            # parent is a database, copy database property ids into page property ids
+            schema = self._get(parent.get('database_id'))
+            if not schema:
+                # no database found for this page object
+                raise NotionError(f'No database found with database_id: {parent.get('database_id')}')
+                
+            for prop_name, prop_obj in properties.items():
+                # page objects just contain the key 'id' in their properties from the schema object
+                prod_id = schema['properties'][prop_name]['id']
+                prop_obj['id'] =  prod_id
+                ret_new_pg['properties'][prop_name]['id'] = prod_id
+        else:
+            # parent is a page, generate new property ids
+            for prop_name, prop_obj in properties.items():
+                prop_type = list(prop_obj.keys())
+                prop_obj['id'] = 'title' if prop_type[0] == 'title' else self._generate_property_id()
+                ret_new_pg['properties'][prop_name]['id'] = prop_obj['id']
 
-        return new_page
+        return ret_new_pg
+
+    def _add(self, type_: str, payload: dict, id: Optional[str] = None) -> dict: 
+        """Add Notion objects to the store.
+        
+        This utitlity method handles 3 use cases:
+            - add a database
+            - add a page to an existing database
+            - add a page to an existing page
+        """
+        # check well-formedness of payload
+        # Note: "properties" object existence is validated previously when binding parameters 
+        parent = payload.get('parent', None)
+        if not parent:
+            # objects being added need to have the parent they belog to
+            raise NotionError('Body failed validation: body.parent should be defined, instead was undefined')  
+
+        if not parent.get('type', None):
+            raise NotionError('Body failed validation: body.parent.type should be defined, instead was undefined')
+        
+        if type_ not in ['page', 'database']:
+            raise NotionError(
+                f'Body failed validation: body.parent.type should be either '
+                f'"page" or "database", instead "{type_}" was defined')
+        
+        new_object = self._new_object(type_, payload, id)
+        if type_ == 'page':
+            ret_object = self._add_page(new_object)
+        elif type_ == 'database':
+            ret_object = self._add_database(new_object)
+        elif type_ == 'data_source':
+            raise NotionError('"data_source" type not supported yet')
+        else:
+            raise NotionError(f'"{type_}" not supported or unknown')
+
+        self._store['store'].append(new_object)
+        return ret_object
+
+    def _generate_property_id(self) -> str:
+        """
+        Generate a pseudo Notion-like property id.
+        
+        These ids are short, random strings containing
+        letters and a few special characters, then URL-encoded.
+        """
+        # generate an identifier of length between 4 and 6 chars
+        length = random.randint(4, 6)
+
+        # plausible alphabet based on decoded examples:
+        alphabet = string.ascii_letters + string.digits + ":;@[]?`"
+
+        # generate random sequence
+        raw = ''.join(random.choice(alphabet) for _ in range(length))
+
+        # URL-encode non-alphanumeric characters to mimic Notion API output
+        encoded = urllib.parse.quote(raw, safe=string.ascii_letters + string.digits)
+
+        return encoded
 
     def _store_len(self) -> int:
         return len(self._store['store'])

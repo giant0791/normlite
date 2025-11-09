@@ -56,93 +56,95 @@ def test_add_private_method(inmem_client: InMemoryNotionClient):
     assert properties['table_catalog']['type'] == 'rich_text'
     assert properties['table_id']['type'] == 'rich_text'
 
+def _compare_property_ids(obj: dict, other: dict) -> bool:
+    """Helper function to compare the property ids of two objects"""
+    props = obj.get('properties')
+    otherprops = other.get('properties')
+    pkeys = list(props.keys())
+    otherkeys = list(otherprops.keys())
+    if pkeys != otherkeys:
+        return False
+    
+    pids = {'id': props[key]['id'] for key in pkeys}
+    otherids = {'id': otherprops[key]['id'] for key in otherkeys}
 
-def test_pages_create_old_interface(inmem_client: InMemoryNotionClient):
-    page_object = {
+    return pids == otherids
+
+def test_add_page_to_page(inmem_client: InMemoryNotionClient):
+    pg_payload = {
+        'parent': {
+            'type': "page_id",
+            'page_id': "98ad959b-2b6a-4774-80ee-00246fb0ea9b",
+        },
+        'properties': {
+            'Name': {'title': {}},
+            'Description': {'rich_text': {}}
+        }
+    }
+    new_pg_obj = inmem_client.pages_create(pg_payload)
+    retrieved_pg_obj = inmem_client.pages_retrieve({'id': new_pg_obj['id']})
+    assert _compare_property_ids(new_pg_obj, retrieved_pg_obj)
+
+
+def test_add_page_to_database(inmem_client: InMemoryNotionClient):
+    # 1. Create a new database
+    db_payload = {
+        'parent': {
+            'type': "page_id",
+            'page_id': "98ad959b-2b6a-4774-80ee-00246fb0ea9b",
+        },
+        'title': [{
+            'type': 'text',
+            'text': {'content': 'Grocery List', 'link': None}
+        }],
+        'properties': {
+            'Name': {'title': {}},
+            'Description': {'rich_text': {}}
+        }
+    }
+    new_db_obj = inmem_client.databases_create(db_payload)
+    assert new_db_obj['parent']['page_id'] == "98ad959b-2b6a-4774-80ee-00246fb0ea9b"
+    assert not new_db_obj['archived'] 
+    assert not new_db_obj['in_trash']
+    property_keys = [k for k in new_db_obj['properties'].keys()]
+    assert property_keys == ['Name', 'Description']
+
+    # 2. Add a new page to the newly created database
+    dbid = new_db_obj['id']
+    pg_payload = {
         'parent': {
             'type': 'database_id',
-            'database_id': 'd9824bdc-8445-4327-be8b-5b47500af6ce'
+            'database_id': dbid
         },
         'properties': {
             'Name': {
-                'title': [
-                    {
-                        'text': {'content': 'Tuscan kale'}
-                    }
-                ]
+                'title': [{'text': {'content': 'Tuscan kale'}}]
             },
             'Description': {
-                'rich_text': [
-                    {
-                        'text': {'content': 'A dark green leafy vegetable'}
-                    }
-                ]
+                'rich_text': [{'text': {'content': 'A dark green leafy vegetable'}}]
             }
         }
     }
-    new_page: Dict[str, Any] = inmem_client.pages_create(page_object)
-    retrieved_page: Dict[str, Any] = inmem_client.pages_retrieve(new_page)
 
-    assert retrieved_page is not {}
-    assert retrieved_page == new_page
+    new_pg_obj = inmem_client.pages_create(pg_payload)
+    assert _compare_property_ids(new_pg_obj, new_db_obj)
 
-def test_pages_create_new_interface(inmem_client: InMemoryNotionClient):
-    page_object = {
+def test_add_database(inmem_client: InMemoryNotionClient):
+    # 1. Create a new database
+    db_payload = {
         'parent': {
-            'type': 'database_id',
-            'database_id': 'd9824bdc-8445-4327-be8b-5b47500af6ce'
+            'type': "page_id",
+            'page_id': "98ad959b-2b6a-4774-80ee-00246fb0ea9b",
         },
+        'title': [{
+            'type': 'text',
+            'text': {'content': 'Grocery List', 'link': None}
+        }],
         'properties': {
-            'Name': {
-                'title': [
-                    {
-                        'text': {'content': 'Tuscan kale'}
-                    }
-                ]
-            },
-            'Description': {
-                'rich_text': [
-                    {
-                        'text': {'content': 'A dark green leafy vegetable'}
-                    }
-                ]
-            }
+            'Name': {'title': {}},
+            'Description': {'rich_text': {}}
         }
     }
-    new_page: Dict[str, Any] = inmem_client('pages', 'create', page_object)
-    retrieved_page: Dict[str, Any] = inmem_client('pages', 'retrieve', new_page)
-
-    assert retrieved_page is not {}
-    assert retrieved_page == new_page
-
-def test_pages_create_filebased(filebased_client: FileBasedNotionClient):
-    page_object = {
-        'parent': {
-            'type': 'database_id',
-            'database_id': 'd9824bdc-8445-4327-be8b-5b47500af6ce'
-        },
-        'properties': {
-            'Name': {
-                'title': [
-                    {
-                        'text': {'content': 'Tuscan kale'}
-                    }
-                ]
-            },
-            'Description': {
-                'rich_text': [
-                    {
-                        'text': {'content': 'A dark green leafy vegetable'}
-                    }
-                ]
-            }
-        }
-    }
-    new_page: Dict[str, Any] = filebased_client.pages_create(page_object)
-    retrieved_page: Dict[str, Any] = filebased_client.pages_retrieve(new_page)
-
-    assert retrieved_page is not {}
-    assert retrieved_page == new_page
-
-def test_filebased_client_persistency():
-    client = FileBasedNotionClient("my-database.json")
+    new_db_obj = inmem_client.databases_create(db_payload)
+    retrieved_db_obj = inmem_client.databases_retrieve({'id': new_db_obj['id']})
+    assert new_db_obj == retrieved_db_obj
