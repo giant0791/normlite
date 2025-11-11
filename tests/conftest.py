@@ -23,7 +23,7 @@ def ischema_page_id() -> str:
     return '680dee41-b447-451d-9d36-c6eaff13fb46'
 
 @pytest.fixture(scope="session")
-def client(api_key: str, ischema_page_id: str) -> AbstractNotionClient:
+def client() -> AbstractNotionClient:
     return InMemoryNotionClient()
 
 # Load the fixture file once
@@ -55,41 +55,5 @@ def dbapi_connection(proxy_client: FlaskClient, client: AbstractNotionClient) ->
 # The following fixture must be scope=function otherwise the attribute
 # _result_set gets overwritten when executing all tests together
 @pytest.fixture(scope="function")
-def dbapi_cursor(dbapi_connection: Connection) -> Cursor:
-    cursor = Cursor(dbapi_connection)
-    
-    # DBAPI 2.0: 
-    # The attribute is -1 in case no .execute*() has been performed on the cursor 
-    # or the rowcount of the last operation cannot be determined by the interface. 
-    assert cursor.rowcount == -1
-
-    # New interface: ._parse_result_set() parses the returned object(s) and fills in the result set
-    cursor._parse_result_set({
-        "object": "list",
-        "results": [
-            {
-                "object": "page",
-                "id": '680dee41-b447-451d-9d36-c6eaff13fb45',
-                "archived": False,
-                "in_trash": False,
-                "properties": {
-                    "id": {"id": "%3AUPp","type": "number", "number": 12345},
-                    "grade": {"id": "A%40Hk", "type": "rich_text", "rich_text": [{"text": {"content": "B"}}]},
-                    "name": {"id": "BJXS", "type": "title", "title": [{"text": {"content": "Isaac Newton"}}]},
-                },
-            },
-            {
-                "object": "page",
-                "id": '680dee41-b447-451d-9d36-c6eaff13fb46',
-                "archived": True,
-                "in_trash": True,
-                "properties": {
-                    "id": {"id": "Iowm", "type": "number", "number": 67890},
-                    "grade": {"id": "Jsfb", "type": "rich_text", "rich_text": [{"text": {"content": "A"}}]},
-                    "name": {"id": "WOd%3B", "type": "title", "title": [{"text": {"content": "Galileo Galilei"}}]},
-                },
-            },
-        ]
-    })
-
-    return cursor
+def dbapi_cursor(client: AbstractNotionClient) -> Cursor:
+    return Cursor(client)

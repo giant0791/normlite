@@ -17,6 +17,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
+import copy
 import pdb
 from typing import Any, Dict, Iterator, List, Literal, Optional, Self, Sequence, Tuple, TypeAlias, Union
 import uuid
@@ -74,11 +75,11 @@ class OperationalError(DatabaseError):
 
     """
 
-class BaseCursor:
+class Cursor:
     """Provide database base cursor functionalty according to the DBAPI 2.0 specification (PEP 249).
     
     Note:
-        the :class:`BaseCursor` does not support transaction awareness. Use :class:`Cursor` for fully
+        the :class:`Cursor` does not support transaction awareness. Use :class:`CompositeCursor` for fully
         DBAPI 2.0 compliant cursor.
 
     .. versionadded:: 0.7.0
@@ -248,7 +249,7 @@ class BaseCursor:
         elif object_ == 'database':
             database: NotionDatabase = parse_database(obj)
             row = database.accept(row_visitor)
-            self._description = page.accept(desc_visitor)
+            self._description = database.accept(desc_visitor)
          
         else:
             raise InterfaceError(f'Expected "page" or "database", received: "{object_}"')
@@ -401,7 +402,7 @@ class BaseCursor:
 
         return results
     
-    def execute(self, operation: dict, parameters: DBAPIExecuteParameters) -> Self:
+    def execute(self, operation: dict, parameters: Optional[DBAPIExecuteParameters] = None) -> Self:
         """Prepare and execute a database operation (query or command).
 
         Parameters may be provided as a mapping and will be bound to variables in the operation.
@@ -414,8 +415,11 @@ class BaseCursor:
 
         Important:
             :meth:`.execute()` stores the executed command result(s) in the internal
-            result set. Always call this method prior to :meth:`Cursor.fetchone()` and :meth:`Cursor.fetchall()`,
+            result set. Always call this method prior to :meth:`BaseCursor.fetchone()` and :meth:`Cursor.fetchall()`,
             otherwise an :exc:`InterfaceError` error is raised. 
+
+        .. versionchanged:: 0.7.0
+            :meth:`Cursor:execute()` now accepts operations with no parameters. This happens for ``CREATE TABLE`` DDL statements.
 
         .. versionchanged:: 0.5.0
             Calling this method on a closed cursor raises the :exc:`Error`.
@@ -463,20 +467,8 @@ class BaseCursor:
             )
 
         object_ = {}
-        payload = {}
-        if parameters.get('params', {}):
-            # Not all operations require paramter binding (e.g. databases.create)
-            payload = self._bind_parameters(parameters)
-        
-        else:
-            payload = parameters.get('payload')
-
         try:
-            object_ = self._client(
-                operation['endpoint'],
-                operation['request'],
-                payload
-            )
+            object_ = self._client(operation['endpoint'], operation['request'], operation['payload'])
         except KeyError as ke:
             raise InterfaceError(f"Missing required key in operation dict: {ke.args[0]}")
         
@@ -517,56 +509,8 @@ class BaseCursor:
         self._description = None
         self._result_set = None
         self._closed = True
-
-    def _bind_parameters(self, parameters: DBAPIExecuteParameters) -> dict:
-        """Helper for binding values to the payload."""
-        
-        payload = parameters.get('payload', {})
-        params = parameters.get('params', {})
-        if not payload or not params:
-            raise InterfaceError(f'Missing "payload" or "params" object in parameters: {parameters}')
-        
-        properties: Dict[str, Any] = payload.get('properties', {})
-        if not properties:
-            raise InterfaceError('f"Missing "properties" object in payload: {payload}')
-        
-        
-        for property_name in properties.keys():
-            property_object = properties.get(property_name)
-            try:
-                # get the value from the current binding corresponding to the property name
-                value = params[property_name]
-            except KeyError as ke:
-                raise InterfaceError(f"Missing binding parameter for property '{ke.args[0]}'") 
-            
-            for key in property_object.keys(): 
-                if key == 'number':
-                    # the property value to be bound is a number
-                    if not isinstance(value, int):
-                        raise ValueError(
-                            f"Expected integer value for number property: '{property_name}', "
-                            f"received: '{value}'"
-                        )
-                    property_object[key] = value
                 
-                elif key in ['title', 'rich_text']:
-                    # the property value to be bound is a title or richt text
-                    if not isinstance(value, str):
-                        raise ValueError(
-                            f"Expected string value for '{key}' property: '{property_name}', "
-                            f"received: '{value}'"
-                        )
-                    property_object[key] = [dict(text=dict(content=value))]
-                
-                else:
-                    raise TypeError(
-                        f"Unknown or unsupported type '{key}' "
-                        f"supplied in property '{property_name}'"
-                    )
-                
-        return payload
-                
-class Cursor(BaseCursor):
+class CompositeCursor(Cursor):
     """Transaction-aware DBAPI cursor
     
     This is how the new Cursor class will work in tandem with :class:`Connection`.
@@ -585,7 +529,7 @@ class Cursor(BaseCursor):
         self._dbapi_connection = dbapi_connection
         super().__init__(self._dbapi_connection._client)
 
-    def execute(self, operation: dict, parameters: DBAPIExecuteParameters) -> Self:
+    def execute(self, operation: dict, parameters: Optional[DBAPIExecuteParameters] = None) -> Self:
         """Execute the operation within the currently opened transaction.
 
         This method is similar to :meth:`BaseCursor.execute()` with the additional feature of
@@ -615,7 +559,7 @@ class Cursor(BaseCursor):
         # Otherwise the operation will be executed immediately and outside the transaction context.
         # Add the operation and parameters to the transaction operations list
         payload = {}
-        if parameters.get('params', {}):
+        if parameters and parameters.get('params', {}):
             # bind the params and construct the final payload
             payload = self._bind_parameters(parameters)
         
@@ -627,7 +571,96 @@ class Cursor(BaseCursor):
 
         return self
 
+IsolationLevel = Literal[
+    """Isolation level supported by the API."""
+
+    "SERIALIZABLE",
+    "REPEATABLE READ",
+    "READ COMMITTED",
+    "READ UNCOMMITTED",
+    "AUTOCOMMIT",
+]
+
+
+
 class Connection:
+    """Provide database base connection functionalty according to the DBAPI 2.0 specification (PEP 249).
+    
+    Warning:
+        This class implements the "AUTOCOMMIT" (non-transactional) isolation level only. This means that its transaction-related methods like :meth:`Connection.commit()`
+        and :meth:`Connection.rollback()` are not implemented.
+
+    .. versionadded:: 0.7.0
+
+    """
+
+    def __init__(self, client: AbstractNotionClient, isolation_level: Optional[IsolationLevel] = 'AUTOCOMMIT'):
+        self._isolation_level = isolation_level
+        """The isolation level set for this database connection."""
+
+        self._client = client
+        """The dependecy-injected Notion client to interface with."""
+
+        self._cursor: Cursor = None
+        """Classic DBAPI cursor to execute operations and fetch rows."""
+
+    @property
+    def autocommit(self) -> bool:
+        """Read-only attribute to query the autocommit mode of the connection.
+        
+        Return ``True`` if the connection is operating in autocommit (non-transactional) mode.
+
+        Note:
+            :class:`BaseConnection` implements the autocommit mode only, so the read-only attribute always returns ``True``.
+            Setting the autocommit mode by writing to the attribute is not supported as it is deprecated according to PEP 249.
+        
+        """
+        return self._isolation_level == 'AUTOCOMMIT'
+
+    def cursor(self, composite: Optional[bool] = False) -> Union[Cursor, CompositeCursor]:
+        """Procure a new cursor object using the connection.
+
+        Args:
+            composite (bool, optional): ``False`` supported only. The provided value is ignored. 
+
+        Returns:
+            Union[Cursor, CompositeCursor]: Always a non-composite cursor regardless of the supplied argument value.
+
+        .. versionchanged:: 0.7.0
+
+        """
+ 
+        # IMPORTANT: The DBAPI connection must always procure a new cursor because this has a per-operation lifecyle
+        return Cursor(self._client)
+    
+    
+    def _begin_transaction(self) -> None:
+        """Begin a new transaction."""
+
+    def _in_transaction(self) -> bool:
+        """True if the connection has already initiated a transaction.
+        
+        This method is used by the cursor to determin whether to begin a new transaction or not.
+        """
+        return True
+
+    def _execute_in_transaction(self, operation: dict, parameters: Optional[DBAPIExecuteParameters] = None) -> None:
+        """Execute the operation in the context of the opened transaction.
+        
+        Args:
+            operation (dict): A dictionary containing the Notion API request to be executed.
+            parameters (DBAPIExecuteParameters): A dictionary containing the payload for the Notion API request
+
+        Raises:
+            OperationalError: If it fails to add the operation to the transaction.
+            InternalError: If the operation is not supported or not recognized.
+
+        .. versionadded:: 0.7.0
+        
+        """
+        self.cursor().execute(operation, parameters)
+
+class TxnConnection(Connection):
     """Provide database base connection functionalty according to the DBAPI 2.0 specification (PEP 249).
 
     Warning:
@@ -638,8 +671,9 @@ class Connection:
 
     """
     def __init__(self, proxy_client: FlaskClient, client: AbstractNotionClient):
+        super().__init__(client)
         self._proxy_client = proxy_client
-        self._client = client
+        
         self._tx_id: str = None 
         
         self._cursor: Cursor = None
@@ -650,7 +684,7 @@ class Connection:
 
         self._cursors: List[Cursor] = []
 
-    def cursor(self, composite=False) -> Union[Cursor, CompositeCursor]:
+    def cursor(self, composite: Optional[bool] = False) -> Union[Cursor, CompositeCursor]:
         """Procure a new cursor object using the connection.
 
         Args:
@@ -693,7 +727,7 @@ class Connection:
         """
         return self._tx_id
     
-    def _execute_in_transaction(self, operation: dict, parameters: DBAPIExecuteParameters) -> None:
+    def _execute_in_transaction(self, operation: dict, parameters: Optional[DBAPIExecuteParameters] = None) -> None:
         """Execute the operation in the context of the opened transaction.
         
         Args:

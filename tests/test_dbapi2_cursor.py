@@ -4,6 +4,35 @@ import uuid
 import pytest
 from normlite.notiondbapi.dbapi2 import Cursor, Error, InterfaceError
 
+def make_result_set(dbapi_cursor: Cursor) -> Cursor:
+    dbapi_cursor._parse_result_set({
+        "object": "list",
+        "results": [
+            {
+                "object": "page",
+                "id": '680dee41-b447-451d-9d36-c6eaff13fb45',
+                "archived": False,
+                "in_trash": False,
+                "properties": {
+                    "id": {"id": "%3AUPp","type": "number", "number": 12345},
+                    "grade": {"id": "A%40Hk", "type": "rich_text", "rich_text": [{"text": {"content": "B"}}]},
+                    "name": {"id": "BJXS", "type": "title", "title": [{"text": {"content": "Isaac Newton"}}]},
+                },
+            },
+            {
+                "object": "page",
+                "id": '680dee41-b447-451d-9d36-c6eaff13fb46',
+                "archived": True,
+                "in_trash": True,
+                "properties": {
+                    "id": {"id": "Iowm", "type": "number", "number": 67890},
+                    "grade": {"id": "Jsfb", "type": "rich_text", "rich_text": [{"text": {"content": "A"}}]},
+                    "name": {"id": "WOd%3B", "type": "title", "title": [{"text": {"content": "Galileo Galilei"}}]},
+                },
+            },
+        ]
+    }) 
+
 
 def test_rowcount_result_set_not_empty(dbapi_cursor: Cursor):
     # Given: 
@@ -13,7 +42,8 @@ def test_rowcount_result_set_not_empty(dbapi_cursor: Cursor):
     #   I call .rowcount
     # 
     # Then:
-    #   .rowcount returns 2 
+    #   .rowcount returns 2
+    make_result_set(dbapi_cursor)
     rowcount = dbapi_cursor.rowcount
     assert 2 == rowcount
 
@@ -27,6 +57,7 @@ def test_rowcount_result_set_empty(dbapi_cursor: Cursor):
     # Then:
     #   - The returned rows are 2 and it is a list
     #   - .rowcount returns 0 (result set is empty after .fetchall())
+    make_result_set(dbapi_cursor)
     rows = dbapi_cursor.fetchall()
     assert 2 == len(rows)
     assert isinstance(rows, list)
@@ -42,6 +73,7 @@ def test_row_count_w_consecutive_fetchones(dbapi_cursor: Cursor):
     # Then:
     #   - The returned row is a tuple
     #   - .rowcount decreases after each call until it gets 0 when the result set is empty
+    make_result_set(dbapi_cursor)
     assert 2  == dbapi_cursor.rowcount
     row = dbapi_cursor.fetchone()
     assert isinstance(row, tuple)
@@ -102,6 +134,7 @@ def test_lastrowid_many_modified_rows(dbapi_cursor: Cursor):
     #   - It returns the rowid of the last modified row (second row in the result set)
 
     # last modified row, for example after an INSERT statement
+    make_result_set(dbapi_cursor)
     assert '680dee41-b447-451d-9d36-c6eaff13fb46' == str(uuid.UUID(int=dbapi_cursor.lastrowid))
 
 def test_fetchall_returning_multiple_rows(dbapi_cursor: Cursor):
@@ -115,7 +148,7 @@ def test_fetchall_returning_multiple_rows(dbapi_cursor: Cursor):
     #   - .rowcount returns the number of inserted rows: 2
     #   - .fetchall() returns the 2 inserted rows
     #   - A subsequent call to .fetchall() returns []
-
+    make_result_set(dbapi_cursor)
     expected = [
         (
             '680dee41-b447-451d-9d36-c6eaff13fb45', False, False, 
@@ -162,11 +195,13 @@ def test_fetchone_returning_first_row(dbapi_cursor: Cursor):
     # Then:
     #   - .fetchone() returns first row inserted 
     #   - .rowcount returns the number of the remaining rows: 1
+    make_result_set(dbapi_cursor)
     expected_1 = (
         '680dee41-b447-451d-9d36-c6eaff13fb45', False, False, 
         12345, 'B', 'Isaac Newton',
     )
 
+    
     rowcount = dbapi_cursor.rowcount
     assert rowcount == 2
     
@@ -184,6 +219,7 @@ def test_fetchone_until_result_set_empty(dbapi_cursor: Cursor):
     # Then:
     #   - .fetchone() returns the remaining row in the result set  
     #   - .rowcount returns the number of the remaining rows
+    make_result_set(dbapi_cursor)
     expected_1 = (
         '680dee41-b447-451d-9d36-c6eaff13fb45', False, False, 
         12345,
