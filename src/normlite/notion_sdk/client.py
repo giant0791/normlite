@@ -32,7 +32,7 @@ import json
 import operator
 from pathlib import Path
 import pdb
-from typing import List, Optional, Self, Sequence, Set, Type
+from typing import List, NoReturn, Optional, Self, Sequence, Set, Type
 from types import TracebackType
 from abc import ABC, abstractmethod
 import uuid
@@ -339,7 +339,28 @@ class InMemoryNotionClient(AbstractNotionClient):
                 ret_new_pg['properties'][prop_name]['id'] = prop_obj['id']
 
         return ret_new_pg
+    
+    def _raise_if_validation_fails(self, type_: str, payload: dict) -> NoReturn:
+        # check well-formedness of payload
+        # Note: "properties" object existence is validated previously when binding parameters 
+        parent = payload.get('parent', None)
+        if not parent:
+            # objects being added need to have the parent they belog to
+            raise NotionError('Body failed validation: body.parent should be defined, instead was undefined')  
+        
+        if type_ not in ['page', 'database']:
+            raise NotionError(
+                f'Body failed validation: body.parent.type should be either '
+                f'"page" or "database", instead "{type_}" was defined')
 
+        if type_ == 'database' and not payload.get('title'):
+            raise NotionError(
+                f'Body failed validation: body.parent.title should be defined '
+                f'for database object, instead was undefined')
+        
+        if not payload.get('properties', None):
+            raise NotionError('Body failed validation: body.properties should be defined, instead was undefined')  
+        
     def _add(self, type_: str, payload: dict, id: Optional[str] = None) -> dict: 
         """Add Notion objects to the store.
         
@@ -348,21 +369,7 @@ class InMemoryNotionClient(AbstractNotionClient):
             - add a page to an existing database
             - add a page to an existing page
         """
-        # check well-formedness of payload
-        # Note: "properties" object existence is validated previously when binding parameters 
-        parent = payload.get('parent', None)
-        if not parent:
-            # objects being added need to have the parent they belog to
-            raise NotionError('Body failed validation: body.parent should be defined, instead was undefined')  
-
-        if not parent.get('type', None):
-            raise NotionError('Body failed validation: body.parent.type should be defined, instead was undefined')
-        
-        if type_ not in ['page', 'database']:
-            raise NotionError(
-                f'Body failed validation: body.parent.type should be either '
-                f'"page" or "database", instead "{type_}" was defined')
-        
+        self._raise_if_validation_fails(type_, payload)
         new_object = self._new_object(type_, payload, id)
         if type_ == 'page':
             ret_object = self._add_page(new_object)

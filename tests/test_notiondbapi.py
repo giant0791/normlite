@@ -1,74 +1,113 @@
 import copy
 import pdb
 from typing import Any, Dict
-import uuid
 import pytest
 from normlite.notiondbapi.dbapi2 import Cursor, InterfaceError
 
 @pytest.fixture
-def parameters() -> Dict[str,Any]:
+def new_pg_payload() -> Dict[str,Any]:
     """Proivde a well-formed parameters fixture for the `Cursor.execute()` method"""
     # The DBAPI implementation for Notion requires to specify the parent object as part of
     # the operation specification
-    parent = dict(type = 'database_name', database_id = 'd9824bdc-8445-4327-be8b-5b47500af6ce')
+    parent = dict(type = 'database_id', database_id = 'd9824bdc-8445-4327-be8b-5b47500af6ce')
     payload = {
         'properties': {
-            'id': {'number': ':id'},
-            'name': {'title': [{'text': {'content': ':name'}}]},
-            'grade': {'rich_text': [{'text': {'content': ':grade'}}]}
+            'id': {'number': 98765},
+            'name': {'title': [{'text': {'content': 'Ada Lovelace'}}]},
+            'grade': {'rich_text': [{'text': {'content': 'A'}}]}
         },
         'parent': parent
     }
-    params = {                                 # params contains the bindings
-        'id': 98765,
-        'name': 'Ada Lovelace',
-        'grade': 'A'
+    
+    return payload
+
+@pytest.fixture
+def new_db_payload() -> dict:
+    parent = dict(type = 'page_id', page_id = 'd9824bdc-8445-4325-ce8b-5b47500af6ce')
+    payload = {
+        'title': [
+        {
+            'type': 'text',
+            'text': {
+                'content': 'students',
+                "link": None
+            }
+        }],
+        'properties': {
+            'id': {'number': {}},
+            'name': {'title': {}},
+            'grade': {'rich_text': {}}
+        },
+        'parent': parent
     }
-    
-    return dict(payload=payload, params=params)
+    return payload
 
+def update_payload(payload: dict, key: str, value: dict) -> dict:
+    new_payload = copy.deepcopy(payload)
+    new_payload[key] = value
+    return new_payload
 
-
-def test_dbapi_cursor_execute(dbapi_cursor: Cursor, parameters: dict):
-    operation = dict(endpoint = 'pages', request = 'create')
-    dbapi_cursor.execute(operation, parameters)
-    dbapi_cursor.fetchall()
-
+def test_dbapi_cursor_execute_create_databases(dbapi_cursor: Cursor, new_db_payload: dict):
+    operation = dict(endpoint = 'databases', request = 'create', payload=new_db_payload)
+    dbapi_cursor.execute(operation)
     assert dbapi_cursor.rowcount == 1
+    row = dbapi_cursor.fetchone()      
+    database_id = row[0]
+    database_name = row[1]
 
-def test_dbapi_cursor_concat_calls(dbapi_cursor: Cursor, parameters: dict):
-    operation = dict(endpoint = 'pages', request = 'create')
-    results = dbapi_cursor.execute(operation, parameters).fetchall()
+    operation = dict(endpoint='databases', request='retrieve', payload={'id': database_id})
+    dbapi_cursor.execute(operation)
+    assert dbapi_cursor.rowcount == 1
+    row = dbapi_cursor.fetchone()
+    assert row[0] == database_id
+    assert row[1] == database_name 
     
-    assert len(results) == 1
 
-def test_dbapi_cursor_no_properties(dbapi_cursor: Cursor, parameters: Dict[str, Any]):
-    operation = dict(endpoint = 'pages', request = 'create')
-    parameters['payload'].pop('properties')
+def test_dbapi_cursor_execute_create_pages(dbapi_cursor: Cursor, new_db_payload: dict, new_pg_payload: dict):
+    operation = dict(endpoint = 'databases', request = 'create', payload=new_db_payload)
+    dbapi_cursor.execute(operation)
+    assert dbapi_cursor.rowcount == 1
+    row = dbapi_cursor.fetchone()      
+    database_id = row[0]
+
+    parent = dict(type='database_id', database_id=database_id)
+    updated_payload = update_payload(new_pg_payload, 'parent', parent)
+    operation = dict(endpoint = 'pages', request = 'create', payload=updated_payload)
+    rows = dbapi_cursor.execute(operation).fetchall()
+    assert len(rows) == 1
+
+def test_dbapi_cursor_execute_update_pages(dbapi_cursor: Cursor, new_db_payload: dict, new_pg_payload: dict):
+    # 1. create the database
+    operation = dict(endpoint = 'databases', request = 'create', payload=new_db_payload)
+    dbapi_cursor.execute(operation)
+    assert dbapi_cursor.rowcount == 1
+    row = dbapi_cursor.fetchone()      
+    database_id = row[0]
+
+    # 2. add a page
+    parent = dict(type='database_id', database_id=database_id)
+    updated_payload = update_payload(new_pg_payload, 'parent', parent)
+    operation = dict(endpoint = 'pages', request = 'create', payload=updated_payload)
+    row = dbapi_cursor.execute(operation).fetchone()
+    page_id = row[0]
+    archived = row[1]
+
+    # 3. modify page attribute archived to True
+    data = dict(archived=True)
+    payload = dict(id=page_id, data=data)
+    operation = dict(endpoint='pages', request='update', payload=payload)
+    row = dbapi_cursor.execute(operation)
+    row = dbapi_cursor.fetchone()
+    assert archived != row[1]
+
+def test_dbapi_cursor_no_properties(dbapi_cursor: Cursor, new_db_payload: dict):
+    payload_wo_properties = copy.deepcopy(new_db_payload)
+    payload_wo_properties.pop('properties')
+    operation = dict(endpoint = 'databases', request = 'create', payload=payload_wo_properties)
     with pytest.raises(
         InterfaceError, 
-        match='Missing "properties" object in payload:'):
-        dbapi_cursor.execute(operation, parameters)
+        match='Body failed validation: body.properties should be defined,'):
+        dbapi_cursor.execute(operation)
 
-def test_cursor_bind_params(dbapi_cursor: Cursor, parameters: Dict[str, Any]):
-    expected_bound_payload = copy.deepcopy(parameters['payload'])
-    expected_bound_payload['properties']['id'] = dict(number=1)
-    expected_bound_payload['properties']['name'] = {'title': [{'text': {'content': 'Isaac Newton'}}]}
-    expected_bound_payload['properties']['grade'] = {'rich_text': [{'text': {'content': 'B'}}]}
 
-    bound_payload = dbapi_cursor._bind_parameters(parameters)
-    assert expected_bound_payload == bound_payload
-    
-def test_cursor_execute_w_param_binding(dbapi_cursor: Cursor, parameters: Dict[str, Any]):
-    title = [dict(text=dict(content='students'))]
-    parameters['payload'].update({"title": title})
-    operation = dict(endpoint = 'pages', request = 'create')
-
-    dbapi_cursor.execute(operation, parameters)
-    new_row = dbapi_cursor.fetchall()
-    assert len (new_row) == 1
-    assert dbapi_cursor.rowcount == 1
-
-    obj_id = new_row[0][0][-1]  # object id is always first element, id value always last 
-    assert dbapi_cursor.lastrowid == uuid.UUID(obj_id).int
 
