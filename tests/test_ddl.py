@@ -1,9 +1,11 @@
 from __future__ import annotations
+import pdb
 from typing import Protocol
 import pytest
 
-from normlite.engine import Engine, create_engine
-from normlite.sql.ddl import CreateColumn, CreateTable, NotionDDLVisitor
+from normlite.engine.base import Engine, create_engine
+from normlite.sql.compiler import NotionCompiler
+from normlite.sql.ddl import CreateColumn, CreateTable
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, Number, String
 
@@ -19,9 +21,10 @@ def engine() -> Engine:
 
 def test_visit_column_number():
     num_col = CreateColumn(Column('id', Number('dollar')))
-    num_col.accept(NotionDDLVisitor())
-    num_property = num_col.compiled
-    assert num_property['id'] == {'type': 'number', 'number': {'format': 'dollar'}}
+    compiled = num_col.compile(NotionCompiler())
+    #pdb.set_trace()
+    num_property = compiled.as_dict()
+    assert num_property['id'] == {'number': {'format': 'dollar'}}
 
 def test_visit_table():
     metadata = MetaData()
@@ -38,16 +41,17 @@ def test_visit_table():
     students._db_parent_id = '12345678-9090-0606-1111-123456789012'
     
     ddl_stmt = CreateTable(students)
-    ddl_stmt.accept(NotionDDLVisitor())
-    create_table = ddl_stmt.compiled
-    assert create_table.get('parent')
-    assert create_table['parent']['page_id'] == '12345678-9090-0606-1111-123456789012'
-    assert create_table.get('title')
-    assert create_table['title']['text']['content'] == students.name
+    compiled = ddl_stmt.compile(NotionCompiler())
+    create_table = compiled.as_dict()
+    template = create_table.get('operation').get('template')
+    assert template.get('parent')
+    assert template['parent']['page_id'] == '12345678-9090-0606-1111-123456789012'
+    assert template.get('title')
+    assert template['title']['text']['content'] == students.name
     keys = [k for k in students.c.keys() if not k.startswith('_no_')]
-    assert list(create_table['properties'].keys()) == keys
+    assert list(template['properties'].keys()) == keys
     col_specs = [c.type_.get_col_spec(None) for c in students.columns if not c.name.startswith('_no_')]
-    assert list(create_table['properties'].values()) == col_specs
+    assert list(template['properties'].values()) == col_specs
 
     
 

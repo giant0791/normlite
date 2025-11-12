@@ -8,7 +8,8 @@ from normlite import (
     Column, ColumnCollection, PrimaryKeyConstraint, Table,
     ArchivalFlag, Date, Integer, ObjectId, String
 )
-from normlite.engine import Engine, create_engine
+from normlite._constants import SpecialColumns
+from normlite.engine.base import Engine, create_engine
 from normlite.sql.schema import MetaData
 from normlite.sql.type_api import Boolean
 
@@ -96,7 +97,6 @@ def test_columncollection_getitem_wrong_key(sc: ColumnCollection):
 def test_columncollection_asreadonly(sc: ColumnCollection):
     ro_sc = sc.as_readonly()
     with pytest.raises(TypeError, match='object is immutable and/or readonly.'):
-        #pdb.set_trace()
         del ro_sc['student_id']
 
 def test_columncollection_no_duplicates(sc: ColumnCollection):
@@ -217,8 +217,8 @@ def test_metadata_reflect():
     metadata.reflect(engine)
     columns = [c.name for c in students.columns]
     assert includes_all(columns, ['student_id', 'name', 'grade', 'is_active'])
-    assert '_no_id' in columns
-    assert '_no_archived' in columns
+    assert SpecialColumns.NO_ID in columns
+    assert SpecialColumns.NO_ARCHIVED in columns
 
 def test_create_table():
     engine = create_engine(
@@ -240,11 +240,8 @@ def test_create_table():
         Column('started_on', Date())
     )
 
-    #pdb.set_trace()
     students.create(engine)
-
     inspector = engine.inspect()
-
     assert inspector.has_table(students.name)
 
 

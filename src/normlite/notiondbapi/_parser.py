@@ -102,9 +102,6 @@ def parse_property(name: str, payload: dict) -> NotionProperty:
     ptype = payload.get("type")             # pytype is None for updated pages
     value = None
 
-    if ptype and not ptype in ['number', 'title', 'rich_text']:
-        raise TypeError(f'Unexpected or unsupported property type: {ptype}')
-
     if ptype == "number":
         number = payload.get("number", {})
 
@@ -123,6 +120,24 @@ def parse_property(name: str, payload: dict) -> NotionProperty:
 
         # rich_text is [] for database objects or pages returned from pages.create
         value = parse_text_content(rich_text) if rich_text else None
+
+    elif ptype == 'checkbox':
+        checkbox = payload.get('checkbox')
+        if checkbox:
+            value = bool(checkbox)
+
+    elif ptype == 'date':
+        value = {}
+        start = payload.get('start', {})
+        end = payload.get('end', {})
+        if start:
+            value['start'] = start
+        if end:
+            value['end'] = end
+
+    else:
+        raise TypeError(f'Unexpected or unsupported property type: "{ptype}"')        
+
 
     return NotionProperty(name=name, id=pid, type=ptype, value=value)
 
