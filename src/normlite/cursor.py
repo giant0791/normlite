@@ -19,19 +19,8 @@
 from __future__ import annotations
 from typing import Any, ClassVar, Iterator, Mapping, NamedTuple, NoReturn, Optional, Sequence, Union
 
-from normlite.exceptions import MultipleResultsFound, NormliteError, NoResultFound
+from normlite.exceptions import MultipleResultsFound, NormliteError, NoResultFound, ResourceClosedError
 from normlite.notiondbapi.dbapi2 import CompositeCursor, Cursor, InterfaceError
-
-class ResourceClosedError(NormliteError):
-    """The cursor cannot deliver rows.
-    
-    This exception is raised when a cursor (resource) cannot return rows because it is
-    either closed (i.e. exhausted) or it represents the result from an SQL statement that 
-    does not return values (e.g. ``INSERT``).
-
-    .. versionadded:: 0.5.0
-
-    """
 
 class _CursorColMapRecType(NamedTuple):
     """Helper record data structure to store column metadata.
@@ -50,6 +39,12 @@ class _CursorColMapRecType(NamedTuple):
 
     column_type: str
     """Currently, a string denoting the column type for conversion in the Python type system."""
+
+    column_id: str
+    """The Notion identifier for the property corresponding to this column.
+    
+    .. versionadded: 0.7.0
+    """
 
 _ColMapType = dict
 
@@ -88,14 +83,23 @@ class CursorResultMetaData(_NoCursorResultMetadata):
     returns_row = True
     """The associated cursor returns rows (e.g. ``SELECT`` statement)."""
 
-    def __init__(self, desc: Sequence[tuple]):
+    def __init__(self, desc: Sequence[tuple], result_columns: Optional[Sequence[str]] = None):
         self._colmap: _ColMapType = dict()
         """Mapping between column name and its description record :class:`_CursorColMapRecType`."""
         
-        self._colmap = {
-            col_name: _CursorColMapRecType(col_name, index, column_type)
-            for index, (col_name, column_type, _, _, _, _, _) in enumerate(desc)
-        }
+        self._colmap = {}
+
+        if result_columns:
+            self._colmap = {
+                col_name: _CursorColMapRecType(col_name, index, column_type, column_id)
+                for index, (col_name, column_type, column_id, _, _, _, _) in enumerate(desc)
+                if col_name in result_columns
+            }            
+        else:
+            self._colmap = {
+                col_name: _CursorColMapRecType(col_name, index, column_type, column_id)
+                for index, (col_name, column_type, column_id, _, _, _, _) in enumerate(desc)
+            }
 
         self._key_to_index: Mapping[str, int] = dict()
         """Mapping between column name and its positional index."""
@@ -131,7 +135,7 @@ class CursorResultMetaData(_NoCursorResultMetadata):
         """Provid the mapping beween the positional index of a column and its name."""
         return self._index_for_key
     
-class BaseCursorResult:
+class CursorResult:
     """Provide pythonic high level interface to result sets from SQL statements.
 
     This class is an adapter to the DBAPI cursor (see :class:`normlite.notiondbapi.dbapi2.Cursor`) 
@@ -142,19 +146,17 @@ class BaseCursorResult:
         If a closed DBAPI cursor is passed to the init method, this cursor result automatically
         transitions to the closed state.
 
+    .. versionchanged:: 0.7.0   This class now fully supports Notion property identifier as column ids. 
+        Additionally, the :meth:`close()` is now available to close the underlying DBAPI cursor. 
+        Therefore, all methods returning rows now check whether the cursor
+        is closed and raise the :exc:`ResourceClosedError`. 
+        The attribute :attr:`CursorResult.return_rows` of closed cursor result always returns ``False``.
+
     .. versionchanged:: 0.5.0
         The fetcher methods now check that the cursor metadata returns row prior to execution.
         This ensures that no calls to ``None`` objects are issued.
-
-    .. versionchanged:: 0.7.0   This class has been renamed to reflect the base API and behaviour
-        of results. Now, the base implementation of a cursor result can be composed in the derived
-        subclass :class:`CursorResult`. Additionally, the :meth:`close()` is now available to close
-        the underlying DBAPI cursor. Therefore, all methods returning rows now check whether the cursor
-        is closed and raise the exc:`ResourceClosedError`. The attribute :attr:`CursorResult.return_rows` 
-        of closed cursor result always return ``False``.
-
     """
-    def __init__(self, cursor: Cursor):
+    def __init__(self, cursor: Cursor, result_columns: Optional[Sequence[str]] = None):
         self._cursor = cursor
         """The underlying DBAPI cursor."""
 
@@ -162,7 +164,7 @@ class BaseCursorResult:
         """``True`` if this cursor result is closed."""
 
         if self._cursor.description:
-            self._metadata = CursorResultMetaData(self._cursor.description)
+            self._metadata = CursorResultMetaData(self._cursor.description, result_columns)
             """The metadata object describing the DBAPI cursor."""    
 
         else:
@@ -197,12 +199,12 @@ class BaseCursorResult:
     def __iter__(self) -> Iterator[Row]:
         """Provide an iterator for this cursor result.
 
+        .. versionchanged:: 0.7.0   Raise :exc:`ResourceClosedError` if it was previously closed.
+
         .. versionadded:: 0.5.0
 
-        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
-
         Raises:
-            ClosedResourceError: If it was previously closed.
+            ResourceClosedError: If it was previously closed.
 
         Yields:
             Iterator[Row]: The row iterator.
@@ -218,25 +220,26 @@ class BaseCursorResult:
     def one(self) -> Row:
         """Return exactly one row or raise an exception.
 
+        .. versionchanged:: 0.7.0   Raise :exc:`ResourceCloseError` if it was previously closed.
+
         .. versionadded:: 0.5.0
 
-        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
-
         Raises:
+            ResourceClosedError: If it was previously closed.
             NoResultFound: If no row was found when one was required.
             MultipleResultsFound: If multiple rows were found when exactly one was required.
-            ClosedResourceError: If it was previously closed.
         
         Returns:
             Row: The one row required.
         """
+        self._check_if_closed()
+
         if not self._metadata.returns_row:
             raise NoResultFound('No row was found when one was required.')
         
         if self._cursor.rowcount > 1:
             raise MultipleResultsFound('Multiple rows were found when exactly one was required.')
         
-        self._check_if_closed()
         return self.all()[0]
     
     def all(self) -> Sequence[Row]:
@@ -244,25 +247,24 @@ class BaseCursorResult:
 
         This method closes the result set after invocation. Subsequent calls will return an empty sequence.
 
+        .. versionchanged:: 0.7.0   Raise :exc:`ResourceCloseError` if it was previously closed.
+
         .. versionadded:: 0.5.0
         
-        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
-
         Raises:
-            ClosedResourceError: If it was previously closed.
+            ResourceClosedError: If it was previously closed.
         
         Returns:
             Sequence[Row]: All rows in a sequence.
         """
+        self._check_if_closed()
 
         if not self._metadata.returns_row:
             return list()
         
         raw_rows = self._cursor.fetchall()  # [(id_val, archived_val, in_trash_val, col1_val, ...), ...]
         row_sequence = [Row(self._metadata, row_data) for row_data in raw_rows]
-        # close the result set
-        self._metadata = _NO_CURSOR_RESULT_METADATA
-        self._cursor.close()
+        self.close()
         return row_sequence
     
     def first(self) -> Optional[Row]:
@@ -271,16 +273,19 @@ class BaseCursorResult:
         Note:
             This method closes the result set and discards remaining rows.
 
+        .. versionchanged:: 0.7.0  Raise :exc:`ResourceClosedError` if it was previously closed.
+
         .. versionadded:: 0.5.0
 
-        .. versionchanged:: 0.7.0   Raise :exc:`ClosedResourceError` if it was previously closed.
 
         Raises:
-            ClosedResourceError: If it was previously closed.
+            ResourceClosedError: If it was previously closed.
         
         Returns:
             Optional[Row]: The first row in the result set or ``None`` if no row is present.
         """
+        self._check_if_closed()
+
         if not self._metadata.returns_row:
             return None
         
@@ -344,18 +349,34 @@ class BaseCursorResult:
         raise NotImplementedError
     
     def close(self) -> None:
-        # TODO: implement close method
-        pass
+        """Close the cursor result.
+        
+        After a cursor result is closed, the :attr:`returns_row` returns ``False``.
+
+        .. versionadded:: 0.7.0
+    
+        """
+        self._metadata = _NO_CURSOR_RESULT_METADATA
+        self._cursor.close()
+        self._closed = self._cursor._closed
 
     def _check_if_closed(self) -> None:
         """Raise ResourceClosedError if this cursor result is closed."""
-        # TODO: implement _check_if_closed
+        
+        if self._closed:
+            raise ResourceClosedError(
+                'An operation was requested from a connection, cursor,'
+                ' or other object that is in a closed state.'
+            )
 
     
-class CursorResult(BaseCursorResult):
+class CompositeCursorResult(CursorResult):
     """Prototype for new and refactored CursorResult class with composite cursor feature.
     
     .. versionadded:: 0.7.0
+
+    Important:
+        Experimental, DON'T USE YET.
 
     """
 
@@ -396,6 +417,9 @@ class CursorResult(BaseCursorResult):
 
 class Row:
     """Provide pythonic high level interface to a single SQL database row.
+
+    .. versionchanged:: 0.7.0
+        :meth:`__getattr__()` has been added to provide access to row values with Python dot notation.
     
     .. versionchanged:: 0.5.0
         :class:`Row` has been significantly extended to provide iteratable capabilities
@@ -410,7 +434,15 @@ class Row:
         
         self._values = list(row_data)
         """Thew column values."""
-        
+
+    def __getattr__(self, key: str) -> Any:
+        """Provide access with dot notation to row values."""
+        try:
+            col_idx = self._metadata.key_to_index[key]
+            return self._values[col_idx]
+        except KeyError as err:
+            raise AttributeError(key) from err
+
     def __getitem__(self, key_or_index: Union[str, int]) -> Any:
         """Provide keyed and indexed access to the row values. 
 

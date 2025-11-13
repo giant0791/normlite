@@ -1,25 +1,56 @@
+import pdb
 import pytest
-from normlite.cursor import CursorResult, Row
-from normlite.exceptions import MultipleResultsFound, NoResultFound
+from normlite.cursor import _NO_CURSOR_RESULT_METADATA, CursorResult, Row
+from normlite.exceptions import MultipleResultsFound, NoResultFound, ResourceClosedError
 from normlite.notiondbapi.dbapi2 import Cursor
+from normlite._constants import SpecialColumns
 
+def make_result_set(dbapi_cursor: Cursor) -> Cursor:
+    dbapi_cursor._parse_result_set({
+        "object": "list",
+        "results": [
+            {
+                "object": "page",
+                "id": '680dee41-b447-451d-9d36-c6eaff13fb45',
+                "archived": False,
+                "in_trash": False,
+                "properties": {
+                    "id": {"id": "%3AUPp","type": "number", "number": 12345},
+                    "grade": {"id": "A%40Hk", "type": "rich_text", "rich_text": [{"text": {"content": "B"}}]},
+                    "name": {"id": "BJXS", "type": "title", "title": [{"text": {"content": "Isaac Newton"}}]},
+                },
+            },
+            {
+                "object": "page",
+                "id": '680dee41-b447-451d-9d36-c6eaff13fb46',
+                "archived": True,
+                "in_trash": True,
+                "properties": {
+                    "id": {"id": "Iowm", "type": "number", "number": 67890},
+                    "grade": {"id": "Jsfb", "type": "rich_text", "rich_text": [{"text": {"content": "A"}}]},
+                    "name": {"id": "WOd%3B", "type": "title", "title": [{"text": {"content": "Galileo Galilei"}}]},
+                },
+            },
+        ]
+    }) 
 
 def test_compile_cursor_description(dbapi_cursor: Cursor):
     # Connect metadata and cursor result
+    make_result_set(dbapi_cursor)
     result = CursorResult(dbapi_cursor)
 
     # Fetch all rows
     rows = result.fetchall()
 
-    assert rows[0]['__id__'] == '680dee41-b447-451d-9d36-c6eaff13fb45'
-    assert rows[0]['__archived__'] == False
-    assert rows[0]['__in_trash__'] == False
+    assert rows[0][SpecialColumns.NO_ID] == '680dee41-b447-451d-9d36-c6eaff13fb45'
+    assert rows[0][SpecialColumns.NO_ARCHIVED] == False
+    assert rows[0][SpecialColumns.NO_IN_TRASH] == False
     assert rows[0]['id'] == 12345
     assert rows[0]['name'] == 'Isaac Newton'
     assert rows[0]['grade'] == 'B'
-    assert rows[1]['__id__'] == '680dee41-b447-451d-9d36-c6eaff13fb46'
-    assert rows[1]['__archived__'] == True
-    assert rows[1]['__in_trash__'] == True
+    assert rows[1][SpecialColumns.NO_ID] == '680dee41-b447-451d-9d36-c6eaff13fb46'
+    assert rows[1][SpecialColumns.NO_ARCHIVED] == True
+    assert rows[1][SpecialColumns.NO_IN_TRASH] == True
     assert rows[1]['id'] == 67890
     assert rows[1]['name'] == 'Galileo Galilei'
     assert rows[1]['grade'] == 'A'
@@ -44,19 +75,21 @@ def test_cursor_result_from_fixture(dbapi_cursor: Cursor, json_fixtures, fixture
         assert row[key] == expected_val
 
 def test_row_getitem_key_or_index(dbapi_cursor: Cursor):
+    make_result_set(dbapi_cursor)
     result = CursorResult(dbapi_cursor)
     rows = result.fetchall()
 
-    assert rows[0]['__id__'] == rows[0][0]
-    assert rows[0]['__archived__'] == rows[0][1]
-    assert rows[0]['__in_trash__'] == rows[0][2]
+    assert rows[0][SpecialColumns.NO_ID] == rows[0][0]
+    assert rows[0][SpecialColumns.NO_ARCHIVED] == rows[0][1]
+    assert rows[0][SpecialColumns.NO_IN_TRASH] == rows[0][2]
     assert rows[0]['id'] == rows[0][3]
 
 def test_row_provides_row_mapping(dbapi_cursor: Cursor):
+    make_result_set(dbapi_cursor)
     expected = {
-        "__id__": '680dee41-b447-451d-9d36-c6eaff13fb46',
-        "__archived__": True,
-        "__in_trash__": True,
+        SpecialColumns.NO_ID: '680dee41-b447-451d-9d36-c6eaff13fb46',
+        SpecialColumns.NO_ARCHIVED: True,
+        SpecialColumns.NO_IN_TRASH: True,
         "id": 67890,
         "grade": "A",
         "name": "Galileo Galilei"
@@ -69,6 +102,7 @@ def test_row_provides_row_mapping(dbapi_cursor: Cursor):
 
 def test_cursor_first(dbapi_cursor: Cursor):
     # Given a CursorResult that returns rows
+    make_result_set(dbapi_cursor)
     result = CursorResult(dbapi_cursor)
     assert result.returns_rows
 
@@ -77,18 +111,19 @@ def test_cursor_first(dbapi_cursor: Cursor):
 
     # Then I get a Row object containing the column values of the first row
     assert isinstance(row, Row)
-    assert row['__id__'] == '680dee41-b447-451d-9d36-c6eaff13fb45'
+    assert row[SpecialColumns.NO_ID] == '680dee41-b447-451d-9d36-c6eaff13fb45'
     assert row['name'] == 'Isaac Newton'
 
     # And then the cursor is closed
-    # Any subsequent call returns None
-    assert result.first() is None
-    assert result.first() is None
+    # Any subsequent call raises an error
+    with pytest.raises(ResourceClosedError, match='closed state'):
+        row = result.first()
 
     # and the attribute returns row is false
     assert not result.returns_rows
 
 def test_cursor_as_iterable(dbapi_cursor: Cursor):
+    make_result_set(dbapi_cursor)
     expected_names = ['Isaac Newton', 'Galileo Galilei']
     # Given a CursorResult that returns rows
     result = CursorResult(dbapi_cursor)
@@ -105,6 +140,9 @@ def test_cursor_as_iterable(dbapi_cursor: Cursor):
 
 def test_cursor_one(dbapi_cursor: Cursor):
     # Given a CursorResult that returns rows and only one row is in the result set
+    make_result_set(dbapi_cursor)
+
+    # IMPORTANT: comsume 1 result, len(result_set) == 2
     dbapi_cursor.fetchone()
     result = CursorResult(dbapi_cursor)
     assert result.returns_rows
@@ -118,12 +156,33 @@ def test_cursor_one(dbapi_cursor: Cursor):
 
     # then no no more rows are returned
     assert not result.returns_rows
-    # then a NoResultFound is raised if I call one() again
-    with pytest.raises(NoResultFound, match='No row was found when one was required.'):
-        result.one()
+    # And then the cursor is closed
+    # Any subsequent call raises an error
+    with pytest.raises(ResourceClosedError, match='closed state'):
+        row = result.first()
+
+def test_result_was_required_but_none_found(dbapi_cursor: Cursor):
+    # Given a database result is expected, but none was found
+    dbapi_cursor._parse_result_set({
+        "object": "list",
+        "results": []
+    })
+
+    result = CursorResult(dbapi_cursor)
+    
+    # when I check for returned rows,
+    # then I get False
+    assert not result.returns_rows
+    assert result._metadata is _NO_CURSOR_RESULT_METADATA
+
+    # when I try to get the first result,
+    # then I get a NoResultFound error
+    with pytest.raises(NoResultFound, match='No row was found'):
+        row = result.one()
 
 def test_cursor_one_raises_multiple_results_found(dbapi_cursor: Cursor):
     # Given a CursorResult that returns multiple rows
+    make_result_set(dbapi_cursor)
     result = CursorResult(dbapi_cursor)
     assert result.returns_rows
     assert dbapi_cursor.rowcount > 1
@@ -134,15 +193,25 @@ def test_cursor_one_raises_multiple_results_found(dbapi_cursor: Cursor):
         match='Multiple rows were found when exactly one was required.'):
         result.one()
         
-@pytest.mark.skip('Future: Row with Frozen attributes')
 def test_row_has_attrs_for_cols(dbapi_cursor: Cursor):
+    make_result_set(dbapi_cursor)
     result = CursorResult(dbapi_cursor)
     rows = result.fetchall()
 
-    assert rows[0]['__id__'] == rows[0].__id__
-    assert rows[0]['__archived__'] == rows[0].__archived__
-    assert rows[0]['__in_trash__'] == rows[0].__in_trash__
+    assert rows[0][SpecialColumns.NO_ID] == getattr(rows[0], SpecialColumns.NO_ID.value)
+    assert rows[0][SpecialColumns.NO_ARCHIVED] == getattr(rows[0], SpecialColumns.NO_ARCHIVED.value)
+    assert rows[0][SpecialColumns.NO_IN_TRASH] == getattr(rows[0], SpecialColumns.NO_IN_TRASH.value)
     assert rows[0]['id'] == rows[0].id
+    assert rows[0]['name'] == rows[0].name
+    assert rows[0]['grade'] == rows[0].grade
+
+    with pytest.raises(AttributeError, match="registered_on"):
+        non_existing = rows[0].registered_on
+
+def test_closed_cursor_result_raises_error(dbapi_cursor: Cursor):
+    make_result_set(dbapi_cursor)
+    result = CursorResult(dbapi_cursor)
+    result.close()
 
 @pytest.mark.skip('Future: Row with Frozen attributes')
 def test_row_attributes_cannot_be_set_or_del(dbapi_cursor: Cursor):

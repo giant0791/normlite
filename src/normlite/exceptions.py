@@ -62,3 +62,20 @@ class InvalidRequestError(NormliteError):
     .. versionadded:: 0.7.0
     """
     ...
+
+class UnsupportedCompilationError(NormliteError):
+    """Raised when an operation is not supported by the given compiler.
+    
+    .. versionadded:: 0.7.0
+    """
+
+class ResourceClosedError(NormliteError):
+    """The cursor cannot deliver rows.
+    
+    This exception is raised when a cursor (resource) cannot return rows because it is
+    either closed (i.e. exhausted) or it represents the result from an SQL statement that 
+    does not return values (e.g. ``INSERT``).
+
+    .. versionadded:: 0.5.0
+
+    """
