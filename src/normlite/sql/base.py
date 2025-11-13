@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from normlite.sql.ddl import CreateTable, CreateColumn
     from normlite.sql.dml import Insert
     from normlite.cursor import CursorResult
-    from normlite.engine.base import Connection
+    from normlite.notiondbapi.dbapi2 import Cursor
 
 class Visitable(ABC):
     """Base class for any AST node that can be 'visited' by a compiler.
@@ -75,6 +75,10 @@ class Visitable(ABC):
         return visit_fn(self, **kwargs)
 
 class ClauseElement(Visitable):
+    """Base class for SQL elements that can be compiled by the compiler.
+    
+    .. versionadded: 0.7.0
+    """
     __visit_name__ = 'clause'
 
     def compile(self, compiler: SQLCompiler, **kwargs: Any) -> Compiled:
@@ -89,34 +93,31 @@ class ClauseElement(Visitable):
         raise NotImplementedError
 
 class Executable(ClauseElement):
-    """Provide the interface for all executable SQL statements."""
+    """Provide the interface for all executable SQL statements.
+    
+    .. versionadded:: 0.7.0
+    
+    """
 
-    def _execute_on_connection(
-            self, 
-            connection: Connection, 
-            parameters: Optional[dict] = None
-    ) -> CursorResult:
-        compiler = connection._engine._sql_compiler
-
-        # TODO: Decide whether Connection should instead orchestrate the overall execution
+    def execute(self, context: ExecutionContext, parameters: Optional[dict] = None) -> CursorResult:
+        """Run this executable within the context setup by the connection."""
 
         # TODO: for INSERT/UPDATE statements that do not have values, parameters is not None
         # Implement this use case and bind the supplied parameters
         # Suppor the same SqlAlchemy convention that parameters override the values() clause.
-        compiled = self.compile(compiler)
-        ctx = ExecutionContext(connection, compiled)
-        ctx._setup()
-        cursor = connection.connection.cursor()
+        cursor = context._dbapi_cursor
+        compiled = context._compiled
         cursor.execute(compiled.as_dict()['operation'], compiled.params)
-        result = ctx._setup_cursor_result(cursor)
-        self._post_exec(result, ctx)
+        result = context._setup_cursor_result(cursor)
+        self._post_exec(result, context)
         return result
 
     def _post_exec(self, result: CursorResult, context: ExecutionContext) -> None:
+        """Optional hook for subclassess."""
         ...
 
 class Compiled:
-    """The result of compiling a :class:`ClauseElement`.
+    """The result of compiling :class:`ClauseElement` subclasses.
 
     .. versionadded:: 0.7.0
 

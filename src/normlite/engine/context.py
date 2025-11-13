@@ -29,14 +29,14 @@ if TYPE_CHECKING:
     from normlite.sql.base import Compiled
 
 class ExecutionContext:
-    def __init__(self, connection: Connection, compiled: Compiled):
-        self._connection = connection
+    def __init__(self, dbapi_cursor: Cursor, compiled: Compiled):
+        self._dbapi_cursor = dbapi_cursor
         self._compiled = compiled
         self._element = compiled._element
         self._binds = compiled.params
         self._result = None
 
-    def _setup(self) -> None:
+    def setup(self) -> None:
         """Perform value binding and type adaptation before execution.""" 
         operation = self._compiled.as_dict().get('operation')
         params = self._binds

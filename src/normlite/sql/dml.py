@@ -17,16 +17,21 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
+import pdb
 from types import MappingProxyType
 from typing import Any, Optional, Self, Sequence, Union, TYPE_CHECKING
+from normlite._constants import SpecialColumns
+from normlite.cursor import CursorResult
+from normlite.engine.context import ExecutionContext
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable
-from normlite.sql.sql import CreateTable, SqlNode
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import Column, Table
+    from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
 
-class Insert(SqlNode):
+class Insert(Executable):
+    __visit_name__ = 'insert'
+
     """Provide the SQL ``INSERT`` node to create a new row in the specified table. 
 
     This class provide a generative implementation of the SQL ``INSERT`` node to be executed on a
@@ -43,7 +48,7 @@ class Insert(SqlNode):
         >>> stmt.values(id=123456, name='Isaac Newton', grade='B')
         ...
         >>> # specify the values to be inserted as dictionary
-        >>> stmt.values({'id': 123456, 'name':'Isaac Newton', 'grade': 'B'})
+        >>> stmt.values({'id': 123456, 'name': 'Isaac Newton', 'grade': 'B'})
         ...
         >>> # specify the values to be inserted as tuple
         >>> stmt.values((123456, 'Isaac Newton', 'B'))
@@ -65,22 +70,25 @@ class Insert(SqlNode):
 
     """
     def __init__(self):
+        super().__init__()
         self._values: MappingProxyType = None
         """The immutable mapping holding the values."""
 
         self._table: Table = None
         """The table object to insert a new row to."""
 
-        self._returning = ('_no_id', '_no_archived', )
-        """The tuple holding the """
+        self._returning = ()
+        """The tuple holding the Notion specific columns."""
 
-    def accept(self, visitor):
-        """Not supperted yet."""
-        ...
+        for spec_col in SpecialColumns._member_names_:
+            self._returning += (spec_col, )
 
     def _set_table(self, table: Table) -> None:
         self._table = table
 
+    def get_table(self) -> ReadOnlyColumnCollection:
+        return self._table.columns
+    
     def values(self, *args: Union[dict, Sequence[Any]], **kwargs: Any) -> Self:
         """Provide the ``VALUES`` clause to specify the values to be inserted in the new row.
 
@@ -153,7 +161,7 @@ class Insert(SqlNode):
         kv_pairs = {}
         try:
             for col in self._table.c:
-                if col.name in ['_no_id', '_no_archived']:
+                if col.name in SpecialColumns.__members__.values():
                     # skip Notion-managed columns
                     continue
                 kv_pairs[col.name] = dict_arg[col.name]
@@ -161,126 +169,7 @@ class Insert(SqlNode):
             raise KeyError(f'Missing value for: {ke.args[0]}')
         
         return MappingProxyType(kv_pairs)
-
-class SQLCompiler:
-    """Provide the central compiler for all SQL executables."""
-    
-    _stmt_map = {
-        'Insert': {'endpoint': 'pages', 'request': 'create'}
-    }
-
-    def compile_insert(self, ins_stmt: Insert) -> dict:
-        # construct the operation object
-        operation = SQLCompiler._stmt_map['Insert']
-
-        # construct the payload
-        payload = {
-            "parent": { 
-                "type": "database_id",
-                "database_id": ins_stmt._table._database_id
-            }
-        }
-
-        # construct the properties wih placeholder values
-        properties = {}
-
-        for col in ins_stmt._table.columns:
-            col_val = f':{col.name}:'
-
-            if col.type == 'int':
-                # IMPORTANT: 
-                # Currently the col.type member contains the SQL type
-                # not the Notion type
-                properties[col.name] = {"number": col_val}
-            elif col.type.startswith("title_varchar"):
-                properties[col.name] = {
-                    "title": [{"text": {"content": col_val}}]
-                }
-            elif col.type.startswith("varchar"):
-                properties[col.name] = {
-                    "rich_text": [{"text": {"content": col_val}}]
-                }
-            else:
-                raise TypeError(f"Unsupported type for column '{col.name}': {col.type}")
-
-        payload['properties'] = properties
-
-        # construct the parameters
-        parameters = {}
-        parameters['payload'] = payload
-        parameters['params'] = ins_stmt._values
-
-        return {'operation': operation, 'parameters': parameters}
-
-class OldInsert(Executable):
-    """Provide an insert statement to add rows to the associated table.
-
-    This class respresents an SQL ``INSERT`` statement. Every insert statement is associated
-    to the table it adds rows to.
-
-    Warning:
-        This is going to be removed. Don't use!
-        Use :class:`Insert` instead.
-
-    """
-    def __init__(self, table: CreateTable):
-        self._table = table
-        """The table subject of the insert."""
-
-        self._values: dict = {}
-        """The mapping column name, column value."""
         
-        self._operation: dict = {}
-        """The dictionary containing the compiled operation."""
-        
-        self._parameters: dict = {}
-        """The dictionary containing the compiled parameters."""
-
-    def prepare(self) -> None:
-        # cross-compile the insert statement. At the end:
-        # self._operation contains the keys "endpoint" and "request"
-        # self._parameters contains the keys "payload" and "params"
-        # 1. cross-compile
-        sql_compiler: SQLCompiler = SQLCompiler()
-        compiled_stmt = sql_compiler.compile_insert(self)
-
-        # the cross-compilation result is a dictionary containing the following keys:
-        # "operation": {"endpoint": "<some_ep>", "request": "<some_req>"}
-        # "parameters": {"payload": {<payload object>}, "parameters": {<parameters object>}} 
-        self._operation = compiled_stmt.get('operation')
-        self._parameters = compiled_stmt.get('parameters')
-
-    def bindparams(self, parameters: Optional[dict]) -> None:
-        """Bind (assign) the parameters to the insert values clause."""
-        if not parameters:
-            raise Exception(
-                'Expected bind parameters for this statement. '
-                'None was supplied or no binding performed yet.'
-            )
-
-        for col in self._table.columns:
-            self._values[col.name] = parameters[col.name]
-
-    def operation(self):
-        return self._operation
-
-    def parameters(self):
-        return self._parameters
-
-def old_insert(table: CreateTable) -> OldInsert:
-    """Construct an insert statement.
-
-    This class constructs an SQL ``INSERT`` statement capable of inserting rows
-    to this table.
-
-    Returns:
-        OldInsert: A new insert statement for this table. 
-
-    Warning:
-        This is going to be removed. Don't use!
-        Use :func:`insert()` instead.
-    """
-    return OldInsert(table)
 
 def insert(table: Table) -> Insert:
     """Construct an insert statement.

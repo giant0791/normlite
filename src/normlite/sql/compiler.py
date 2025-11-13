@@ -78,7 +78,9 @@ class NotionCompiler(SQLCompiler):
             properties[col.name] = bind_proc(f':{col.name}')        
 
         no_insert_obj['properties'] = properties
-        operation = dict(endpoint='databases', request='create', template=no_insert_obj)
+        operation = dict(endpoint='pages', request='create', template=no_insert_obj)
         parameters = dict(**insert._values) if insert._values else dict()
-        result_columns = [colname for colname in insert._returning]
+        # IMPORTANT: concatenate the values tuple containing the special columns WITH the returning tuple.
+        # This ensures that the values for the special columns are always available even if the returning tuple is ().
+        result_columns = SpecialColumns.values() + insert._returning
         return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}    
