@@ -1,14 +1,6 @@
 [
   {
     "name": "unordered_properties",
-    "create_table": {
-      "table_name": "students",
-      "columns": [
-        {"name": "id", "type": "int"},
-        {"name": "name", "type": "title_varchar(n)"},
-        {"name": "grade", "type": "varchar(n)"}
-      ]
-    },
     "result_set": {
       "object": "list",
       "results": [
@@ -26,9 +18,9 @@
       ]
     },
     "expected_row": {
-      "__id__": "680dee41-b447-451d-9d36-c6eaff13fb45",
-      "__archived__": false,
-      "__in_trash__": null,
+      "_no_id": "680dee41-b447-451d-9d36-c6eaff13fb45",
+      "_no_archived": false,
+      "_no_in_trash": null,
       "id": 12345,
       "name": "Isaac Newton",
       "grade": "B"
@@ -37,15 +29,6 @@
 
   {
     "name": "real_world_data",
-    "create_table": {
-      "table_name": "researchers",
-      "columns": [
-        {"name": "id", "type": "int"},
-        {"name": "name", "type": "title_varchar(n)"},
-        {"name": "field", "type": "varchar(n)"},
-        {"name": "alive", "type": "varchar(n)"}
-      ]
-    },
     "result_set": {
       "object": "list",
       "results": [
@@ -62,7 +45,7 @@
       ]
     },
     "expected_row": {
-      "__id__": "680dee41-b447-451d-9d36-c6eaff13fb46",
+      "_no_id": "680dee41-b447-451d-9d36-c6eaff13fb46",
       "id": 42,
       "name": "Ada Lovelace",
       "field": "Mathematics",
