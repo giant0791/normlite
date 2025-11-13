@@ -99,45 +99,47 @@ def parse_property(name: str, payload: dict) -> NotionProperty:
         NotionProperty: The Python node object corresponding to the Notion page or database property.
     """
     pid = payload.get("id")
-    ptype = payload.get("type")             # pytype is None for updated pages
+    ptype = payload.get("type")             # pytype is None for new and updated pages
     value = None
 
-    if ptype == "number":
-        number = payload.get("number", {})
+    if ptype:
+        # property belongs to a retrieved object and not to a created object
+        # because it has a payload['type'] object
+        if ptype == "number":
+            number = payload.get("number", {})
 
-        # number is {} for database objects or pages returned from pages.create
-        # number is {"formart": ...} for databases retrieved
-        ptype, value = parse_number(number)
+            # number is {} for database objects or pages returned from pages.create
+            # number is {"formart": ...} for databases retrieved
+            ptype, value = parse_number(number)
 
-    elif ptype == "title":
-        title = payload.get("title", [])
+        elif ptype == "title":
+            title = payload.get("title", [])
 
-        # title is [] for database objects or pages returned from pages.create
-        value = parse_text_content(title) if title else None
+            # title is [] for database objects or pages returned from pages.create
+            value = parse_text_content(title) if title else None
 
-    elif ptype == "rich_text":
-        rich_text = payload.get("rich_text", [])
+        elif ptype == "rich_text":
+            rich_text = payload.get("rich_text", [])
 
-        # rich_text is [] for database objects or pages returned from pages.create
-        value = parse_text_content(rich_text) if rich_text else None
+            # rich_text is [] for database objects or pages returned from pages.create
+            value = parse_text_content(rich_text) if rich_text else None
 
-    elif ptype == 'checkbox':
-        checkbox = payload.get('checkbox')
-        if checkbox:
-            value = bool(checkbox)
+        elif ptype == 'checkbox':
+            checkbox = payload.get('checkbox')
+            if checkbox:
+                value = bool(checkbox)
 
-    elif ptype == 'date':
-        value = {}
-        start = payload.get('start', {})
-        end = payload.get('end', {})
-        if start:
-            value['start'] = start
-        if end:
-            value['end'] = end
+        elif ptype == 'date':
+            value = {}
+            start = payload.get('start', {})
+            end = payload.get('end', {})
+            if start:
+                value['start'] = start
+            if end:
+                value['end'] = end
 
-    else:
-        raise TypeError(f'Unexpected or unsupported property type: "{ptype}"')        
-
+        else:
+            raise TypeError(f'Unexpected or unsupported property type: "{ptype}"')        
 
     return NotionProperty(name=name, id=pid, type=ptype, value=value)
 
