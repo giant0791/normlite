@@ -2,10 +2,12 @@ from collections import namedtuple
 import pdb
 import pytest
 
-from normlite.engine import Engine, Inspector, NotionAuthURI, NotionURI, _parse_uri, create_engine, NotionSimulatedURI
+from normlite.engine.base import Engine, Inspector, NotionAuthURI, NotionURI, _parse_uri, create_engine, NotionSimulatedURI, Connection
 from normlite.notion_sdk.client import InMemoryNotionClient
-from normlite.sql.schema import Table
-from normlite.sql.type_api import Boolean, Number, String
+from normlite.notiondbapi.dbapi2 import Cursor
+from normlite.sql.ddl import CreateTable
+from normlite.sql.schema import Column, MetaData, Table
+from normlite.sql.type_api import Boolean, Date, Integer, Number, String
 
 """
 Quick mapping between Notion and the database world.
@@ -152,7 +154,8 @@ def test_engine_inspect_has_table_user(engine: Engine, inspector: Inspector):
     assert inspector.has_table('students')
 
 def test_engine_inspector_reflect_sys_table(engine: Engine, inspector: Inspector):
-    tables: Table = Table('tables')
+    metadata = MetaData()
+    tables: Table = Table('tables', metadata)
     inspector.reflect_table(tables)
 
     assert tables._database_id == engine._tables_id
@@ -163,7 +166,8 @@ def test_engine_inspector_reflect_sys_table(engine: Engine, inspector: Inspector
 
 def test_engine_inspector_reflect_user_table(engine: Engine, inspector: Inspector):
     create_students_db(engine)
-    students: Table = Table('students')
+    metadata = MetaData()
+    students: Table = Table('students', metadata)
     inspector.reflect_table(students)
     assert 'student_id' in students.c
     assert isinstance(students.c.student_id.type_, Number)
@@ -180,6 +184,51 @@ def test_engine_inspector_reflect_user_table(engine: Engine, inspector: Inspecto
     assert 'is_active' in students.c
     assert isinstance(students.c.is_active.type_, Boolean)
 
+def test_engine_connect():
+    engine = create_engine(
+        'normlite:///:memory:',
+        init_client=False,
+        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
+        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
+        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
+        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
+    )
+
+    connection: Connection = engine.connect()
+    assert connection.connection
+
+    cursor: Cursor = connection.connection.cursor()
+    assert isinstance(cursor._client, InMemoryNotionClient)
+    assert cursor._client is engine._client
+
+def test_engine_init_tables():
+    engine = create_engine(
+        'normlite:///:memory:',
+        init_client=False,
+        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
+        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
+        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
+        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
+    )
+
+    # create the information schema page
+    engine._init_info_schema()
+    
+    # create the tables datastructure
+    metadata = MetaData()
+    tables = Table(
+        'tables',
+        metadata,
+        Column('table_name', String(is_title=True)),
+        Column('table_schema', String()),
+        Column('table_catalog',  String()),
+        Column('table_id', String())
+    )
+    ddl_stmt = CreateTable(tables)
+    with engine.connect() as conn:
+        result = conn.execute(ddl_stmt)
+
+        
 
 
 

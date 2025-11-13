@@ -26,6 +26,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 import uuid
 
 from normlite.cursor import CursorResult
+from normlite.engine.context import ExecutionContext
 from normlite.exceptions import ArgumentError, NormliteError
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.sql.compiler import NotionCompiler
@@ -33,7 +34,7 @@ from normlite.sql.type_api import Boolean, Number, String
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, IsolationLevel
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import Table, Column, HasIdentifierMixin
+    from normlite.sql.schema import Table, HasIdentifierMixin
     from normlite.sql.base import Executable
 
 class Connection:
@@ -84,12 +85,26 @@ class Connection:
 
         """
 
-        return stmt._execute_on_connection(self, parameters)
+        compiler = self._engine._sql_compiler
+        compiled = stmt.compile(compiler)
+
+        ctx = ExecutionContext(self.connection.cursor(), compiled)
+        ctx.setup()
+
+        result = stmt.execute(ctx, parameters)
+        return result
+
 
     def commit(self) -> None:
         pass
 
     def rollback(self) -> None:
+        pass
+
+    def __enter__(self) -> Connection:
+        return self
+    
+    def __exit__(self, type_: Any, value: Any, traceback: Any) -> None:
         pass
 
 @dataclass
