@@ -32,7 +32,7 @@ import json
 import operator
 from pathlib import Path
 import pdb
-from typing import List, NoReturn, Optional, Self, Sequence, Set, Type
+from typing import Any, List, NoReturn, Optional, Self, Sequence, Set, Type
 from types import TracebackType
 from abc import ABC, abstractmethod
 import uuid
@@ -40,6 +40,7 @@ from datetime import datetime
 import random
 import string
 import urllib.parse
+import warnings
 
 class NotionError(Exception):
     """Exception raised for all errors related to the Notion REST API."""
@@ -227,9 +228,7 @@ class InMemoryNotionClient(AbstractNotionClient):
         else: 
             self._tables_db_id = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
 
-        self._store: dict = {
-            "store": []
-        }
+        self._store: dict[str, Any] = {}
         """The dictionary simulating the Notion store. 
         It's an instance attribute to avoid unwanted side effects and 
         provide more behavioral predictability.
@@ -238,8 +237,6 @@ class InMemoryNotionClient(AbstractNotionClient):
             Fix issue with asymmetric file based Notion client.
         """
 
-        self._create_store()
-
     def _create_store(self, store_content: List[dict] = []) -> None:
         """Provide helper to create the simulated Notion store.
 
@@ -247,23 +244,27 @@ class InMemoryNotionClient(AbstractNotionClient):
             store_content (List[dict], optional): The initial content for the Notion store. Defaults to ``[]``.
         """
         if store_content:
-            self._store = {
-                "store": store_content,
-            }
+            for obj in store_content:
+                oid = obj['id']
+                self._store[oid] = obj
         else:
-            self._store = {
-                "store": [],
-            }
+            self._store = {}
 
     def _get(self, id: str) -> dict:
-        # TODO: rewrite using filter()
-        if self._store_len() > 0:
-            for o in self._store['store']:
-                if o['id'] == id:
-                    return o
-                
-        return {}
+        warnings.warn(
+            '`_get() is deprecated and will be removed in a future version. '
+            'Use `_get_by_id()` instead' 
+        )
+        return self._get_by_id(id)
     
+    def _get_by_id(self, id: str) -> dict:
+        if self._store_len() > 0:
+            try:
+                return self._store[id]
+            except KeyError:                
+                return {}
+ 
+   
     def _get_by_title(self, title: str, type: str) -> dict:
         """Return the first occurrence in the store of page or database with the passed title."""
         # TODO: rewrite using filter()
@@ -405,7 +406,7 @@ class InMemoryNotionClient(AbstractNotionClient):
         return encoded
 
     def _store_len(self) -> int:
-        return len(self._store['store'])
+        return len(self._store)
     
     def pages_create(self, payload: dict) -> dict:
         return self._add('page', payload)
