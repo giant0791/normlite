@@ -7,10 +7,6 @@ from normlite.notion_sdk.client import InMemoryNotionClient
 def fresh_client():
     yield InMemoryNotionClient()
 
-    # IMPORTANT:
-    # tear down: reset shared class store between tests
-    InMemoryNotionClient._store = {}
-
 def generate_store_content() -> list[dict]:
     store_content = list()
     store_content.append({
@@ -54,12 +50,14 @@ def generate_store_content() -> list[dict]:
 def get_name(obj: dict) -> str:
     return obj['properties']['name']['title'][0]['text']['content']
 
-def get_student_id(obj: dict) -> int:
-    pass
+def get_id(obj: dict) -> int:
+    return obj['properties']['id']['number']
 
 def get_grade(obj: dict) -> str:
     pass
 
+def get_db_prop_type(name: str, obj: dict) -> str:
+    return obj['properties'][name].get('type', None)
 
 def test_client_store_len(fresh_client: InMemoryNotionClient):
     assert fresh_client._store_len() == 0
@@ -80,5 +78,45 @@ def test_client_get_by_id(fresh_client: InMemoryNotionClient):
     assert galileo
     assert ada
     assert get_name(newton) == 'Isaac Newton'
-    assert get_name(galileo)
+    assert get_id(newton) == 12345
+    assert get_name(galileo) == 'Galileo Galilei'
+    assert get_id(galileo) == 67890
     assert get_name(ada) == 'Ada Lovelace'
+    assert get_id(ada) == 32165
+
+def test_client_add_page(fresh_client: InMemoryNotionClient):
+    page_payload = {
+        "parent": {"type": "page_id"},
+        "properties": {
+            "grade": {"type": "rich_text", "rich_text": [{"text": {"content": "C"}}]},
+            "name": {"type": "title", "title": [{"text": {"content": "Ada Lovelace"}}]},
+            "id": {"type": "number", "number": 32165}
+        }
+    }
+
+    page = fresh_client._add('page', page_payload)
+    retrieved_page = fresh_client._get_by_id(page['id'])
+    assert get_name(retrieved_page) == "Ada Lovelace"
+    assert get_id(retrieved_page) == 32165
+
+def test_client_add_database(fresh_client: InMemoryNotionClient):
+    db_payload = {
+        "parent": {"type": "page_id"},
+        "properties": {
+            "grade": {"rich_text": {}},
+            "name": {"title": {}},
+            "id": {"number": {}}
+        },
+        "title": [{"text": {"content": "students"}}]
+    }
+
+    database = fresh_client._add('database', db_payload)
+    property_names = list(database['properties'].keys())
+    property_types = [get_db_prop_type(prop_name, database) for prop_name in property_names]
+    assert all(property_types)
+    retrieved_db = fresh_client._get_by_id(database['id'])
+    retrieved_db_prop_names = list(retrieved_db['properties'].keys())
+    retrieved_db_prop_types = [get_db_prop_type(prop_name, retrieved_db) for prop_name in property_names]
+    assert all(retrieved_db_prop_types)
+    assert retrieved_db_prop_types == property_types
+    #print(f'\n{database}')

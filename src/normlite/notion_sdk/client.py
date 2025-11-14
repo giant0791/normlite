@@ -381,7 +381,7 @@ class InMemoryNotionClient(AbstractNotionClient):
         else:
             raise NotionError(f'"{type_}" not supported or unknown')
 
-        self._store['store'].append(new_object)
+        self._store[new_object['id']] = new_object
         return ret_object
 
     def _generate_property_id(self) -> str:
@@ -434,7 +434,7 @@ class InMemoryNotionClient(AbstractNotionClient):
                         page_to_update['properties'][prop] = value
                 else:
                     raise NotionError(
-                        f'Connot update page: {payload.get('id')}, '
+                        f'Cannot update page: {payload.get('id')}, '
                         f'data: {payload.get('data')}'
                     )
             else:
@@ -448,7 +448,7 @@ class InMemoryNotionClient(AbstractNotionClient):
     
     def databases_retrieve(self, payload: dict) -> dict:
         try:
-            retrieved_object = self._get(payload['id'])
+            retrieved_object = self._get_by_id(payload['id'])
         except KeyError:
             raise NotionError('Bad payload provided, missing "database_id"')
 
