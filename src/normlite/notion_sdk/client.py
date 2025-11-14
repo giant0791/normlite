@@ -413,7 +413,7 @@ class InMemoryNotionClient(AbstractNotionClient):
     
     def pages_retrieve(self, payload: dict) -> dict:
         if self._store_len() > 0:
-            retrieved_page = self._get(payload['id'])
+            retrieved_page = self._get_by_id(payload['page_id'])
             if retrieved_page['object'] == 'page':
                 return retrieved_page
         
@@ -421,25 +421,32 @@ class InMemoryNotionClient(AbstractNotionClient):
     
     def pages_update(self, payload)-> dict:
         if self._store_len() > 0:
-            page_to_update = self._get(payload.get('id'))
+            page_id = payload.get('page_id', None)
+
+            if page_id is None:
+                raise NotionError(
+                    'Invalid request URL.'
+                )
+
+            page_to_update = self._get_by_id(page_id)
             if page_to_update and page_to_update['object'] == 'page':
-                data = payload.get('data')
-                if data and 'archived' in data.keys():
-                    page_to_update['archived'] = data['archived']
+                if 'archived' in payload.keys():
+                    page_to_update['archived'] = payload['archived']
                     return page_to_update
-                elif data and 'in_trash' in data.keys():
-                    page_to_update['in_trash'] = data['in_trash']
-                elif data and 'properties' in data.keys():
-                    for prop, value in data['properties'].items():
+                elif 'in_trash' in payload.keys():
+                    page_to_update['in_trash'] = payload['in_trash']
+                elif 'properties' in payload.keys():
+                    for prop, value in payload['properties'].items():
                         page_to_update['properties'][prop] = value
                 else:
                     raise NotionError(
-                        f'Cannot update page: {payload.get('id')}, '
-                        f'data: {payload.get('data')}'
+                        'Body failed validation: body.archived or body.in_trash or '
+                        'body.properties should be defined, instead was undefined.'
                     )
             else:
                 raise NotionError(
-                    f'Object with id: {payload.get('id')} not found or not a page object.'
+                    f'Could not find page with id: {payload.get('page_id')}. '
+                    'Make sure the relevant pages and databases are shared with your integration.'
                 )
 
 
