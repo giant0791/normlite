@@ -5,49 +5,11 @@ import pytest
 
 from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
 
+_STUDENTS_ID_ = "11111111-1111-1111-1111-111111111111"
+
 @pytest.fixture
 def fresh_client():
     yield InMemoryNotionClient()
-
-def generate_store_content() -> list[dict]:
-    store_content = list()
-    store_content.append({
-        "object": "page",
-        "id": "680dee41-b447-451d-9d36-c6eaff13fb45",
-        "archived": False,
-        "in_trash": None,
-        "properties": {
-        "grade": {"type": "rich_text", "rich_text": [{"text": {"content": "B"}}]},
-        "name": {"type": "title", "title": [{"text": {"content": "Isaac Newton"}}]},
-        "id": {"type": "number", "number": 12345}
-        }
-    })
-
-    store_content.append({
-        "object": "page",
-        "id": "680dee41-b447-451d-9d36-c6eaff13fb46",
-        "archived": False,
-        "in_trash": None,
-        "properties": {
-        "grade": {"type": "rich_text", "rich_text": [{"text": {"content": "A"}}]},
-        "name": {"type": "title", "title": [{"text": {"content": "Galileo Galilei"}}]},
-        "id": {"type": "number", "number": 67890}
-        }
-    })
-
-    store_content.append({
-        "object": "page",
-        "id": "680dee41-b447-451d-9d36-c6eaff13fb47",
-        "archived": False,
-        "in_trash": None,
-        "properties": {
-            "grade": {"type": "rich_text", "rich_text": [{"text": {"content": "C"}}]},
-            "name": {"type": "title", "title": [{"text": {"content": "Ada Lovelace"}}]},
-            "id": {"type": "number", "number": 32165}
-        }
-    })
-
-    return store_content
 
 @pytest.fixture
 def payload_template() -> dict:
@@ -59,7 +21,7 @@ def payload_template() -> dict:
 @pytest.fixture
 def page_payload(payload_template: dict) -> dict:
     payload = copy.deepcopy(payload_template)
-    payload['parent'] = {"type": "database_id", "database_id": "11111111-1111-1111-1111-111111111111"}
+    payload['parent'] = {"type": "database_id", "database_id": _STUDENTS_ID_}
     payload['properties'] = {
         "grade": {"type": "rich_text", "rich_text": [{"text": {"content": "C"}}]},
         "name": {"type": "title", "title": [{"text": {"content": "Ada Lovelace"}}]},
@@ -67,6 +29,39 @@ def page_payload(payload_template: dict) -> dict:
     }
 
     return payload
+
+@pytest.fixture
+def page_payloads() -> list[dict]:
+    payloads = list()
+    parent = {'type': 'database_id', 'database_id': _STUDENTS_ID_}
+    payloads.append({
+        'parent': parent,
+        "properties": {
+            "grade": {"type": "rich_text", "rich_text": [{"text": {"content": "B"}}]},
+            "name": {"type": "title", "title": [{"text": {"content": "Isaac Newton"}}]},
+            "id": {"type": "number", "number": 12345}
+        }
+    })
+
+    payloads.append({
+        'parent': parent,
+        "properties": {
+            "grade": {"type": "rich_text", "rich_text": [{"text": {"content": "A"}}]},
+            "name": {"type": "title", "title": [{"text": {"content": "Galileo Galilei"}}]},
+            "id": {"type": "number", "number": 67890}
+        }
+    })
+
+    payloads.append({
+        'parent': parent,
+        "properties": {
+            "grade": {"type": "rich_text", "rich_text": [{"text": {"content": "C"}}]},
+            "name": {"type": "title", "title": [{"text": {"content": "Ada Lovelace"}}]},
+            "id": {"type": "number", "number": 32165}
+        }
+    })
+
+    return payloads
 
 @pytest.fixture
 def database_payload(payload_template: dict) -> dict:
@@ -85,8 +80,20 @@ def database_payload(payload_template: dict) -> dict:
 def client(fresh_client: InMemoryNotionClient, database_payload: dict) -> InMemoryNotionClient:
     # pre-fill database for testing endpoint pages, which relies on availability of the parent database
     # IMPORTANT: You must add the parent page for the database first
-    fresh_client._add('database', database_payload, "11111111-1111-1111-1111-111111111111")
+    fresh_client._add('database', database_payload, _STUDENTS_ID_)
     return fresh_client
+
+@pytest.fixture
+def for_page_queries(client: InMemoryNotionClient, page_payloads: list[dict]) -> InMemoryNotionClient:
+    ids = [
+        '680dee41-b447-451d-9d36-c6eaff13fb45',
+        '680dee41-b447-451d-9d36-c6eaff13fb46',
+        '680dee41-b447-451d-9d36-c6eaff13fb47'
+    ]
+    for id_, payload in enumerate(page_payloads):
+        _ = client._add('page', payload, ids[id_])
+
+    return client
 
 def get_name(obj: dict) -> str:
     return obj['properties']['name']['title'][0]['text']['content']
@@ -112,18 +119,10 @@ def test_client_store_correctly_initialized(fresh_client: InMemoryNotionClient):
     assert fresh_client._store_len() == 1
     assert get_page_title(fresh_client._get_by_id(root_page_id)) == InMemoryNotionClient._ROOT_PAGE_TITLE_
 
-def test_client_create_store(fresh_client: InMemoryNotionClient):
-    content = generate_store_content() 
-    fresh_client._create_store(content)
-    assert fresh_client._store_len() == len(content) + 1
-
-def test_client_get_by_id(fresh_client: InMemoryNotionClient):
-    assert not fresh_client._get_by_id('680dee41-b447-451d-9d36-c6eaff13fb47')
-    content = generate_store_content() 
-    fresh_client._create_store(content)
-    newton = fresh_client._get_by_id('680dee41-b447-451d-9d36-c6eaff13fb45')
-    galileo = fresh_client._get_by_id('680dee41-b447-451d-9d36-c6eaff13fb46')
-    ada = fresh_client._get_by_id('680dee41-b447-451d-9d36-c6eaff13fb47')
+def test_client_get_by_id(for_page_queries: InMemoryNotionClient):
+    newton = for_page_queries._get_by_id('680dee41-b447-451d-9d36-c6eaff13fb45')
+    galileo = for_page_queries._get_by_id('680dee41-b447-451d-9d36-c6eaff13fb46')
+    ada = for_page_queries._get_by_id('680dee41-b447-451d-9d36-c6eaff13fb47')
     assert newton
     assert galileo
     assert ada
@@ -200,7 +199,11 @@ def test_client_pages_create_could_not_find_database(fresh_client: InMemoryNotio
     with pytest.raises(NotionError, match=error_message):
         _ = fresh_client.pages_create(page_payload) 
 
-def test_client_retrieve_could_not_find_page(client: InMemoryNotionClient, page_payload: dict):
+def test_client_pages_retrieve_invalid_url(client: InMemoryNotionClient):
+    with pytest.raises(NotionError, match='Invalid request URL'):
+        _ = client.pages_retrieve({})
+
+def test_client_pages_retrieve_could_not_find_page(client: InMemoryNotionClient, page_payload: dict):
     _ = client.pages_create(page_payload)
     bad_id = str(uuid.uuid4())
     with pytest.raises(NotionError, match=f'Could not find page with ID: {bad_id}'):
@@ -237,4 +240,67 @@ def test_client_databases_create(fresh_client: InMemoryNotionClient, database_pa
     assert fresh_client._store_len() == 1 + 1
     assert database_created['id'] == list(fresh_client._store.keys())[-1]
     assert all(generated_prop_ids)
+
+def test_client_databases_retrieve(client: InMemoryNotionClient, database_payload: dict):
+    database_created = client.databases_create(database_payload)
+    database_retrieved = client.databases_retrieve({'database_id': database_created.get('id')})
+    
+    # the store contains the database (pre-filled in) and the newly created page
+    assert client._store_len() == 2 + 1
+    assert database_retrieved == client._store[database_created['id']]
+
+def test_client_databases_query(for_page_queries: InMemoryNotionClient):
+    assert for_page_queries._store_len() == 5
+    results = for_page_queries.databases_query({
+        'database_id': _STUDENTS_ID_,
+        'filter': {
+            'and': [
+                {
+                    'property': 'id',
+                    'number': {
+                        'greater_than': 12000
+                    }
+                },
+                {
+                    'property': 'name',
+                    'title': {
+                        'does_not_contain': 'Ada'
+                    }
+
+                }
+            ]
+            
+        }
+    })
+    assert results['object'] == 'list'
+    assert len(results['results']) == 2
+    assert get_name(results['results'][0]) == 'Isaac Newton'
+    assert get_name(results['results'][1]) == 'Galileo Galilei'
+
+# =================================================================
+# Endpoint: databases, error cases
+# =================================================================
+def test_client_databases_create_no_id_in_body(client: InMemoryNotionClient, database_payload: dict):
+    bad_payload = copy.deepcopy(database_payload)
+    bad_payload['parent'].pop('page_id')
+
+    with pytest.raises(NotionError, match='body.parent.page_id should be defined'):
+        _ = client.databases_create(bad_payload) 
+
+def test_client_databases_create_could_not_find_database(fresh_client: InMemoryNotionClient, page_payload: dict):
+    not_found_id = page_payload['parent']['database_id']
+    error_message = f'Could not find database with ID: {not_found_id}'
+    with pytest.raises(NotionError, match=error_message):
+        _ = fresh_client.pages_create(page_payload) 
+
+def test_client_databases_retrieve_invalid_url(client: InMemoryNotionClient):
+    with pytest.raises(NotionError, match='Invalid request URL'):
+        _ = client.databases_retrieve({})
+
+def test_client_databases_retrieve_could_not_find_page(client: InMemoryNotionClient, database_payload: dict):
+    _ = client.databases_create(database_payload)
+    bad_id = str(uuid.uuid4())
+    with pytest.raises(NotionError, match=f'Could not find database with ID: {bad_id}'):
+        _ = client.databases_retrieve({'database_id': bad_id})
+
 

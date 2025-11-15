@@ -207,8 +207,9 @@ class InMemoryNotionClient(AbstractNotionClient):
 
     """
 
-    _ROOT_PAGE_ID_ = 'ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ'
-    _ROOT_PAGE_TITLE_ = 'ROOT_PAGE'
+    _ROOT_PAGE_ID_ =        'ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ'
+    _ROOT_PAGE_PARENT_ID_ = 'YYYYYYYY-0000-1111-WWWWWWWWWWWWWWWWW'
+    _ROOT_PAGE_TITLE_ =     'ROOT_PAGE'
 
     def __init__(
             self, 
@@ -236,6 +237,10 @@ class InMemoryNotionClient(AbstractNotionClient):
             InMemoryNotionClient._ROOT_PAGE_ID_: self._new_object(
                 'page', 
                 {
+                    'parent': {
+                        'type': 'page_id',
+                        'page_id': InMemoryNotionClient._ROOT_PAGE_PARENT_ID_,
+                    },
                     'properties': {
                         'Title': {'title': [{'text': {'content': InMemoryNotionClient._ROOT_PAGE_TITLE_}}]}                   
                     }
@@ -316,6 +321,18 @@ class InMemoryNotionClient(AbstractNotionClient):
         return new_page_or_db
 
     def _add_database(self, new_object: dict) -> dict:
+        parent_page_id = new_object.get('parent').get('page_id', None)
+        if parent_page_id is None:
+            raise NotionError(
+                'Body failed validation: body.parent.page_id should be defined, instead was undefined.'
+            )
+
+        if not self._get_by_id(parent_page_id):
+            raise NotionError(
+                f'Could not find page with ID: {parent_page_id} '
+                'Make sure the relevant pages and databases are shared with your integration.'
+            )
+
         new_object['is_inline'] = False
         property_keys = [key for key in new_object.get('properties').keys()]
         ret_new_db = copy.deepcopy(new_object)
@@ -333,6 +350,7 @@ class InMemoryNotionClient(AbstractNotionClient):
         return ret_new_db
         
     def _add_page(self, new_object: dict) -> dict:
+        # TODO: refactor to check parent ids availability and existence first
         ret_new_pg = copy.deepcopy(new_object)
         ret_new_pg.pop('properties')
         property_keys = [key for key in new_object.get('properties').keys()]
@@ -362,6 +380,10 @@ class InMemoryNotionClient(AbstractNotionClient):
                 ret_new_pg['properties'][prop_name]['id'] = prod_id
         else:
             # parent is a page, generate new property ids
+            # TODO: add test for availability of page under page_id
+            # IMPORTANT: If you do this, you break pre-filling of fresh clients for testing purposes.
+            # Consider always adding a root page to mimic the internal integrations case.
+            # See https://developers.notion.com/reference/post-page#choosing-a-parent
             for prop_name, prop_obj in properties.items():
                 prop_type = list(prop_obj.keys())
                 prop_obj['id'] = 'title' if prop_type[0] == 'title' else self._generate_property_id()
@@ -440,15 +462,22 @@ class InMemoryNotionClient(AbstractNotionClient):
         return self._add('page', payload)
     
     def pages_retrieve(self, payload: dict) -> dict:
-        retrieved_page = self._get_by_id(payload['page_id'])
+        page_id = payload.get('page_id', None)
 
-        if not retrieved_page:
+        if page_id is None:
             raise NotionError(
-                    f'Could not find page with ID: {payload['page_id']} '
+                'Invalid request URL.'
+            )
+
+        retrieved_object = self._get_by_id(payload['page_id'])
+
+        if not retrieved_object:
+            raise NotionError(
+                    f'Could not find page with ID: {page_id} '
                     'Make sure the relevant pages and databases are shared with your integration.'
             )
 
-        return retrieved_page
+        return retrieved_object
     
     def pages_update(self, payload)-> dict:
         if self._store_len() > 0:
@@ -485,27 +514,46 @@ class InMemoryNotionClient(AbstractNotionClient):
         return self._add('database', payload)
     
     def databases_retrieve(self, payload: dict) -> dict:
-        try:
-            retrieved_object = self._get_by_id(payload['id'])
-        except KeyError:
-            raise NotionError('Bad payload provided, missing "database_id"')
+        database_id = payload.get('database_id', None)
+        if database_id is None:
+            raise NotionError(
+                'Invalid request URL.'
+            )
+
+        retrieved_object = self._get_by_id(payload['database_id'])
+        if not retrieved_object:
+            raise NotionError(
+                    f'Could not find database with ID: {database_id} '
+                    'Make sure the relevant pages and databases are shared with your integration.'
+            )
 
         return retrieved_object
     
-    def databases_query(self, payload: dict) -> List[dict]:
-        query_result = []
-        if self._store_len() > 0:        
+    def databases_query(self, payload: dict) -> dict:
+        query_results = []
+        query_result_object = {
+            'object': 'list',
+            'results': query_results,
+            'next_cursor': None,
+            'has_more': False,
+            'type': 'page',
+            'page': {}
+        }
+
+        if self._store_len() > 0:
+            # perform search only if store contains data        
             db_id = payload['database_id']
-            for obj in self._store['store']:
+            for obj in self._store.values():
                 if obj['object'] == 'page' and obj['parent']['type'] == 'database_id':
                     # select only pages whose parent is a database
                     if obj['parent']['database_id'] == db_id:
                         # select only pages belonging to the db specified in the payload
                         filter = _Filter(obj, payload)
                         if filter.eval():
-                            query_result.append(obj)
+                            # select only those pages for which the filter evaluates to True 
+                            query_results.append(obj)
 
-        return query_result
+        return query_result_object      
 
 class FileBasedNotionClient(InMemoryNotionClient):
     """Enhance the in-memory client with file based persistence.
@@ -595,6 +643,7 @@ class _Condition:
         'greater_than': operator.gt,
         'less_than': operator.lt,
         'contains': operator.contains,
+        'does_not_contain': lambda a, b: b not in a,
         'or': operator.or_,
         'and': operator.and_,
         'not': operator.not_
@@ -610,7 +659,6 @@ class _Condition:
         return next((k, v) for k, v in cond.items() if k != "property")
 
     def eval(self) -> bool:
-        #pdb.set_trace()
         op, val = next(iter(self.type_filter.items()))
         try:
             func = _Condition._op_map[op]
