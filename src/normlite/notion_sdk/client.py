@@ -322,10 +322,19 @@ class InMemoryNotionClient(AbstractNotionClient):
         properties = new_object['properties']
         if parent.get('type') == 'database_id':
             # parent is a database, copy database property ids into page property ids
-            schema = self._get(parent.get('database_id'))
+            database_id = parent.get('database_id', None)
+            if database_id is None:
+                raise NotionError(
+                    'Body failed validation: body.parent.database_id should be defined, instead was undefined.'
+                )
+            
+            schema = self._get_by_id(parent.get('database_id'))
             if not schema:
                 # no database found for this page object
-                raise NotionError(f'No database found with database_id: {parent.get('database_id')}')
+                raise NotionError(
+                    f'Could not find database with ID: {parent.get('database_id')} '
+                    'Make sure the relevant pages and databases are shared with your integration.'
+                )
                 
             for prop_name, prop_obj in properties.items():
                 # page objects just contain the key 'id' in their properties from the schema object
