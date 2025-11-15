@@ -206,6 +206,10 @@ class InMemoryNotionClient(AbstractNotionClient):
     .. versionchanged:: 0.7.0 :class:`InMemoryNotionClient` automatically creates the `information_schema` page and the `tables` database.
 
     """
+
+    _ROOT_PAGE_ID_ = 'ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ'
+    _ROOT_PAGE_TITLE_ = 'ROOT_PAGE'
+
     def __init__(
             self, 
             ws_id: Optional[str] = None,
@@ -228,13 +232,23 @@ class InMemoryNotionClient(AbstractNotionClient):
         else: 
             self._tables_db_id = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
 
-        self._store: dict[str, Any] = {}
+        self._store: dict[str, Any] = {
+            InMemoryNotionClient._ROOT_PAGE_ID_: self._new_object(
+                'page', 
+                {
+                    'properties': {
+                        'Title': {'title': [{'text': {'content': InMemoryNotionClient._ROOT_PAGE_TITLE_}}]}                   
+                    }
+                }
+            )
+        }
         """The dictionary simulating the Notion store. 
         It's an instance attribute to avoid unwanted side effects and 
         provide more behavioral predictability.
 
-        .. versionchanged:: 0.7.0 Fix https://github.com/giant0791/normlite/issues/45
-            Fix issue with asymmetric file based Notion client.
+        .. versionchanged:: 0.7.0
+            - Add root page by default in the constructor.
+            - Fix issue with asymmetric file based Notion client (https://github.com/giant0791/normlite/issues/45).
         """
 
     def _create_store(self, store_content: List[dict] = []) -> None:
@@ -243,6 +257,10 @@ class InMemoryNotionClient(AbstractNotionClient):
         Args:
             store_content (List[dict], optional): The initial content for the Notion store. Defaults to ``[]``.
         """
+        warnings.warn(
+            '`_create_store()` is deprecated and will be removed in a future version. '
+            'To add pages for testing purposes, use a fixture instead.' 
+        )
         if store_content:
             for obj in store_content:
                 oid = obj['id']
@@ -252,7 +270,7 @@ class InMemoryNotionClient(AbstractNotionClient):
 
     def _get(self, id: str) -> dict:
         warnings.warn(
-            '`_get() is deprecated and will be removed in a future version. '
+            '`_get()` is deprecated and will be removed in a future version. '
             'Use `_get_by_id()` instead' 
         )
         return self._get_by_id(id)

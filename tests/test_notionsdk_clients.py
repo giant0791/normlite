@@ -58,7 +58,7 @@ def payload_template() -> dict:
 
 @pytest.fixture
 def page_payload(payload_template: dict) -> dict:
-    payload = payload_template
+    payload = copy.deepcopy(payload_template)
     payload['parent'] = {"type": "database_id", "database_id": "11111111-1111-1111-1111-111111111111"}
     payload['properties'] = {
         "grade": {"type": "rich_text", "rich_text": [{"text": {"content": "C"}}]},
@@ -70,8 +70,8 @@ def page_payload(payload_template: dict) -> dict:
 
 @pytest.fixture
 def database_payload(payload_template: dict) -> dict:
-    payload = payload_template
-    payload['parent'] = {"type": "page_id", "page_id": "00000000-0000-0000-0000-000000000000"}
+    payload = copy.deepcopy(payload_template)
+    payload['parent'] = {"type": "page_id", "page_id": InMemoryNotionClient._ROOT_PAGE_ID_}
     payload['title'] = {"title": [{"text": {"content": "students", "link": None}}]}
     payload['properties'] = {
         "name": {"title": {}},
@@ -84,6 +84,7 @@ def database_payload(payload_template: dict) -> dict:
 @pytest.fixture
 def client(fresh_client: InMemoryNotionClient, database_payload: dict) -> InMemoryNotionClient:
     # pre-fill database for testing endpoint pages, which relies on availability of the parent database
+    # IMPORTANT: You must add the parent page for the database first
     fresh_client._add('database', database_payload, "11111111-1111-1111-1111-111111111111")
     return fresh_client
 
@@ -99,17 +100,22 @@ def get_grade(obj: dict) -> str:
 def get_db_prop_type(name: str, obj: dict) -> str:
     return obj['properties'][name].get('type', None)
 
+def get_page_title(obj: dict) -> str:
+    return obj['properties']['Title']['title'][0]['text']['content']
+
 # =================================================================
 # Helper methods
 # =================================================================
-
-def test_client_store_len(fresh_client: InMemoryNotionClient):
-    assert fresh_client._store_len() == 0
+def test_client_store_correctly_initialized(fresh_client: InMemoryNotionClient):
+    root_page_id = InMemoryNotionClient._ROOT_PAGE_ID_
+    
+    assert fresh_client._store_len() == 1
+    assert get_page_title(fresh_client._get_by_id(root_page_id)) == InMemoryNotionClient._ROOT_PAGE_TITLE_
 
 def test_client_create_store(fresh_client: InMemoryNotionClient):
     content = generate_store_content() 
     fresh_client._create_store(content)
-    assert fresh_client._store_len() == len(content)
+    assert fresh_client._store_len() == len(content) + 1
 
 def test_client_get_by_id(fresh_client: InMemoryNotionClient):
     assert not fresh_client._get_by_id('680dee41-b447-451d-9d36-c6eaff13fb47')
@@ -153,7 +159,7 @@ def test_client_pages_create(client: InMemoryNotionClient, page_payload: dict):
     page_created = client.pages_create(page_payload)
 
     # the store contains the database (pre-filled in) and the new page
-    assert client._store_len() == 2             
+    assert client._store_len() == 2 + 1            
     assert page_created['id'] == client._store[page_created['id']].get('id')
 
 def test_client_pages_retrieve(client: InMemoryNotionClient, page_payload: dict):
@@ -161,7 +167,7 @@ def test_client_pages_retrieve(client: InMemoryNotionClient, page_payload: dict)
     page_retrieved = client.pages_retrieve({'page_id': page_created.get('id')})
 
     # the store contains the database (pre-filled in) and the newly created page
-    assert client._store_len() == 2
+    assert client._store_len() == 2 + 1
     assert page_retrieved == client._store[page_created['id']]
 
 def test_client_pages_update(client: InMemoryNotionClient, page_payload: dict):
@@ -181,7 +187,6 @@ def test_client_pages_update(client: InMemoryNotionClient, page_payload: dict):
 # =================================================================
 # Endpoint: pages, error cases
 # =================================================================
-
 def test_client_pages_create_no_id_in_body(client: InMemoryNotionClient, page_payload: dict):
     bad_payload = copy.deepcopy(page_payload)
     bad_payload['parent'].pop('database_id')
@@ -229,7 +234,7 @@ def test_client_databases_create(fresh_client: InMemoryNotionClient, database_pa
     prop_objects = database_created['properties'].values()
     generated_prop_ids = [prop_id for prop_id in prop_objects]
     
-    assert fresh_client._store_len() == 1
+    assert fresh_client._store_len() == 1 + 1
     assert database_created['id'] == list(fresh_client._store.keys())[-1]
     assert all(generated_prop_ids)
 
