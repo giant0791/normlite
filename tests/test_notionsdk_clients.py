@@ -1,5 +1,6 @@
 import copy
 import pdb
+import uuid
 import pytest
 
 from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
@@ -194,6 +195,12 @@ def test_client_pages_create_could_not_find_database(fresh_client: InMemoryNotio
     with pytest.raises(NotionError, match=error_message):
         _ = fresh_client.pages_create(page_payload) 
 
+def test_client_retrieve_could_not_find_page(client: InMemoryNotionClient, page_payload: dict):
+    _ = client.pages_create(page_payload)
+    bad_id = str(uuid.uuid4())
+    with pytest.raises(NotionError, match=f'Could not find page with ID: {bad_id}'):
+        _ = client.pages_retrieve({'page_id': bad_id})
+
 def test_client_pages_update_invalid_url(client: InMemoryNotionClient, page_payload: dict):
     page_created = client.pages_create(page_payload)
     _ = page_created.get('id')
@@ -215,7 +222,14 @@ def test_client_pages_update_validation_error(client: InMemoryNotionClient, page
         })
         
 # =================================================================
-# Endpoint: databases
+# Endpoint: databases, happy path
 # =================================================================
 def test_client_databases_create(fresh_client: InMemoryNotionClient, database_payload: dict):
-    pass
+    database_created = fresh_client.databases_create(database_payload)
+    prop_objects = database_created['properties'].values()
+    generated_prop_ids = [prop_id for prop_id in prop_objects]
+    
+    assert fresh_client._store_len() == 1
+    assert database_created['id'] == list(fresh_client._store.keys())[-1]
+    assert all(generated_prop_ids)
+

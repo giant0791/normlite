@@ -258,12 +258,13 @@ class InMemoryNotionClient(AbstractNotionClient):
         return self._get_by_id(id)
     
     def _get_by_id(self, id: str) -> dict:
-        if self._store_len() > 0:
-            try:
-                return self._store[id]
-            except KeyError:                
-                return {}
- 
+        if self._store_len() == 0:
+            return {}
+    
+        try:
+            return self._store[id]
+        except KeyError:                
+            return {} 
    
     def _get_by_title(self, title: str, type: str) -> dict:
         """Return the first occurrence in the store of page or database with the passed title."""
@@ -421,12 +422,15 @@ class InMemoryNotionClient(AbstractNotionClient):
         return self._add('page', payload)
     
     def pages_retrieve(self, payload: dict) -> dict:
-        if self._store_len() > 0:
-            retrieved_page = self._get_by_id(payload['page_id'])
-            if retrieved_page['object'] == 'page':
-                return retrieved_page
-        
-        return {}
+        retrieved_page = self._get_by_id(payload['page_id'])
+
+        if not retrieved_page:
+            raise NotionError(
+                    f'Could not find page with ID: {payload['page_id']} '
+                    'Make sure the relevant pages and databases are shared with your integration.'
+            )
+
+        return retrieved_page
     
     def pages_update(self, payload)-> dict:
         if self._store_len() > 0:
