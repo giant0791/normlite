@@ -15,14 +15,46 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Provide library-wide constants.
+
+This module implements constants to be used in other modules of ``normlite``.
+
+.. versionadded:: 0.7.0
+
+"""
 from enum import StrEnum
 
 class SpecialColumns(StrEnum):
+    """Define enum constants for column names to access Notion-specific columns ("special columns").
+    
+    .. versionadded:: 0.7.0
+
+    """
     NO_ID = "_no_id"
+    """Notion "id" key for all objects."""
+
     NO_TITLE = "_no_title"
+    """Notion "title" key for database objects."""
+    
     NO_ARCHIVED = "_no_archived"
+    """Notion "archived" key for all objects."""
+    
     NO_IN_TRASH = "_no_in_trash"
+    """Notion "in_trash" key for all objects."""
 
     @classmethod
     def values(cls) -> tuple[str, ...]:
+        """Provide all constants values as tuple.
+        
+        Helper class method for implementing is in tests.
+
+        Example::
+
+            >>> '_no_in_trash' in SpecialColumns.values()
+            True
+
+            >>> '_no_not_exists' in SpecialColumns.values()
+            False
+
+        """
         return tuple(m.value for m in cls)

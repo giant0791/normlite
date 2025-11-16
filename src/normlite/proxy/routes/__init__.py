@@ -23,6 +23,7 @@ All endpoints return JSON objects according to the following schema.
 ** Success (health)**:
 
 ..code-block:: json
+
   {
     "state": "ALIVE"
   }
@@ -42,6 +43,7 @@ All endpoints return JSON objects according to the following schema.
 **Success (commit)**:
 
 .. code-block:: json
+
   {
     "transaction_id", "<tx_id>",    // <tx_id> = uuid4 string, id  of the committed transaction
     "state": "<tx_state>",          // <tx_state> = "COMMITTED"
@@ -51,6 +53,7 @@ All endpoints return JSON objects according to the following schema.
 **Error**:
 
 ..code-block:: json
+
   {
     "error": {
       "code": "<error_code>",       // <error_code> = e.g. "invalid_payload"    
@@ -85,9 +88,9 @@ All endpoints return JSON objects according to the following schema.
      - ``/transactions/<id>/rollback``
      - Roll back an existing transaction (see :func:`normlite.proxy.routes.transactions.rollback_transaction()` for more details).
     
-.. versionadded:: 0.6.0
-
 .. versionchanged:: 0.7.0
-  ``GET /health`` added, response schema redefin
+  ``GET /health`` added.
+
+.. versionadded:: 0.6.0
 
 """

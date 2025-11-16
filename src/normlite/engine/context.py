@@ -15,26 +15,74 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Provide key runtime abstraction for executing SQL statements.
+
+The design of SQL statement execution separates responsibilities cleanly using the following key classes:
+
+.. list-table:: SQL Statement Execution Design
+   :header-rows: 1
+   :widths: 23 77
+   :class: longtable
+
+   * - Class
+     - Responsibility
+   * - :class:`normlite.sql.base.Executable`
+     - Describes *what* to execute (e.g. :class:`normlite.sql.ddl.CreateTable`, :class:`normlite.sql.dml.Insert`) 
+       :class:`notiondbapi._model.NotionPage` for more details).
+   * - :class:`normlite.sql.base.SQLCompiler`
+     - Translates the :class:`normlite.sql.base.Executable` into a serializable payload.
+   * - :class:`ExecutionContext`
+     - Orchestrates binding, compilation, and result setup.
+   * - :class:`normlite.engine.base.Connection`
+     - Owns the DBAPI connection and *executes* statements.
+   * - :class:`normlite.engine.base.Engine`
+     - Factory for :class:`normlite.sql.base.SQLCompiler` and :class:`Connection`.
+
+
+.. versionadded:: 0.7.0
+    :class:`ExecutionContext` orchestrates binding, compilation, and result setup.
+
+"""
 from __future__ import annotations
-import pdb
 from typing import TYPE_CHECKING
 import copy
 
 from normlite.cursor import CursorResult
+from normlite.exceptions import ArgumentError
 from normlite.notiondbapi.dbapi2 import Cursor
 from normlite.sql.type_api import TypeEngine
 
 if TYPE_CHECKING:
-    from normlite.engine.base import Connection
     from normlite.sql.base import Compiled
 
 class ExecutionContext:
+    """Orchestrate binding, compilation, and result setup.
+
+    This class manages the key activities for the execution of SQL statements.
+    It binds dynamically the parameters at runtime prior to execution using the owned :class:`normlite.sql.Compiled` object.
+    After execution, it sets up the :class:`normlite.cursor.CursorResult` object to be returned using the owned :class:`normlite.notiondbapi.dbapi2.Cursor` 
+    (which contains the result set of the executed statement). 
+
+    .. versionadded:: 0.7.0
+        :meth:`_bind_params()` expects that parameters have been provided for all columns.
+        It raises :exc:`normlite.exceptions.ArgumentError` if this is not the case.
+
+    """
     def __init__(self, dbapi_cursor: Cursor, compiled: Compiled):
         self._dbapi_cursor = dbapi_cursor
+        """The DBAPI cursor holding the result set of the executed statement."""
+
         self._compiled = compiled
+        """The compiled statement."""
+
         self._element = compiled._element
+        """The statement object."""
+
         self._binds = compiled.params
+        """The parameters to be bound."""
+
         self._result = None
+        """The constructed :class:`normlite.cursor.CursorResult` to be returned as execution result."""
 
     def setup(self) -> None:
         """Perform value binding and type adaptation before execution.""" 
@@ -51,6 +99,8 @@ class ExecutionContext:
         self._compiled._compiled['operation']['payload'] = payload
         
     def _bind_params(self, template: dict, params: dict) -> dict:
+        """Helper for binding parameters at runtime."""
+
         payload = copy.deepcopy(template)
         properties = payload.get('properties')
         payload_properties = {}
@@ -73,12 +123,16 @@ class ExecutionContext:
         
         if not properties:
             # params does not contain all binding values
-            pass
+            not_bound = [key for key in properties.keys()]
+            not_bound_cols = ', '.join(not_bound)
+            raise ArgumentError(
+                f'Could not bind all columns: {not_bound_cols}.'
+            )
 
         payload['properties'] = payload_properties
-        #pdb.set_trace()
         return payload
 
     def _setup_cursor_result(self, cursor: Cursor) -> CursorResult:
+            """Setup the cursor result to be returned."""
             self._result = CursorResult(cursor, self._compiled.result_columns())
             return self._result

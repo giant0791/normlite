@@ -28,6 +28,8 @@ class _CursorColMapRecType(NamedTuple):
     This class provides a description record to enable value and type conversions between DBAPI 2.0 rows and 
     higher level class:`Row` objects.
 
+
+    .. versionchanged:: 0.7.0 Added support for column identifiers.
     .. versionadded:: 0.5.0
 
     """
@@ -43,7 +45,7 @@ class _CursorColMapRecType(NamedTuple):
     column_id: str
     """The Notion identifier for the property corresponding to this column.
     
-    .. versionadded: 0.7.0
+    .. versionadded:: 0.7.0
     """
 
 _ColMapType = dict
@@ -75,7 +77,8 @@ _NO_CURSOR_RESULT_METADATA = _NoCursorResultMetadata()
 class CursorResultMetaData(_NoCursorResultMetadata):
     """Provide helper metadata structures to access row data from low level 
     :class:`normlite.notionbdapi.dbapi2.Cursor` DBAPI 2.0.
-    
+
+    .. versionchanged:: 0.7.0 Added support for column identifiers.
     .. versionadded:: 0.5.0
 
     """
@@ -200,7 +203,6 @@ class CursorResult:
         """Provide an iterator for this cursor result.
 
         .. versionchanged:: 0.7.0   Raise :exc:`ResourceClosedError` if it was previously closed.
-
         .. versionadded:: 0.5.0
 
         Raises:
@@ -221,7 +223,6 @@ class CursorResult:
         """Return exactly one row or raise an exception.
 
         .. versionchanged:: 0.7.0   Raise :exc:`ResourceCloseError` if it was previously closed.
-
         .. versionadded:: 0.5.0
 
         Raises:
@@ -248,7 +249,6 @@ class CursorResult:
         This method closes the result set after invocation. Subsequent calls will return an empty sequence.
 
         .. versionchanged:: 0.7.0   Raise :exc:`ResourceCloseError` if it was previously closed.
-
         .. versionadded:: 0.5.0
         
         Raises:
@@ -274,7 +274,6 @@ class CursorResult:
             This method closes the result set and discards remaining rows.
 
         .. versionchanged:: 0.7.0  Raise :exc:`ResourceClosedError` if it was previously closed.
-
         .. versionadded:: 0.5.0
 
 
@@ -354,6 +353,7 @@ class CursorResult:
         After a cursor result is closed, the :attr:`returns_row` returns ``False``.
 
         .. versionadded:: 0.7.0
+            This method closes the underlying DBAPI cursor and manages the internal state.
     
         """
         self._metadata = _NO_CURSOR_RESULT_METADATA
@@ -371,11 +371,15 @@ class CursorResult:
 
     
 class CompositeCursorResult(CursorResult):
-    """Prototype for new and refactored CursorResult class with composite cursor feature.
+    """Prototype for new type of cursor result for handling multiple result sets.
+
+    The :class:`CompositeCursorResult` is intended for use with results produced by a
+    multi-statement transaction. In this case, multiple result sets are produced.
+    This class introduces the :meth:`next_result()` method to advance to the next result set.
     
     .. versionadded:: 0.7.0
 
-    Important:
+    Warning:
         Experimental, DON'T USE YET.
 
     """
@@ -511,7 +515,6 @@ class RowMapping(Mapping[str, Any]):
     .. versionadded:: 0.5.0
     
     """
-
     def __init__(self, row: Row):
         self._row = row
         """The underlying row object."""

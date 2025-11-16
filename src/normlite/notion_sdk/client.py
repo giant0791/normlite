@@ -55,9 +55,22 @@ class AbstractNotionClient(ABC):
 
     def __init__(self):
         self._ischema_page_id = None
-        """The object id for ``information_schema`` page."""
+        """The object id for ``information_schema`` page.
+        
+        .. deprecated:: 0.7.0
+            Do not use, it will be removed in a future version.
+            Use the keyword arguments of the :class:`normlite.engine.base.Engine`.
+            
+        """
 
         self._tables_db_id = None
+        """The object id for ``tables`` database.
+        
+        .. deprecated:: 0.7.0
+            Do not use, it will be removed in a future version.
+            Use the keyword arguments of the :class:`normlite.engine.base.Engine`.
+            
+        """
 
         AbstractNotionClient.allowed_operations = {
             name
@@ -112,6 +125,12 @@ class AbstractNotionClient(ABC):
 
     @property
     def ischema_page_id(self) -> Optional[str]:
+        """Return object id for ``information_schema`` page.
+        
+        .. deprecated:: 0.7.0
+            Do not use, it will be removed in a future version.
+            
+        """
         return self._ischema_page_id 
 
     @abstractmethod
@@ -120,11 +139,12 @@ class AbstractNotionClient(ABC):
 
         This method creates a new page that is a child of an existing page or database.
 
+
         Args:
             payload (dict): The JSON object containing the required payload as specified by the Notion API.
 
         Returns:
-            dict: The page object.
+            dict: The createdpage object with the property identifiers as the only key for each property object.
         """
         raise NotImplementedError
 
@@ -157,6 +177,51 @@ class AbstractNotionClient(ABC):
     
     @abstractmethod
     def pages_update(self, payload: dict) -> dict:
+        """Update a page object.
+        
+        Use this API to modify attributes of a Notion page object, such as properties, title, etc.
+        The payload follows the specific JSON required by Notion.
+        The identifier of the Notion page to be udated (*path* parameter) shall be provided as key "page_id" in the payload.
+        Here an example of a Python payload:
+
+        .. code-block:: python
+            
+            # payload to update page with id 59833787-2cf9-4fdf-8782-e53db20768a5
+            # with a new value for the property "student_id"
+            {
+                "page_id": "59833787-2cf9-4fdf-8782-e53db20768a5",
+                "properties" : {
+                    "student_id": {
+                        "number": 654321
+                    }
+                } 
+            }
+
+        This is how the returned object looks like:
+
+        .. code-block:: python
+
+            {
+                "object": "page",
+                "id": "59833787-2cf9-4fdf-8782-e53db20768a5",
+                
+                # other keys ommitted for brevity
+
+                "properties": {
+                    "student_id": {
+                        "id": "zag~"
+                    }
+
+                    # other properties omitted for brevity
+                }
+            }
+
+        Args:
+            payload (dict): The JSON object containing the required payload as specified by the Notion API.
+
+        Returns:
+            dict: The updated page object with the property identifiers as the only key for each property object.
+        """
         raise NotImplementedError
     
     @abstractmethod
@@ -198,18 +263,32 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
 class InMemoryNotionClient(AbstractNotionClient):
-    """Provide a simple but complete in-memory Notion client
+    """Provide a simple but complete in-memory Notion client.
     
     :class:`InMemoryNotionClient` fully implements the Notion API and mimics the Notion's store behavior.
-    It automatically creates the database management datastructures.
+    This class is best suited for testing purposes as it avoids the HTTP communication.
+    It has been designed to mimic as close as possible the behavior of Notion, including error messages.
 
-    .. versionchanged:: 0.7.0 :class:`InMemoryNotionClient` automatically creates the `information_schema` page and the `tables` database.
+    .. versionchanged:: 0.7.0 
+        In this version, the :attr:`_store` is a Python :type:`dict` to provide random access.
+        The object indentifier is used as key and the object itself is the value.
+        Additionally, the store is always initialized with a root page as is the case for Notion internal integrations.
+
+    .. deprecated:: 0.7.0
+        The :meth:`__init__` parameters **shall not** be used anymore, they will be removed in a future verison. 
+        The datastructures info schema page and tables are created by the :class:`normlite.engine.base.Engine`.
+        Clients do not have knowledge of these datastructures.
 
     """
 
     _ROOT_PAGE_ID_ =        'ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ'
+    """Fake root page identifier."""
+
     _ROOT_PAGE_PARENT_ID_ = 'YYYYYYYY-0000-1111-WWWWWWWWWWWWWWWWW'
+    """Fake root page parent identifier."""
+
     _ROOT_PAGE_TITLE_ =     'ROOT_PAGE'
+    """Fake root page title."""
 
     def __init__(
             self, 
@@ -233,7 +312,16 @@ class InMemoryNotionClient(AbstractNotionClient):
         else: 
             self._tables_db_id = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
 
-        self._store: dict[str, Any] = {
+        self._store: dict[str, Any] = {}
+        """The dictionary simulating the Notion store. 
+        It's an instance attribute to avoid unwanted side effects and 
+        provide more behavioral predictability.
+
+        .. versionchanged:: 0.7.0
+            - Add root page by default in the constructor.
+            - Fix issue with asymmetric file based Notion client (https://github.com/giant0791/normlite/issues/45).
+        """
+        self._store = {
             InMemoryNotionClient._ROOT_PAGE_ID_: self._new_object(
                 'page', 
                 {
@@ -247,20 +335,32 @@ class InMemoryNotionClient(AbstractNotionClient):
                 }
             )
         }
-        """The dictionary simulating the Notion store. 
-        It's an instance attribute to avoid unwanted side effects and 
-        provide more behavioral predictability.
-
-        .. versionchanged:: 0.7.0
-            - Add root page by default in the constructor.
-            - Fix issue with asymmetric file based Notion client (https://github.com/giant0791/normlite/issues/45).
-        """
 
     def _create_store(self, store_content: List[dict] = []) -> None:
         """Provide helper to create the simulated Notion store.
 
+        .. deprecated:: 0.7.0
+            Do **not** use this helper method, it will break the internal store.
+            There is currently no replacement. 
+            Here a short code snippet to correctly pre-fill the store
+            for test purposes.
+
+            .. code-block:: python
+
+                def for_page_queries(client: InMemoryNotionClient, page_payloads: list[dict]) -> InMemoryNotionClient:
+                    ids = [
+                        '680dee41-b447-451d-9d36-c6eaff13fb45',
+                        '680dee41-b447-451d-9d36-c6eaff13fb46',
+                        '680dee41-b447-451d-9d36-c6eaff13fb47'
+                    ]
+                    for id_, payload in enumerate(page_payloads):
+                        _ = client._add('page', payload, ids[id_])
+
+                    return client
+
         Args:
             store_content (List[dict], optional): The initial content for the Notion store. Defaults to ``[]``.
+
         """
         warnings.warn(
             '`_create_store()` is deprecated and will be removed in a future version. '
@@ -415,10 +515,15 @@ class InMemoryNotionClient(AbstractNotionClient):
     def _add(self, type_: str, payload: dict, id: Optional[str] = None) -> dict: 
         """Add Notion objects to the store.
         
-        This utitlity method handles 3 use cases:
+        This utility method handles 3 use cases:
             - add a database
             - add a page to an existing database
             - add a page to an existing page
+
+
+        .. versionchanged: 0.7.0
+            This method now ensures payload validation and orchestrates the object creation and
+            storing in the internal data structure.
         """
         self._raise_if_validation_fails(type_, payload)
         new_object = self._new_object(type_, payload, id)
