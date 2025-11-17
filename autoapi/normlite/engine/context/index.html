@@ -1,0 +1,233 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.engine.context &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+    <link rel="next" title="normlite.exceptions" href="../../exceptions/index.html" />
+    <link rel="prev" title="normlite.engine.base" href="../base/index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html">normlite</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../../_constants/index.html">normlite._constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../cursor/index.html">normlite.cursor</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="../index.html">normlite.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../exceptions/index.html">normlite.exceptions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../future/index.html">normlite.future</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notion_sdk/index.html">normlite.notion_sdk</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notiondbapi/index.html">normlite.notiondbapi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../proxy/index.html">normlite.proxy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../sql/index.html">normlite.sql</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../txmodel/index.html">normlite.txmodel</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">normlite</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">normlite.engine</a></li>
+      <li class="breadcrumb-item active">normlite.engine.context</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../../_sources/autoapi/normlite/engine/context/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-normlite.engine.context">
+<span id="normlite-engine-context"></span><h1>normlite.engine.context<a class="headerlink" href="#module-normlite.engine.context" title="Link to this heading"></a></h1>
+<p>Provide key runtime abstraction for executing SQL statements.</p>
+<p>The design of SQL statement execution separates responsibilities cleanly using the following key classes:</p>
+<table class="longtable docutils align-default" id="id1">
+<caption><span class="caption-text">SQL Statement Execution Design</span><a class="headerlink" href="#id1" title="Link to this table"></a></caption>
+<colgroup>
+<col style="width: 23.0%" />
+<col style="width: 77.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Class</p></th>
+<th class="head"><p>Responsibility</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><a class="reference internal" href="../../sql/base/index.html#normlite.sql.base.Executable" title="normlite.sql.base.Executable"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.base.Executable</span></code></a></p></td>
+<td><p>Describes <em>what</em> to execute (e.g. <a class="reference internal" href="../../sql/ddl/index.html#normlite.sql.ddl.CreateTable" title="normlite.sql.ddl.CreateTable"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.ddl.CreateTable</span></code></a>, <a class="reference internal" href="../../sql/dml/index.html#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.dml.Insert</span></code></a>)
+<code class="xref py py-class docutils literal notranslate"><span class="pre">notiondbapi._model.NotionPage</span></code> for more details).</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="../../sql/base/index.html#normlite.sql.base.SQLCompiler" title="normlite.sql.base.SQLCompiler"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.base.SQLCompiler</span></code></a></p></td>
+<td><p>Translates the <a class="reference internal" href="../../sql/base/index.html#normlite.sql.base.Executable" title="normlite.sql.base.Executable"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.base.Executable</span></code></a> into a serializable payload.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#normlite.engine.context.ExecutionContext" title="normlite.engine.context.ExecutionContext"><code class="xref py py-class docutils literal notranslate"><span class="pre">ExecutionContext</span></code></a></p></td>
+<td><p>Orchestrates binding, compilation, and result setup.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="../base/index.html#normlite.engine.base.Connection" title="normlite.engine.base.Connection"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.engine.base.Connection</span></code></a></p></td>
+<td><p>Owns the DBAPI connection and <em>executes</em> statements.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="../base/index.html#normlite.engine.base.Engine" title="normlite.engine.base.Engine"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.engine.base.Engine</span></code></a></p></td>
+<td><p>Factory for <a class="reference internal" href="../../sql/base/index.html#normlite.sql.base.SQLCompiler" title="normlite.sql.base.SQLCompiler"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.base.SQLCompiler</span></code></a> and <code class="xref py py-class docutils literal notranslate"><span class="pre">Connection</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0: </span><a class="reference internal" href="#normlite.engine.context.ExecutionContext" title="normlite.engine.context.ExecutionContext"><code class="xref py py-class docutils literal notranslate"><span class="pre">ExecutionContext</span></code></a> orchestrates binding, compilation, and result setup.</p>
+</div>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.engine.context.ExecutionContext">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.engine.context.</span></span><span class="sig-name descname"><span class="pre">ExecutionContext</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dbapi_cursor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><span class="pre">normlite.notiondbapi.dbapi2.Cursor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">compiled</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../sql/base/index.html#normlite.sql.base.Compiled" title="normlite.sql.base.Compiled"><span class="pre">normlite.sql.base.Compiled</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/engine/context.html#ExecutionContext"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.engine.context.ExecutionContext" title="Link to this definition"></a></dt>
+<dd><p>Orchestrate binding, compilation, and result setup.</p>
+<p>This class manages the key activities for the execution of SQL statements.
+It binds dynamically the parameters at runtime prior to execution using the owned <code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.Compiled</span></code> object.
+After execution, it sets up the <a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult</span></code></a> object to be returned using the owned <a class="reference internal" href="../../notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor</span></code></a>
+(which contains the result set of the executed statement).</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0: </span><a class="reference internal" href="#normlite.engine.context.ExecutionContext._bind_params" title="normlite.engine.context.ExecutionContext._bind_params"><code class="xref py py-meth docutils literal notranslate"><span class="pre">_bind_params()</span></code></a> expects that parameters have been provided for all columns.
+It raises <a class="reference internal" href="../../exceptions/index.html#normlite.exceptions.ArgumentError" title="normlite.exceptions.ArgumentError"><code class="xref py py-exc docutils literal notranslate"><span class="pre">normlite.exceptions.ArgumentError</span></code></a> if this is not the case.</p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.context.ExecutionContext._dbapi_cursor">
+<span class="sig-name descname"><span class="pre">_dbapi_cursor</span></span><a class="headerlink" href="#normlite.engine.context.ExecutionContext._dbapi_cursor" title="Link to this definition"></a></dt>
+<dd><p>The DBAPI cursor holding the result set of the executed statement.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.context.ExecutionContext._compiled">
+<span class="sig-name descname"><span class="pre">_compiled</span></span><a class="headerlink" href="#normlite.engine.context.ExecutionContext._compiled" title="Link to this definition"></a></dt>
+<dd><p>The compiled statement.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.context.ExecutionContext._element">
+<span class="sig-name descname"><span class="pre">_element</span></span><a class="headerlink" href="#normlite.engine.context.ExecutionContext._element" title="Link to this definition"></a></dt>
+<dd><p>The statement object.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.context.ExecutionContext._binds">
+<span class="sig-name descname"><span class="pre">_binds</span></span><a class="headerlink" href="#normlite.engine.context.ExecutionContext._binds" title="Link to this definition"></a></dt>
+<dd><p>The parameters to be bound.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.engine.context.ExecutionContext._result">
+<span class="sig-name descname"><span class="pre">_result</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.engine.context.ExecutionContext._result" title="Link to this definition"></a></dt>
+<dd><p>The constructed <a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult</span></code></a> to be returned as execution result.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.engine.context.ExecutionContext.setup">
+<span class="sig-name descname"><span class="pre">setup</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/engine/context.html#ExecutionContext.setup"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.engine.context.ExecutionContext.setup" title="Link to this definition"></a></dt>
+<dd><p>Perform value binding and type adaptation before execution.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.engine.context.ExecutionContext._bind_params">
+<span class="sig-name descname"><span class="pre">_bind_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">template</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/engine/context.html#ExecutionContext._bind_params"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.engine.context.ExecutionContext._bind_params" title="Link to this definition"></a></dt>
+<dd><p>Helper for binding parameters at runtime.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.engine.context.ExecutionContext._setup_cursor_result">
+<span class="sig-name descname"><span class="pre">_setup_cursor_result</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cursor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../notiondbapi/dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor" title="normlite.notiondbapi.dbapi2.Cursor"><span class="pre">normlite.notiondbapi.dbapi2.Cursor</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><span class="pre">normlite.cursor.CursorResult</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/engine/context.html#ExecutionContext._setup_cursor_result"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.engine.context.ExecutionContext._setup_cursor_result" title="Link to this definition"></a></dt>
+<dd><p>Setup the cursor result to be returned.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../base/index.html" class="btn btn-neutral float-left" title="normlite.engine.base" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../../exceptions/index.html" class="btn btn-neutral float-right" title="normlite.exceptions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,405 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.sql.base &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">normlite.sql.base</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for normlite.sql.base</h1><div class="highlight"><pre>
+<span></span><span class="c1"># sql/base.py</span>
+<span class="c1"># Copyright (C) 2025 Gianmarco Antonini</span>
+<span class="c1">#</span>
+<span class="c1"># This module is part of normlite and is released under the GNU Affero General Public License.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is free software: you can redistribute it and/or modify</span>
+<span class="c1"># it under the terms of the GNU Affero General Public License as published</span>
+<span class="c1"># by the Free Software Foundation, either version 3 of the License, or</span>
+<span class="c1"># (at your option) any later version.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is distributed in the hope that it will be useful,</span>
+<span class="c1"># but WITHOUT ANY WARRANTY; without even the implied warranty of</span>
+<span class="c1"># MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</span>
+<span class="c1"># GNU Affero General Public License for more details.</span>
+<span class="c1">#</span>
+<span class="c1"># You should have received a copy of the GNU Affero General Public License</span>
+<span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ABC</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pdb</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Protocol</span><span class="p">,</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Sequence</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">UnsupportedCompilationError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.engine.context</span><span class="w"> </span><span class="kn">import</span> <span class="n">ExecutionContext</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">ReadOnlyColumnCollection</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.ddl</span><span class="w"> </span><span class="kn">import</span> <span class="n">CreateTable</span><span class="p">,</span> <span class="n">CreateColumn</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.dml</span><span class="w"> </span><span class="kn">import</span> <span class="n">Insert</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.cursor</span><span class="w"> </span><span class="kn">import</span> <span class="n">CursorResult</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.notiondbapi.dbapi2</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cursor</span>
+
+<div class="viewcode-block" id="Visitable">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.Visitable">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Visitable</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for any AST node that can be &quot;visited&quot; by a compiler.</span>
+
+<span class="sd">    It provides the :meth:`Visitable._compiler_dispatch()` method that delegates compilation</span>
+<span class="sd">    to a compiler based on :attr:`__visit_name__`.</span>
+
+<span class="sd">    .. versionchanged:: 0.7.0 </span>
+<span class="sd">        This class has been completely redesigned to better separate</span>
+<span class="sd">        concerns related to AST nodes, compilation, and compiled objects produced by the compilation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">__visit_name__</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Class attribute used to denote the visit method to be called during compilation. &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Visitable._compiler_dispatch">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.Visitable._compiler_dispatch">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compiler_dispatch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="p">:</span> <span class="n">SQLCompiler</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Delegate this node&#39;s compilation to the compiler.</span>
+<span class="sd">        </span>
+<span class="sd">        The compiler must implement a method named `visit_&lt;__visit_name__&gt;`.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            compiler (SQLCompiler): The compiler object to be used for compilation.</span>
+<span class="sd">            **kwargs (Any): Additional parameters to be passed to the compiler&#39;s visit method to allow context-sensitive compilation.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            UnsupportedCompilationError: If the instance owning this method is missing the :attr:`__visit_name__` or if it has no visit method.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: The compilation result in form of a dictionary (JSON) object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">visit_name</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;__visit_name__&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">visit_name</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">UnsupportedCompilationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> is missing &#39;__visit_name__&#39; attribute.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">visit_fn</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">compiler</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;visit_</span><span class="si">{</span><span class="n">visit_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">callable</span><span class="p">(</span><span class="n">visit_fn</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">UnsupportedCompilationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">compiler</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> has no method visit_</span><span class="si">{</span><span class="n">visit_name</span><span class="si">}</span><span class="s2">() &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;for </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">visit_fn</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+</div>
+
+
+<div class="viewcode-block" id="ClauseElement">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.ClauseElement">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ClauseElement</span><span class="p">(</span><span class="n">Visitable</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for SQL elements that can be compiled by the compiler.</span>
+
+<span class="sd">    This class orchestrates for all subclasses the compilation process by implementing the :meth:`compile`.</span>
+<span class="sd">    Subclasses do not have to take care of the compilation.   </span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">        In this version, the :meth:`compile` method supports standard compilation.</span>
+<span class="sd">        The compilation process can be fine-tuned using keyword arguments for context-sensitive compilation</span>
+<span class="sd">        (for example ``{&quot;literal_binds&quot;: True}`` could be used to render the values in the compiled object *literalized* </span>
+<span class="sd">        instead of parameterized for logging or debugging purposes). </span>
+<span class="sd">        </span>
+<span class="sd">        This feature will be added in a future version.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">__visit_name__</span> <span class="o">=</span> <span class="s1">&#39;clause&#39;</span>
+
+<div class="viewcode-block" id="ClauseElement.compile">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.ClauseElement.compile">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiler</span><span class="p">:</span> <span class="n">SQLCompiler</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Compiled</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compile this clause element.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            compiler (SQLCompiler): The compiler to be used for the compilation.</span>
+<span class="sd">            **kwargs (Any): Keyword arguments for context-sensitive compilation. **Not supported yet**.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Compiled: The compiled object rusult of the compilation.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">compiled_dict</span> <span class="o">=</span> <span class="n">compiler</span><span class="o">.</span><span class="n">process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">result_columns</span> <span class="o">=</span> <span class="n">compiled_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;result_columns&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">result_columns</span><span class="p">:</span>
+            <span class="n">compiled_dict</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;result_columns&#39;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">Compiled</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">compiled_dict</span><span class="p">,</span> <span class="n">result_columns</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ClauseElement.get_table">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.ClauseElement.get_table">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_table</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReadOnlyColumnCollection</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a collection of columns this clause element refers to.&quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+</div>
+
+
+<div class="viewcode-block" id="Executable">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.Executable">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Executable</span><span class="p">(</span><span class="n">ClauseElement</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide the interface for all executable SQL statements.</span>
+
+<span class="sd">    This base class implements the command design pattern for execution of clause elements.</span>
+<span class="sd">    The :meth:`execute` method has a base implementation of the execution flow that can be used as default implementation</span>
+<span class="sd">    in the subclasses.</span>
+
+<span class="sd">    It provides a post execution hook with the :meth:`_post_exec` that is intended to be optionally implemented in </span>
+<span class="sd">    the subclasses.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">        This bas class fully supports the connection-driven execution flow of SQL statements.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Executable.execute">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.Executable.execute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="n">ExecutionContext</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CursorResult</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run this executable within the context setup by the connection.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            context (ExecutionContext): The runtime context for the execution of this statement.</span>
+<span class="sd">            parameters (Optional[dict], optional): The dictionary containing parameters to be bound. Defaults to ``None``.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            CursorResult: The :class:`normlite.cursor.CursorResult` object containing the result set of the statement.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># TODO: for INSERT/UPDATE statements that do not have values, parameters is not None</span>
+        <span class="c1"># Implement this use case and bind the supplied parameters</span>
+        <span class="c1"># Suppor the same SqlAlchemy convention that parameters override the values() clause.</span>
+        <span class="n">cursor</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">_dbapi_cursor</span>
+        <span class="n">compiled</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">_compiled</span>
+        <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">compiled</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()[</span><span class="s1">&#39;operation&#39;</span><span class="p">],</span> <span class="n">compiled</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">_setup_cursor_result</span><span class="p">(</span><span class="n">cursor</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_post_exec</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="Executable._post_exec">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.Executable._post_exec">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_post_exec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">result</span><span class="p">:</span> <span class="n">CursorResult</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="n">ExecutionContext</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Optional hook for subclassess.</span>
+
+<span class="sd">        Subclasses can use this method to extract information from the provided cursor result.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            result (CursorResult): The :class:`normlite.cursor.CursorResult` object returned by the execution.</span>
+<span class="sd">            context (ExecutionContext): The runtime context for the execution of this statement.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="o">...</span></div>
+</div>
+
+
+<div class="viewcode-block" id="Compiled">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.Compiled">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Compiled</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The result of compiling :class:`ClauseElement` subclasses.</span>
+
+<span class="sd">    This class provides an abstraction for compilation results.</span>
+
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">        This version implements the main basic functions for a compiled object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">element</span><span class="p">:</span> <span class="n">ClauseElement</span><span class="p">,</span> <span class="n">compiled</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">result_columns</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_element</span> <span class="o">=</span> <span class="n">element</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The compiled clause element.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_compiled</span> <span class="o">=</span> <span class="n">compiled</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The dictionary containing the compilation result.&quot;&quot;&quot;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_result_columns</span> <span class="o">=</span> <span class="n">result_columns</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Optional sequence of strings specifying the column names to be considered </span>
+<span class="sd">        in the rows produced by the :class:`normlite.cursor.CursorResult` methods.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">string</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Provide a linted string of this compiled object.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_compiled</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">params</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Provide the bind parameters for this compiled object.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compiled</span><span class="p">[</span><span class="s1">&#39;parameters&#39;</span><span class="p">]</span>
+    
+<div class="viewcode-block" id="Compiled.as_dict">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.Compiled.as_dict">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return this compiled object in the original dictionary form.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compiled</span></div>
+
+    
+<div class="viewcode-block" id="Compiled.result_columns">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.Compiled.result_columns">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">result_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Optionally return the column names for the cursor result.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_result_columns</span></div>
+
+    
+<div class="viewcode-block" id="Compiled.__str__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.Compiled.__str__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">string</span></div>
+
+    
+<div class="viewcode-block" id="Compiled.__repr__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.Compiled.__repr__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;Compiled </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">element</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="SQLCompiler">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.SQLCompiler">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SQLCompiler</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for SQL compilers.</span>
+
+<span class="sd">    This class defines the standard interface for SQL compilers.</span>
+<span class="sd">    Concrete compilers take a :class:`Visitable` object and generate executable code.</span>
+
+<span class="sd">    .. seealso::</span>
+<span class="sd">        :class:`normlite.sql.compiler` for a Notion specific compiler. </span>
+
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">        This version supports compilation of ``CREATE TABLE`` and ``INSERT`` statements.   </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="SQLCompiler.process">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.SQLCompiler.process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">element</span><span class="p">:</span> <span class="n">ClauseElement</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Entry point for the compilation process.</span>
+
+<span class="sd">        This method is called by :meth:`ClauseElement.compile` to produce a :class:`Compiled` object,</span>
+<span class="sd">        which stores the compilation result.</span>
+
+<span class="sd">        Note:</span>
+<span class="sd">            The return type dict allows to model the compilation result as a JSON object (Python dictionary).</span>
+<span class="sd">            This is very flexible as it enables the implementation of compilers, </span>
+<span class="sd">            which have to provide specific downstream methods for representing their own generated code.</span>
+<span class="sd">            For example, the :class:`normlite.sql.compiler.NotionCompiler` class generates Notion payload objects for</span>
+<span class="sd">            several Notion API requests.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: The JSON object representing the compilation result.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">element</span><span class="o">.</span><span class="n">_compiler_dispatch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SQLCompiler.visit_create_table">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.SQLCompiler.visit_create_table">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">visit_create_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">:</span> <span class="n">CreateTable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compile a table (DDL ``CREATE TABLE``).&quot;&quot;&quot;</span>
+        <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="SQLCompiler.visit_create_column">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.SQLCompiler.visit_create_column">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">visit_create_column</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">column</span><span class="p">:</span> <span class="n">CreateColumn</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compile a column.&quot;&quot;&quot;</span>
+        <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="SQLCompiler.visit_insert">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/base/index.html#normlite.sql.base.SQLCompiler.visit_insert">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">visit_insert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">insert</span><span class="p">:</span> <span class="n">Insert</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compile an insert statement (DML ``INSERT``).&quot;&quot;&quot;</span>
+        <span class="o">...</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

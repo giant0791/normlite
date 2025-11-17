@@ -1,0 +1,89 @@
+normlite.proxy.base
+===================
+
+.. py:module:: normlite.proxy.base
+
+
+
+
+Module Contents
+---------------
+
+.. py:class:: BaseProxyClient
+
+   Bases: :py:obj:`abc.ABC`
+
+
+   Abstract base class for proxy clients.
+
+
+   .. py:method:: connect() -> requests.Response
+      :abstractmethod:
+
+
+      Check if the proxy server is alive.
+      Must raise ProxyError on failure.
+
+
+
+   .. py:method:: begin() -> requests.Response
+      :abstractmethod:
+
+
+      Begin a new transaction.
+
+      :returns: The returned response object.
+      :rtype: requests.Response
+
+
+
+   .. py:method:: insert(tx_id: str, payload: dict) -> requests.Response
+      :abstractmethod:
+
+
+      Add an insert operation to the specified transaction.
+
+      This method is a wrapper around the REST API `transactions/<id>/insert`.
+
+      :param txn: The transaction to add the insert operation to.
+      :type txn: str
+      :param payload: The payload of the insert operation.
+      :type payload: dict
+
+      :returns: The returned response object.
+      :rtype: requests.Response
+
+
+
+   .. py:method:: commit(tx_id: str) -> requests.Response
+      :abstractmethod:
+
+
+      Commit the specified transaction.
+
+      This method is a wrapper around the REST API `transactions/<id>/commit`.
+
+      :param tx_id: The transaction to be committed.
+      :type tx_id: str
+
+      :returns: The returned response object.
+      :rtype: requests.Response
+
+
+
+   .. py:method:: rollback(tx_id: str) -> requests.Response
+      :abstractmethod:
+
+
+      Roll back the specified transaction.
+
+      This method is a wrapper around the REST API `transactions/<id>/rollback`.
+
+      :param tx_id: The transaction to be rolled back.
+      :type tx_id: str
+
+      :returns: The returned response object.
+      :rtype: requests.Response
+
+
+

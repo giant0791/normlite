@@ -1,0 +1,398 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.sql.base &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+    <link rel="next" title="normlite.sql.compiler" href="../compiler/index.html" />
+    <link rel="prev" title="normlite.sql" href="../index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html">normlite</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../../_constants/index.html">normlite._constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../cursor/index.html">normlite.cursor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../engine/index.html">normlite.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../exceptions/index.html">normlite.exceptions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../future/index.html">normlite.future</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notion_sdk/index.html">normlite.notion_sdk</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notiondbapi/index.html">normlite.notiondbapi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../proxy/index.html">normlite.proxy</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="../index.html">normlite.sql</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../txmodel/index.html">normlite.txmodel</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">normlite</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">normlite.sql</a></li>
+      <li class="breadcrumb-item active">normlite.sql.base</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../../_sources/autoapi/normlite/sql/base/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-normlite.sql.base">
+<span id="normlite-sql-base"></span><h1>normlite.sql.base<a class="headerlink" href="#module-normlite.sql.base" title="Link to this heading"></a></h1>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.sql.base.Visitable">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.sql.base.</span></span><span class="sig-name descname"><span class="pre">Visitable</span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#Visitable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.Visitable" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/abc.html#abc.ABC" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">abc.ABC</span></code></a></p>
+<p>Base class for any AST node that can be “visited” by a compiler.</p>
+<p>It provides the <a class="reference internal" href="#normlite.sql.base.Visitable._compiler_dispatch" title="normlite.sql.base.Visitable._compiler_dispatch"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Visitable._compiler_dispatch()</span></code></a> method that delegates compilation
+to a compiler based on <a class="reference internal" href="#normlite.sql.base.Visitable.__visit_name__" title="normlite.sql.base.Visitable.__visit_name__"><code class="xref py py-attr docutils literal notranslate"><span class="pre">__visit_name__</span></code></a>.</p>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.7.0: </span>This class has been completely redesigned to better separate
+concerns related to AST nodes, compilation, and compiled objects produced by the compilation.</p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.base.Visitable.__visit_name__">
+<span class="sig-name descname"><span class="pre">__visit_name__</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#normlite.sql.base.Visitable.__visit_name__" title="Link to this definition"></a></dt>
+<dd><p>Class attribute used to denote the visit method to be called during compilation.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.Visitable._compiler_dispatch">
+<span class="sig-name descname"><span class="pre">_compiler_dispatch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">compiler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#normlite.sql.base.SQLCompiler" title="normlite.sql.base.SQLCompiler"><span class="pre">SQLCompiler</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#Visitable._compiler_dispatch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.Visitable._compiler_dispatch" title="Link to this definition"></a></dt>
+<dd><p>Delegate this node’s compilation to the compiler.</p>
+<p>The compiler must implement a method named <cite>visit_&lt;__visit_name__&gt;</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>compiler</strong> (<a class="reference internal" href="#normlite.sql.base.SQLCompiler" title="normlite.sql.base.SQLCompiler"><em>SQLCompiler</em></a>) – The compiler object to be used for compilation.</p></li>
+<li><p><strong>**kwargs</strong> (<em>Any</em>) – Additional parameters to be passed to the compiler’s visit method to allow context-sensitive compilation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="../../exceptions/index.html#normlite.exceptions.UnsupportedCompilationError" title="normlite.exceptions.UnsupportedCompilationError"><strong>UnsupportedCompilationError</strong></a> – If the instance owning this method is missing the <a class="reference internal" href="#normlite.sql.base.Visitable.__visit_name__" title="normlite.sql.base.Visitable.__visit_name__"><code class="xref py py-attr docutils literal notranslate"><span class="pre">__visit_name__</span></code></a> or if it has no visit method.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The compilation result in form of a dictionary (JSON) object.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.sql.base.ClauseElement">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.sql.base.</span></span><span class="sig-name descname"><span class="pre">ClauseElement</span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#ClauseElement"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.ClauseElement" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.sql.base.Visitable" title="normlite.sql.base.Visitable"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Visitable</span></code></a></p>
+<p>Base class for SQL elements that can be compiled by the compiler.</p>
+<p>This class orchestrates for all subclasses the compilation process by implementing the <a class="reference internal" href="#normlite.sql.base.ClauseElement.compile" title="normlite.sql.base.ClauseElement.compile"><code class="xref py py-meth docutils literal notranslate"><span class="pre">compile()</span></code></a>.
+Subclasses do not have to take care of the compilation.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0: </span>In this version, the <a class="reference internal" href="#normlite.sql.base.ClauseElement.compile" title="normlite.sql.base.ClauseElement.compile"><code class="xref py py-meth docutils literal notranslate"><span class="pre">compile()</span></code></a> method supports standard compilation.
+The compilation process can be fine-tuned using keyword arguments for context-sensitive compilation
+(for example <code class="docutils literal notranslate"><span class="pre">{&quot;literal_binds&quot;:</span> <span class="pre">True}</span></code> could be used to render the values in the compiled object <em>literalized</em>
+instead of parameterized for logging or debugging purposes).</p>
+<p>This feature will be added in a future version.</p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.base.ClauseElement.__visit_name__">
+<span class="sig-name descname"><span class="pre">__visit_name__</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'clause'</span></em><a class="headerlink" href="#normlite.sql.base.ClauseElement.__visit_name__" title="Link to this definition"></a></dt>
+<dd><p>Class attribute used to denote the visit method to be called during compilation.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.ClauseElement.compile">
+<span class="sig-name descname"><span class="pre">compile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">compiler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#normlite.sql.base.SQLCompiler" title="normlite.sql.base.SQLCompiler"><span class="pre">SQLCompiler</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.sql.base.Compiled" title="normlite.sql.base.Compiled"><span class="pre">Compiled</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#ClauseElement.compile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.ClauseElement.compile" title="Link to this definition"></a></dt>
+<dd><p>Compile this clause element.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>compiler</strong> (<a class="reference internal" href="#normlite.sql.base.SQLCompiler" title="normlite.sql.base.SQLCompiler"><em>SQLCompiler</em></a>) – The compiler to be used for the compilation.</p></li>
+<li><p><strong>**kwargs</strong> (<em>Any</em>) – Keyword arguments for context-sensitive compilation. <strong>Not supported yet</strong>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The compiled object rusult of the compilation.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#normlite.sql.base.Compiled" title="normlite.sql.base.Compiled">Compiled</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.ClauseElement.get_table">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_table</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../schema/index.html#normlite.sql.schema.ReadOnlyColumnCollection" title="normlite.sql.schema.ReadOnlyColumnCollection"><span class="pre">normlite.sql.schema.ReadOnlyColumnCollection</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#ClauseElement.get_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.ClauseElement.get_table" title="Link to this definition"></a></dt>
+<dd><p>Return a collection of columns this clause element refers to.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.sql.base.Executable">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.sql.base.</span></span><span class="sig-name descname"><span class="pre">Executable</span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#Executable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.Executable" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.sql.base.ClauseElement" title="normlite.sql.base.ClauseElement"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ClauseElement</span></code></a></p>
+<p>Provide the interface for all executable SQL statements.</p>
+<p>This base class implements the command design pattern for execution of clause elements.
+The <a class="reference internal" href="#normlite.sql.base.Executable.execute" title="normlite.sql.base.Executable.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code></a> method has a base implementation of the execution flow that can be used as default implementation
+in the subclasses.</p>
+<p>It provides a post execution hook with the <a class="reference internal" href="#normlite.sql.base.Executable._post_exec" title="normlite.sql.base.Executable._post_exec"><code class="xref py py-meth docutils literal notranslate"><span class="pre">_post_exec()</span></code></a> that is intended to be optionally implemented in
+the subclasses.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0: </span>This bas class fully supports the connection-driven execution flow of SQL statements.</p>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.Executable.execute">
+<span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">context</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../engine/context/index.html#normlite.engine.context.ExecutionContext" title="normlite.engine.context.ExecutionContext"><span class="pre">normlite.engine.context.ExecutionContext</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><span class="pre">normlite.cursor.CursorResult</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#Executable.execute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.Executable.execute" title="Link to this definition"></a></dt>
+<dd><p>Run this executable within the context setup by the connection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>context</strong> (<a class="reference internal" href="../../engine/context/index.html#normlite.engine.context.ExecutionContext" title="normlite.engine.context.ExecutionContext"><em>ExecutionContext</em></a>) – The runtime context for the execution of this statement.</p></li>
+<li><p><strong>parameters</strong> (<em>Optional</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>]</em><em>, </em><em>optional</em>) – The dictionary containing parameters to be bound. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The <a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult</span></code></a> object containing the result set of the statement.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult">CursorResult</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.Executable._post_exec">
+<span class="sig-name descname"><span class="pre">_post_exec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><span class="pre">normlite.cursor.CursorResult</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">context</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../../engine/context/index.html#normlite.engine.context.ExecutionContext" title="normlite.engine.context.ExecutionContext"><span class="pre">normlite.engine.context.ExecutionContext</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#Executable._post_exec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.Executable._post_exec" title="Link to this definition"></a></dt>
+<dd><p>Optional hook for subclassess.</p>
+<p>Subclasses can use this method to extract information from the provided cursor result.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>result</strong> (<a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><em>CursorResult</em></a>) – The <a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult</span></code></a> object returned by the execution.</p></li>
+<li><p><strong>context</strong> (<a class="reference internal" href="../../engine/context/index.html#normlite.engine.context.ExecutionContext" title="normlite.engine.context.ExecutionContext"><em>ExecutionContext</em></a>) – The runtime context for the execution of this statement.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.sql.base.Compiled">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.sql.base.</span></span><span class="sig-name descname"><span class="pre">Compiled</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">element</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#normlite.sql.base.ClauseElement" title="normlite.sql.base.ClauseElement"><span class="pre">ClauseElement</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">compiled</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">result_columns</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#Compiled"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.Compiled" title="Link to this definition"></a></dt>
+<dd><p>The result of compiling <a class="reference internal" href="#normlite.sql.base.ClauseElement" title="normlite.sql.base.ClauseElement"><code class="xref py py-class docutils literal notranslate"><span class="pre">ClauseElement</span></code></a> subclasses.</p>
+<p>This class provides an abstraction for compilation results.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0: </span>This version implements the main basic functions for a compiled object.</p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.base.Compiled._element">
+<span class="sig-name descname"><span class="pre">_element</span></span><a class="headerlink" href="#normlite.sql.base.Compiled._element" title="Link to this definition"></a></dt>
+<dd><p>The compiled clause element.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.base.Compiled._compiled">
+<span class="sig-name descname"><span class="pre">_compiled</span></span><a class="headerlink" href="#normlite.sql.base.Compiled._compiled" title="Link to this definition"></a></dt>
+<dd><p>The dictionary containing the compilation result.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.base.Compiled._result_columns">
+<span class="sig-name descname"><span class="pre">_result_columns</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.sql.base.Compiled._result_columns" title="Link to this definition"></a></dt>
+<dd><p>Optional sequence of strings specifying the column names to be considered
+in the rows produced by the <a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult</span></code></a> methods.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.sql.base.Compiled.string">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">string</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#normlite.sql.base.Compiled.string" title="Link to this definition"></a></dt>
+<dd><p>Provide a linted string of this compiled object.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="normlite.sql.base.Compiled.params">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">params</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></em><a class="headerlink" href="#normlite.sql.base.Compiled.params" title="Link to this definition"></a></dt>
+<dd><p>Provide the bind parameters for this compiled object.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.Compiled.as_dict">
+<span class="sig-name descname"><span class="pre">as_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#Compiled.as_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.Compiled.as_dict" title="Link to this definition"></a></dt>
+<dd><p>Return this compiled object in the original dictionary form.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.Compiled.result_columns">
+<span class="sig-name descname"><span class="pre">result_columns</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#Compiled.result_columns"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.Compiled.result_columns" title="Link to this definition"></a></dt>
+<dd><p>Optionally return the column names for the cursor result.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.Compiled.__str__">
+<span class="sig-name descname"><span class="pre">__str__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#Compiled.__str__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.Compiled.__str__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.Compiled.__repr__">
+<span class="sig-name descname"><span class="pre">__repr__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#Compiled.__repr__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.Compiled.__repr__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.sql.base.SQLCompiler">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.sql.base.</span></span><span class="sig-name descname"><span class="pre">SQLCompiler</span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#SQLCompiler"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.SQLCompiler" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">Protocol</span></code></p>
+<p>Base class for SQL compilers.</p>
+<p>This class defines the standard interface for SQL compilers.
+Concrete compilers take a <a class="reference internal" href="#normlite.sql.base.Visitable" title="normlite.sql.base.Visitable"><code class="xref py py-class docutils literal notranslate"><span class="pre">Visitable</span></code></a> object and generate executable code.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="../compiler/index.html#module-normlite.sql.compiler" title="normlite.sql.compiler"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.compiler</span></code></a> for a Notion specific compiler.</p>
+</div>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0: </span>This version supports compilation of <code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">TABLE</span></code> and <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> statements.</p>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.SQLCompiler.process">
+<span class="sig-name descname"><span class="pre">process</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">element</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#normlite.sql.base.ClauseElement" title="normlite.sql.base.ClauseElement"><span class="pre">ClauseElement</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#SQLCompiler.process"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.SQLCompiler.process" title="Link to this definition"></a></dt>
+<dd><p>Entry point for the compilation process.</p>
+<p>This method is called by <a class="reference internal" href="#normlite.sql.base.ClauseElement.compile" title="normlite.sql.base.ClauseElement.compile"><code class="xref py py-meth docutils literal notranslate"><span class="pre">ClauseElement.compile()</span></code></a> to produce a <a class="reference internal" href="#normlite.sql.base.Compiled" title="normlite.sql.base.Compiled"><code class="xref py py-class docutils literal notranslate"><span class="pre">Compiled</span></code></a> object,
+which stores the compilation result.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The return type dict allows to model the compilation result as a JSON object (Python dictionary).
+This is very flexible as it enables the implementation of compilers,
+which have to provide specific downstream methods for representing their own generated code.
+For example, the <a class="reference internal" href="../compiler/index.html#normlite.sql.compiler.NotionCompiler" title="normlite.sql.compiler.NotionCompiler"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.compiler.NotionCompiler</span></code></a> class generates Notion payload objects for
+several Notion API requests.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The JSON object representing the compilation result.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.SQLCompiler.visit_create_table">
+<span class="sig-name descname"><span class="pre">visit_create_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../ddl/index.html#normlite.sql.ddl.CreateTable" title="normlite.sql.ddl.CreateTable"><span class="pre">normlite.sql.ddl.CreateTable</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#SQLCompiler.visit_create_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.SQLCompiler.visit_create_table" title="Link to this definition"></a></dt>
+<dd><p>Compile a table (DDL <code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">TABLE</span></code>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.SQLCompiler.visit_create_column">
+<span class="sig-name descname"><span class="pre">visit_create_column</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">column</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../ddl/index.html#normlite.sql.ddl.CreateColumn" title="normlite.sql.ddl.CreateColumn"><span class="pre">normlite.sql.ddl.CreateColumn</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#SQLCompiler.visit_create_column"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.SQLCompiler.visit_create_column" title="Link to this definition"></a></dt>
+<dd><p>Compile a column.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.base.SQLCompiler.visit_insert">
+<span class="sig-name descname"><span class="pre">visit_insert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">insert</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../dml/index.html#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><span class="pre">normlite.sql.dml.Insert</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/base.html#SQLCompiler.visit_insert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.base.SQLCompiler.visit_insert" title="Link to this definition"></a></dt>
+<dd><p>Compile an insert statement (DML <code class="docutils literal notranslate"><span class="pre">INSERT</span></code>).</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../index.html" class="btn btn-neutral float-left" title="normlite.sql" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../compiler/index.html" class="btn btn-neutral float-right" title="normlite.sql.compiler" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

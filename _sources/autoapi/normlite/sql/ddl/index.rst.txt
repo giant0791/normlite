@@ -1,0 +1,90 @@
+normlite.sql.ddl
+================
+
+.. py:module:: normlite.sql.ddl
+
+
+
+
+Module Contents
+---------------
+
+.. py:class:: CreateTable(table: normlite.sql.schema.Table)
+
+   Bases: :py:obj:`normlite.sql.base.Executable`
+
+
+   Provide the interface for all executable SQL statements.
+
+   This base class implements the command design pattern for execution of clause elements.
+   The :meth:`execute` method has a base implementation of the execution flow that can be used as default implementation
+   in the subclasses.
+
+   It provides a post execution hook with the :meth:`_post_exec` that is intended to be optionally implemented in
+   the subclasses.
+
+   .. versionadded:: 0.7.0
+       This bas class fully supports the connection-driven execution flow of SQL statements.
+
+
+   .. py:attribute:: __visit_name__
+      :value: 'create_table'
+
+
+      Class attribute used to denote the visit method to be called during compilation.
+
+
+   .. py:attribute:: table
+
+
+   .. py:attribute:: columns
+
+
+   .. py:method:: get_table() -> normlite.sql.schema.Table
+
+      Return a collection of columns this clause element refers to.
+
+
+
+   .. py:method:: _post_exec(result: normlite.cursor.CursorResult, context: normlite.engine.context.ExecutionContext)
+
+      Optional hook for subclassess.
+
+      Subclasses can use this method to extract information from the provided cursor result.
+
+      :param result: The :class:`normlite.cursor.CursorResult` object returned by the execution.
+      :type result: CursorResult
+      :param context: The runtime context for the execution of this statement.
+      :type context: ExecutionContext
+
+
+
+.. py:class:: CreateColumn(column: normlite.sql.schema.Column)
+
+   Bases: :py:obj:`normlite.sql.base.ClauseElement`
+
+
+   Base class for SQL elements that can be compiled by the compiler.
+
+   This class orchestrates for all subclasses the compilation process by implementing the :meth:`compile`.
+   Subclasses do not have to take care of the compilation.
+
+   .. versionadded:: 0.7.0
+       In this version, the :meth:`compile` method supports standard compilation.
+       The compilation process can be fine-tuned using keyword arguments for context-sensitive compilation
+       (for example ``{"literal_binds": True}`` could be used to render the values in the compiled object *literalized*
+       instead of parameterized for logging or debugging purposes).
+
+       This feature will be added in a future version.
+
+
+   .. py:attribute:: __visit_name__
+      :value: 'create_column'
+
+
+      Class attribute used to denote the visit method to be called during compilation.
+
+
+   .. py:attribute:: column
+
+

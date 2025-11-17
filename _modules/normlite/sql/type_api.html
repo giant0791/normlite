@@ -1,0 +1,564 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.sql.type_api &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">normlite.sql.type_api</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for normlite.sql.type_api</h1><div class="highlight"><pre>
+<span></span><span class="c1"># normlite/sql/type_api.py</span>
+<span class="c1"># Copyright (C) 2025 Gianmarco Antonini</span>
+<span class="c1">#</span>
+<span class="c1"># This module is part of normlite and is released under the GNU Affero General Public License.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is free software: you can redistribute it and/or modify</span>
+<span class="c1"># it under the terms of the GNU Affero General Public License as published</span>
+<span class="c1"># by the Free Software Foundation, either version 3 of the License, or</span>
+<span class="c1"># (at your option) any later version.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is distributed in the hope that it will be useful,</span>
+<span class="c1"># but WITHOUT ANY WARRANTY; without even the implied warranty of</span>
+<span class="c1"># MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</span>
+<span class="c1"># GNU Affero General Public License for more details.</span>
+<span class="c1">#</span>
+<span class="c1"># You should have received a copy of the GNU Affero General Public License</span>
+<span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
+
+<span class="sd">&quot;&quot;&quot;Provide the type system for SQL constructs and to handle data conversion Python &lt;--&gt; Notion.</span>
+<span class="sd">The central class is :class:`TypeEngine`, which lays the foundation for SQL datatypes in ``normlite``.</span>
+<span class="sd">It defines a _contract_ (interface + partial implementation) for how Python values are:</span>
+<span class="sd">1. Bound into SQL literals (Python → SQL).</span>
+<span class="sd">2. Converted from SQL result rows (SQL → Python).</span>
+
+<span class="sd">Concrete subclasses of :class:`TypeEngine` represent actual SQL types:</span>
+<span class="sd">* :class:`Integer` for integer values</span>
+<span class="sd">* :class:`String` for string values</span>
+<span class="sd">* :class:`Boolean` for boolean values</span>
+<span class="sd">* :class:`Numeric` for decimal values</span>
+<span class="sd">* :class:`Date` for datetime and datetime range values</span>
+<span class="sd">* .class:`Money` for currency values</span>
+
+<span class="sd">All concrete :class:`TypeEngine` subclasses are designed in a backend-agnostic way. </span>
+<span class="sd">This allows to define datatypes without the Notion specific details.</span>
+<span class="sd">The Notion type system is thus treated as an SQL dialect.</span>
+<span class="sd">Subclasses of :class:`TypeEngine` are used to define the datatype of table columns.</span>
+
+<span class="sd">Usage::</span>
+
+<span class="sd">    # define an integer SQL datatype</span>
+<span class="sd">    int_dt = Integer()</span>
+<span class="sd">    </span>
+<span class="sd">    # get bind and result processors</span>
+<span class="sd">    bind = int_dt.bind_processor(dialect=None)</span>
+<span class="sd">    result = int_dt.result_processor(dialect=None, coltype=None)</span>
+
+<span class="sd">    # covert Python datatype &lt;--&gt; Notion datatype</span>
+<span class="sd">    bind(25)                    # --&gt; {&quot;number&quot;: 25}</span>
+<span class="sd">    result({&quot;number&quot;: 25})      # --&gt; 25</span>
+
+<span class="sd">    # get columns specification (Notion type representation)</span>
+<span class="sd">    int_dt.get_col_spec(dialect=None)   # -&gt; {&quot;type&quot;: &quot;number&quot;}</span>
+
+<span class="sd">    # define a string SQL datatype</span>
+<span class="sd">    str_dt = String(is_title=True)</span>
+
+<span class="sd">    # get bind and result processors    </span>
+<span class="sd">    bind = int_dt.bind_processor(dialect=None)</span>
+<span class="sd">    result = int_dt.result_processor(dialect=None, coltype=None)</span>
+
+<span class="sd">    # covert Python datatype &lt;--&gt; Notion datatype</span>
+<span class="sd">    bind(&quot;A nice, woderful day with you&quot;)                       # --&gt; [{&quot;plain_text&quot;: &quot;A nice, woderful day with you&quot;}]</span>
+<span class="sd">    result([{&quot;plain_text&quot;: &quot;A nice, woderful day with you&quot;}])   # --&gt; &quot;A nice, woderful day with you&quot;</span>
+
+<span class="sd">    # get columns specification (Notion type representation)</span>
+<span class="sd">    str_dt.get_col_spec(dialect=None)   # -&gt; {&quot;type&quot;: &quot;title&quot;}</span>
+
+<span class="sd">.. versionadded:: 0.7.0</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">decimal</span><span class="w"> </span><span class="kn">import</span> <span class="n">Decimal</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Protocol</span><span class="p">,</span> <span class="n">TypeAlias</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">uuid</span>
+
+<div class="viewcode-block" id="TypeEngine">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.TypeEngine">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">TypeEngine</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for all Notion/SQL datatypes.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="TypeEngine.bind_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.TypeEngine.bind_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bind_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="n">Any</span><span class="p">],</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Python → SQL/Notion (prepare before sending).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="TypeEngine.result_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.TypeEngine.result_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">result_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">,</span> <span class="n">coltype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="n">Any</span><span class="p">],</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;SQL/Notion → Python (process values after fetching).&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="TypeEngine.get_col_spec">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.TypeEngine.get_col_spec">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_col_spec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a string for the SQL-like type name.&quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+    
+<div class="viewcode-block" id="TypeEngine.__repr__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.TypeEngine.__repr__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span></div>
+</div>
+
+    
+<span class="n">_NumericType</span><span class="p">:</span> <span class="n">TypeAlias</span> <span class="o">=</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Decimal</span><span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;Type alias for numeric datatypes. It is not part of the public API.&quot;&quot;&quot;</span>
+
+<span class="n">_DateTimeRangeType</span><span class="p">:</span> <span class="n">TypeAlias</span> <span class="o">=</span> <span class="n">Union</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">datetime</span><span class="p">,</span> <span class="n">datetime</span><span class="p">],</span> <span class="n">datetime</span><span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;Type alias for datetime datatypes. It is not part of the publich API.&quot;&quot;&quot;</span>
+
+<span class="n">Currency</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s1">&#39;dollar&#39;</span><span class="p">,</span> <span class="s1">&#39;euro&#39;</span><span class="p">,</span> <span class="s1">&#39;franc&#39;</span><span class="p">,</span> <span class="s1">&#39;krona&#39;</span><span class="p">,</span> <span class="s1">&#39;pound&#39;</span><span class="p">,</span> <span class="s1">&#39;yuan&#39;</span><span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;Literal alias for the currently supported currencies. </span>
+<span class="sd">These are the same literal strings as defined by Notion.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+    
+<div class="viewcode-block" id="Number">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Number">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Number</span><span class="p">(</span><span class="n">TypeEngine</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Notion-specific number type. Can represent integer, decimal, percent, or currency.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">format</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        format options (per Notion API):</span>
+<span class="sd">        - &quot;number&quot; → integer</span>
+<span class="sd">        - &quot;number_with_commas&quot; → decimal</span>
+<span class="sd">        - &quot;percent&quot;</span>
+<span class="sd">        - &quot;currency&quot;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">format</span> <span class="o">=</span> <span class="nb">format</span>
+
+<div class="viewcode-block" id="Number.get_col_spec">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Number.get_col_spec">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_col_spec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;number&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">format</span><span class="p">}}</span></div>
+
+
+<div class="viewcode-block" id="Number.bind_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Number.bind_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bind_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_NumericType</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;number&quot;</span><span class="p">:</span> <span class="n">value</span><span class="p">}</span>
+        <span class="k">return</span> <span class="n">process</span></div>
+
+
+<div class="viewcode-block" id="Number.result_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Number.result_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">result_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">,</span> <span class="n">coltype</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_NumericType</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="n">number</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="s1">&#39;number&#39;</span><span class="p">]</span>
+            <span class="k">return</span> <span class="n">Decimal</span><span class="p">(</span><span class="n">number</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">format</span> <span class="o">!=</span> <span class="s2">&quot;number&quot;</span> <span class="k">else</span> <span class="nb">int</span><span class="p">(</span><span class="n">number</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">process</span></div>
+</div>
+
+
+<div class="viewcode-block" id="Integer">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Integer">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Integer</span><span class="p">(</span><span class="n">Number</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Covenient type engine for Notion &quot;number&quot; objetcs with format = &quot;number&quot;.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="s1">&#39;number&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Numeric">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Numeric">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Numeric</span><span class="p">(</span><span class="n">Number</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convenient type engine for Notion &quot;number&quot; objects with format =&quot;number_with_commas&quot;.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="s1">&#39;number_with_commas&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Money">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Money">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Money</span><span class="p">(</span><span class="n">Number</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convenient type engine for Notion &quot;number&quot; objects handling currencies.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">currency</span><span class="p">:</span> <span class="n">Currency</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">currency</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="String">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.String">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">String</span><span class="p">(</span><span class="n">TypeEngine</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Textual type for Notion title and rich text properties.</span>
+<span class="sd">    </span>
+<span class="sd">    Usage:</span>
+<span class="sd">        &gt;&gt;&gt; # create a title property</span>
+<span class="sd">        &gt;&gt;&gt; title_txt = String(is_title=True)</span>
+<span class="sd">        &gt;&gt;&gt; title_text.get_col_spec(None)</span>
+<span class="sd">        {&quot;title&quot;: {}}</span>
+
+<span class="sd">        &gt;&gt;&gt; # create a rich text property</span>
+<span class="sd">        &gt;&gt;&gt; rich_text = String()</span>
+<span class="sd">        &gt;&gt;&gt; rich_text.get_col_spec(None)</span>
+<span class="sd">        {&quot;rich_text&quot;: {}}</span>
+
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">is_title</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">is_title</span> <span class="o">=</span> <span class="n">is_title</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;``True`` if it is a &quot;title&quot;, ``False`` if it is a &quot;richt_text&quot;.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="String.bind_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.String.bind_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bind_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="n">block</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="n">block</span><span class="p">[</span><span class="s1">&#39;text&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)}</span>
+            <span class="n">text_type</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_col_spec</span><span class="p">(</span><span class="kc">None</span><span class="p">))[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">text_type</span><span class="p">:</span> <span class="p">[</span><span class="n">block</span><span class="p">]}</span>
+        <span class="k">return</span> <span class="n">process</span></div>
+
+
+<div class="viewcode-block" id="String.result_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.String.result_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">result_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">,</span> <span class="n">coltype</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+             <span class="c1"># Notion rich_text is a list of text objects → extract &#39;text&#39;</span>
+            <span class="n">text_type</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_col_spec</span><span class="p">(</span><span class="kc">None</span><span class="p">))[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">text_value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">text_type</span><span class="p">)</span> 
+            <span class="k">return</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">block</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">block</span> <span class="ow">in</span> <span class="n">text_value</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">process</span></div>
+
+
+<div class="viewcode-block" id="String.get_col_spec">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.String.get_col_spec">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_col_spec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">{}}</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_title</span> <span class="k">else</span> <span class="p">{</span><span class="s2">&quot;rich_text&quot;</span><span class="p">:</span> <span class="p">{}}</span></div>
+
+    
+<div class="viewcode-block" id="String.__repr__">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.String.__repr__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="n">kwarg</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_title</span><span class="p">:</span>
+            <span class="n">kwarg</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;is_title&#39;</span><span class="p">)</span>
+        
+        <span class="k">return</span> <span class="s2">&quot;String(</span><span class="si">%s</span><span class="s2">)&quot;</span> <span class="o">%</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+            <span class="p">[</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">=</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k</span><span class="p">)))</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">kwarg</span><span class="p">]</span>
+        <span class="p">)</span></div>
+</div>
+
+    
+<div class="viewcode-block" id="Boolean">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Boolean">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Boolean</span><span class="p">(</span><span class="n">TypeEngine</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Covenient type engine class for &quot;checkbox&quot; objects.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="Boolean.get_col_spec">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Boolean.get_col_spec">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_col_spec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;checkbox&quot;</span><span class="p">:</span> <span class="p">{}}</span></div>
+
+
+<div class="viewcode-block" id="Boolean.bind_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Boolean.bind_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bind_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;checkbox&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">value</span><span class="p">)}</span>
+        <span class="k">return</span> <span class="n">process</span></div>
+
+
+<div class="viewcode-block" id="Boolean.result_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Boolean.result_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">result_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">,</span> <span class="n">coltype</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="s1">&#39;checkbox&#39;</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">process</span></div>
+</div>
+
+    
+<div class="viewcode-block" id="Date">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Date">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Date</span><span class="p">(</span><span class="n">TypeEngine</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convenient type engine class for &quot;date&quot; objects.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="Date.bind_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Date.bind_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bind_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_DateTimeRangeType</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+                <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">value</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">start</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Date must have a start (end is optional)&#39;</span><span class="p">)</span>
+                
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">datetime</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Start date must be a valid datetime, received: </span><span class="si">{</span><span class="n">start</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">end</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">end</span><span class="p">,</span> <span class="n">datetime</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;End date must be a valid datetime, received: </span><span class="si">{</span><span class="n">end</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+                <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;date&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;start&quot;</span><span class="p">:</span> <span class="n">start</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
+                    <span class="s2">&quot;end&quot;</span><span class="p">:</span> <span class="n">end</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span> <span class="k">if</span> <span class="n">end</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="p">}}</span>
+            
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">datetime</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;date&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;start&quot;</span><span class="p">:</span> <span class="n">value</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span> <span class="s2">&quot;end&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}}</span>
+            
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Date must be datetime or (start, end) tuple&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">process</span></div>
+
+
+<div class="viewcode-block" id="Date.result_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Date.result_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">result_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">,</span> <span class="n">coltype</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">datetime</span><span class="p">]]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            
+            <span class="n">date_value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;date&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="n">start</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">fromisoformat</span><span class="p">(</span><span class="n">date_value</span><span class="p">[</span><span class="s2">&quot;start&quot;</span><span class="p">])</span> <span class="k">if</span> <span class="n">date_value</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;start&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+                <span class="n">end</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">fromisoformat</span><span class="p">(</span><span class="n">date_value</span><span class="p">[</span><span class="s2">&quot;end&quot;</span><span class="p">])</span> <span class="k">if</span> <span class="n">date_value</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;end&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+                <span class="n">restored</span> <span class="o">=</span> <span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+            
+                <span class="k">if</span> <span class="n">restored</span> <span class="o">==</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="kc">None</span>
+                
+                <span class="k">if</span> <span class="n">restored</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">restored</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                
+                <span class="k">return</span> <span class="n">restored</span>
+            
+        <span class="k">return</span> <span class="n">process</span></div>
+
+
+<div class="viewcode-block" id="Date.get_col_spec">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.Date.get_col_spec">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_col_spec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;date&quot;</span><span class="p">:</span> <span class="p">{}}</span></div>
+</div>
+
+
+<div class="viewcode-block" id="UUID">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.UUID">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">UUID</span><span class="p">(</span><span class="n">TypeEngine</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base type engine class for UUID ids.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="UUID.bind_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.UUID.bind_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bind_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">uuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">uuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">):</span>
+                <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>   <span class="c1"># JSON-safe</span>
+            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>      <span class="c1"># parse from string</span>
+        <span class="k">return</span> <span class="n">process</span></div>
+
+
+<div class="viewcode-block" id="UUID.result_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.UUID.result_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">result_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">,</span> <span class="n">coltype</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>      <span class="c1"># parse from string</span>
+        <span class="k">return</span> <span class="n">process</span></div>
+
+
+<div class="viewcode-block" id="UUID.get_col_spec">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.UUID.get_col_spec">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_col_spec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;UUID&quot;</span></div>
+</div>
+
+
+<div class="viewcode-block" id="ObjectId">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.ObjectId">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ObjectId</span><span class="p">(</span><span class="n">UUID</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Special UUID type representing Notion&#39;s &quot;id&quot; property.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="ObjectId.get_col_spec">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.ObjectId.get_col_spec">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_col_spec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;id&quot;</span></div>
+</div>
+
+
+<div class="viewcode-block" id="ArchivalFlag">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.ArchivalFlag">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ArchivalFlag</span><span class="p">(</span><span class="n">Boolean</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Special Boolean type representing Notion&#39;s &quot;archived&quot; property.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="ArchivalFlag.get_col_spec">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.ArchivalFlag.get_col_spec">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_col_spec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">):</span>
+        <span class="c1"># In Notion JSON, this is always stored under property &#39;archived&#39;</span>
+        <span class="k">return</span> <span class="s2">&quot;archived&quot;</span></div>
+
+
+<div class="viewcode-block" id="ArchivalFlag.bind_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.ArchivalFlag.bind_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bind_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">process</span></div>
+
+
+<div class="viewcode-block" id="ArchivalFlag.result_processor">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/type_api/index.html#normlite.sql.type_api.ArchivalFlag.result_processor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">result_processor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dialect</span><span class="p">,</span> <span class="n">coltype</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">process</span></div>
+</div>
+
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

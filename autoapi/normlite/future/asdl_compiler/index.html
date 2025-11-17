@@ -1,0 +1,470 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.future.asdl_compiler &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+    <link rel="next" title="normlite.future.cursor" href="../cursor/index.html" />
+    <link rel="prev" title="normlite.future" href="../index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html">normlite</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../../_constants/index.html">normlite._constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../cursor/index.html">normlite.cursor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../engine/index.html">normlite.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../exceptions/index.html">normlite.exceptions</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="../index.html">normlite.future</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notion_sdk/index.html">normlite.notion_sdk</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notiondbapi/index.html">normlite.notiondbapi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../proxy/index.html">normlite.proxy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../sql/index.html">normlite.sql</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../txmodel/index.html">normlite.txmodel</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">normlite</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">normlite.future</a></li>
+      <li class="breadcrumb-item active">normlite.future.asdl_compiler</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../../_sources/autoapi/normlite/future/asdl_compiler/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-normlite.future.asdl_compiler">
+<span id="normlite-future-asdl-compiler"></span><h1>normlite.future.asdl_compiler<a class="headerlink" href="#module-normlite.future.asdl_compiler" title="Link to this heading"></a></h1>
+<p>Prototype implementation of a Zephyr ASDL to Python AST node classes parser.</p>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Module">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Module</span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Module"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Module" title="Link to this definition"></a></dt>
+<dd><dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Module.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#normlite.future.asdl_compiler.Module.name" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Module.types">
+<span class="sig-name descname"><span class="pre">types</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.future.asdl_compiler.TypeDef" title="normlite.future.asdl_compiler.TypeDef"><span class="pre">TypeDef</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Module.types" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.TypeDef">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">TypeDef</span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#TypeDef"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.TypeDef" title="Link to this definition"></a></dt>
+<dd><dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.TypeDef.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#normlite.future.asdl_compiler.TypeDef.name" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.TypeDef.alts">
+<span class="sig-name descname"><span class="pre">alts</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.future.asdl_compiler.Constructor" title="normlite.future.asdl_compiler.Constructor"><span class="pre">Constructor</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><a class="headerlink" href="#normlite.future.asdl_compiler.TypeDef.alts" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.TypeDef.product">
+<span class="sig-name descname"><span class="pre">product</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#normlite.future.asdl_compiler.Constructor" title="normlite.future.asdl_compiler.Constructor"><span class="pre">Constructor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><a class="headerlink" href="#normlite.future.asdl_compiler.TypeDef.product" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.TypeDef.is_enum">
+<span class="sig-name descname"><span class="pre">is_enum</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.TypeDef.is_enum" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Constructor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Constructor</span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Constructor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Constructor" title="Link to this definition"></a></dt>
+<dd><dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Constructor.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#normlite.future.asdl_compiler.Constructor.name" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Constructor.fields">
+<span class="sig-name descname"><span class="pre">fields</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.future.asdl_compiler.Field" title="normlite.future.asdl_compiler.Field"><span class="pre">Field</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Constructor.fields" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Field">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Field</span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Field"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Field" title="Link to this definition"></a></dt>
+<dd><dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Field.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#normlite.future.asdl_compiler.Field.name" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Field.type">
+<span class="sig-name descname"><span class="pre">type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#normlite.future.asdl_compiler.TypeRef" title="normlite.future.asdl_compiler.TypeRef"><span class="pre">TypeRef</span></a></em><a class="headerlink" href="#normlite.future.asdl_compiler.Field.type" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.TypeRef">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">TypeRef</span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#TypeRef"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.TypeRef" title="Link to this definition"></a></dt>
+<dd><dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.TypeRef.union">
+<span class="sig-name descname"><span class="pre">union</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.future.asdl_compiler.SingleType" title="normlite.future.asdl_compiler.SingleType"><span class="pre">SingleType</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#normlite.future.asdl_compiler.TypeRef.union" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.TypeRef.opt">
+<span class="sig-name descname"><span class="pre">opt</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.TypeRef.opt" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.TypeRef.seq">
+<span class="sig-name descname"><span class="pre">seq</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.TypeRef.seq" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.SingleType">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">SingleType</span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#SingleType"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.SingleType" title="Link to this definition"></a></dt>
+<dd><dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.SingleType.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#normlite.future.asdl_compiler.SingleType.name" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler._TOKEN_RE">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">_TOKEN_RE</span></span><a class="headerlink" href="#normlite.future.asdl_compiler._TOKEN_RE" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.PRIMITIVES">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">PRIMITIVES</span></span><a class="headerlink" href="#normlite.future.asdl_compiler.PRIMITIVES" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Tok">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Tok</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">val</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Tok"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Tok" title="Link to this definition"></a></dt>
+<dd><dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Tok.kind">
+<span class="sig-name descname"><span class="pre">kind</span></span><a class="headerlink" href="#normlite.future.asdl_compiler.Tok.kind" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Tok.val">
+<span class="sig-name descname"><span class="pre">val</span></span><a class="headerlink" href="#normlite.future.asdl_compiler.Tok.val" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Tok.__repr__">
+<span class="sig-name descname"><span class="pre">__repr__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Tok.__repr__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Tok.__repr__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.lex_asdl">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">lex_asdl</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">src</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.future.asdl_compiler.Tok" title="normlite.future.asdl_compiler.Tok"><span class="pre">Tok</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#lex_asdl"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.lex_asdl" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Parser">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Parser</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">toks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#normlite.future.asdl_compiler.Tok" title="normlite.future.asdl_compiler.Tok"><span class="pre">Tok</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Parser"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Parser" title="Link to this definition"></a></dt>
+<dd><dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Parser.toks">
+<span class="sig-name descname"><span class="pre">toks</span></span><a class="headerlink" href="#normlite.future.asdl_compiler.Parser.toks" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Parser.i">
+<span class="sig-name descname"><span class="pre">i</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Parser.i" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Parser.peek">
+<span class="sig-name descname"><span class="pre">peek</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.future.asdl_compiler.Tok" title="normlite.future.asdl_compiler.Tok"><span class="pre">Tok</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Parser.peek"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Parser.peek" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Parser.eat">
+<span class="sig-name descname"><span class="pre">eat</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">val</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.future.asdl_compiler.Tok" title="normlite.future.asdl_compiler.Tok"><span class="pre">Tok</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Parser.eat"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Parser.eat" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Parser.parse">
+<span class="sig-name descname"><span class="pre">parse</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.future.asdl_compiler.Module" title="normlite.future.asdl_compiler.Module"><span class="pre">Module</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Parser.parse"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Parser.parse" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Parser.parse_typedef">
+<span class="sig-name descname"><span class="pre">parse_typedef</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.future.asdl_compiler.TypeDef" title="normlite.future.asdl_compiler.TypeDef"><span class="pre">TypeDef</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Parser.parse_typedef"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Parser.parse_typedef" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Parser.parse_alt">
+<span class="sig-name descname"><span class="pre">parse_alt</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.future.asdl_compiler.Constructor" title="normlite.future.asdl_compiler.Constructor"><span class="pre">Constructor</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Parser.parse_alt"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Parser.parse_alt" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Parser.parse_field">
+<span class="sig-name descname"><span class="pre">parse_field</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.future.asdl_compiler.Field" title="normlite.future.asdl_compiler.Field"><span class="pre">Field</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Parser.parse_field"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Parser.parse_field" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Parser.parse_typeref">
+<span class="sig-name descname"><span class="pre">parse_typeref</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.future.asdl_compiler.TypeRef" title="normlite.future.asdl_compiler.TypeRef"><span class="pre">TypeRef</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Parser.parse_typeref"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Parser.parse_typeref" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Parser.parse_single">
+<span class="sig-name descname"><span class="pre">parse_single</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.future.asdl_compiler.SingleType" title="normlite.future.asdl_compiler.SingleType"><span class="pre">SingleType</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Parser.parse_single"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Parser.parse_single" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.BaseAST">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">BaseAST</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#BaseAST"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.BaseAST" title="Link to this definition"></a></dt>
+<dd><p>Base class for all AST nodes.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.BaseAST._fields">
+<span class="sig-name descname"><span class="pre">_fields</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Ellipsis</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.BaseAST._fields" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.BaseAST.iter_fields">
+<span class="sig-name descname"><span class="pre">iter_fields</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#BaseAST.iter_fields"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.BaseAST.iter_fields" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.BaseAST.__repr__">
+<span class="sig-name descname"><span class="pre">__repr__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#BaseAST.__repr__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.BaseAST.__repr__" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.SelectStmt">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">SelectStmt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#SelectStmt"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.SelectStmt" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.future.asdl_compiler.BaseAST" title="normlite.future.asdl_compiler.BaseAST"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BaseAST</span></code></a></p>
+<p>Base class for all AST nodes.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.SelectStmt._fields">
+<span class="sig-name descname"><span class="pre">_fields</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">('columns',</span> <span class="pre">'from_table',</span> <span class="pre">'where',</span> <span class="pre">'order_by',</span> <span class="pre">'limit')</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.SelectStmt._fields" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Column">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Column</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Column"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Column" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.future.asdl_compiler.BaseAST" title="normlite.future.asdl_compiler.BaseAST"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BaseAST</span></code></a></p>
+<p>Base class for all AST nodes.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Column._fields">
+<span class="sig-name descname"><span class="pre">_fields</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">('name',</span> <span class="pre">'alias')</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Column._fields" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.OrderItem">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">OrderItem</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#OrderItem"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.OrderItem" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.future.asdl_compiler.BaseAST" title="normlite.future.asdl_compiler.BaseAST"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BaseAST</span></code></a></p>
+<p>Base class for all AST nodes.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.OrderItem._fields">
+<span class="sig-name descname"><span class="pre">_fields</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">('expr',</span> <span class="pre">'direction')</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.OrderItem._fields" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.BinaryOp">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">BinaryOp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#BinaryOp"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.BinaryOp" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.future.asdl_compiler.BaseAST" title="normlite.future.asdl_compiler.BaseAST"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BaseAST</span></code></a></p>
+<p>Base class for all AST nodes.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.BinaryOp._fields">
+<span class="sig-name descname"><span class="pre">_fields</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">('left',</span> <span class="pre">'op',</span> <span class="pre">'right')</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.BinaryOp._fields" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Identifier">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Identifier</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Identifier"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Identifier" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.future.asdl_compiler.BaseAST" title="normlite.future.asdl_compiler.BaseAST"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BaseAST</span></code></a></p>
+<p>Base class for all AST nodes.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Identifier._fields">
+<span class="sig-name descname"><span class="pre">_fields</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">('value',)</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Identifier._fields" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Constant">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Constant</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/future/asdl_compiler.html#Constant"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.future.asdl_compiler.Constant" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#normlite.future.asdl_compiler.BaseAST" title="normlite.future.asdl_compiler.BaseAST"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BaseAST</span></code></a></p>
+<p>Base class for all AST nodes.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Constant._fields">
+<span class="sig-name descname"><span class="pre">_fields</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">('value',)</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Constant._fields" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.ASC">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">ASC</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'ASC'</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.ASC" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.DESC">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">DESC</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'DESC'</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.DESC" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Eq">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Eq</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'='</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Eq" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Gt">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Gt</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'&gt;'</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Gt" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Lt">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Lt</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'&lt;'</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Lt" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Ge">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Ge</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'&gt;='</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Ge" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Le">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Le</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'&lt;='</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Le" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Ne">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Ne</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'!='</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Ne" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.And">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">And</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'AND'</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.And" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="normlite.future.asdl_compiler.Or">
+<span class="sig-prename descclassname"><span class="pre">normlite.future.asdl_compiler.</span></span><span class="sig-name descname"><span class="pre">Or</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'OR'</span></em><a class="headerlink" href="#normlite.future.asdl_compiler.Or" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../index.html" class="btn btn-neutral float-left" title="normlite.future" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../cursor/index.html" class="btn btn-neutral float-right" title="normlite.future.cursor" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

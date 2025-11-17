@@ -1,0 +1,324 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.sql.compiler &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">normlite.sql.compiler</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for normlite.sql.compiler</h1><div class="highlight"><pre>
+<span></span><span class="c1"># sql/compiler.py</span>
+<span class="c1"># Copyright (C) 2025 Gianmarco Antonini</span>
+<span class="c1">#</span>
+<span class="c1"># This module is part of normlite and is released under the GNU Affero General Public License.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is free software: you can redistribute it and/or modify</span>
+<span class="c1"># it under the terms of the GNU Affero General Public License as published</span>
+<span class="c1"># by the Free Software Foundation, either version 3 of the License, or</span>
+<span class="c1"># (at your option) any later version.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is distributed in the hope that it will be useful,</span>
+<span class="c1"># but WITHOUT ANY WARRANTY; without even the implied warranty of</span>
+<span class="c1"># MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</span>
+<span class="c1"># GNU Affero General Public License for more details.</span>
+<span class="c1">#</span>
+<span class="c1"># You should have received a copy of the GNU Affero General Public License</span>
+<span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pdb</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite._constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">SpecialColumns</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">SQLCompiler</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.ddl</span><span class="w"> </span><span class="kn">import</span> <span class="n">CreateColumn</span><span class="p">,</span> <span class="n">CreateTable</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.dml</span><span class="w"> </span><span class="kn">import</span> <span class="n">Insert</span>
+
+<div class="viewcode-block" id="NotionCompiler">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/compiler/index.html#normlite.sql.compiler.NotionCompiler">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NotionCompiler</span><span class="p">(</span><span class="n">SQLCompiler</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Notion compiler for SQL statements.</span>
+
+<span class="sd">    This class compiles SQL AST of statements into a Notion API compatible payload.</span>
+
+<span class="sd">    .. admonition:: Examples</span>
+<span class="sd">        :collapsible: open</span>
+
+<span class="sd">        .. rubric:: Example 1: Create a new Notion database</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            # create new Notion database for the following Table object.</span>
+<span class="sd">            metadata = MetaData()</span>
+<span class="sd">            students = Table(</span>
+<span class="sd">                &#39;students&#39;,</span>
+<span class="sd">                metadata,</span>
+<span class="sd">                Column(&#39;id&#39;, Integer()),</span>
+<span class="sd">                Column(&#39;name&#39;, String(is_title=True)),</span>
+<span class="sd">                Column(&#39;grade&#39;, String()),</span>
+<span class="sd">                Column(&#39;is_active&#39;, Boolean()),</span>
+<span class="sd">                Column(&#39;started_on&#39;, Date())</span>
+<span class="sd">            )</span>
+
+<span class="sd">            ddl_stmt = CreateTable(students)</span>
+<span class="sd">            compiled = ddl_stmt.compile(NotionCompiler())</span>
+<span class="sd">            print(compiled.string)</span>
+<span class="sd">            </span>
+<span class="sd">            # this is the stringified version of the compiled object</span>
+<span class="sd">            {</span>
+<span class="sd">                &quot;operation&quot;: {                                  # a dictionary specifying the Notion API </span>
+<span class="sd">                    &quot;endpoint&quot;: &quot;databases&quot;,                    # endpoint and </span>
+<span class="sd">                    &quot;request&quot;: &quot;create&quot;,                        # request</span>
+<span class="sd">                    &quot;template&quot;: {                               # parameterized template</span>
+<span class="sd">                        &quot;parent&quot;: {</span>
+<span class="sd">                            &quot;type&quot;: &quot;page_id&quot;,</span>
+<span class="sd">                            &quot;page_id&quot;: &quot;12345678-9090-0606-1111-123456789012&quot;</span>
+<span class="sd">                        },</span>
+<span class="sd">                        &quot;title&quot;: {                              # database name</span>
+<span class="sd">                            &quot;text&quot;: {</span>
+<span class="sd">                            &quot;content&quot;: &quot;students&quot;</span>
+<span class="sd">                            }</span>
+<span class="sd">                        },</span>
+<span class="sd">                        &quot;properties&quot;: {                         # database schema</span>
+<span class="sd">                            &quot;id&quot;: {</span>
+<span class="sd">                                &quot;number&quot;: {</span>
+<span class="sd">                                    &quot;format&quot;: &quot;number&quot;</span>
+<span class="sd">                                }</span>
+<span class="sd">                            },</span>
+<span class="sd">                            &quot;name&quot;: {</span>
+<span class="sd">                                &quot;title&quot;: {}</span>
+<span class="sd">                            },</span>
+<span class="sd">                            &quot;grade&quot;: {</span>
+<span class="sd">                                &quot;rich_text&quot;: {}</span>
+<span class="sd">                            },</span>
+<span class="sd">                            &quot;is_active&quot;: {</span>
+<span class="sd">                                &quot;checkbox&quot;: {}</span>
+<span class="sd">                            },</span>
+<span class="sd">                            &quot;started_on&quot;: {</span>
+<span class="sd">                                &quot;date&quot;: {}</span>
+<span class="sd">                            }</span>
+<span class="sd">                        }</span>
+<span class="sd">                    }</span>
+<span class="sd">                },</span>
+<span class="sd">                &quot;parameters&quot;: {},                               # bind parameters, {} as tables do not have parameters</span>
+<span class="sd">                &quot;result_columns&quot;: []                            # no result columns specified</span>
+<span class="sd">            }</span>
+
+<span class="sd">        .. rubric:: Example 2: Add a new page to a Notion database</span>
+
+<span class="sd">        .. code-block:: python</span>
+<span class="sd">        </span>
+<span class="sd">            # create a new page belonging to the &quot;students&quot; database</span>
+<span class="sd">            bind_params = {&#39;student_id&#39;: 1234567, &#39;name&#39;: &#39;Galileo Galilei&#39;, &#39;grade&#39;: &#39;A&#39;}</span>
+<span class="sd">            stmt: Insert = insert(students).values(**expected_params)</span>
+<span class="sd">            compiled = stmt.compile(NotionCompiler())</span>
+
+<span class="sd">            # </span>
+<span class="sd">            {</span>
+<span class="sd">                &quot;operation&quot;: {</span>
+<span class="sd">                    &quot;endpoint&quot;: &quot;pages&quot;,                        # INSERT corresponds to pages.create</span>
+<span class="sd">                    &quot;request&quot;: &quot;create&quot;,</span>
+<span class="sd">                    &quot;template&quot;: {</span>
+<span class="sd">                        &quot;parent&quot;: {                             # parent database to which this page belongs to</span>
+<span class="sd">                            &quot;type&quot;: &quot;database_id&quot;,</span>
+<span class="sd">                            &quot;database_id&quot;: &quot;12345678-9090-0606-1111-123456789012&quot;</span>
+<span class="sd">                        },</span>
+<span class="sd">                        &quot;properties&quot;: {</span>
+<span class="sd">                            &quot;student_id&quot;: {</span>
+<span class="sd">                                &quot;number&quot;: &quot;:student_id&quot;         # named parameterized value :stundent_id</span>
+<span class="sd">                            },</span>
+<span class="sd">                            &quot;name&quot;: {</span>
+<span class="sd">                                &quot;title&quot;: [</span>
+<span class="sd">                                    {</span>
+<span class="sd">                                        &quot;text&quot;: {</span>
+<span class="sd">                                            &quot;content&quot;: &quot;:name&quot;</span>
+<span class="sd">                                        }</span>
+<span class="sd">                                    }</span>
+<span class="sd">                                ]</span>
+<span class="sd">                            },</span>
+<span class="sd">                            &quot;grade&quot;: {</span>
+<span class="sd">                                &quot;rich_text&quot;: [</span>
+<span class="sd">                                    {</span>
+<span class="sd">                                        &quot;text&quot;: {</span>
+<span class="sd">                                            &quot;content&quot;: &quot;:grade&quot;</span>
+<span class="sd">                                        }</span>
+<span class="sd">                                    }</span>
+<span class="sd">                                ]</span>
+<span class="sd">                            }</span>
+<span class="sd">                        }</span>
+<span class="sd">                    }</span>
+<span class="sd">                },</span>
+<span class="sd">                &quot;parameters&quot;: {</span>
+<span class="sd">                    &quot;student_id&quot;: 1234567,</span>
+<span class="sd">                    &quot;name&quot;: &quot;Galileo Galilei&quot;,</span>
+<span class="sd">                    &quot;grade&quot;: &quot;A&quot;</span>
+<span class="sd">                }</span>
+<span class="sd">            }</span>
+
+
+
+
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="NotionCompiler.visit_create_table">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/compiler/index.html#normlite.sql.compiler.NotionCompiler.visit_create_table">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">visit_create_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ddl_stmt</span><span class="p">:</span> <span class="n">CreateTable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="c1"># emit code for parent object</span>
+        <span class="n">no_db_obj</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">no_db_obj</span><span class="p">[</span><span class="s1">&#39;parent&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;page_id&#39;</span><span class="p">,</span> 
+            <span class="s1">&#39;page_id&#39;</span><span class="p">:</span> <span class="n">ddl_stmt</span><span class="o">.</span><span class="n">table</span><span class="o">.</span><span class="n">_db_parent_id</span>
+        <span class="p">}</span>
+
+        <span class="c1"># emit code for title object</span>
+        <span class="n">no_db_obj</span><span class="p">[</span><span class="s1">&#39;title&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="n">ddl_stmt</span><span class="o">.</span><span class="n">table</span><span class="o">.</span><span class="n">name</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="c1"># emit code for properties object</span>
+        <span class="n">no_prop_obj</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">ddl_stmt</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="n">no_prop_obj</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">visit_create_column</span><span class="p">(</span><span class="n">col</span><span class="p">))</span>
+        
+        <span class="n">no_db_obj</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">no_prop_obj</span>
+        <span class="n">operation</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">endpoint</span><span class="o">=</span><span class="s1">&#39;databases&#39;</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="s1">&#39;create&#39;</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="n">no_db_obj</span><span class="p">)</span>
+        <span class="n">parameters</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">result_columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">colname</span> <span class="k">for</span> <span class="n">colname</span> <span class="ow">in</span> <span class="n">ddl_stmt</span><span class="o">.</span><span class="n">table</span><span class="o">.</span><span class="n">c</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="n">colname</span> <span class="ow">in</span> <span class="n">SpecialColumns</span><span class="o">.</span><span class="n">values</span><span class="p">()]</span>
+        <span class="n">result_columns</span> <span class="o">=</span> <span class="p">[]</span>
+        
+        <span class="k">return</span> <span class="p">{</span><span class="s1">&#39;operation&#39;</span><span class="p">:</span> <span class="n">operation</span><span class="p">,</span> <span class="s1">&#39;parameters&#39;</span><span class="p">:</span> <span class="n">parameters</span><span class="p">,</span> <span class="s1">&#39;result_columns&#39;</span><span class="p">:</span> <span class="n">result_columns</span><span class="p">}</span></div>
+
+    
+<div class="viewcode-block" id="NotionCompiler.visit_create_column">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/compiler/index.html#normlite.sql.compiler.NotionCompiler.visit_create_column">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">visit_create_column</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ddl_stmt</span><span class="p">:</span> <span class="n">CreateColumn</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="n">column</span> <span class="o">=</span> <span class="n">ddl_stmt</span><span class="o">.</span><span class="n">column</span>
+        <span class="n">no_prop_obj</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">no_prop_obj</span><span class="p">[</span><span class="n">column</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">column</span><span class="o">.</span><span class="n">type_</span><span class="o">.</span><span class="n">get_col_spec</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">no_prop_obj</span></div>
+
+
+<div class="viewcode-block" id="NotionCompiler.visit_insert">
+<a class="viewcode-back" href="../../../autoapi/normlite/sql/compiler/index.html#normlite.sql.compiler.NotionCompiler.visit_insert">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">visit_insert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">insert</span><span class="p">:</span> <span class="n">Insert</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="n">no_insert_obj</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">no_insert_obj</span><span class="p">[</span><span class="s1">&#39;parent&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+           <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;database_id&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;database_id&#39;</span><span class="p">:</span> <span class="n">insert</span><span class="o">.</span><span class="n">_table</span><span class="o">.</span><span class="n">_database_id</span>
+        <span class="p">}</span>
+        
+        <span class="n">properties</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">insert</span><span class="o">.</span><span class="n">_table</span><span class="o">.</span><span class="n">c</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;_no_&#39;</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="n">bind_proc</span> <span class="o">=</span> <span class="n">col</span><span class="o">.</span><span class="n">type_</span><span class="o">.</span><span class="n">bind_processor</span><span class="p">()</span>
+            <span class="c1"># bind the named parameter not the value yet</span>
+            <span class="n">properties</span><span class="p">[</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">bind_proc</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;:</span><span class="si">{</span><span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>        
+
+        <span class="n">no_insert_obj</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">properties</span>
+        <span class="n">operation</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">endpoint</span><span class="o">=</span><span class="s1">&#39;pages&#39;</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="s1">&#39;create&#39;</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="n">no_insert_obj</span><span class="p">)</span>
+        <span class="n">parameters</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="o">**</span><span class="n">insert</span><span class="o">.</span><span class="n">_values</span><span class="p">)</span> <span class="k">if</span> <span class="n">insert</span><span class="o">.</span><span class="n">_values</span> <span class="k">else</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="c1"># IMPORTANT: concatenate the values tuple containing the special columns WITH the returning tuple.</span>
+        <span class="c1"># This ensures that the values for the special columns are always available even if the returning tuple is ().</span>
+        <span class="n">result_columns</span> <span class="o">=</span> <span class="n">SpecialColumns</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="o">+</span> <span class="n">insert</span><span class="o">.</span><span class="n">_returning</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s1">&#39;operation&#39;</span><span class="p">:</span> <span class="n">operation</span><span class="p">,</span> <span class="s1">&#39;parameters&#39;</span><span class="p">:</span> <span class="n">parameters</span><span class="p">,</span> <span class="s1">&#39;result_columns&#39;</span><span class="p">:</span> <span class="n">result_columns</span><span class="p">}</span>    </div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

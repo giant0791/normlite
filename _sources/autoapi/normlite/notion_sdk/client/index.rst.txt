@@ -1,0 +1,655 @@
+normlite.notion_sdk.client
+==========================
+
+.. py:module:: normlite.notion_sdk.client
+
+.. autoapi-nested-parse::
+
+   Provide several client classes to the Notion API.
+
+   This module provides high level client classes to abstract away the details
+   of the Notion REST API.
+   Two classes are best suited for testing: :class:`InMemoryNotionClient` which holds in memory the
+   Notion data like pages and databases, and :class:`FileBasedNotionClient` which adds the capability
+   to store the Notion data as a JSON file on the file system.
+
+
+
+
+
+
+
+Module Contents
+---------------
+
+.. py:exception:: NotionError
+
+   Bases: :py:obj:`Exception`
+
+
+   Exception raised for all errors related to the Notion REST API.
+
+
+.. py:class:: AbstractNotionClient
+
+   Bases: :py:obj:`abc.ABC`
+
+
+   Base class for a Notion API client.
+
+
+
+
+   .. py:attribute:: allowed_operations
+      :type:  Set[str]
+
+      The set of Notion API calls.
+
+
+   .. py:attribute:: _ischema_page_id
+      :value: None
+
+
+      The object id for ``information_schema`` page.
+
+      .. deprecated:: 0.7.0
+          Do not use, it will be removed in a future version.
+          Use the keyword arguments of the :class:`normlite.engine.base.Engine`.
+
+
+   .. py:attribute:: _tables_db_id
+      :value: None
+
+
+      The object id for ``tables`` database.
+
+      .. deprecated:: 0.7.0
+          Do not use, it will be removed in a future version.
+          Use the keyword arguments of the :class:`normlite.engine.base.Engine`.
+
+
+   .. py:method:: __call__(endpoint: str, request: str, payload: dict) -> dict
+
+      Enable function call style for REST Notion API client objects.
+
+      Example::
+
+          # Add a new Notion page to the database with id = 680dee41-b447-451d-9d36-c6eaff13fb46
+          operation = {"endpoint": "pages", "request": "create"}
+          payload = {
+              'parent': {
+                  "type": "database_id",
+                  "page_id": "680dee41-b447-451d-9d36-c6eaff13fb46"
+              },
+              'properties': {
+                  'Name': {'title': [{'text': {'content': title}}]}
+              }
+          }
+          client = InMemoryNotionClient()
+          try:
+              object_ = client(
+                  operation['endpoint'],
+                  operation['request'],
+                  payload
+              )
+          except KeyError as ke:
+              raise NotionError(f"Missing required key in operation dict: {ke.args[0]}")
+
+      :param endpoint: The REST API endpoint, example: ``databases``.
+      :type endpoint: str
+      :param request: The REST API request, example: ``create``.
+      :type request: str
+      :param payload: The JSON object as payload.
+      :type payload: dict
+
+      :raises NotionError: Unknown or unsupported operation.
+
+      :returns: The JSON object returned by the NOTION API.
+      :rtype: dict
+
+
+
+   .. py:property:: ischema_page_id
+      :type: Optional[str]
+
+
+      Return object id for ``information_schema`` page.
+
+      .. deprecated:: 0.7.0
+          Do not use, it will be removed in a future version.
+
+
+   .. py:method:: pages_create(payload: dict) -> dict
+      :abstractmethod:
+
+
+      Create a page object.
+
+      This method creates a new page that is a child of an existing page or database.
+
+
+      :param payload: The JSON object containing the required payload as specified by the Notion API.
+      :type payload: dict
+
+      :returns: The createdpage object with the property identifiers as the only key for each property object.
+      :rtype: dict
+
+
+
+   .. py:method:: pages_retrieve(payload: dict) -> dict
+      :abstractmethod:
+
+
+      Retrieve a page object.
+
+      This method is used as follows::
+
+          # retrieve page with id = "680dee41-b447-451d-9d36-c6eaff13fb46"
+          operation = {"endpoint": "pages", "request": "create"}
+          payload = {"id": "680dee41-b447-451d-9d36-c6eaff13fb46"}
+          client = InMemoryNotionClient()
+          try:
+              object_ = client(
+                  operation['endpoint'],
+                  operation['request'],
+                  payload
+              )
+          except KeyError as ke:
+              raise NotionError(f"Missing required key in operation dict: {ke.args[0]}")
+
+      :param payload: The JSON object containing the id to be retrieved.
+      :type payload: dict
+
+      :returns: The page object containing the page properties only, not page content.
+      :rtype: dict
+
+
+
+   .. py:method:: pages_update(payload: dict) -> dict
+      :abstractmethod:
+
+
+      Update a page object.
+
+      Use this API to modify attributes of a Notion page object, such as properties, title, etc.
+      The payload follows the specific JSON required by Notion.
+      The identifier of the Notion page to be udated (*path* parameter) shall be provided as key "page_id" in the payload.
+      Here an example of a Python payload:
+
+      .. code-block:: python
+
+          # payload to update page with id 59833787-2cf9-4fdf-8782-e53db20768a5
+          # with a new value for the property "student_id"
+          {
+              "page_id": "59833787-2cf9-4fdf-8782-e53db20768a5",
+              "properties" : {
+                  "student_id": {
+                      "number": 654321
+                  }
+              }
+          }
+
+      This is how the returned object looks like:
+
+      .. code-block:: python
+
+          {
+              "object": "page",
+              "id": "59833787-2cf9-4fdf-8782-e53db20768a5",
+
+              # other keys ommitted for brevity
+
+              "properties": {
+                  "student_id": {
+                      "id": "zag~"
+                  }
+
+                  # other properties omitted for brevity
+              }
+          }
+
+      :param payload: The JSON object containing the required payload as specified by the Notion API.
+      :type payload: dict
+
+      :returns: The updated page object with the property identifiers as the only key for each property object.
+      :rtype: dict
+
+
+
+   .. py:method:: databases_create(payload: dict) -> dict
+      :abstractmethod:
+
+
+      Create a database as a subpage in the specified parent page, with the specified properties schema.
+
+      :param payload: The JSON object containing the required payload as specified by the Notion API.
+      :type payload: dict
+
+      :returns: The created database object.
+      :rtype: dict
+
+
+
+   .. py:method:: databases_retrieve(payload: dict) -> dict
+      :abstractmethod:
+
+
+      Retrieve a database object for the provided ID
+
+      :param payload: A dictionary containing the database id as key.
+      :type payload: dict
+
+      :returns: The retrieved database object or and empty dictionary if no
+                databased object for the provided ID were found
+      :rtype: dict
+
+
+
+   .. py:method:: databases_query(payload: dict) -> List[dict]
+      :abstractmethod:
+
+
+      Get a list pages contained in the database.
+
+      :param payload: A dictionary that must contain a "database_id" key for the database to
+                      query and "filter" object to select.
+      :type payload: dict
+
+      :returns: The list containing the page pbjects or ``[]``, if no pages have been found.
+      :rtype: List[dict]
+
+
+
+.. py:class:: InMemoryNotionClient(ws_id: Optional[str] = None, ischema_page_id: Optional[str] = None, tables_db_id: Optional[str] = None)
+
+   Bases: :py:obj:`AbstractNotionClient`
+
+
+   Provide a simple but complete in-memory Notion client.
+
+   :class:`InMemoryNotionClient` fully implements the Notion API and mimics the Notion's store behavior.
+   This class is best suited for testing purposes as it avoids the HTTP communication.
+   It has been designed to mimic as close as possible the behavior of Notion, including error messages.
+
+   .. versionchanged:: 0.7.0
+       In this version, the :attr:`_store` is a Python :type:`dict` to provide random access.
+       The object indentifier is used as key and the object itself is the value.
+       Additionally, the store is always initialized with a root page as is the case for Notion internal integrations.
+
+   .. deprecated:: 0.7.0
+       The :meth:`__init__` parameters **shall not** be used anymore, they will be removed in a future verison.
+       The datastructures info schema page and tables are created by the :class:`normlite.engine.base.Engine`.
+       Clients do not have knowledge of these datastructures.
+
+
+
+   .. py:attribute:: _ROOT_PAGE_ID_
+      :value: 'ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ'
+
+
+      Fake root page identifier.
+
+
+   .. py:attribute:: _ROOT_PAGE_PARENT_ID_
+      :value: 'YYYYYYYY-0000-1111-WWWWWWWWWWWWWWWWW'
+
+
+      Fake root page parent identifier.
+
+
+   .. py:attribute:: _ROOT_PAGE_TITLE_
+      :value: 'ROOT_PAGE'
+
+
+      Fake root page title.
+
+
+   .. py:attribute:: _store
+      :type:  dict[str, Any]
+
+      The dictionary simulating the Notion store.
+      It's an instance attribute to avoid unwanted side effects and
+      provide more behavioral predictability.
+
+      .. versionchanged:: 0.7.0
+          - Add root page by default in the constructor.
+          - Fix issue with asymmetric file based Notion client (https://github.com/giant0791/normlite/issues/45).
+
+
+   .. py:method:: _create_store(store_content: List[dict] = []) -> None
+
+      Provide helper to create the simulated Notion store.
+
+      .. deprecated:: 0.7.0
+          Do **not** use this helper method, it will break the internal store.
+          There is currently no replacement.
+          Here a short code snippet to correctly pre-fill the store
+          for test purposes.
+
+          .. code-block:: python
+
+              def for_page_queries(client: InMemoryNotionClient, page_payloads: list[dict]) -> InMemoryNotionClient:
+                  ids = [
+                      '680dee41-b447-451d-9d36-c6eaff13fb45',
+                      '680dee41-b447-451d-9d36-c6eaff13fb46',
+                      '680dee41-b447-451d-9d36-c6eaff13fb47'
+                  ]
+                  for id_, payload in enumerate(page_payloads):
+                      _ = client._add('page', payload, ids[id_])
+
+                  return client
+
+      :param store_content: The initial content for the Notion store. Defaults to ``[]``.
+      :type store_content: List[dict], optional
+
+
+
+   .. py:method:: _get(id: str) -> dict
+
+
+   .. py:method:: _get_by_id(id: str) -> dict
+
+
+   .. py:method:: _get_by_title(title: str, type: str) -> dict
+
+      Return the first occurrence in the store of page or database with the passed title.
+
+
+
+   .. py:method:: _new_object(type_: str, payload: dict, id: Optional[str] = None) -> dict
+
+
+   .. py:method:: _add_database(new_object: dict) -> dict
+
+
+   .. py:method:: _add_page(new_object: dict) -> dict
+
+
+   .. py:method:: _raise_if_validation_fails(type_: str, payload: dict) -> NoReturn
+
+
+   .. py:method:: _add(type_: str, payload: dict, id: Optional[str] = None) -> dict
+
+      Add Notion objects to the store.
+
+      This utility method handles 3 use cases:
+          - add a database
+          - add a page to an existing database
+          - add a page to an existing page
+
+
+      .. versionchanged: 0.7.0
+          This method now ensures payload validation and orchestrates the object creation and
+          storing in the internal data structure.
+
+
+
+   .. py:method:: _generate_property_id() -> str
+
+      Generate a pseudo Notion-like property id.
+
+      These ids are short, random strings containing
+      letters and a few special characters, then URL-encoded.
+
+
+
+   .. py:method:: _store_len() -> int
+
+
+   .. py:method:: pages_create(payload: dict) -> dict
+
+      Create a page object.
+
+      This method creates a new page that is a child of an existing page or database.
+
+
+      :param payload: The JSON object containing the required payload as specified by the Notion API.
+      :type payload: dict
+
+      :returns: The createdpage object with the property identifiers as the only key for each property object.
+      :rtype: dict
+
+
+
+   .. py:method:: pages_retrieve(payload: dict) -> dict
+
+      Retrieve a page object.
+
+      This method is used as follows::
+
+          # retrieve page with id = "680dee41-b447-451d-9d36-c6eaff13fb46"
+          operation = {"endpoint": "pages", "request": "create"}
+          payload = {"id": "680dee41-b447-451d-9d36-c6eaff13fb46"}
+          client = InMemoryNotionClient()
+          try:
+              object_ = client(
+                  operation['endpoint'],
+                  operation['request'],
+                  payload
+              )
+          except KeyError as ke:
+              raise NotionError(f"Missing required key in operation dict: {ke.args[0]}")
+
+      :param payload: The JSON object containing the id to be retrieved.
+      :type payload: dict
+
+      :returns: The page object containing the page properties only, not page content.
+      :rtype: dict
+
+
+
+   .. py:method:: pages_update(payload) -> dict
+
+      Update a page object.
+
+      Use this API to modify attributes of a Notion page object, such as properties, title, etc.
+      The payload follows the specific JSON required by Notion.
+      The identifier of the Notion page to be udated (*path* parameter) shall be provided as key "page_id" in the payload.
+      Here an example of a Python payload:
+
+      .. code-block:: python
+
+          # payload to update page with id 59833787-2cf9-4fdf-8782-e53db20768a5
+          # with a new value for the property "student_id"
+          {
+              "page_id": "59833787-2cf9-4fdf-8782-e53db20768a5",
+              "properties" : {
+                  "student_id": {
+                      "number": 654321
+                  }
+              }
+          }
+
+      This is how the returned object looks like:
+
+      .. code-block:: python
+
+          {
+              "object": "page",
+              "id": "59833787-2cf9-4fdf-8782-e53db20768a5",
+
+              # other keys ommitted for brevity
+
+              "properties": {
+                  "student_id": {
+                      "id": "zag~"
+                  }
+
+                  # other properties omitted for brevity
+              }
+          }
+
+      :param payload: The JSON object containing the required payload as specified by the Notion API.
+      :type payload: dict
+
+      :returns: The updated page object with the property identifiers as the only key for each property object.
+      :rtype: dict
+
+
+
+   .. py:method:: databases_create(payload: dict) -> dict
+
+      Create a database as a subpage in the specified parent page, with the specified properties schema.
+
+      :param payload: The JSON object containing the required payload as specified by the Notion API.
+      :type payload: dict
+
+      :returns: The created database object.
+      :rtype: dict
+
+
+
+   .. py:method:: databases_retrieve(payload: dict) -> dict
+
+      Retrieve a database object for the provided ID
+
+      :param payload: A dictionary containing the database id as key.
+      :type payload: dict
+
+      :returns: The retrieved database object or and empty dictionary if no
+                databased object for the provided ID were found
+      :rtype: dict
+
+
+
+   .. py:method:: databases_query(payload: dict) -> dict
+
+      Get a list pages contained in the database.
+
+      :param payload: A dictionary that must contain a "database_id" key for the database to
+                      query and "filter" object to select.
+      :type payload: dict
+
+      :returns: The list containing the page pbjects or ``[]``, if no pages have been found.
+      :rtype: List[dict]
+
+
+
+.. py:class:: FileBasedNotionClient(file_path: str)
+
+   Bases: :py:obj:`InMemoryNotionClient`
+
+
+   Enhance the in-memory client with file based persistence.
+
+   This class extends the base :class:`InMemoryNotionClient` by providing the capability
+   to store and load the simulated Notion store content to and from the underlying file.
+   In addition, this class implements the context manager protocol allowing the following usage::
+
+       # persistently add new pages to my-database.json
+       client = FileBasedNotionClient("my-database.json")
+       with client as c:
+           c.pages_create(payload1)   # payload* are previously created JSON Notion objects to be added
+           c.pages_create(payload2)
+           c.pages_create(payload3)
+
+
+   .. py:attribute:: file_path
+
+      The absolute path to the file storing the data contained in the file-base Notion client.
+
+
+   .. py:method:: load() -> List[dict]
+
+      Load the store content from the underlying file.
+
+      :returns: The JSON object as list of dictionaries containing the store.
+      :rtype: List[dict]
+
+
+
+   .. py:method:: __enter__() -> Self
+
+      Initialize the Notion store in memory.
+
+      When the context manager is entered, the Notion store is read in memory, if the corresponding
+      file existes. Otherwise, the store in memory is initialized with an empty list.
+
+      :returns: This instance as required by the context manager protocol.
+      :rtype: Self
+
+
+
+   .. py:method:: dump(store_content: List[dict]) -> None
+
+      Dump the store content onto the underlying file.
+
+      :param store_content: The current store content present in memory.
+      :type store_content: List[dict]
+
+
+
+   .. py:method:: __exit__(exctype: Optional[Type[BaseException]] = None, excinst: Optional[BaseException] = None, exctb: Optional[types.TracebackType] = None) -> Optional[bool]
+
+      Dump the Notion stored to the file.
+
+      :param exctype: The exception class. Defaults to ``None``.
+      :type exctype: Optional[Type[BaseException]]
+      :param excinst: The exception instance. Defaults to ``None``.
+      :type excinst: Optional[BaseException]
+      :param exctb: The traceback object. Defaults to ``None``.
+      :type exctb: Optional[TracebackType]
+
+      :returns: ``None`` as it is customary for context managers.
+      :rtype: Optional[bool]
+
+
+
+.. py:class:: _Condition(page: dict, condition: dict)
+
+   .. py:attribute:: _op_map
+      :type:  dict
+
+
+   .. py:attribute:: property_obj
+
+
+   .. py:method:: _extract_filter(cond: dict) -> tuple[str, dict]
+
+      Return (type_name, filter_dict) from a Notion condition.
+
+
+
+   .. py:method:: eval() -> bool
+
+
+.. py:class:: _CompositeCondition(logical_op: str, conditions: Sequence[_Condition])
+
+   Bases: :py:obj:`_Condition`
+
+
+   .. py:attribute:: logical_op
+
+
+   .. py:attribute:: conditions
+
+
+   .. py:method:: eval() -> bool
+
+
+.. py:class:: _Filter(page: dict, filter: dict)
+
+   Bases: :py:obj:`_Condition`
+
+
+   Initial implementation, it **does not supported nested composite conditions**.
+
+
+   .. py:attribute:: page
+
+
+   .. py:attribute:: filter
+
+
+   .. py:attribute:: compiled
+      :type:  _Condition
+      :value: None
+
+
+
+   .. py:method:: _compile() -> None
+
+
+   .. py:method:: eval() -> bool
+
+

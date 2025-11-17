@@ -1,0 +1,272 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.sql.compiler &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+    <link rel="next" title="normlite.sql.ddl" href="../ddl/index.html" />
+    <link rel="prev" title="normlite.sql.base" href="../base/index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html">normlite</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../../_constants/index.html">normlite._constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../cursor/index.html">normlite.cursor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../engine/index.html">normlite.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../exceptions/index.html">normlite.exceptions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../future/index.html">normlite.future</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notion_sdk/index.html">normlite.notion_sdk</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notiondbapi/index.html">normlite.notiondbapi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../proxy/index.html">normlite.proxy</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="../index.html">normlite.sql</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../txmodel/index.html">normlite.txmodel</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">normlite</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">normlite.sql</a></li>
+      <li class="breadcrumb-item active">normlite.sql.compiler</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../../_sources/autoapi/normlite/sql/compiler/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-normlite.sql.compiler">
+<span id="normlite-sql-compiler"></span><h1>normlite.sql.compiler<a class="headerlink" href="#module-normlite.sql.compiler" title="Link to this heading"></a></h1>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.sql.compiler.NotionCompiler">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.sql.compiler.</span></span><span class="sig-name descname"><span class="pre">NotionCompiler</span></span><a class="reference internal" href="../../../../_modules/normlite/sql/compiler.html#NotionCompiler"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.compiler.NotionCompiler" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="../base/index.html#normlite.sql.base.SQLCompiler" title="normlite.sql.base.SQLCompiler"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normlite.sql.base.SQLCompiler</span></code></a></p>
+<p>Notion compiler for SQL statements.</p>
+<p>This class compiles SQL AST of statements into a Notion API compatible payload.</p>
+<details class="admonition-examples admonition" open="open">
+<summary class="admonition-title">Examples</summary>
+<p class="rubric">Example 1: Create a new Notion database</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># create new Notion database for the following Table object.</span>
+<span class="n">metadata</span> <span class="o">=</span> <span class="n">MetaData</span><span class="p">()</span>
+<span class="n">students</span> <span class="o">=</span> <span class="n">Table</span><span class="p">(</span>
+    <span class="s1">&#39;students&#39;</span><span class="p">,</span>
+    <span class="n">metadata</span><span class="p">,</span>
+    <span class="n">Column</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="n">Integer</span><span class="p">()),</span>
+    <span class="n">Column</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span> <span class="n">String</span><span class="p">(</span><span class="n">is_title</span><span class="o">=</span><span class="kc">True</span><span class="p">)),</span>
+    <span class="n">Column</span><span class="p">(</span><span class="s1">&#39;grade&#39;</span><span class="p">,</span> <span class="n">String</span><span class="p">()),</span>
+    <span class="n">Column</span><span class="p">(</span><span class="s1">&#39;is_active&#39;</span><span class="p">,</span> <span class="n">Boolean</span><span class="p">()),</span>
+    <span class="n">Column</span><span class="p">(</span><span class="s1">&#39;started_on&#39;</span><span class="p">,</span> <span class="n">Date</span><span class="p">())</span>
+<span class="p">)</span>
+
+<span class="n">ddl_stmt</span> <span class="o">=</span> <span class="n">CreateTable</span><span class="p">(</span><span class="n">students</span><span class="p">)</span>
+<span class="n">compiled</span> <span class="o">=</span> <span class="n">ddl_stmt</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">NotionCompiler</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">compiled</span><span class="o">.</span><span class="n">string</span><span class="p">)</span>
+
+<span class="c1"># this is the stringified version of the compiled object</span>
+<span class="p">{</span>
+    <span class="s2">&quot;operation&quot;</span><span class="p">:</span> <span class="p">{</span>                                  <span class="c1"># a dictionary specifying the Notion API</span>
+        <span class="s2">&quot;endpoint&quot;</span><span class="p">:</span> <span class="s2">&quot;databases&quot;</span><span class="p">,</span>                    <span class="c1"># endpoint and</span>
+        <span class="s2">&quot;request&quot;</span><span class="p">:</span> <span class="s2">&quot;create&quot;</span><span class="p">,</span>                        <span class="c1"># request</span>
+        <span class="s2">&quot;template&quot;</span><span class="p">:</span> <span class="p">{</span>                               <span class="c1"># parameterized template</span>
+            <span class="s2">&quot;parent&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;page_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;page_id&quot;</span><span class="p">:</span> <span class="s2">&quot;12345678-9090-0606-1111-123456789012&quot;</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">{</span>                              <span class="c1"># database name</span>
+                <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;students&quot;</span>
+                <span class="p">}</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>                         <span class="c1"># database schema</span>
+                <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;number&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span>
+                    <span class="p">}</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">{}</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;rich_text&quot;</span><span class="p">:</span> <span class="p">{}</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;is_active&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;checkbox&quot;</span><span class="p">:</span> <span class="p">{}</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;started_on&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;date&quot;</span><span class="p">:</span> <span class="p">{}</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;parameters&quot;</span><span class="p">:</span> <span class="p">{},</span>                               <span class="c1"># bind parameters, {} as tables do not have parameters</span>
+    <span class="s2">&quot;result_columns&quot;</span><span class="p">:</span> <span class="p">[]</span>                            <span class="c1"># no result columns specified</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p class="rubric">Example 2: Add a new page to a Notion database</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># create a new page belonging to the &quot;students&quot; database</span>
+<span class="n">bind_params</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;student_id&#39;</span><span class="p">:</span> <span class="mi">1234567</span><span class="p">,</span> <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Galileo Galilei&#39;</span><span class="p">,</span> <span class="s1">&#39;grade&#39;</span><span class="p">:</span> <span class="s1">&#39;A&#39;</span><span class="p">}</span>
+<span class="n">stmt</span><span class="p">:</span> <span class="n">Insert</span> <span class="o">=</span> <span class="n">insert</span><span class="p">(</span><span class="n">students</span><span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="p">(</span><span class="o">**</span><span class="n">expected_params</span><span class="p">)</span>
+<span class="n">compiled</span> <span class="o">=</span> <span class="n">stmt</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">NotionCompiler</span><span class="p">())</span>
+
+<span class="c1">#</span>
+<span class="p">{</span>
+    <span class="s2">&quot;operation&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;endpoint&quot;</span><span class="p">:</span> <span class="s2">&quot;pages&quot;</span><span class="p">,</span>                        <span class="c1"># INSERT corresponds to pages.create</span>
+        <span class="s2">&quot;request&quot;</span><span class="p">:</span> <span class="s2">&quot;create&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;template&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;parent&quot;</span><span class="p">:</span> <span class="p">{</span>                             <span class="c1"># parent database to which this page belongs to</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;database_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;database_id&quot;</span><span class="p">:</span> <span class="s2">&quot;12345678-9090-0606-1111-123456789012&quot;</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;student_id&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;number&quot;</span><span class="p">:</span> <span class="s2">&quot;:student_id&quot;</span>         <span class="c1"># named parameterized value :stundent_id</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">[</span>
+                        <span class="p">{</span>
+                            <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span>
+                                <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;:name&quot;</span>
+                            <span class="p">}</span>
+                        <span class="p">}</span>
+                    <span class="p">]</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;rich_text&quot;</span><span class="p">:</span> <span class="p">[</span>
+                        <span class="p">{</span>
+                            <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span>
+                                <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;:grade&quot;</span>
+                            <span class="p">}</span>
+                        <span class="p">}</span>
+                    <span class="p">]</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;parameters&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;student_id&quot;</span><span class="p">:</span> <span class="mi">1234567</span><span class="p">,</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Galileo Galilei&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;grade&quot;</span><span class="p">:</span> <span class="s2">&quot;A&quot;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</details>
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.compiler.NotionCompiler.visit_create_table">
+<span class="sig-name descname"><span class="pre">visit_create_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ddl_stmt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../ddl/index.html#normlite.sql.ddl.CreateTable" title="normlite.sql.ddl.CreateTable"><span class="pre">normlite.sql.ddl.CreateTable</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/compiler.html#NotionCompiler.visit_create_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.compiler.NotionCompiler.visit_create_table" title="Link to this definition"></a></dt>
+<dd><p>Compile a table (DDL <code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">TABLE</span></code>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.compiler.NotionCompiler.visit_create_column">
+<span class="sig-name descname"><span class="pre">visit_create_column</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ddl_stmt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../ddl/index.html#normlite.sql.ddl.CreateColumn" title="normlite.sql.ddl.CreateColumn"><span class="pre">normlite.sql.ddl.CreateColumn</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/compiler.html#NotionCompiler.visit_create_column"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.compiler.NotionCompiler.visit_create_column" title="Link to this definition"></a></dt>
+<dd><p>Compile a column.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.compiler.NotionCompiler.visit_insert">
+<span class="sig-name descname"><span class="pre">visit_insert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">insert</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../dml/index.html#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><span class="pre">normlite.sql.dml.Insert</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/compiler.html#NotionCompiler.visit_insert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.compiler.NotionCompiler.visit_insert" title="Link to this definition"></a></dt>
+<dd><p>Compile an insert statement (DML <code class="docutils literal notranslate"><span class="pre">INSERT</span></code>).</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../base/index.html" class="btn btn-neutral float-left" title="normlite.sql.base" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../ddl/index.html" class="btn btn-neutral float-right" title="normlite.sql.ddl" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

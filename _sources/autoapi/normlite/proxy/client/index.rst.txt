@@ -1,0 +1,116 @@
+normlite.proxy.client
+=====================
+
+.. py:module:: normlite.proxy.client
+
+
+
+
+
+
+Module Contents
+---------------
+
+.. py:class:: InProcessProxyClient(flask_client: flask.testing.FlaskClient)
+
+   Bases: :py:obj:`normlite.proxy.base.BaseProxyClient`
+
+
+   Provide a proxy client in-process implementation for test purposes.
+
+   .. versionadded:: 0.7.0
+       Proxy client based on Flask test client enables easy testing.
+
+
+   .. py:attribute:: _client
+
+
+   .. py:method:: connect() -> requests.Response
+
+      Check if the proxy server is alive.
+      Must raise ProxyError on failure.
+
+
+
+   .. py:method:: begin() -> requests.Response
+
+      Begin a new transaction.
+
+      :returns: The returned response object.
+      :rtype: requests.Response
+
+
+
+   .. py:method:: insert(tx_id: str, payload: dict) -> requests.Response
+
+      Add an insert operation to the specified transaction.
+
+      This method is a wrapper around the REST API `transactions/<id>/insert`.
+
+      :param txn: The transaction to add the insert operation to.
+      :type txn: str
+      :param payload: The payload of the insert operation.
+      :type payload: dict
+
+      :returns: The returned response object.
+      :rtype: requests.Response
+
+
+
+   .. py:method:: commit(tx_id: str) -> requests.Response
+
+      Commit the specified transaction.
+
+      This method is a wrapper around the REST API `transactions/<id>/commit`.
+
+      :param tx_id: The transaction to be committed.
+      :type tx_id: str
+
+      :returns: The returned response object.
+      :rtype: requests.Response
+
+
+
+   .. py:method:: rollback(tx_id: str) -> requests.Response
+
+      Roll back the specified transaction.
+
+      This method is a wrapper around the REST API `transactions/<id>/rollback`.
+
+      :param tx_id: The transaction to be rolled back.
+      :type tx_id: str
+
+      :returns: The returned response object.
+      :rtype: requests.Response
+
+
+
+   .. py:method:: _flask_to_requests_response(flask_resp: werkzeug.wrappers.Response) -> requests.Response
+
+      Convert a Flask TestResponse into a requests.Response.
+
+
+
+.. py:class:: ProxyClient(base_url: str, timeout: int)
+
+   Bases: :py:obj:`normlite.proxy.base.BaseProxyClient`
+
+
+   Abstract base class for proxy clients.
+
+
+   .. py:attribute:: base_url
+
+
+   .. py:attribute:: timeout
+
+
+   .. py:method:: connect() -> requests.Response
+
+      Check if the proxy server is alive.
+      Must raise ProxyError on failure.
+
+
+
+.. py:function:: create_proxy_client(**kwargs: Any) -> ProxyClient
+

@@ -1,0 +1,30 @@
+normlite.proxy
+==============
+
+.. py:module:: normlite.proxy
+
+.. autoapi-nested-parse::
+
+   Provide a proxy server for ``normlite`` clients for transaction management on Notion REST API requests.
+
+   .. warning::
+
+      The code in this package is experimental and subject to breaking changes in the future.
+      
+      **Do not use it yet!**
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/normlite/proxy/base/index
+   /autoapi/normlite/proxy/client/index
+   /autoapi/normlite/proxy/routes/index
+   /autoapi/normlite/proxy/server/index
+   /autoapi/normlite/proxy/state/index
+
+

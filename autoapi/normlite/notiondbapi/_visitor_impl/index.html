@@ -1,0 +1,537 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.notiondbapi._visitor_impl &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+    <link rel="next" title="normlite.notiondbapi.dbapi2" href="../dbapi2/index.html" />
+    <link rel="prev" title="normlite.notiondbapi._parser" href="../_parser/index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html">normlite</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../../_constants/index.html">normlite._constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../cursor/index.html">normlite.cursor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../engine/index.html">normlite.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../exceptions/index.html">normlite.exceptions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../future/index.html">normlite.future</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notion_sdk/index.html">normlite.notion_sdk</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="../index.html">normlite.notiondbapi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../proxy/index.html">normlite.proxy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../sql/index.html">normlite.sql</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../txmodel/index.html">normlite.txmodel</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">normlite</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">normlite.notiondbapi</a></li>
+      <li class="breadcrumb-item active">normlite.notiondbapi._visitor_impl</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../../_sources/autoapi/normlite/notiondbapi/_visitor_impl/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-normlite.notiondbapi._visitor_impl">
+<span id="normlite-notiondbapi-visitor-impl"></span><h1>normlite.notiondbapi._visitor_impl<a class="headerlink" href="#module-normlite.notiondbapi._visitor_impl" title="Link to this heading"></a></h1>
+<p>Provide the visitor implementation for cross-compiling Notion JSON objects to tuples of elements.</p>
+<p>This module provides two different visitors to accomplish the following cross-compilation tasks from
+<a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionPage" title="normlite.notiondbapi._model.NotionPage"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.notiondbapi._model.NotionPage</span></code></a> or <a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionDatabase" title="normlite.notiondbapi._model.NotionDatabase"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.notiondbapi._model.NotionDatabase</span></code></a> objects, which have been constructed by parsing the
+JSON object returned by the Notion API:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>Create a DBAPI row: <a class="reference internal" href="#normlite.notiondbapi._visitor_impl.ToRowVisitor" title="normlite.notiondbapi._visitor_impl.ToRowVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.notiondbapi._visitor_impl.ToRowVisitor</span></code></a>.</p></li>
+<li><p>Create a DBAPI description: <a class="reference internal" href="#normlite.notiondbapi._visitor_impl.ToDescVisitor" title="normlite.notiondbapi._visitor_impl.ToDescVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.notiondbapi._visitor_impl.ToDescVisitor</span></code></a>.</p></li>
+</ol>
+</div></blockquote>
+<p><a class="reference internal" href="#normlite.notiondbapi._visitor_impl.ToRowVisitor" title="normlite.notiondbapi._visitor_impl.ToRowVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ToRowVisitor</span></code></a> constructs the row objects returned by <a class="reference internal" href="../dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.fetchone" title="normlite.notiondbapi.dbapi2.Cursor.fetchone"><code class="xref py py-meth docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor.fetchone()</span></code></a> and
+<a class="reference internal" href="../dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.fetchall" title="normlite.notiondbapi.dbapi2.Cursor.fetchall"><code class="xref py py-meth docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor.fetchall()</span></code></a>. A row object is a Python <code class="docutils literal notranslate"><span class="pre">tuple</span></code> containing one value for each column
+in the table representing the corresponding Notion object.</p>
+<p><a class="reference internal" href="#normlite.notiondbapi._visitor_impl.ToDescVisitor" title="normlite.notiondbapi._visitor_impl.ToDescVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ToDescVisitor</span></code></a> constructs the cursor description object returned by the read-only attribute
+<a class="reference internal" href="../dbapi2/index.html#normlite.notiondbapi.dbapi2.Cursor.description" title="normlite.notiondbapi.dbapi2.Cursor.description"><code class="xref py py-attr docutils literal notranslate"><span class="pre">normlite.notiondbapi.dbapi2.Cursor.description</span></code></a>. A description object is a sequence of Python tuples containing metadata
+used by the <a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult</span></code></a> to construct <a class="reference internal" href="../../cursor/index.html#normlite.cursor.Row" title="normlite.cursor.Row"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.Row</span></code></a> objects for a more pythonic hanlding
+of the query results.</p>
+<p>For example, given the following page object is returned from a query to Notion (non
+relevant keys ommitted for brevity):</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;object&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;page&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;59833787-2cf9-4fdf-8782-e53db20768a5&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;archived&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;Price&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;BJXS&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;number&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">2.5</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;Description&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;_Tc_&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rich_text&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;rich_text&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                </span><span class="p">{</span>
+<span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A dark &quot;</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;link&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">                    </span><span class="p">},</span>
+<span class="w">                    </span><span class="nt">&quot;annotations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">&quot;bold&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;italic&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;strikethrough&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;underline&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;color&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;default&quot;</span>
+<span class="w">                    </span><span class="p">},</span>
+<span class="w">                    </span><span class="nt">&quot;plain_text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A dark &quot;</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">&quot;href&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">                </span><span class="p">},</span>
+<span class="w">                </span><span class="p">{</span>
+<span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;green&quot;</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;link&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">                    </span><span class="p">},</span>
+<span class="w">                    </span><span class="nt">&quot;annotations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">&quot;bold&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;italic&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;strikethrough&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;underline&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;color&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;green&quot;</span>
+<span class="w">                    </span><span class="p">},</span>
+<span class="w">                    </span><span class="nt">&quot;plain_text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;green&quot;</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">&quot;href&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">                </span><span class="p">},</span>
+<span class="w">                </span><span class="p">{</span>
+<span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                            </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot; leafy vegetable&quot;</span><span class="p">,</span>
+<span class="w">                            </span><span class="nt">&quot;link&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">                        </span><span class="p">},</span>
+<span class="w">                        </span><span class="nt">&quot;annotations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                            </span><span class="nt">&quot;bold&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                            </span><span class="nt">&quot;italic&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                            </span><span class="nt">&quot;strikethrough&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                            </span><span class="nt">&quot;underline&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                            </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                            </span><span class="nt">&quot;color&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;default&quot;</span>
+<span class="w">                        </span><span class="p">},</span>
+<span class="w">                        </span><span class="nt">&quot;plain_text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot; leafy vegetable&quot;</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;href&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">                    </span><span class="p">}</span>
+<span class="w">            </span><span class="p">]</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;Name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;title&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;title&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                </span><span class="p">{</span>
+<span class="w">                    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Tuscan kale&quot;</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;link&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">                    </span><span class="p">},</span>
+<span class="w">                    </span><span class="nt">&quot;annotations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                        </span><span class="nt">&quot;bold&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;italic&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;strikethrough&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;underline&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                        </span><span class="nt">&quot;color&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;default&quot;</span>
+<span class="w">                    </span><span class="p">},</span>
+<span class="w">                    </span><span class="nt">&quot;plain_text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Tuscan kale&quot;</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">&quot;href&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">]</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Then the cross-compiler <a class="reference internal" href="#normlite.notiondbapi._visitor_impl.ToRowVisitor" title="normlite.notiondbapi._visitor_impl.ToRowVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ToRowVisitor</span></code></a> returns a tuple constructed as follows:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">(</span>
+    <span class="s1">&#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;</span><span class="p">,</span>     <span class="c1"># object id</span>
+    <span class="kc">False</span><span class="p">,</span>                                      <span class="c1"># archived flag</span>
+    <span class="kc">None</span><span class="p">,</span>                                       <span class="c1"># in_trash flag</span>
+    <span class="mf">2.5</span><span class="p">,</span>                                        <span class="c1"># Price</span>
+    <span class="s1">&#39;A dark green leafy vegetable&#39;</span><span class="p">,</span>             <span class="c1"># Description</span>
+    <span class="s1">&#39;Tuscan kale&#39;</span><span class="p">,</span>                              <span class="c1"># Name</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The following complete example shows how the DBAPI row looks like when a database
+object is returned after creation:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># example row returned by the Notion API when creating a new database object</span>
+<span class="c1"># the paylod is part of the operation dictionary</span>
+<span class="c1"># parameters is the corresponding dictionary containing the key &quot;params&quot;</span>
+<span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">({</span><span class="s2">&quot;endpoint&quot;</span><span class="p">:</span> <span class="s2">&quot;databases&quot;</span><span class="p">,</span> <span class="s2">&quot;request&quot;</span><span class="p">:</span> <span class="s2">&quot;create&quot;</span><span class="p">,</span> <span class="s2">&quot;payload&quot;</span><span class="p">:</span> <span class="n">payload</span><span class="p">},</span> <span class="n">parameters</span><span class="p">)</span>
+<span class="n">row</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+<span class="p">(</span>
+    <span class="s1">&#39;bc1211ca-e3f1-4939-ae34-5260b16f627c&#39;</span><span class="p">,</span>     <span class="c1"># object id</span>
+    <span class="s1">&#39;students&#39;</span><span class="p">,</span>                                 <span class="c1"># database title (i.e. tabale name)</span>
+    <span class="kc">False</span><span class="p">,</span>                                      <span class="c1"># archived flag</span>
+    <span class="kc">None</span><span class="p">,</span>                                       <span class="c1"># in_trash flag</span>
+    <span class="s1">&#39;evWq&#39;</span><span class="p">,</span>                                     <span class="c1"># property id for column 1 (id)</span>
+    <span class="s1">&#39;title&#39;</span>                                     <span class="c1"># property id for column 2 (name)</span>
+    <span class="s1">&#39;V}lX&#39;</span><span class="p">,</span>                                     <span class="c1"># property id for column 3 (grade)</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>A description object for the DBAPI row is available in the cursor description attribute
+(see <code class="xref py py-attr docutils literal notranslate"><span class="pre">notiondbapi.dbapi2.Cursor.description</span></code>, for more details) and it looks as follows:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># continuing previous example</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">cursor</span><span class="o">.</span><span class="n">description</span><span class="p">)</span>
+<span class="p">(</span>
+    <span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="s1">&#39;string&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,),</span>                    <span class="c1"># object id</span>
+    <span class="p">(</span><span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s1">&#39;students&#39;</span><span class="p">)</span>                 <span class="c1"># database title</span>
+    <span class="p">(</span><span class="s1">&#39;archived&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">)</span>                  <span class="c1"># the archived flag</span>
+    <span class="p">(</span><span class="s1">&#39;in_trash&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">)</span>                  <span class="c1"># the in_trash flag</span>
+    <span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="s1">&#39;number&#39;</span><span class="p">,</span> <span class="s1">&#39;evWq&#39;</span><span class="p">,),</span>                  <span class="c1"># property name &#39;id&#39;</span>
+    <span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,),</span>                <span class="c1"># property name &#39;name&#39;</span>
+    <span class="p">(</span><span class="s1">&#39;grade&#39;</span><span class="p">,</span> <span class="s1">&#39;rich_text&#39;</span><span class="p">,</span> <span class="s1">&#39;V}lX&#39;</span> <span class="p">),</span>            <span class="c1"># property name &#39;grade&#39;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>This module is <strong>private</strong> to the package <code class="xref py py-mod docutils literal notranslate"><span class="pre">notiondbapi</span></code> and it does <strong>not</strong> expose
+its features outside.</p>
+</div>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.notiondbapi._visitor_impl.ToRowVisitor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notiondbapi._visitor_impl.</span></span><span class="sig-name descname"><span class="pre">ToRowVisitor</span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/_visitor_impl.html#ToRowVisitor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi._visitor_impl.ToRowVisitor" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionObjectVisitor" title="normlite.notiondbapi._model.NotionObjectVisitor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normlite.notiondbapi._model.NotionObjectVisitor</span></code></a></p>
+<p>Cross-compiles Notion objects into a DBAPI row.</p>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.4.0: </span>The overall cross-compilation implemented in <a class="reference internal" href="#normlite.notiondbapi._visitor_impl.ToRowVisitor" title="normlite.notiondbapi._visitor_impl.ToRowVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ToRowVisitor</span></code></a> has been refactored to be fully DBAPI 2.0 compliant.</p>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi._visitor_impl.ToRowVisitor.visit_page">
+<span class="sig-name descname"><span class="pre">visit_page</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">page</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionPage" title="normlite.notiondbapi._model.NotionPage"><span class="pre">normlite.notiondbapi._model.NotionPage</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/_visitor_impl.html#ToRowVisitor.visit_page"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi._visitor_impl.ToRowVisitor.visit_page" title="Link to this definition"></a></dt>
+<dd><p>Cross-compile a page object.</p>
+<p>Notion returns different data depending whether a page has been created, deleted, updated
+or queried. The following table shows how the row tuples look like in each case.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">normlite</span></code> DBAPI 2.0 layer returns all data provided by the Notion API.
+The higher abtraction layer implemented by <a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult" title="normlite.cursor.CursorResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult</span></code></a> filters the
+values contained in the DBAPI row. That is, the <a class="reference internal" href="../../cursor/index.html#normlite.cursor.Row" title="normlite.cursor.Row"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.cursor.Row</span></code></a> objects produced by the
+cursor result fetch methods (e.g. <a class="reference internal" href="../../cursor/index.html#normlite.cursor.CursorResult.fetchone" title="normlite.cursor.CursorResult.fetchone"><code class="xref py py-meth docutils literal notranslate"><span class="pre">normlite.cursor.CursorResult.fetchone()</span></code></a>) provide a subset only
+of the values contained in the DBAPI row. For example, when a new page is created,
+the object id of the new page only is available in the cursor result row.</p>
+</div>
+<table class="longtable docutils align-default" id="id1">
+<caption><span class="caption-text">Values contained in DBAPI rows based on page objects returned by the Notion API</span><a class="headerlink" href="#id1" title="Link to this table"></a></caption>
+<colgroup>
+<col style="width: 15.0%" />
+<col style="width: 20.0%" />
+<col style="width: 65.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>REST API</p></th>
+<th class="head"><p>DBAPI row</p></th>
+<th class="head"><p>Example and explanation</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pages.create</span></code> or <code class="docutils literal notranslate"><span class="pre">pages.update</span></code></p></td>
+<td><p>(&lt;object-id&gt;, &lt;modified&gt;, &lt;in_trash&gt;, [&lt;property-id&gt;]+,)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">(&quot;59833787-2cf9-4fdf-8782-e53db20768a5&quot;,</span> <span class="pre">False,</span> <span class="pre">None,</span> <span class="pre">'%3AUPp',</span> <span class="pre">'A%40Hk',</span> <span class="pre">'BJXS',)</span></code>:
+When a new page is either created or updated, the DBAPI row contains the object and property ids only.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pages.retrieve</span></code></p></td>
+<td><p>(&lt;object-id&gt;, &lt;modified&gt;, &lt;in_trash&gt;, [&lt;property-value&gt;]+,))</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">('bc1211ca-e3f1-4939-ae34-5260b16f627c',</span> <span class="pre">False,</span> <span class="pre">False,</span> <span class="pre">2.5,</span> <span class="pre">'A</span> <span class="pre">dark</span> <span class="pre">green</span> <span class="pre">leafy</span> <span class="pre">vegetable',</span> <span class="pre">'Tuscan</span> <span class="pre">kale',)</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">database.create</span></code></p></td>
+<td><p>TODO</p></td>
+<td><p>TODO</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>page</strong> (<a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionPage" title="normlite.notiondbapi._model.NotionPage"><em>NotionPage</em></a>) – _description_</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>_description_</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi._visitor_impl.ToRowVisitor.visit_database">
+<span class="sig-name descname"><span class="pre">visit_database</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">db</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionDatabase" title="normlite.notiondbapi._model.NotionDatabase"><span class="pre">normlite.notiondbapi._model.NotionDatabase</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/_visitor_impl.html#ToRowVisitor.visit_database"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi._visitor_impl.ToRowVisitor.visit_database" title="Link to this definition"></a></dt>
+<dd><p>Compile a Notion database object and extracts the relevant values.</p>
+<p>The extracted values in the tuple are:
+<code class="docutils literal notranslate"><span class="pre">(&lt;object&gt;,</span> <span class="pre">&lt;id&gt;,</span> <span class="pre">&lt;title&gt;,</span> <span class="pre">&lt;archived&gt;,</span> <span class="pre">&lt;in_trash&gt;,</span> <span class="pre">&lt;properties&gt;)</span></code></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;object&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">str</span></code>, always <code class="docutils literal notranslate"><span class="pre">&quot;database&quot;</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;id&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">str</span></code>, the unique identifier of the database.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;title&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">str</span></code>, th name of the database as it appears in Notion.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;archived&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">bool</span></code>, the archived status of the page.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;in_trash&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">bool</span></code>, whether the page is in Trash (can be <code class="docutils literal notranslate"><span class="pre">None</span></code>
+if not returned by Notion).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;properties&gt;</span></code>: The schema of properties for the database as they appear in Notion.</p></li>
+</ul>
+<p>The database properties <code class="docutils literal notranslate"><span class="pre">&lt;properties&gt;</span></code> are rendered as a flattened sequence of values:
+<code class="docutils literal notranslate"><span class="pre">&lt;key&gt;,</span> <span class="pre">&lt;pid&gt;,</span> <span class="pre">&lt;type&gt;,</span> <span class="pre">&lt;value&gt;</span></code> (see also <code class="xref py py-class docutils literal notranslate"><span class="pre">NotionProperty</span></code>)</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;key&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">str</span></code>, the property key.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;pid&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">str</span></code>, the underlying identifier for the property.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&lt;type&gt;</span></code>: <code class="docutils literal notranslate"><span class="pre">str</span></code>, the type that controls the behavior of the property.
+Currently supported types are:
+<code class="docutils literal notranslate"><span class="pre">&quot;number&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;rich_text&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;title&quot;</span></code>.</p></li>
+</ul>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">properties</span> <span class="o">=</span> <span class="p">[</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="s1">&#39;evWq&#39;</span><span class="p">,</span> <span class="s1">&#39;number&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">NotionProperty</span><span class="p">(</span><span class="s1">&#39;grade&#39;</span><span class="p">,</span> <span class="s1">&#39;V}lX&#39;</span><span class="p">,</span> <span class="s1">&#39;rich_text&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">page</span> <span class="o">=</span> <span class="n">NotionDatabase</span><span class="p">(</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;5bc1211ca-e3f1-4939-ae34-5260b16f627c&#39;</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="s1">&#39;students&#39;</span><span class="p">,</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">properties</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">visitor</span> <span class="o">=</span> <span class="n">ToRowVisitor</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">row</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">accept</span><span class="p">(</span><span class="n">visitor</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">row</span>
+<span class="go">(&#39;database&#39;, &#39;59833787-2cf9-4fdf-8782-e53db20768a5&#39;, False, None,</span>
+<span class="go">&#39;id&#39;, &#39;evWq&#39;, &#39;number&#39;, None,</span>
+<span class="go">&#39;name&#39;, &#39;title&#39;, &#39;title&#39;, None,</span>
+<span class="go">&#39;grade&#39;, &#39;V}lX&#39;, &#39;rich_text&#39;, None,)</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>page</strong> (<a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionDatabase" title="normlite.notiondbapi._model.NotionDatabase"><em>NotionDatabase</em></a>) – The Notion database object to be cross-compiled.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple containing the relevant values for this adatabase.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi._visitor_impl.ToRowVisitor.visit_property">
+<span class="sig-name descname"><span class="pre">visit_property</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prop</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionProperty" title="normlite.notiondbapi._model.NotionProperty"><span class="pre">normlite.notiondbapi._model.NotionProperty</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/_visitor_impl.html#ToRowVisitor.visit_property"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi._visitor_impl.ToRowVisitor.visit_property" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.notiondbapi._visitor_impl.ToDescVisitor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.notiondbapi._visitor_impl.</span></span><span class="sig-name descname"><span class="pre">ToDescVisitor</span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/_visitor_impl.html#ToDescVisitor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi._visitor_impl.ToDescVisitor" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionObjectVisitor" title="normlite.notiondbapi._model.NotionObjectVisitor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normlite.notiondbapi._model.NotionObjectVisitor</span></code></a></p>
+<p>Cross-compile Notion objects to cursor descriptors.</p>
+<p>This visitor cross-compiles a description sequence for Notion pages and database. It does this
+by considering some keys like the object <code class="docutils literal notranslate"><span class="pre">&quot;id&quot;</span></code> as if it were columns along with the object properties.
+The latter are the closest mapping to columns between the Notion the SQL object models.
+The metadata added as additional columns are:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>the object <code class="docutils literal notranslate"><span class="pre">&quot;id&quot;</span></code></p></li>
+<li><p>the <code class="docutils literal notranslate"><span class="pre">&quot;archived&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;in_trash&quot;</span></code> flags</p></li>
+</ul>
+</div></blockquote>
+<p>When a new database is created (with the endpoint <code class="docutils literal notranslate"><span class="pre">databases.create</span></code>), this vistor returns a
+sequence of tuples. Each tuple has always 3 elements, <code class="docutils literal notranslate"><span class="pre">None</span></code> signifies absence of a particular value:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>column name</p></li>
+<li><p>column Notion type (<code class="docutils literal notranslate"><span class="pre">&quot;string&quot;</span></code> for object ids)</p></li>
+<li><p>column id (assigned by Notion)</p></li>
+</ul>
+</div></blockquote>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># description sequence returned when a new database is created</span>
+<span class="p">(</span>
+    <span class="p">(</span><span class="s1">&#39;__id__&#39;</span><span class="p">,</span> <span class="s1">&#39;string&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,),</span>         <span class="c1"># object id</span>
+    <span class="p">(</span><span class="s1">&#39;__archived__&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">)</span>       <span class="c1"># the archived flag</span>
+    <span class="p">(</span><span class="s1">&#39;__in_trash__&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">)</span>       <span class="c1"># the in_trash flag</span>
+    <span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="s1">&#39;number&#39;</span><span class="p">,</span> <span class="s1">&#39;evWq&#39;</span><span class="p">,),</span>           <span class="c1"># property name &#39;id&#39;</span>
+    <span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,),</span>         <span class="c1"># property name &#39;name&#39;</span>
+    <span class="p">(</span><span class="s1">&#39;grade&#39;</span><span class="p">,</span> <span class="s1">&#39;rich_text&#39;</span><span class="p">,</span> <span class="s1">&#39;V}lX&#39;</span> <span class="p">),</span>     <span class="c1"># property name &#39;grade&#39;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>When pages are queried (with the endpoint database.query), this visitor constructs a</p>
+<p>When new pages are created (with the endpoint pages.create), this visitor constructs a  description
+sequence of the same structure as for databases, but with <code class="docutils literal notranslate"><span class="pre">None</span></code> values for the property types (
+as these are not returned in the Notion object).</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># sequence for page returned from a database queryreturn</span>
+<span class="p">(</span>
+    <span class="p">(</span><span class="s1">&#39;__id__&#39;</span><span class="p">,</span> <span class="s1">&#39;string&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,),</span>         <span class="c1"># object id</span>
+    <span class="p">(</span><span class="s1">&#39;__archived__&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">)</span>       <span class="c1"># the archived flag</span>
+    <span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s1">&#39;evWq&#39;</span><span class="p">,),</span>               <span class="c1"># id only for property name &#39;id&#39;</span>
+    <span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">,),</span>            <span class="c1"># id only for property name &#39;name&#39;</span>
+    <span class="p">(</span><span class="s1">&#39;grade&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s1">&#39;V}lX&#39;</span> <span class="p">),</span>            <span class="c1"># id only for property name &#39;grade&#39;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.7.0:: </span>The metacolumns now use the constants defined in <cite>normlite._constants.SpecialColumns</cite>.</p>
+</div>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.5.0: </span>Additional metacolumns names changed to avoid name clashes with user-defined columns:
+<code class="docutils literal notranslate"><span class="pre">__id__</span></code> (formerly <code class="docutils literal notranslate"><span class="pre">__id__</span></code>), <code class="docutils literal notranslate"><span class="pre">__archived__</span></code> (formerly <code class="docutils literal notranslate"><span class="pre">archived</span></code>), <code class="docutils literal notranslate"><span class="pre">__in_trash__</span></code> (formerly <code class="docutils literal notranslate"><span class="pre">in_trash</span></code>),
+<code class="docutils literal notranslate"><span class="pre">__title__</span></code> (formerly <code class="docutils literal notranslate"><span class="pre">title</span></code>).</p>
+</div>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.4.0: </span>The overall cross-compilation implemented in <a class="reference internal" href="#normlite.notiondbapi._visitor_impl.ToDescVisitor" title="normlite.notiondbapi._visitor_impl.ToDescVisitor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ToDescVisitor</span></code></a> has been refactored to be fully DBAPI 2.0 compliant.</p>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi._visitor_impl.ToDescVisitor._add_not_used_seq">
+<span class="sig-name descname"><span class="pre">_add_not_used_seq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">col_desc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/_visitor_impl.html#ToDescVisitor._add_not_used_seq"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi._visitor_impl.ToDescVisitor._add_not_used_seq" title="Link to this definition"></a></dt>
+<dd><p>Helper to fill in the missing elements with <code class="docutils literal notranslate"><span class="pre">None</span></code> values.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi._visitor_impl.ToDescVisitor.visit_page">
+<span class="sig-name descname"><span class="pre">visit_page</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">page</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionPage" title="normlite.notiondbapi._model.NotionPage"><span class="pre">normlite.notiondbapi._model.NotionPage</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/_visitor_impl.html#ToDescVisitor.visit_page"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi._visitor_impl.ToDescVisitor.visit_page" title="Link to this definition"></a></dt>
+<dd><p>Cross-compile a Notion page into a description <code class="docutils literal notranslate"><span class="pre">tuple</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>page</strong> (<a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionPage" title="normlite.notiondbapi._model.NotionPage"><em>NotionPage</em></a>) – The page to be cross-compiled.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A DBAPI 2.0 compatible description tuple.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi._visitor_impl.ToDescVisitor.visit_database">
+<span class="sig-name descname"><span class="pre">visit_database</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">db</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionDatabase" title="normlite.notiondbapi._model.NotionDatabase"><span class="pre">normlite.notiondbapi._model.NotionDatabase</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/_visitor_impl.html#ToDescVisitor.visit_database"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi._visitor_impl.ToDescVisitor.visit_database" title="Link to this definition"></a></dt>
+<dd><p>Cross-compile a Notion database into a description <code class="docutils literal notranslate"><span class="pre">tuple</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>db</strong> (<a class="reference internal" href="../_model/index.html#normlite.notiondbapi._model.NotionDatabase" title="normlite.notiondbapi._model.NotionDatabase"><em>NotionDatabase</em></a>) – The database to be cross-compiled.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A DBAPI 2.0 compatible description tuple.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)">tuple</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.notiondbapi._visitor_impl.ToDescVisitor.visit_property">
+<span class="sig-name descname"><span class="pre">visit_property</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prop</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/normlite/notiondbapi/_visitor_impl.html#ToDescVisitor.visit_property"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.notiondbapi._visitor_impl.ToDescVisitor.visit_property" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../_parser/index.html" class="btn btn-neutral float-left" title="normlite.notiondbapi._parser" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../dbapi2/index.html" class="btn btn-neutral float-right" title="normlite.notiondbapi.dbapi2" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

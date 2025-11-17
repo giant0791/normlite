@@ -1,0 +1,27 @@
+normlite.engine
+===============
+
+.. py:module:: normlite.engine
+
+.. autoapi-nested-parse::
+
+   Engine abstraction and connection Management.
+
+   The engine package defines the basic components used to interface
+   DBAPI modules with higher-level statement construction,
+   connection-management, execution and result contexts.  The primary
+   "entry point" class into this package is the :class:`normlite.engine.base.Engine` and its public
+   constructor :func:`normlite.engine.base.create_engine`.
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/normlite/engine/base/index
+   /autoapi/normlite/engine/context/index
+
+

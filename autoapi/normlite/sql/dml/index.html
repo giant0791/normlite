@@ -1,0 +1,286 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.sql.dml &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+    <link rel="next" title="normlite.sql.schema" href="../schema/index.html" />
+    <link rel="prev" title="normlite.sql.ddl" href="../ddl/index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html">normlite</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../../_constants/index.html">normlite._constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../cursor/index.html">normlite.cursor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../engine/index.html">normlite.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../exceptions/index.html">normlite.exceptions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../future/index.html">normlite.future</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notion_sdk/index.html">normlite.notion_sdk</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../notiondbapi/index.html">normlite.notiondbapi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../proxy/index.html">normlite.proxy</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="../index.html">normlite.sql</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../txmodel/index.html">normlite.txmodel</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">normlite</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">normlite.sql</a></li>
+      <li class="breadcrumb-item active">normlite.sql.dml</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../../_sources/autoapi/normlite/sql/dml/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-normlite.sql.dml">
+<span id="normlite-sql-dml"></span><h1>normlite.sql.dml<a class="headerlink" href="#module-normlite.sql.dml" title="Link to this heading"></a></h1>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">normlite.sql.dml.</span></span><span class="sig-name descname"><span class="pre">Insert</span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="../base/index.html#normlite.sql.base.Executable" title="normlite.sql.base.Executable"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normlite.sql.base.Executable</span></code></a></p>
+<p>Provide the interface for all executable SQL statements.</p>
+<p>This base class implements the command design pattern for execution of clause elements.
+The <code class="xref py py-meth docutils literal notranslate"><span class="pre">execute()</span></code> method has a base implementation of the execution flow that can be used as default implementation
+in the subclasses.</p>
+<p>It provides a post execution hook with the <code class="xref py py-meth docutils literal notranslate"><span class="pre">_post_exec()</span></code> that is intended to be optionally implemented in
+the subclasses.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.7.0: </span>This bas class fully supports the connection-driven execution flow of SQL statements.</p>
+</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert.__visit_name__">
+<span class="sig-name descname"><span class="pre">__visit_name__</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'insert'</span></em><a class="headerlink" href="#normlite.sql.dml.Insert.__visit_name__" title="Link to this definition"></a></dt>
+<dd><p>Provide the SQL <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> node to create a new row in the specified table.</p>
+<p>This class provide a generative implementation of the SQL <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> node to be executed on a
+<a class="reference internal" href="../../connection/index.html#normlite.connection.Connection" title="normlite.connection.Connection"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.connection.Connection</span></code></a>.</p>
+<dl>
+<dt>Usage:</dt><dd><div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># create a new insert statement for the table students</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">stmt</span> <span class="o">=</span> <span class="n">Insert</span><span class="p">(</span><span class="n">students</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># create a new insert statement and specify the ``RETURNING`` clause.</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">stmt</span> <span class="o">=</span> <span class="n">Insert</span><span class="p">(</span><span class="n">students</span><span class="p">)</span><span class="o">.</span><span class="n">returning</span><span class="p">(</span><span class="n">students</span><span class="o">.</span><span class="n">c</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">students</span><span class="o">.</span><span class="n">c</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># specify the values to be inserted as keyword arguments</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">stmt</span><span class="o">.</span><span class="n">values</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="mi">123456</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;Isaac Newton&#39;</span><span class="p">,</span> <span class="n">grade</span><span class="o">=</span><span class="s1">&#39;B&#39;</span><span class="p">)</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># specify the values to be inserted as dictionary</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">stmt</span><span class="o">.</span><span class="n">values</span><span class="p">({</span><span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="mi">123456</span><span class="p">,</span> <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Isaac Newton&#39;</span><span class="p">,</span> <span class="s1">&#39;grade&#39;</span><span class="p">:</span> <span class="s1">&#39;B&#39;</span><span class="p">})</span>
+<span class="gp">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># specify the values to be inserted as tuple</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">stmt</span><span class="o">.</span><span class="n">values</span><span class="p">((</span><span class="mi">123456</span><span class="p">,</span> <span class="s1">&#39;Isaac Newton&#39;</span><span class="p">,</span> <span class="s1">&#39;B&#39;</span><span class="p">))</span>
+</pre></div>
+</div>
+</dd>
+</dl>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>The <a class="reference internal" href="#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><code class="xref py py-class docutils literal notranslate"><span class="pre">Insert</span></code></a> has always by default the Notion specific columns as <code class="docutils literal notranslate"><span class="pre">RETURNING</span></code> clause.
+That is, the <code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.CursorResult</span></code> methods of an insert statement always returns rows with the
+columns corresponding to the Notion specific ones.
+You specify the <a class="reference internal" href="#normlite.sql.dml.Insert.returning" title="normlite.sql.dml.Insert.returning"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Insert.returning()</span></code></a> to get additional columns in the rows returned by the
+<code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.CursorResult</span></code> methods.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <a class="reference internal" href="#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><code class="xref py py-class docutils literal notranslate"><span class="pre">Insert</span></code></a>  can also be constructed without specifying the values.
+In this case, the parameters passed in the <a class="reference internal" href="../../connection/index.html#normlite.connection.Connection.execute" title="normlite.connection.Connection.execute"><code class="xref py py-meth docutils literal notranslate"><span class="pre">normlite.connection.Connection.execute()</span></code></a> are bound
+as <code class="docutils literal notranslate"><span class="pre">VALUES</span></code> clause parameters at execution time.</p>
+</div>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.7.0: </span>The old construct has been completely redesigned and refactored.
+Now, the new class provides all features of the SQL <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> statement.</p>
+</div>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert._values">
+<span class="sig-name descname"><span class="pre">_values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/types.html#types.MappingProxyType" title="(in Python v3.14)"><span class="pre">types.MappingProxyType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.sql.dml.Insert._values" title="Link to this definition"></a></dt>
+<dd><p>The immutable mapping holding the values.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert._table">
+<span class="sig-name descname"><span class="pre">_table</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../schema/index.html#normlite.sql.schema.Table" title="normlite.sql.schema.Table"><span class="pre">normlite.sql.schema.Table</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#normlite.sql.dml.Insert._table" title="Link to this definition"></a></dt>
+<dd><p>The table object to insert a new row to.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert._returning">
+<span class="sig-name descname"><span class="pre">_returning</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></em><a class="headerlink" href="#normlite.sql.dml.Insert._returning" title="Link to this definition"></a></dt>
+<dd><p>The tuple holding the Notion specific columns.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert._set_table">
+<span class="sig-name descname"><span class="pre">_set_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../schema/index.html#normlite.sql.schema.Table" title="normlite.sql.schema.Table"><span class="pre">normlite.sql.schema.Table</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert._set_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert._set_table" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert.get_table">
+<span class="sig-name descname"><span class="pre">get_table</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../schema/index.html#normlite.sql.schema.ReadOnlyColumnCollection" title="normlite.sql.schema.ReadOnlyColumnCollection"><span class="pre">normlite.sql.schema.ReadOnlyColumnCollection</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert.get_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert.get_table" title="Link to this definition"></a></dt>
+<dd><p>Return a collection of columns this clause element refers to.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert.values">
+<span class="sig-name descname"><span class="pre">values</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert.values"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert.values" title="Link to this definition"></a></dt>
+<dd><p>Provide the <code class="docutils literal notranslate"><span class="pre">VALUES</span></code> clause to specify the values to be inserted in the new row.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../../exceptions/index.html#normlite.exceptions.ArgumentError" title="normlite.exceptions.ArgumentError"><strong>ArgumentError</strong></a> – If both positional and keyword arguments are passes, or
+if not enough values are supplied for all columns, or if values are passed
+with a class that is neither a dictionary not a tuple.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>This instance for generative usage.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Self</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert.returning">
+<span class="sig-name descname"><span class="pre">returning</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">cols</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../schema/index.html#normlite.sql.schema.Column" title="normlite.sql.schema.Column"><span class="pre">normlite.sql.schema.Column</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert.returning"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert.returning" title="Link to this definition"></a></dt>
+<dd><p>Provide the <code class="docutils literal notranslate"><span class="pre">RETURNING</span></code> clause to specify the column to be returned.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../../exceptions/index.html#normlite.exceptions.ArgumentError" title="normlite.exceptions.ArgumentError"><strong>ArgumentError</strong></a> – If a specified column does not belong to the table this insert statement
+is applied to.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>This instance for generative usage.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Self</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="normlite.sql.dml.Insert._process_dict_values">
+<span class="sig-name descname"><span class="pre">_process_dict_values</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dict_arg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/types.html#types.MappingProxyType" title="(in Python v3.14)"><span class="pre">types.MappingProxyType</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#Insert._process_dict_values"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.Insert._process_dict_values" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="normlite.sql.dml.insert">
+<span class="sig-prename descclassname"><span class="pre">normlite.sql.dml.</span></span><span class="sig-name descname"><span class="pre">insert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../schema/index.html#normlite.sql.schema.Table" title="normlite.sql.schema.Table"><span class="pre">normlite.sql.schema.Table</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert"><span class="pre">Insert</span></a></span></span><a class="reference internal" href="../../../../_modules/normlite/sql/dml.html#insert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#normlite.sql.dml.insert" title="Link to this definition"></a></dt>
+<dd><p>Construct an insert statement.</p>
+<p>This class constructs an SQL <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> statement capable of inserting rows
+to this table.</p>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.7.0: </span>Now, it uses the <a class="reference internal" href="../schema/index.html#normlite.sql.schema.Table" title="normlite.sql.schema.Table"><code class="xref py py-class docutils literal notranslate"><span class="pre">normlite.sql.schema.Table</span></code></a> as table object.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A new insert statement for this table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#normlite.sql.dml.Insert" title="normlite.sql.dml.Insert">Insert</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../ddl/index.html" class="btn btn-neutral float-left" title="normlite.sql.ddl" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../schema/index.html" class="btn btn-neutral float-right" title="normlite.sql.schema" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

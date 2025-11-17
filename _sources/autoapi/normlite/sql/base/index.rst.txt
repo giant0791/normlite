@@ -1,0 +1,258 @@
+normlite.sql.base
+=================
+
+.. py:module:: normlite.sql.base
+
+
+
+
+Module Contents
+---------------
+
+.. py:class:: Visitable
+
+   Bases: :py:obj:`abc.ABC`
+
+
+   Base class for any AST node that can be "visited" by a compiler.
+
+   It provides the :meth:`Visitable._compiler_dispatch()` method that delegates compilation
+   to a compiler based on :attr:`__visit_name__`.
+
+   .. versionchanged:: 0.7.0
+       This class has been completely redesigned to better separate
+       concerns related to AST nodes, compilation, and compiled objects produced by the compilation.
+
+
+   .. py:attribute:: __visit_name__
+      :type:  str
+
+      Class attribute used to denote the visit method to be called during compilation.
+
+
+   .. py:method:: _compiler_dispatch(compiler: SQLCompiler, **kwargs: Any) -> dict
+
+      Delegate this node's compilation to the compiler.
+
+      The compiler must implement a method named `visit_<__visit_name__>`.
+
+      :param compiler: The compiler object to be used for compilation.
+      :type compiler: SQLCompiler
+      :param \*\*kwargs: Additional parameters to be passed to the compiler's visit method to allow context-sensitive compilation.
+      :type \*\*kwargs: Any
+
+      :raises UnsupportedCompilationError: If the instance owning this method is missing the :attr:`__visit_name__` or if it has no visit method.
+
+      :returns: The compilation result in form of a dictionary (JSON) object.
+      :rtype: dict
+
+
+
+.. py:class:: ClauseElement
+
+   Bases: :py:obj:`Visitable`
+
+
+   Base class for SQL elements that can be compiled by the compiler.
+
+   This class orchestrates for all subclasses the compilation process by implementing the :meth:`compile`.
+   Subclasses do not have to take care of the compilation.
+
+   .. versionadded:: 0.7.0
+       In this version, the :meth:`compile` method supports standard compilation.
+       The compilation process can be fine-tuned using keyword arguments for context-sensitive compilation
+       (for example ``{"literal_binds": True}`` could be used to render the values in the compiled object *literalized*
+       instead of parameterized for logging or debugging purposes).
+
+       This feature will be added in a future version.
+
+
+   .. py:attribute:: __visit_name__
+      :value: 'clause'
+
+
+      Class attribute used to denote the visit method to be called during compilation.
+
+
+   .. py:method:: compile(compiler: SQLCompiler, **kwargs: Any) -> Compiled
+
+      Compile this clause element.
+
+      :param compiler: The compiler to be used for the compilation.
+      :type compiler: SQLCompiler
+      :param \*\*kwargs: Keyword arguments for context-sensitive compilation. **Not supported yet**.
+      :type \*\*kwargs: Any
+
+      :returns: The compiled object rusult of the compilation.
+      :rtype: Compiled
+
+
+
+   .. py:method:: get_table() -> normlite.sql.schema.ReadOnlyColumnCollection
+      :abstractmethod:
+
+
+      Return a collection of columns this clause element refers to.
+
+
+
+.. py:class:: Executable
+
+   Bases: :py:obj:`ClauseElement`
+
+
+   Provide the interface for all executable SQL statements.
+
+   This base class implements the command design pattern for execution of clause elements.
+   The :meth:`execute` method has a base implementation of the execution flow that can be used as default implementation
+   in the subclasses.
+
+   It provides a post execution hook with the :meth:`_post_exec` that is intended to be optionally implemented in
+   the subclasses.
+
+   .. versionadded:: 0.7.0
+       This bas class fully supports the connection-driven execution flow of SQL statements.
+
+
+   .. py:method:: execute(context: normlite.engine.context.ExecutionContext, parameters: Optional[dict] = None) -> normlite.cursor.CursorResult
+
+      Run this executable within the context setup by the connection.
+
+      :param context: The runtime context for the execution of this statement.
+      :type context: ExecutionContext
+      :param parameters: The dictionary containing parameters to be bound. Defaults to ``None``.
+      :type parameters: Optional[dict], optional
+
+      :returns: The :class:`normlite.cursor.CursorResult` object containing the result set of the statement.
+      :rtype: CursorResult
+
+
+
+   .. py:method:: _post_exec(result: normlite.cursor.CursorResult, context: normlite.engine.context.ExecutionContext) -> None
+
+      Optional hook for subclassess.
+
+      Subclasses can use this method to extract information from the provided cursor result.
+
+      :param result: The :class:`normlite.cursor.CursorResult` object returned by the execution.
+      :type result: CursorResult
+      :param context: The runtime context for the execution of this statement.
+      :type context: ExecutionContext
+
+
+
+.. py:class:: Compiled(element: ClauseElement, compiled: dict, result_columns: Optional[Sequence[str]] = None)
+
+   The result of compiling :class:`ClauseElement` subclasses.
+
+   This class provides an abstraction for compilation results.
+
+   .. versionadded:: 0.7.0
+       This version implements the main basic functions for a compiled object.
+
+
+   .. py:attribute:: _element
+
+      The compiled clause element.
+
+
+   .. py:attribute:: _compiled
+
+      The dictionary containing the compilation result.
+
+
+   .. py:attribute:: _result_columns
+      :value: None
+
+
+      Optional sequence of strings specifying the column names to be considered
+      in the rows produced by the :class:`normlite.cursor.CursorResult` methods.
+
+
+   .. py:property:: string
+      :type: str
+
+
+      Provide a linted string of this compiled object.
+
+
+   .. py:property:: params
+      :type: dict
+
+
+      Provide the bind parameters for this compiled object.
+
+
+   .. py:method:: as_dict() -> dict
+
+      Return this compiled object in the original dictionary form.
+
+
+
+   .. py:method:: result_columns() -> Optional[Sequence[str]]
+
+      Optionally return the column names for the cursor result.
+
+
+
+   .. py:method:: __str__() -> str
+
+
+   .. py:method:: __repr__()
+
+
+.. py:class:: SQLCompiler
+
+   Bases: :py:obj:`Protocol`
+
+
+   Base class for SQL compilers.
+
+   This class defines the standard interface for SQL compilers.
+   Concrete compilers take a :class:`Visitable` object and generate executable code.
+
+   .. seealso::
+       :class:`normlite.sql.compiler` for a Notion specific compiler.
+
+   .. versionadded:: 0.7.0
+       This version supports compilation of ``CREATE TABLE`` and ``INSERT`` statements.
+
+
+   .. py:method:: process(element: ClauseElement, **kwargs: Any) -> dict
+
+      Entry point for the compilation process.
+
+      This method is called by :meth:`ClauseElement.compile` to produce a :class:`Compiled` object,
+      which stores the compilation result.
+
+      .. note::
+
+         The return type dict allows to model the compilation result as a JSON object (Python dictionary).
+         This is very flexible as it enables the implementation of compilers,
+         which have to provide specific downstream methods for representing their own generated code.
+         For example, the :class:`normlite.sql.compiler.NotionCompiler` class generates Notion payload objects for
+         several Notion API requests.
+
+      :returns: The JSON object representing the compilation result.
+      :rtype: dict
+
+
+
+   .. py:method:: visit_create_table(table: normlite.sql.ddl.CreateTable) -> dict
+
+      Compile a table (DDL ``CREATE TABLE``).
+
+
+
+   .. py:method:: visit_create_column(column: normlite.sql.ddl.CreateColumn) -> dict
+
+      Compile a column.
+
+
+
+   .. py:method:: visit_insert(insert: normlite.sql.dml.Insert) -> dict
+
+      Compile an insert statement (DML ``INSERT``).
+
+
+

@@ -1,0 +1,355 @@
+normlite.sql.type_api
+=====================
+
+.. py:module:: normlite.sql.type_api
+
+.. autoapi-nested-parse::
+
+   Provide the type system for SQL constructs and to handle data conversion Python <--> Notion.
+   The central class is :class:`TypeEngine`, which lays the foundation for SQL datatypes in ``normlite``.
+   It defines a _contract_ (interface + partial implementation) for how Python values are:
+   1. Bound into SQL literals (Python → SQL).
+   2. Converted from SQL result rows (SQL → Python).
+
+   Concrete subclasses of :class:`TypeEngine` represent actual SQL types:
+   * :class:`Integer` for integer values
+   * :class:`String` for string values
+   * :class:`Boolean` for boolean values
+   * :class:`Numeric` for decimal values
+   * :class:`Date` for datetime and datetime range values
+   * .class:`Money` for currency values
+
+   All concrete :class:`TypeEngine` subclasses are designed in a backend-agnostic way.
+   This allows to define datatypes without the Notion specific details.
+   The Notion type system is thus treated as an SQL dialect.
+   Subclasses of :class:`TypeEngine` are used to define the datatype of table columns.
+
+   Usage::
+
+       # define an integer SQL datatype
+       int_dt = Integer()
+
+       # get bind and result processors
+       bind = int_dt.bind_processor(dialect=None)
+       result = int_dt.result_processor(dialect=None, coltype=None)
+
+       # covert Python datatype <--> Notion datatype
+       bind(25)                    # --> {"number": 25}
+       result({"number": 25})      # --> 25
+
+       # get columns specification (Notion type representation)
+       int_dt.get_col_spec(dialect=None)   # -> {"type": "number"}
+
+       # define a string SQL datatype
+       str_dt = String(is_title=True)
+
+       # get bind and result processors
+       bind = int_dt.bind_processor(dialect=None)
+       result = int_dt.result_processor(dialect=None, coltype=None)
+
+       # covert Python datatype <--> Notion datatype
+       bind("A nice, woderful day with you")                       # --> [{"plain_text": "A nice, woderful day with you"}]
+       result([{"plain_text": "A nice, woderful day with you"}])   # --> "A nice, woderful day with you"
+
+       # get columns specification (Notion type representation)
+       str_dt.get_col_spec(dialect=None)   # -> {"type": "title"}
+
+   .. versionadded:: 0.7.0
+
+
+
+
+
+
+
+Module Contents
+---------------
+
+.. py:class:: TypeEngine
+
+   Bases: :py:obj:`Protocol`
+
+
+   Base class for all Notion/SQL datatypes.
+
+   .. versionadded:: 0.7.0
+
+
+   .. py:method:: bind_processor(dialect=None) -> Optional[Callable[[Any], Any]]
+
+      Python → SQL/Notion (prepare before sending).
+
+
+
+   .. py:method:: result_processor(dialect, coltype) -> Optional[Callable[[Any], Any]]
+
+      SQL/Notion → Python (process values after fetching).
+
+
+
+   .. py:method:: get_col_spec(dialect) -> str
+      :abstractmethod:
+
+
+      Return a string for the SQL-like type name.
+
+
+
+   .. py:method:: __repr__()
+
+
+.. py:type:: _NumericType
+   :canonical: Union[int, Decimal]
+
+
+   Type alias for numeric datatypes. It is not part of the public API.
+
+.. py:type:: _DateTimeRangeType
+   :canonical: Union[tuple[datetime, datetime], datetime]
+
+
+   Type alias for datetime datatypes. It is not part of the publich API.
+
+.. py:data:: Currency
+
+   Literal alias for the currently supported currencies.
+   These are the same literal strings as defined by Notion.
+
+.. py:class:: Number(format: str)
+
+   Bases: :py:obj:`TypeEngine`
+
+
+   Notion-specific number type. Can represent integer, decimal, percent, or currency.
+
+   .. versionadded:: 0.7.0
+
+
+   .. py:attribute:: format
+
+
+   .. py:method:: get_col_spec(dialect)
+
+      Return a string for the SQL-like type name.
+
+
+
+   .. py:method:: bind_processor(dialect=None)
+
+      Python → SQL/Notion (prepare before sending).
+
+
+
+   .. py:method:: result_processor(dialect, coltype=None)
+
+      SQL/Notion → Python (process values after fetching).
+
+
+
+.. py:class:: Integer
+
+   Bases: :py:obj:`Number`
+
+
+   Covenient type engine for Notion "number" objetcs with format = "number".
+
+   .. versionadded:: 0.7.0
+
+
+.. py:class:: Numeric
+
+   Bases: :py:obj:`Number`
+
+
+   Convenient type engine for Notion "number" objects with format ="number_with_commas".
+
+   .. versionadded:: 0.7.0
+
+
+.. py:class:: Money(currency: Currency)
+
+   Bases: :py:obj:`Number`
+
+
+   Convenient type engine for Notion "number" objects handling currencies.
+
+   .. versionadded:: 0.7.0
+
+
+.. py:class:: String(is_title: bool = False)
+
+   Bases: :py:obj:`TypeEngine`
+
+
+   Textual type for Notion title and rich text properties.
+
+   Usage:
+       >>> # create a title property
+       >>> title_txt = String(is_title=True)
+       >>> title_text.get_col_spec(None)
+       {"title": {}}
+
+       >>> # create a rich text property
+       >>> rich_text = String()
+       >>> rich_text.get_col_spec(None)
+       {"rich_text": {}}
+
+   .. versionadded:: 0.7.0
+
+
+   .. py:attribute:: is_title
+      :value: False
+
+
+      ``True`` if it is a "title", ``False`` if it is a "richt_text".
+
+
+   .. py:method:: bind_processor(dialect=None)
+
+      Python → SQL/Notion (prepare before sending).
+
+
+
+   .. py:method:: result_processor(dialect, coltype=None)
+
+      SQL/Notion → Python (process values after fetching).
+
+
+
+   .. py:method:: get_col_spec(dialect)
+
+      Return a string for the SQL-like type name.
+
+
+
+   .. py:method:: __repr__() -> str
+
+
+.. py:class:: Boolean
+
+   Bases: :py:obj:`TypeEngine`
+
+
+   Covenient type engine class for "checkbox" objects.
+
+   .. versionadded:: 0.7.0
+
+
+   .. py:method:: get_col_spec(dialect=None)
+
+      Return a string for the SQL-like type name.
+
+
+
+   .. py:method:: bind_processor(dialect)
+
+      Python → SQL/Notion (prepare before sending).
+
+
+
+   .. py:method:: result_processor(dialect, coltype=None)
+
+      SQL/Notion → Python (process values after fetching).
+
+
+
+.. py:class:: Date
+
+   Bases: :py:obj:`TypeEngine`
+
+
+   Convenient type engine class for "date" objects.
+
+   .. versionadded:: 0.7.0
+
+
+   .. py:method:: bind_processor(dialect)
+
+      Python → SQL/Notion (prepare before sending).
+
+
+
+   .. py:method:: result_processor(dialect, coltype=None)
+
+      SQL/Notion → Python (process values after fetching).
+
+
+
+   .. py:method:: get_col_spec(dialect)
+
+      Return a string for the SQL-like type name.
+
+
+
+.. py:class:: UUID
+
+   Bases: :py:obj:`TypeEngine`
+
+
+   Base type engine class for UUID ids.
+
+   .. versionadded:: 0.7.0
+
+
+   .. py:method:: bind_processor(dialect)
+
+      Python → SQL/Notion (prepare before sending).
+
+
+
+   .. py:method:: result_processor(dialect, coltype=None)
+
+      SQL/Notion → Python (process values after fetching).
+
+
+
+   .. py:method:: get_col_spec(dialect)
+
+      Return a string for the SQL-like type name.
+
+
+
+.. py:class:: ObjectId
+
+   Bases: :py:obj:`UUID`
+
+
+   Special UUID type representing Notion's "id" property.
+
+   .. versionadded:: 0.7.0
+
+
+   .. py:method:: get_col_spec(dialect)
+
+      Return a string for the SQL-like type name.
+
+
+
+.. py:class:: ArchivalFlag
+
+   Bases: :py:obj:`Boolean`
+
+
+   Special Boolean type representing Notion's "archived" property.
+
+   .. versionadded:: 0.7.0
+
+
+   .. py:method:: get_col_spec(dialect)
+
+      Return a string for the SQL-like type name.
+
+
+
+   .. py:method:: bind_processor(dialect)
+
+      Python → SQL/Notion (prepare before sending).
+
+
+
+   .. py:method:: result_processor(dialect, coltype=None)
+
+      SQL/Notion → Python (process values after fetching).
+
+
+

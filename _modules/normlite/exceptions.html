@@ -1,0 +1,209 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.exceptions &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">normlite.exceptions</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for normlite.exceptions</h1><div class="highlight"><pre>
+<span></span><span class="c1"># normlite/exceptions.py</span>
+<span class="c1"># Copyright (C) 2025 Gianmarco Antonini</span>
+<span class="c1">#</span>
+<span class="c1"># This module is part of normlite and is released under the GNU Affero General Public License.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is free software: you can redistribute it and/or modify</span>
+<span class="c1"># it under the terms of the GNU Affero General Public License as published</span>
+<span class="c1"># by the Free Software Foundation, either version 3 of the License, or</span>
+<span class="c1"># (at your option) any later version.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is distributed in the hope that it will be useful,</span>
+<span class="c1"># but WITHOUT ANY WARRANTY; without even the implied warranty of</span>
+<span class="c1"># MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</span>
+<span class="c1"># GNU Affero General Public License for more details.</span>
+<span class="c1">#</span>
+<span class="c1"># You should have received a copy of the GNU Affero General Public License</span>
+<span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
+
+<span class="sd">&quot;&quot;&quot;Provide ``normlite`` specific exceptions.</span>
+
+<span class="sd">.. versionadded:: 0.5.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="NormliteError">
+<a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.NormliteError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NormliteError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base exception class for all ``normlite`` exceptions.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded: 0.5.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="NoResultFound">
+<a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.NoResultFound">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NoResultFound</span><span class="p">(</span><span class="n">NormliteError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when exactly one result row is expected, but none was found.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded: 0.5.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="MultipleResultsFound">
+<a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.MultipleResultsFound">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MultipleResultsFound</span><span class="p">(</span><span class="n">NormliteError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised if multiple rows were found when exactly one was required.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded: 0.5.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="DuplicateColumnError">
+<a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.DuplicateColumnError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DuplicateColumnError</span><span class="p">(</span><span class="n">NormliteError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when an already existing column is added to a table.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="ArgumentError">
+<a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.ArgumentError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ArgumentError</span><span class="p">(</span><span class="n">NormliteError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when an erroneous argument is passed.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="InvalidRequestError">
+<a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.InvalidRequestError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidRequestError</span><span class="p">(</span><span class="n">NormliteError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when a ``normlite`` method or function is cannot perform as requested.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="UnsupportedCompilationError">
+<a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.UnsupportedCompilationError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">UnsupportedCompilationError</span><span class="p">(</span><span class="n">NormliteError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when an operation is not supported by the given compiler.</span>
+<span class="sd">    </span>
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    &quot;&quot;&quot;</span></div>
+
+
+<div class="viewcode-block" id="ResourceClosedError">
+<a class="viewcode-back" href="../../autoapi/normlite/exceptions/index.html#normlite.exceptions.ResourceClosedError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ResourceClosedError</span><span class="p">(</span><span class="n">NormliteError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The cursor cannot deliver rows.</span>
+<span class="sd">    </span>
+<span class="sd">    This exception is raised when a cursor (resource) cannot return rows because it is</span>
+<span class="sd">    either closed (i.e. exhausted) or it represents the result from an SQL statement that </span>
+<span class="sd">    does not return values (e.g. ``INSERT``).</span>
+
+<span class="sd">    .. versionadded:: 0.5.0</span>
+
+<span class="sd">    &quot;&quot;&quot;</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

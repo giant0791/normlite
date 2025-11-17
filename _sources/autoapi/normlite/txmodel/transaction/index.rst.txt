@@ -1,0 +1,244 @@
+normlite.txmodel.transaction
+============================
+
+.. py:module:: normlite.txmodel.transaction
+
+.. autoapi-nested-parse::
+
+   Provide transaction management for Notion integrations.
+
+   This module adds transaction management to Notion integrations. It enables multiple clients to
+   concurrently perform changes while maintaining atomicity, consistency, isolation and durability.
+   It achieves this by implementing shared and exclusive locking mechanisms and isolation levels.
+
+   .. warning:: This module is at a very early stage of proof-of-concept. Do not use it yet!
+
+
+
+
+
+
+
+
+
+Module Contents
+---------------
+
+.. py:exception:: TransactionError
+
+   Bases: :py:obj:`normlite.exceptions.NormliteError`
+
+
+   Base exception class for all ``normlite`` exceptions.
+
+   .. versionadded: 0.5.0
+
+
+.. py:data:: LockMode
+
+   Type for lock modes.
+
+.. py:class:: TransactionState(*args, **kwds)
+
+   Bases: :py:obj:`enum.Enum`
+
+
+   Provide a transition state ``enum`` to describe the possible states of a transaction.
+
+
+   .. py:attribute:: ACTIVE
+
+      It is the first stage of any transaction when it has begun to execute.
+      The execution of the transaction takes place in this state.
+
+
+   .. py:attribute:: PARTIALLY_COMMITTED
+
+      The transaction has finished its final operation,
+      but the changes are still not saved to the database.
+
+
+   .. py:attribute:: COMMITTED
+
+      All the transaction-related operations have been executed successfully, i.e. data is saved
+      into the database after the required manipulations in this state.
+      This marks the successful completion of a transaction.
+
+
+   .. py:attribute:: FAILED
+
+      If any of the transaction-related operations cause an error during the active or
+      partially committed state, further execution of the transaction is stopped and
+      it is brought into a failed state.
+
+
+   .. py:attribute:: ABORTED
+
+      When the transaction is failed, it will attempt to either rollback the transaction
+      in order to keep the database consistent. Upon successfull completion of the rollback,
+      the transaction enters the aborted state.
+
+      .. versionadded:: 0.6.0
+
+
+.. py:exception:: AcquireLockFailed
+
+   Bases: :py:obj:`Exception`
+
+
+   Raised when an attempt to acquire a lock for a given resource fails.
+
+
+.. py:class:: LockManager
+
+   Track which transactions hold locks on which resources and enforce access rules.
+
+   .. versionadded:: 0.6.0
+
+
+
+   .. py:attribute:: locks
+      :type:  Dict[str, List[Tuple[str, LockMode]]]
+
+
+   .. py:method:: acquire(oid: str, tid: str, mode: LockMode) -> None
+
+      Try to acquire a lock for the requested resource and for the requesting transaction.
+
+      :param oid: The object id to be locked.
+      :type oid: str
+      :param tid: The id of the transaction requisting the lock.
+      :type tid: str
+      :param mode: The lock mode.
+      :type mode: LockMode
+
+      :raises AcquireLockFailed: If the lock request cannot be served.
+
+
+
+   .. py:method:: release(tx_id: str) -> None
+
+      Release all locks held by the requesting transaction.
+
+      :param tid: The id of the requesting transaction.
+      :type tid: str
+
+
+
+.. py:class:: Transaction(tid: str, lock_manager: LockManager)
+
+   Provide a context to holds a list of change operations, their lock requirements,
+   and rollback logic.
+
+   .. warning:: Initial implementation. UNSTABLE.
+
+   .. versionadded:: 0.6.0
+
+
+
+   .. py:attribute:: tid
+
+      The unique transaction identifier (UUIDv4).
+
+
+   .. py:attribute:: lock_manager
+
+      The lock manager to ensure locking mechanisms.
+
+
+   .. py:attribute:: operations
+      :type:  List[Tuple[str, LockMode, normlite.txmodel.operations.Operation]]
+      :value: []
+
+
+      The list of operations to be committed/rollbacked in the context of this transaction.
+
+
+   .. py:attribute:: state
+
+      The transaction state.
+
+
+   .. py:attribute:: rollback_errors
+      :type:  list[dict[str, str]]
+      :value: []
+
+
+      A list of error context information for a failed rollback.
+
+      .. versionadded:: 0.7.0
+
+
+   .. py:attribute:: results
+      :type:  list[dict[str, Any]]
+      :value: []
+
+
+      A list of containing all results of the operations executed in the context of this transaction.
+
+      .. versionadded:: 0.7.0
+
+
+   .. py:method:: add_change(resource_id: str, mode: LockMode, operation: normlite.txmodel.operations.Operation) -> None
+
+      Add a change request in the context of this transactions.
+
+      Transactions track the list of changes they have to perform.
+
+      :param resource_id: The resource id subject of the change.
+      :type resource_id: str
+      :param mode: The requested locking mode.
+      :type mode: LockMode
+      :param operation: The operation to carry out the requested change.
+      :type operation: Operation
+
+
+
+   .. py:method:: commit() -> None
+
+      Commit the transaction.
+
+      :raises TransactionError: If this method is called on a transaction not in state active.
+
+
+
+   .. py:method:: rollback() -> None
+
+      Rollback the transaction.
+
+      :raises TransactionError: If this method is called on a transaction in state aborted.
+
+
+
+.. py:class:: TransactionManager
+
+   Procure and coordinate transactions, lock acquisition, and lifecycle (start/commit/rollback).
+
+   .. warning:: Initial implementation, UNSTABLE.
+
+   .. versionadded:: 0.6.0
+
+
+
+   .. py:attribute:: lock_manager
+
+      The lock manager.
+
+
+   .. py:attribute:: active_txs
+      :type:  Dict[str, Transaction]
+
+      The active transactions the manager orchestrates.
+
+
+   .. py:method:: begin() -> Transaction
+
+      Procure a new transaction.
+
+      .. note:: The transaction manager is repsonsible to assign to each created transaction a unique id.
+
+      :returns: A new transaction.
+      :rtype: Transaction
+
+
+

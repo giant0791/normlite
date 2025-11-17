@@ -1,0 +1,98 @@
+normlite.proxy.routes
+=====================
+
+.. py:module:: normlite.proxy.routes
+
+.. autoapi-nested-parse::
+
+   Transaction Proxy Server Routes.
+
+   This module provides the Flask routes that constitute the REST API for the transaction proxy server.
+   All endpoints return JSON objects according to the following schema.
+
+   **Success (health)**:
+
+   .. code-block:: json
+
+     {
+       "state": "ALIVE"
+     }
+
+   **Success (non-commit, e.g. insert)**:
+
+   .. code-block:: json
+
+     {
+       "transaction_id", "<tx_id>",    // <tx_id> = uuid4 string, returned by POST /transactions only
+       "state": "<tx_state>",          // <tx_state> = transaction state, returned by
+                                       // POST /transactions/<id>/insert
+                                       // POST /transactions/<id>/commit
+                                       // POST /transactions/<id>/rollback
+     }
+
+   **Success (commit)**:
+
+   .. code-block:: json
+
+     {
+       "transaction_id", "<tx_id>",    // <tx_id> = uuid4 string, id  of the committed transaction
+       "state": "<tx_state>",          // <tx_state> = "COMMITTED"
+       "data": "<result_sets>",        // <result_sets> = a list containing all results returned by each operation committed/rolled back
+     }
+
+   **Error**:
+
+   .. code-block:: json
+
+     {
+       "error": {
+         "code": "<error_code>",       // <error_code> = e.g. "invalid_payload"
+         "message": "<error message"   // <error_message>" = e.g. "Missing parent in payload"
+       },
+       "transaction_id": "<tx_id>",    // optional, if error occurred in a transaction that was already started
+       "state": "<tx_state>"           // optional, if error occurred in a transaction that was already started
+     }
+
+
+   .. list-table:: Transaction Proxy Server REST API
+      :header-rows: 1
+      :widths: 15, 25, 60
+      :class: longtable
+
+      * - Method
+        - Endpoint
+        - Description
+      * - ``GET``
+        - ``/health``
+        - Let clients enquiry server health.
+      * - ``POST``
+        - ``/transactions``
+        - Begin a new transaction (see :func:`normlite.proxy.routes.transactions.begin_transaction()` for more details).
+      * - ``POST``
+        - ``/transactions/<id>/insert``
+        - Add an inser operation to an existing transaction (see :func:`normlite.proxy.routes.insert.insert()` for more details).
+      * - ``POST``
+        - ``/transactions/<id>/commit``
+        - Commit an existing transaction (see :func:`normlite.proxy.routes.transactions.commit_transaction()` for more details).
+      * - ``POST``
+        - ``/transactions/<id>/rollback``
+        - Roll back an existing transaction (see :func:`normlite.proxy.routes.transactions.rollback_transaction()` for more details).
+
+   .. versionchanged:: 0.7.0
+     ``GET /health`` added.
+
+   .. versionadded:: 0.6.0
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/normlite/proxy/routes/health/index
+   /autoapi/normlite/proxy/routes/insert/index
+   /autoapi/normlite/proxy/routes/transactions/index
+
+

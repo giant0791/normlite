@@ -1,0 +1,470 @@
+normlite.engine.base
+====================
+
+.. py:module:: normlite.engine.base
+
+.. autoapi-nested-parse::
+
+   Establish the foundational engine layer for connecting to Notion or
+   simulated integrations (:memory:, file-based).
+
+   Here a quick example of how to use :class:`Engine` and :class:`Connection`.
+
+   .. code-block:: python
+
+       from datetime import datetime
+       from normlite import create_engine, Engine, Connection
+       from normlite import MetaData, Column, Table, CreateTable
+       from normlite import insert, Insert
+
+       # create the engine to interact with Notion (use in-memory client version)
+       engine: Engine = create_engine('normlite///:memory')
+
+       # create database schema
+       metadata = MetaData()
+       students = Table(
+           'students',
+           metadata,
+           Column('name', String(is_title=True)),
+           Column('grade', String()),
+           Column('student_id', Number()),
+           Column('registered_since', Date()),
+           Column('active', Boolean())
+       )
+
+       # connect to the Notion store
+       with engine.connect() as conn:
+           # create DDL CREATE TABLE statement and
+           # create the table students
+           ddl_stmt: CreateTable = CreateTable(students)
+           _ = conn.execute(ddl_stmt)
+
+           # add some rows
+           dml_stmt: Insert = insert(students).values(
+               name='Galileo Galilei',
+               grade='A',
+               student_id=123456,
+               registered_since=(datetime(1580, 09, 11), ),
+               active=False
+           )
+           result: CursorResult = conn.execute(dml_stmt)
+
+           # access data returned by the DML statement excution
+           row = result.one()
+           print(f'{row[SpecialColumns.NO_ID]}')             # '680dee41-b447-451d-9d36-c6eaff13fb45'
+
+
+
+
+
+
+
+
+
+Module Contents
+---------------
+
+.. py:class:: Connection(engine: Engine)
+
+   Provide high level API to a connection to Notion databases.
+
+   This class delegates the low level implementation of its methods to the DBAPI counterpart
+   :class:`dbapi2.Connection`.
+   The :class:`Connection` object is procured by calling the :meth:`Engine.connect()` method of
+   the :class:`Engine` class, and provides services for execution of SQL statements.
+
+   .. versionadded:: 0.7.0
+       This version implements the ``autocommit`` isolation level.
+       The transaction management methods like :meth:`commit()` and :meth:`rollback()` have been
+       added but do nothing.
+
+
+
+   .. py:attribute:: _engine
+
+      The engine used to procure the underlying DBAPI connection.
+
+
+   .. py:property:: connection
+      :type: normlite.notiondbapi.dbapi2.Connection
+
+
+      Provide the underlying DBAPI connection managed by this connection object.
+
+
+   .. py:method:: execute(stmt: normlite.sql.base.Executable, parameters: Optional[dict] = None) -> normlite.cursor.CursorResult
+
+      Execute an SQL statement.
+
+      This method executes both DML and DDL statements in an enclosing (implicit) transaction.
+      When it is called for the first time, it sets up the enclosing transaction.
+      All subsequent calls to this method add the statements to the enclosing transaction.
+      Use either :meth:`commit()` to commit the changes permanently or :meth:`rollback()` to
+      rollback.
+
+      .. note::
+
+         **Non-mutating** statements like ``SELECT`` returns their result immediately after the
+         :meth:`Connection.execute()` returns. All **mutating** statements like ``INSERT``
+         (see :class:`normlite.sql.dml.Insert`),``UPDATE`` or ``DELETE`` return an
+         **empty** result immediately.
+
+      .. important::
+
+         The cursor result object associated with the last :meth:`Connection.execute()` contains
+         a single result set of the last statement executed.
+
+      :param stmt: The statement to execute.
+      :type stmt: Executable
+      :param parameters: An optional dictionary containing the parameters to be
+                         bound to the SQL statement.
+      :type parameters: Optional[dict]
+
+      :returns: The result of the statement execution as cursor result.
+      :rtype: CursorResult
+
+      .. versionadded:: 0.7.0
+
+
+
+
+   .. py:method:: commit() -> None
+
+      Commit the transaction currently in progress.
+
+      .. note:: Work in progress. This method currently does nothing.
+
+
+
+   .. py:method:: rollback() -> None
+
+      Rollback the transaction currently in progress.
+
+      .. note:: Work in progress. This method currently does nothing.
+
+
+
+   .. py:method:: __enter__() -> Connection
+
+
+   .. py:method:: __exit__(type_: Any, value: Any, traceback: Any) -> None
+
+
+.. py:class:: NotionAuthURI
+
+   Provide a helper data structure to hold URI schema elements for an internal or external Notion integration.
+
+   .. warning:: Experimental code! Do not use!
+
+
+   .. py:attribute:: kind
+      :type:  Literal['internal', 'external']
+
+
+   .. py:attribute:: token
+      :type:  Optional[str]
+      :value: None
+
+
+
+   .. py:attribute:: version
+      :type:  Optional[str]
+      :value: None
+
+
+
+   .. py:attribute:: client_id
+      :type:  Optional[str]
+      :value: None
+
+
+
+   .. py:attribute:: client_secret
+      :type:  Optional[str]
+      :value: None
+
+
+
+   .. py:attribute:: auth_url
+      :type:  Optional[str]
+      :value: None
+
+
+
+.. py:class:: NotionSimulatedURI
+
+   Provide an a helper data structure to hold URI schema elements for test integrations.
+
+
+   .. py:attribute:: kind
+      :type:  Literal['simulated']
+
+      The kind of the integration.
+
+
+   .. py:attribute:: mode
+      :type:  Literal['memory', 'file']
+
+      The mode the integration.
+
+
+   .. py:attribute:: path
+      :type:  Optional[str]
+      :value: None
+
+
+      The path to the database file (``None`` for in-memory integrations).
+
+
+   .. py:attribute:: file
+      :type:  Optional[str]
+      :value: None
+
+
+      The database file name (``None`` for in-memory integrations).
+
+
+.. py:type:: NotionURI
+   :canonical: Union[NotionAuthURI, NotionSimulatedURI]
+
+
+   Type for the URI.
+
+.. py:function:: _parse_uri(uri: str) -> NotionURI
+
+   Provide helper function to parse a normlite URI.
+
+
+.. py:function:: create_engine(uri: str, **kwargs: Any) -> Engine
+
+   Create a new engine proxy object to connect and interact to the Notion integration denoted by the supplied URI.
+
+   This is a factory function to create :class:``Engine`` proxy object based on the parameters
+   specified in the supplied URI.
+
+   .. code-block:: python
+
+       from normlite import create_engine
+
+       # procure an Engine object for connecting to a Notion internal integration
+       NOTION_TOKEN = 'secret-token'
+       NOTION_VERSION = '2022-06-28'
+
+       engine: Engine = create_engine(
+           f'normlite+auth://internal?token={NOTION_TOKEN}&version={NOTION_VERSION}'
+       )
+
+   :param uri: The URI denoting the integration to connect to.
+   :type uri: str
+
+   :returns: The engine proxy object.
+   :rtype: Engine
+
+
+.. py:class:: Engine(uri: NotionURI, **kwargs: Any)
+
+   Provide a convenient proxy object of database connectivity to Notion integrations.
+
+   An :class:`Engine` object is instantiated by the factory :func:`create_engine()`.
+
+   Examples of possible future extensions:
+
+       >>> # create a proxy object to a :memory: integration
+       >>> engine = create_engine('normlite::///:memory:')
+
+       >>> # create a proxy object to a Notion internal integration
+       >>> NOTION_TOKEN = 'secret-token'
+       >>> NOTION_VERSION = '2022-06-28'
+       >>> engine = create_engine(f'normlite+auth://internal?token={NOTION_TOKEN}&version={NOTION_VERSION}')
+
+
+   .. py:attribute:: _uri
+
+      The Notion URI denoting the integration to connect to.
+
+
+   .. py:attribute:: _database
+      :value: None
+
+
+      For simulated URIs, ``memory`` if mode is memory, the file name without extension if mode is file.
+
+      :type: The database name
+
+
+   .. py:attribute:: _db_page_id
+      :value: None
+
+
+      The page id for the database this engine is connected to.
+
+
+   .. py:attribute:: _ws_id
+      :value: None
+
+
+      The workspace id to which all the pages are added to.
+
+
+   .. py:attribute:: _ischema_page_id
+      :value: None
+
+
+      Id for the information schema page.
+
+
+   .. py:attribute:: _tables_id
+      :value: None
+
+
+      Id for the Notion database tables.
+
+
+   .. py:attribute:: _client
+      :value: None
+
+
+      The Notion client this engine interacts with.
+
+
+   .. py:attribute:: _init_client
+      :value: True
+
+
+      Whether the client shall be initialized with the ``normlite`` datastructures. Defaults to ``True``.
+
+
+   .. py:attribute:: _isolation_level
+      :type:  normlite.notiondbapi.dbapi2.IsolationLevel
+      :value: 'AUTOCOMMIT'
+
+
+      Isolation level for transactions. Defaults to ``AUTOCOMMIT``.
+
+
+   .. py:attribute:: _dbapi_connection
+
+
+   .. py:attribute:: _sql_compiler
+
+
+   .. py:method:: _process_args(**kwargs: Any) -> None
+
+
+   .. py:method:: _create_client(uri: NotionSimulatedURI) -> None
+
+      Provide helper method to instantiate the correct client based on the URI provided.
+
+
+
+   .. py:method:: inspect() -> Inspector
+
+      Return an inspector object.
+
+      Factory method to procure :class:`Inspector` objects.
+
+      .. versionadded:: 0.7.0
+
+
+
+
+   .. py:method:: _init_info_schema() -> None
+
+
+   .. py:method:: _init_tables() -> None
+
+
+   .. py:method:: _init_database() -> None
+
+
+   .. py:method:: _add_table(table_name: str, catalog: str, table_id: str) -> None
+
+
+   .. py:method:: connect() -> Connection
+
+      Procure a new :class:`Connection` object.
+
+
+
+   .. py:method:: raw_connection() -> Connection
+
+      Provide the underlying DBAPI connection.
+
+
+
+.. py:class:: Inspector(engine: Engine)
+
+   Provide facilities for inspecting database objects.
+
+   The :class:`Inspector` acts as a proxy for to the classes inspection facilities,
+   providing a consitent interface.
+
+   .. versionadded:: 0.7.0
+
+
+
+   .. py:attribute:: _engine
+
+      The engine it connects to.
+
+
+   .. py:method:: has_table(table_name: str) -> bool
+
+      Check whether the specified table name exists in the database being inspected.
+
+      :param table_name: The name of the table to search for.
+      :type table_name: str
+
+      :raises NormliteError: If more than one table with the same name is found in the same catalog (database).
+
+      :returns: ``True`` if the table exists, ``False`` otherwise.
+      :rtype: bool
+
+
+
+   .. py:method:: reflect_table(table: normlite.sql.schema.Table) -> None
+
+      Construct a table by reflecting it from the database.
+
+      :param table: The table object to reflect.
+      :type table: Table
+
+      :raises NormliteError: If more than one table exists in the database or if the table does not exist.
+      :raises NormliteError: If an unsupported property type is detected during reflection.
+
+
+
+   .. py:method:: get_id(has_id: normlite.sql.schema.HasIdentifier) -> str
+
+      Return the Notion object id for the supplied table.
+
+      This method takes a :py:class:`normlite.sql.schema.HasIdentifier` object and returns
+      the Notion identifier associated with the Notion object.
+
+      .. code-block:: python
+
+          # reflect the Notion database into a Table object
+          inspector = engine.inspect()
+          metadata = MetaData()
+          students: Table = Table('students', metadata)
+          inspector.reflect_table(students)
+
+          # access the Notion database object identifier
+          print(f'Object ID: "{inspector.get_id(students)}"')     # uuid string
+
+          # access the Notion property identifier associate to a column
+          print(
+              f'Property "{students.c.student_name.name}": '
+              f'"{inspector.get_id(students)}"')                  # uuid string associated to the property
+
+      .. versionadded:: 0.7.0
+          The current version supports both Notion object and property identifiers.
+
+      :param table: The table object to get the object id from.
+      :type table: Table
+
+
+
+   .. py:method:: _find_table_in_catalog(name: str, catalog: str) -> dict
+
+

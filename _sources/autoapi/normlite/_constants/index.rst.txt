@@ -1,0 +1,78 @@
+normlite._constants
+===================
+
+.. py:module:: normlite._constants
+
+.. autoapi-nested-parse::
+
+   Provide library-wide constants.
+
+   This module implements constants to be used in other modules of ``normlite``.
+
+   .. versionadded:: 0.7.0
+
+
+
+
+
+Module Contents
+---------------
+
+.. py:class:: SpecialColumns
+
+   Bases: :py:obj:`enum.StrEnum`
+
+
+   Define enum constants for column names to access Notion-specific columns ("special columns").
+
+   .. versionadded:: 0.7.0
+
+
+
+   .. py:attribute:: NO_ID
+      :value: '_no_id'
+
+
+      Notion "id" key for all objects.
+
+
+   .. py:attribute:: NO_TITLE
+      :value: '_no_title'
+
+
+      Notion "title" key for database objects.
+
+
+   .. py:attribute:: NO_ARCHIVED
+      :value: '_no_archived'
+
+
+      Notion "archived" key for all objects.
+
+
+   .. py:attribute:: NO_IN_TRASH
+      :value: '_no_in_trash'
+
+
+      Notion "in_trash" key for all objects.
+
+
+   .. py:method:: values() -> tuple[str, Ellipsis]
+      :classmethod:
+
+
+      Provide all constants values as tuple.
+
+      Helper class method for implementing is in tests.
+
+      Example::
+
+          >>> '_no_in_trash' in SpecialColumns.values()
+          True
+
+          >>> '_no_not_exists' in SpecialColumns.values()
+          False
+
+
+
+

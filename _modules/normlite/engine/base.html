@@ -1,0 +1,816 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>normlite.engine.base &mdash; normlite 0.6.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=f7e3ec4f" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=8fa8b3e9"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            normlite
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">normlite</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">normlite.engine.base</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for normlite.engine.base</h1><div class="highlight"><pre>
+<span></span><span class="c1"># normlite/engine/base.py </span>
+<span class="c1"># Copyright (C) 2025 Gianmarco Antonini</span>
+<span class="c1">#</span>
+<span class="c1"># This module is part of normlite and is released under the GNU Affero General Public License.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is free software: you can redistribute it and/or modify</span>
+<span class="c1"># it under the terms of the GNU Affero General Public License as published</span>
+<span class="c1"># by the Free Software Foundation, either version 3 of the License, or</span>
+<span class="c1"># (at your option) any later version.</span>
+<span class="c1">#</span>
+<span class="c1"># This program is distributed in the hope that it will be useful,</span>
+<span class="c1"># but WITHOUT ANY WARRANTY; without even the implied warranty of</span>
+<span class="c1"># MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</span>
+<span class="c1"># GNU Affero General Public License for more details.</span>
+<span class="c1">#</span>
+<span class="c1"># You should have received a copy of the GNU Affero General Public License</span>
+<span class="c1"># along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
+<span class="sd">&quot;&quot;&quot;Establish the foundational engine layer for connecting to Notion or </span>
+<span class="sd">simulated integrations (:memory:, file-based).</span>
+
+<span class="sd">Here a quick example of how to use :class:`Engine` and :class:`Connection`.</span>
+
+<span class="sd">.. code-block:: python</span>
+
+<span class="sd">    from datetime import datetime</span>
+<span class="sd">    from normlite import create_engine, Engine, Connection</span>
+<span class="sd">    from normlite import MetaData, Column, Table, CreateTable</span>
+<span class="sd">    from normlite import insert, Insert</span>
+
+<span class="sd">    # create the engine to interact with Notion (use in-memory client version)</span>
+<span class="sd">    engine: Engine = create_engine(&#39;normlite///:memory&#39;)</span>
+<span class="sd">    </span>
+<span class="sd">    # create database schema</span>
+<span class="sd">    metadata = MetaData()</span>
+<span class="sd">    students = Table(</span>
+<span class="sd">        &#39;students&#39;,</span>
+<span class="sd">        metadata,</span>
+<span class="sd">        Column(&#39;name&#39;, String(is_title=True)),</span>
+<span class="sd">        Column(&#39;grade&#39;, String()),</span>
+<span class="sd">        Column(&#39;student_id&#39;, Number()),</span>
+<span class="sd">        Column(&#39;registered_since&#39;, Date()),</span>
+<span class="sd">        Column(&#39;active&#39;, Boolean())</span>
+<span class="sd">    )</span>
+
+<span class="sd">    # connect to the Notion store</span>
+<span class="sd">    with engine.connect() as conn:</span>
+<span class="sd">        # create DDL CREATE TABLE statement and</span>
+<span class="sd">        # create the table students</span>
+<span class="sd">        ddl_stmt: CreateTable = CreateTable(students)</span>
+<span class="sd">        _ = conn.execute(ddl_stmt)</span>
+
+<span class="sd">        # add some rows</span>
+<span class="sd">        dml_stmt: Insert = insert(students).values(</span>
+<span class="sd">            name=&#39;Galileo Galilei&#39;,</span>
+<span class="sd">            grade=&#39;A&#39;,</span>
+<span class="sd">            student_id=123456,</span>
+<span class="sd">            registered_since=(datetime(1580, 09, 11), ),</span>
+<span class="sd">            active=False</span>
+<span class="sd">        )</span>
+<span class="sd">        result: CursorResult = conn.execute(dml_stmt)</span>
+
+<span class="sd">        # access data returned by the DML statement excution</span>
+<span class="sd">        row = result.one()</span>
+<span class="sd">        print(f&#39;{row[SpecialColumns.NO_ID]}&#39;)             # &#39;680dee41-b447-451d-9d36-c6eaff13fb45&#39;  </span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pdb</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">TypeAlias</span><span class="p">,</span> <span class="n">TYPE_CHECKING</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">urlparse</span><span class="p">,</span> <span class="n">parse_qs</span><span class="p">,</span> <span class="n">unquote</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">uuid</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.cursor</span><span class="w"> </span><span class="kn">import</span> <span class="n">CursorResult</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.engine.context</span><span class="w"> </span><span class="kn">import</span> <span class="n">ExecutionContext</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ArgumentError</span><span class="p">,</span> <span class="n">NormliteError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.notion_sdk.client</span><span class="w"> </span><span class="kn">import</span> <span class="n">InMemoryNotionClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.compiler</span><span class="w"> </span><span class="kn">import</span> <span class="n">NotionCompiler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.type_api</span><span class="w"> </span><span class="kn">import</span> <span class="n">Boolean</span><span class="p">,</span> <span class="n">Number</span><span class="p">,</span> <span class="n">String</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">normlite.notiondbapi.dbapi2</span><span class="w"> </span><span class="kn">import</span> <span class="n">Connection</span> <span class="k">as</span> <span class="n">DBAPIConnection</span><span class="p">,</span> <span class="n">IsolationLevel</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">Table</span><span class="p">,</span> <span class="n">HasIdentifier</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Executable</span>
+
+<div class="viewcode-block" id="Connection">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Connection">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Connection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide high level API to a connection to Notion databases.</span>
+
+<span class="sd">    This class delegates the low level implementation of its methods to the DBAPI counterpart</span>
+<span class="sd">    :class:`dbapi2.Connection`.</span>
+<span class="sd">    The :class:`Connection` object is procured by calling the :meth:`Engine.connect()` method of</span>
+<span class="sd">    the :class:`Engine` class, and provides services for execution of SQL statements.</span>
+
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">        This version implements the ``autocommit`` isolation level.</span>
+<span class="sd">        The transaction management methods like :meth:`commit()` and :meth:`rollback()` have been</span>
+<span class="sd">        added but do nothing. </span>
+<span class="sd">    </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">engine</span><span class="p">:</span> <span class="n">Engine</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_engine</span> <span class="o">=</span> <span class="n">engine</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The engine used to procure the underlying DBAPI connection.&quot;&quot;&quot;</span>
+        
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">connection</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DBAPIConnection</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Provide the underlying DBAPI connection managed by this connection object.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_engine</span><span class="o">.</span><span class="n">raw_connection</span><span class="p">()</span>
+
+<div class="viewcode-block" id="Connection.execute">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Connection.execute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stmt</span><span class="p">:</span> <span class="n">Executable</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CursorResult</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Execute an SQL statement.</span>
+
+<span class="sd">        This method executes both DML and DDL statements in an enclosing (implicit) transaction.</span>
+<span class="sd">        When it is called for the first time, it sets up the enclosing transaction.</span>
+<span class="sd">        All subsequent calls to this method add the statements to the enclosing transaction.</span>
+<span class="sd">        Use either :meth:`commit()` to commit the changes permanently or :meth:`rollback()` to</span>
+<span class="sd">        rollback.</span>
+
+<span class="sd">        Note:</span>
+<span class="sd">            **Non-mutating** statements like ``SELECT`` returns their result immediately after the</span>
+<span class="sd">            :meth:`Connection.execute()` returns. All **mutating** statements like ``INSERT`` </span>
+<span class="sd">            (see :class:`normlite.sql.dml.Insert`),``UPDATE`` or ``DELETE`` return an </span>
+<span class="sd">            **empty** result immediately.</span>
+
+<span class="sd">        Important:</span>
+<span class="sd">            The cursor result object associated with the last :meth:`Connection.execute()` contains</span>
+<span class="sd">            a single result set of the last statement executed.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            stmt (Executable): The statement to execute.</span>
+<span class="sd">            parameters (Optional[dict]): An optional dictionary containing the parameters to be</span>
+<span class="sd">                bound to the SQL statement.   </span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            CursorResult: The result of the statement execution as cursor result.</span>
+
+<span class="sd">        .. versionadded:: 0.7.0</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">compiler</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_engine</span><span class="o">.</span><span class="n">_sql_compiler</span>
+        <span class="n">compiled</span> <span class="o">=</span> <span class="n">stmt</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">compiler</span><span class="p">)</span>
+
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">ExecutionContext</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">cursor</span><span class="p">(),</span> <span class="n">compiled</span><span class="p">)</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">setup</span><span class="p">()</span>
+
+        <span class="n">result</span> <span class="o">=</span> <span class="n">stmt</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">parameters</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+
+
+
+<div class="viewcode-block" id="Connection.commit">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Connection.commit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">commit</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Commit the transaction currently in progress.</span>
+<span class="sd">        </span>
+<span class="sd">        Note:</span>
+<span class="sd">            Work in progress. This method currently does nothing.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="Connection.rollback">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Connection.rollback">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Rollback the transaction currently in progress.</span>
+<span class="sd">        </span>
+<span class="sd">        Note:</span>
+<span class="sd">            Work in progress. This method currently does nothing.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="Connection.__enter__">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Connection.__enter__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Connection</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+    
+<div class="viewcode-block" id="Connection.__exit__">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Connection.__exit__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">type_</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">traceback</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">pass</span></div>
+</div>
+
+
+<div class="viewcode-block" id="NotionAuthURI">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.NotionAuthURI">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">NotionAuthURI</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide a helper data structure to hold URI schema elements for an internal or external Notion integration.</span>
+<span class="sd">    </span>
+<span class="sd">    Warning:</span>
+<span class="sd">        Experimental code! Do not use!</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;internal&quot;</span><span class="p">,</span> <span class="s2">&quot;external&quot;</span><span class="p">]</span>
+    <span class="n">token</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">version</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">client_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">client_secret</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">auth_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="NotionSimulatedURI">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.NotionSimulatedURI">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">NotionSimulatedURI</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide an a helper data structure to hold URI schema elements for test integrations.&quot;&quot;&quot;</span>
+    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;simulated&quot;</span><span class="p">]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The kind of the integration.&quot;&quot;&quot;</span>
+    
+    <span class="n">mode</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;memory&quot;</span><span class="p">,</span> <span class="s2">&quot;file&quot;</span><span class="p">]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The mode the integration.&quot;&quot;&quot;</span>
+
+    <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span> 
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The path to the database file (``None`` for in-memory integrations).&quot;&quot;&quot;</span>
+    
+    <span class="n">file</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The database file name (``None`` for in-memory integrations).&quot;&quot;&quot;</span> </div>
+
+
+<span class="n">NotionURI</span><span class="p">:</span> <span class="n">TypeAlias</span> <span class="o">=</span> <span class="n">Union</span><span class="p">[</span><span class="n">NotionAuthURI</span><span class="p">,</span> <span class="n">NotionSimulatedURI</span><span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;Type for the URI.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="_parse_uri">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base._parse_uri">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">_parse_uri</span><span class="p">(</span><span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NotionURI</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide helper function to parse a normlite URI.&quot;&quot;&quot;</span>
+    <span class="n">parsed</span> <span class="o">=</span> <span class="n">urlparse</span><span class="p">(</span><span class="n">uri</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">parsed</span><span class="o">.</span><span class="n">scheme</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;normlite+auth&quot;</span><span class="p">,</span> <span class="s2">&quot;normlite&quot;</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported URI scheme: </span><span class="si">{</span><span class="n">parsed</span><span class="o">.</span><span class="n">scheme</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">host</span> <span class="o">=</span> <span class="n">parsed</span><span class="o">.</span><span class="n">hostname</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">unquote</span><span class="p">(</span><span class="n">parsed</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">host</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;internal&quot;</span><span class="p">,</span> <span class="s2">&quot;external&quot;</span><span class="p">):</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="n">parse_qs</span><span class="p">(</span><span class="n">parsed</span><span class="o">.</span><span class="n">query</span><span class="p">)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">get_param</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="p">[</span><span class="kc">None</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">host</span> <span class="o">==</span> <span class="s2">&quot;internal&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">NotionAuthURI</span><span class="p">(</span>
+                <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;internal&quot;</span><span class="p">,</span>
+                <span class="n">token</span><span class="o">=</span><span class="n">get_param</span><span class="p">(</span><span class="s2">&quot;token&quot;</span><span class="p">),</span>
+                <span class="n">version</span><span class="o">=</span><span class="n">get_param</span><span class="p">(</span><span class="s2">&quot;version&quot;</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">host</span> <span class="o">==</span> <span class="s2">&quot;external&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">NotionAuthURI</span><span class="p">(</span>
+                <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;external&quot;</span><span class="p">,</span>
+                <span class="n">client_id</span><span class="o">=</span><span class="n">get_param</span><span class="p">(</span><span class="s2">&quot;client_id&quot;</span><span class="p">),</span>
+                <span class="n">client_secret</span><span class="o">=</span><span class="n">get_param</span><span class="p">(</span><span class="s2">&quot;client_secret&quot;</span><span class="p">),</span>
+                <span class="n">auth_url</span><span class="o">=</span><span class="n">get_param</span><span class="p">(</span><span class="s2">&quot;auth_url&quot;</span><span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">elif</span> <span class="n">host</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Simulated integrations</span>
+        <span class="k">if</span> <span class="n">path</span> <span class="o">==</span> <span class="s2">&quot;/:memory:&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">NotionSimulatedURI</span><span class="p">(</span>
+                <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;simulated&quot;</span><span class="p">,</span>
+                <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;memory&quot;</span><span class="p">,</span>
+                <span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                <span class="n">file</span><span class="o">=</span><span class="kc">None</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">path</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">NotionSimulatedURI</span><span class="p">(</span>
+                <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;simulated&quot;</span><span class="p">,</span>
+                <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;file&quot;</span><span class="p">,</span>
+                <span class="n">path</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">absolute</span><span class="p">()),</span>
+                <span class="n">file</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">name</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid simulated integration path: </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported notion integration type: </span><span class="si">{</span><span class="n">host</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="create_engine">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.create_engine">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_engine</span><span class="p">(</span>
+        <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Engine</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a new engine proxy object to connect and interact to the Notion integration denoted by the supplied URI.</span>
+
+<span class="sd">    This is a factory function to create :class:``Engine`` proxy object based on the parameters </span>
+<span class="sd">    specified in the supplied URI.</span>
+
+<span class="sd">    .. code-block:: python</span>
+
+<span class="sd">        from normlite import create_engine</span>
+
+<span class="sd">        # procure an Engine object for connecting to a Notion internal integration</span>
+<span class="sd">        NOTION_TOKEN = &#39;secret-token&#39;</span>
+<span class="sd">        NOTION_VERSION = &#39;2022-06-28&#39;</span>
+
+<span class="sd">        engine: Engine = create_engine(</span>
+<span class="sd">            f&#39;normlite+auth://internal?token={NOTION_TOKEN}&amp;version={NOTION_VERSION}&#39;</span>
+<span class="sd">        )  </span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        uri (str): The URI denoting the integration to connect to.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Engine: The engine proxy object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">Engine</span><span class="p">(</span><span class="n">_parse_uri</span><span class="p">(</span><span class="n">uri</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Engine">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Engine">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Engine</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide a convenient proxy object of database connectivity to Notion integrations.</span>
+
+<span class="sd">    An :class:`Engine` object is instantiated by the factory :func:`create_engine()`.</span>
+
+<span class="sd">    Examples of possible future extensions:</span>
+<span class="sd">    </span>
+<span class="sd">        &gt;&gt;&gt; # create a proxy object to a :memory: integration</span>
+<span class="sd">        &gt;&gt;&gt; engine = create_engine(&#39;normlite::///:memory:&#39;)</span>
+
+<span class="sd">        &gt;&gt;&gt; # create a proxy object to a Notion internal integration</span>
+<span class="sd">        &gt;&gt;&gt; NOTION_TOKEN = &#39;secret-token&#39;</span>
+<span class="sd">        &gt;&gt;&gt; NOTION_VERSION = &#39;2022-06-28&#39; </span>
+<span class="sd">        &gt;&gt;&gt; engine = create_engine(f&#39;normlite+auth://internal?token={NOTION_TOKEN}&amp;version={NOTION_VERSION}&#39;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="n">NotionURI</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">uri</span><span class="p">,</span> <span class="n">NotionAuthURI</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s1">&#39;Neither internal nor external integration URIs are supported yet (simulated only).&#39;</span>
+            <span class="p">)</span>        
+
+        <span class="k">if</span> <span class="n">kwargs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ArgumentError</span><span class="p">(</span><span class="s1">&#39;Expected keyword arguments, but none were provided.&#39;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_uri</span> <span class="o">=</span> <span class="n">uri</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The Notion URI denoting the integration to connect to.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_database</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The database name: For simulated URIs, ``memory`` if mode is memory, the file name without extension if mode is file.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_db_page_id</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The page id for the database this engine is connected to.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ws_id</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The workspace id to which all the pages are added to.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ischema_page_id</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Id for the information schema page.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tables_id</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Id for the Notion database tables.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The Notion client this engine interacts with.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_init_client</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Whether the client shall be initialized with the ``normlite`` datastructures. Defaults to ``True``.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="s1">&#39;ws_id&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ws_id</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;ws_id&#39;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="s1">&#39;init_client&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_init_client</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;init_client&#39;</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_isolation_level</span><span class="p">:</span> <span class="n">IsolationLevel</span> <span class="o">=</span> <span class="s1">&#39;AUTOCOMMIT&#39;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Isolation level for transactions. Defaults to ``AUTOCOMMIT``.&quot;&quot;&quot;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_process_args</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_create_client</span><span class="p">(</span><span class="n">uri</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dbapi_connection</span> <span class="o">=</span> <span class="n">DBAPIConnection</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="p">)</span>
+            
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ws_id</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ArgumentError</span><span class="p">(</span><span class="s1">&#39;Missing &quot;ws_id&quot; in passed keyword arguments.&#39;</span><span class="p">)</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sql_compiler</span> <span class="o">=</span> <span class="n">NotionCompiler</span><span class="p">()</span>
+
+<div class="viewcode-block" id="Engine._process_args">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Engine._process_args">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_process_args</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="s1">&#39;_mock_ws_id&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ws_id</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;_mock_ws_id&#39;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="s1">&#39;_mock_ischema_page_id&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ischema_page_id</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;_mock_ischema_page_id&#39;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="s1">&#39;_mock_tables_id&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_tables_id</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;_mock_tables_id&#39;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="s1">&#39;_mock_db_page_id&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_db_page_id</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;_mock_db_page_id&#39;</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="Engine._create_client">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Engine._create_client">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_client</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="n">NotionSimulatedURI</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Provide helper method to instantiate the correct client based on the URI provided.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">uri</span><span class="o">.</span><span class="n">mode</span> <span class="o">!=</span> <span class="s1">&#39;memory&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_database</span> <span class="o">=</span> <span class="n">uri</span><span class="o">.</span><span class="n">mode</span> <span class="k">if</span> <span class="n">uri</span><span class="o">.</span><span class="n">mode</span> <span class="o">==</span> <span class="s1">&#39;memory&#39;</span> <span class="k">else</span> <span class="n">uri</span><span class="o">.</span><span class="n">file</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># create client</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span> <span class="o">=</span> <span class="n">InMemoryNotionClient</span><span class="p">()</span>
+
+        <span class="c1"># create information_schema page</span>
+        <span class="c1"># Create the page &#39;information_schema&#39;</span>
+        <span class="c1"># Note: In the real Notion store, the &#39;parent&#39; object is the workspace,</span>
+        <span class="c1"># so the information schema page cannot be programmatically created via the API.</span>
+        <span class="c1"># In the fake store the parent&#39;s page id is just random.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ws_id</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ws_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">())</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_init_client</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_init_info_schema</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_init_tables</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_init_database</span><span class="p">()</span></div>
+
+      
+<div class="viewcode-block" id="Engine.inspect">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Engine.inspect">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">inspect</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Inspector</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return an inspector object.</span>
+
+<span class="sd">        Factory method to procure :class:`Inspector` objects.</span>
+<span class="sd">        </span>
+<span class="sd">        .. versionadded:: 0.7.0</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">Inspector</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+    
+
+<div class="viewcode-block" id="Engine._init_info_schema">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Engine._init_info_schema">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_init_info_schema</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Currently it always create the information_schema page</span>
+        <span class="c1"># In the future, it shall first check if it exists</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="p">{</span>                     
+                <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;page_id&#39;</span><span class="p">,</span>
+                <span class="s1">&#39;page_id&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ws_id</span>
+            <span class="p">},</span>
+            <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;Name&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;title&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;information_schema&#39;</span><span class="p">}}]}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">_add</span><span class="p">(</span><span class="s1">&#39;page&#39;</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ischema_page_id</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Engine._init_tables">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Engine._init_tables">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_init_tables</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># create the database &#39;tables&#39;</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;page_id&#39;</span><span class="p">,</span>
+                <span class="s1">&#39;page_id&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ischema_page_id</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;tables&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;link&quot;</span><span class="p">:</span> <span class="kc">None</span>
+                    <span class="p">},</span>
+                    <span class="s2">&quot;plain_text&quot;</span><span class="p">:</span> <span class="s2">&quot;tables&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;href&quot;</span><span class="p">:</span> <span class="kc">None</span>
+                <span class="p">}</span>
+            <span class="p">],</span>
+            <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;table_name&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;title&#39;</span><span class="p">:</span> <span class="p">{}},</span>
+                <span class="s1">&#39;table_schema&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">{}},</span>
+                <span class="s1">&#39;table_catalog&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">{}},</span>
+                <span class="s1">&#39;table_id&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">{}}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">_add</span><span class="p">(</span><span class="s1">&#39;database&#39;</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tables_id</span><span class="p">)</span>
+
+        <span class="c1"># add tables itself to tables</span>
+        <span class="c1"># Note: By construction, normlite always has a tables database (the table name tables) and </span>
+        <span class="c1"># a tables page (the row in the tables database)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">_add</span><span class="p">(</span><span class="s1">&#39;page&#39;</span><span class="p">,</span> <span class="p">{</span>
+            <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;database_id&#39;</span><span class="p">,</span>
+                <span class="s1">&#39;database_id&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tables_id</span>
+            <span class="p">},</span>
+            <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;table_name&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;title&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;tables&#39;</span><span class="p">}}]},</span>
+                <span class="s1">&#39;table_schema&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;information&#39;</span><span class="p">}}]},</span>
+                <span class="s1">&#39;table_catalog&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;normlite&#39;</span><span class="p">}}]},</span>
+                <span class="s1">&#39;table_id&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tables_id</span><span class="p">}}]}</span>
+            <span class="p">}</span>
+        <span class="p">})</span></div>
+
+
+<div class="viewcode-block" id="Engine._init_database">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Engine._init_database">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_init_database</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;page_id&#39;</span><span class="p">,</span>
+                <span class="s1">&#39;page_id&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ws_id</span>
+
+            <span class="p">},</span>
+            <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;Name&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;title&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_database</span><span class="p">}}]}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">_add</span><span class="p">(</span><span class="s1">&#39;page&#39;</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_db_page_id</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Engine._add_table">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Engine._add_table">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_add_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">catalog</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">table_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">_add</span><span class="p">(</span><span class="s1">&#39;page&#39;</span><span class="p">,</span> <span class="p">{</span>
+            <span class="s1">&#39;parent&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;database_id&#39;</span><span class="p">,</span>
+                <span class="s1">&#39;database_id&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tables_id</span>
+            <span class="p">},</span>
+            <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;table_name&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;title&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="n">table_name</span><span class="p">}}]},</span>
+                <span class="s1">&#39;table_schema&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">}}]},</span>
+                <span class="s1">&#39;table_catalog&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="n">catalog</span><span class="p">}}]},</span>
+                <span class="s1">&#39;table_id&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">[{</span><span class="s1">&#39;text&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="n">table_id</span><span class="p">}}]}</span>
+            <span class="p">}</span>
+        <span class="p">})</span></div>
+
+
+<div class="viewcode-block" id="Engine.connect">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Engine.connect">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">connect</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Connection</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Procure a new :class:`Connection` object.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">Connection</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Engine.raw_connection">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Engine.raw_connection">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">raw_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Connection</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Provide the underlying DBAPI connection.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dbapi_connection</span></div>
+</div>
+
+                   
+<div class="viewcode-block" id="Inspector">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Inspector">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Inspector</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Provide facilities for inspecting database objects.</span>
+
+<span class="sd">    The :class:`Inspector` acts as a proxy for to the classes inspection facilities, </span>
+<span class="sd">    providing a consitent interface.</span>
+
+<span class="sd">    .. versionadded:: 0.7.0</span>
+<span class="sd">    </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">engine</span><span class="p">:</span> <span class="n">Engine</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_engine</span> <span class="o">=</span> <span class="n">engine</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The engine it connects to.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Inspector.has_table">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Inspector.has_table">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">has_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check whether the specified table name exists in the database being inspected.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            table_name (str): The name of the table to search for.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            NormliteError: If more than one table with the same name is found in the same catalog (database).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            bool: ``True`` if the table exists, ``False`` otherwise. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># query all rows with the table_name in tables</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_table_in_catalog</span><span class="p">(</span>
+            <span class="n">table_name</span><span class="p">,</span>
+            <span class="s1">&#39;normlite&#39;</span> <span class="k">if</span> <span class="n">table_name</span> <span class="o">==</span> <span class="s1">&#39;tables&#39;</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_engine</span><span class="o">.</span><span class="n">_database</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NormliteError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Internal error. Found: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">table_name</span><span class="si">}</span><span class="s1"> in catalog: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_engine</span><span class="o">.</span><span class="n">_database</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+            
+<div class="viewcode-block" id="Inspector.reflect_table">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Inspector.reflect_table">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">reflect_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">:</span> <span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Construct a table by reflecting it from the database.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            table (Table): The table object to reflect.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            NormliteError: If more than one table exists in the database or if the table does not exist.</span>
+<span class="sd">            NormliteError: If an unsupported property type is detected during reflection.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">normlite.sql.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">Column</span>
+
+        <span class="c1"># 1. Get the table id by looking up the table name</span>
+        <span class="n">pages</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_table_in_catalog</span><span class="p">(</span>
+            <span class="n">table</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> 
+            <span class="s1">&#39;normlite&#39;</span> <span class="k">if</span> <span class="n">table</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s1">&#39;tables&#39;</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_engine</span><span class="o">.</span><span class="n">_database</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">pages</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NormliteError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Reflection of multiple or non existing tables not supported yet: </span><span class="si">{</span><span class="n">pages</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        
+        <span class="n">table_id_prop</span> <span class="o">=</span> <span class="n">pages</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;properties&#39;</span><span class="p">][</span><span class="s1">&#39;table_id&#39;</span><span class="p">]</span>
+        <span class="n">table</span><span class="o">.</span><span class="n">_database_id</span> <span class="o">=</span> <span class="n">table_id_prop</span><span class="p">[</span><span class="s1">&#39;rich_text&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;text&#39;</span><span class="p">][</span><span class="s1">&#39;content&#39;</span><span class="p">]</span>
+
+        <span class="c1"># 2. Get the Notion database object</span>
+        <span class="n">database</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_engine</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">databases_retrieve</span><span class="p">({</span><span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="n">table</span><span class="o">.</span><span class="n">_database_id</span><span class="p">})</span>
+
+        <span class="c1"># 3. Construct the table by parsing the properties</span>
+        <span class="k">for</span> <span class="n">col_name</span><span class="p">,</span> <span class="n">col_spec</span> <span class="ow">in</span> <span class="n">database</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">col_type</span> <span class="o">=</span> <span class="n">col_spec</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span>
+            <span class="n">col</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">col_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;title&#39;</span><span class="p">,</span> <span class="s1">&#39;rich_text&#39;</span><span class="p">]:</span>
+                <span class="n">col</span> <span class="o">=</span> <span class="n">Column</span><span class="p">(</span><span class="n">col_name</span><span class="p">,</span> <span class="n">String</span><span class="p">(</span><span class="n">is_title</span><span class="o">=</span><span class="p">(</span><span class="n">col_type</span> <span class="o">==</span> <span class="s1">&#39;title&#39;</span><span class="p">)))</span>
+            <span class="k">elif</span> <span class="n">col_type</span> <span class="o">==</span> <span class="s1">&#39;number&#39;</span><span class="p">:</span>
+                <span class="nb">format</span> <span class="o">=</span> <span class="n">col_spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;format&#39;</span><span class="p">)</span>
+                <span class="n">col</span> <span class="o">=</span> <span class="n">Column</span><span class="p">(</span><span class="n">col_name</span><span class="p">,</span> <span class="n">Number</span><span class="p">(</span><span class="nb">format</span><span class="p">))</span> <span class="k">if</span> <span class="nb">format</span> <span class="k">else</span> <span class="n">Column</span><span class="p">(</span><span class="n">col_name</span><span class="p">,</span> <span class="n">Number</span><span class="p">(</span><span class="s1">&#39;number&#39;</span><span class="p">))</span>
+            <span class="k">elif</span> <span class="n">col_type</span> <span class="o">==</span> <span class="s1">&#39;checkbox&#39;</span><span class="p">:</span>
+                <span class="n">col</span> <span class="o">=</span> <span class="n">Column</span><span class="p">(</span><span class="n">col_name</span><span class="p">,</span> <span class="n">Boolean</span><span class="p">())</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">NormliteError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Unsupported property type during table reflection: </span><span class="si">{</span><span class="n">col_spec</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            
+            <span class="n">table</span><span class="o">.</span><span class="n">append_column</span><span class="p">(</span><span class="n">col</span><span class="p">)</span>
+
+        <span class="c1"># 4. ensure implicit columns are created</span>
+        <span class="n">table</span><span class="o">.</span><span class="n">_ensure_implicit_columns</span><span class="p">()</span></div>
+
+
+        <span class="c1"># 5. reflect primary keys</span>
+        <span class="c1"># TODO: Not implemented yet</span>
+
+        <span class="c1"># 6. reflect foreign keys</span>
+        <span class="c1"># TODO: Not implemented yet</span>
+
+<div class="viewcode-block" id="Inspector.get_id">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Inspector.get_id">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">has_id</span><span class="p">:</span> <span class="n">HasIdentifier</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the Notion object id for the supplied table.</span>
+
+<span class="sd">        This method takes a :py:class:`normlite.sql.schema.HasIdentifier` object and returns</span>
+<span class="sd">        the Notion identifier associated with the Notion object.</span>
+<span class="sd">        </span>
+<span class="sd">        .. code-block:: python</span>
+<span class="sd">        </span>
+<span class="sd">            # reflect the Notion database into a Table object</span>
+<span class="sd">            inspector = engine.inspect()</span>
+<span class="sd">            metadata = MetaData()</span>
+<span class="sd">            students: Table = Table(&#39;students&#39;, metadata)</span>
+<span class="sd">            inspector.reflect_table(students)</span>
+
+<span class="sd">            # access the Notion database object identifier</span>
+<span class="sd">            print(f&#39;Object ID: &quot;{inspector.get_id(students)}&quot;&#39;)     # uuid string</span>
+
+<span class="sd">            # access the Notion property identifier associate to a column</span>
+<span class="sd">            print(</span>
+<span class="sd">                f&#39;Property &quot;{students.c.student_name.name}&quot;: &#39;</span>
+<span class="sd">                f&#39;&quot;{inspector.get_id(students)}&quot;&#39;)                  # uuid string associated to the property</span>
+
+<span class="sd">        .. versionadded:: 0.7.0</span>
+<span class="sd">            The current version supports both Notion object and property identifiers.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            table (Table): The table object to get the object id from.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">return</span> <span class="n">has_id</span><span class="o">.</span><span class="n">get_oid</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Inspector._find_table_in_catalog">
+<a class="viewcode-back" href="../../../autoapi/normlite/engine/base/index.html#normlite.engine.base.Inspector._find_table_in_catalog">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_find_table_in_catalog</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">catalog</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_engine</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">databases_query</span><span class="p">({</span>
+            <span class="s1">&#39;database_id&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_engine</span><span class="o">.</span><span class="n">_tables_id</span><span class="p">,</span>
+            <span class="s1">&#39;filter&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;and&#39;</span><span class="p">:</span> <span class="p">[</span>
+                    <span class="p">{</span>
+                        <span class="s1">&#39;property&#39;</span><span class="p">:</span> <span class="s1">&#39;table_name&#39;</span><span class="p">,</span>
+                        <span class="s1">&#39;title&#39;</span> <span class="p">:</span> <span class="p">{</span>
+                            <span class="s1">&#39;equals&#39;</span><span class="p">:</span> <span class="n">name</span>
+                        <span class="p">}</span>
+                    <span class="p">},</span>
+                    <span class="p">{</span>
+                        <span class="s1">&#39;property&#39;</span><span class="p">:</span> <span class="s1">&#39;table_catalog&#39;</span><span class="p">,</span>
+                        <span class="s1">&#39;rich_text&#39;</span><span class="p">:</span> <span class="p">{</span>
+                            <span class="s1">&#39;equals&#39;</span><span class="p">:</span> <span class="n">catalog</span>
+                        <span class="p">}</span>
+                    <span class="p">}</span>
+                <span class="p">]</span>
+            <span class="p">}</span>
+        <span class="p">})</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025 -Gianmarco Antonini.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

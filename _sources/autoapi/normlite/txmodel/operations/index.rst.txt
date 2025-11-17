@@ -1,0 +1,202 @@
+normlite.txmodel.operations
+===========================
+
+.. py:module:: normlite.txmodel.operations
+
+.. autoapi-nested-parse::
+
+   Provide a protocol for commit operation and all proxy server operations.
+
+   .. versionadded:: 0.6.0
+
+
+
+
+
+Module Contents
+---------------
+
+.. py:class:: Operation
+
+   Bases: :py:obj:`Protocol`
+
+
+   Interface for change requests that process data in the context of a transaction.
+
+   Change requests follow a well-defined protocol to accomplish their task of modifying data in a consistent way.
+   Each operation must define:
+
+       * :meth:`stage()`: These are the pre-commit activities to validate data prior to committing them.
+
+       * :meth:`do_commit()`: All activities to commit data to the database.
+
+       * :meth:`do_rollback()`: All activities to revert changes committed prior to this failed change.
+
+
+
+   .. py:method:: stage() -> None
+
+      Stage and validate the data to be committed.
+
+
+
+   .. py:method:: do_commit() -> None
+
+      Perform the commit activities associated with this operation.
+
+
+
+   .. py:method:: do_rollback() -> None
+
+      Perform the rollback activities associated to this operation.
+
+
+
+   .. py:method:: get_result() -> dict
+
+      Return the result of the last executed :class:`Operation.do_commit()` or :class:`Operation.do_rollback()`.
+
+
+
+.. py:class:: StagedInsert(notion: normlite.notion_sdk.client.AbstractNotionClient, page_payload: dict, tx_id: str)
+
+   Bases: :py:obj:`Operation`
+
+
+   Operation to create a new page in a Notion database.
+
+
+   .. py:attribute:: notion
+
+
+   .. py:attribute:: page_payload
+
+
+   .. py:attribute:: tx_id
+
+
+   .. py:attribute:: page_id
+      :value: None
+
+
+
+   .. py:attribute:: _result
+      :value: None
+
+
+
+   .. py:method:: stage() -> None
+
+      Stage and validate the data to be committed.
+
+
+
+   .. py:method:: do_commit() -> None
+
+      Perform the commit activities associated with this operation.
+
+
+
+   .. py:method:: do_rollback() -> None
+
+      Perform the rollback activities associated to this operation.
+
+
+
+   .. py:method:: get_result() -> dict
+
+      Return the result of the last executed :class:`Operation.do_commit()` or :class:`Operation.do_rollback()`.
+
+
+
+.. py:class:: StagedSelect(notion: normlite.notion_sdk.client.AbstractNotionClient, payload: dict, tx_id: str)
+
+   Bases: :py:obj:`Operation`
+
+
+   Operation to query the database.
+
+
+   .. py:attribute:: notion
+
+
+   .. py:attribute:: payload
+
+
+   .. py:attribute:: tx_id
+
+
+   .. py:attribute:: _result
+      :value: None
+
+
+
+   .. py:method:: stage() -> None
+
+      Stage and validate the data to be committed.
+
+
+
+   .. py:method:: do_commit() -> None
+
+      Perform the commit activities associated with this operation.
+
+
+
+   .. py:method:: do_rollback()
+
+      Nothing to rollback, ``SELECT`` is non mutating.
+
+
+
+   .. py:method:: get_result() -> dict
+
+      Return the result of the last executed :class:`Operation.do_commit()` or :class:`Operation.do_rollback()`.
+
+
+
+.. py:class:: StagedCreateTable(notion: normlite.notion_sdk.client.AbstractNotionClient, payload: dict, tx_id: str)
+
+   Bases: :py:obj:`Operation`
+
+
+   Operation to create a new table.
+
+
+   .. py:attribute:: notion
+
+
+   .. py:attribute:: payload
+
+
+   .. py:attribute:: tx_id
+
+
+   .. py:attribute:: database_id
+      :value: None
+
+
+
+   .. py:attribute:: _result
+      :value: None
+
+
+
+   .. py:method:: stage()
+
+      Stage and validate the data to be committed.
+
+
+
+   .. py:method:: do_commit() -> None
+
+      Perform the commit activities associated with this operation.
+
+
+
+   .. py:method:: do_rollback() -> None
+
+      Perform the rollback activities associated to this operation.
+
+
+
