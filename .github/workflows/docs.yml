@@ -42,6 +42,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
 
+    # FIX: explicitly set permissions here too
+    permissions:
+      pages: write
+      id-token: write
+
     # Deployment step *must* use this environment
     environment:
       name: github-pages
