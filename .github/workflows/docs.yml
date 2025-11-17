@@ -1,0 +1,43 @@
+name: Build & Deploy Docs
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]     # build docs on version tags (optional)
+  workflow_dispatch: # allow manual rebuilds
+
+permissions:
+  contents: write    # required for gh-pages deployment
+
+jobs:
+  docs:
+    name: Build documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install documentation dependencies (via uv)
+        run: uv sync --dev
+
+      - name: Build Sphinx documentation
+        run: |
+          # AutoAPI will generate docs/autoapi/ here
+          uv run sphinx-build -b html docs/ docs/_build/html --color
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/_build/html
+          publish_branch: gh-pages
+          force_orphan: true
