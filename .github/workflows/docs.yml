@@ -34,10 +34,11 @@ jobs:
           # AutoAPI will generate docs/autoapi/ here
           uv run sphinx-build -b html docs/ docs/_build/html --color
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs/_build/html
-          publish_branch: gh-pages
-          force_orphan: true
+          path: docs/_build/html
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
