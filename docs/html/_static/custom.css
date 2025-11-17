@@ -1,7 +1,0 @@
-/* Allow table cell content to wrap */
-.wy-table-responsive table td,
-.wy-table-responsive table th {
-  white-space: normal !important;
-  word-break: break-word;
-  vertical-align: top !important;
-}
