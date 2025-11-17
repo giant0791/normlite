@@ -15,3 +15,11 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Engine abstraction and connection Management.
+
+The engine package defines the basic components used to interface
+DBAPI modules with higher-level statement construction,
+connection-management, execution and result contexts.  The primary
+"entry point" class into this package is the :class:`normlite.engine.base.Engine` and its public
+constructor :func:`normlite.engine.base.create_engine`.
+"""

@@ -15,6 +15,20 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""SQL parsing, DML and DDL constructs, and schema storage and introspection.
+
+The sql package defines the basic components for parsing and constructing DML/DDL constructs.
+The primary "entry point" into SQL parsing is the :func:`normlite.sql.sql.text` constructor.
+For DDL schema primitives, the :class:`normlite.sql.schema.Table` and its executable counter-part :class:`normlite.sql.ddl.CreateTable` 
+are the building blocks to create Notion databases.
+For DML statements, the main "entry point" is the :func:`normlite.sql.dml.insert` constructor.
+
+.. deprecated:: 0.7.0
+    The whole SQL parsing package is obsolete and thus deprecated. It will be refactored in a future version.
+    **Do not use!**
+"""
+
+
 from .schema import Column as Column
 from .schema import Table as Table
 from .schema import ColumnCollection as ColumnCollection

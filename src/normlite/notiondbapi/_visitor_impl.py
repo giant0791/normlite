@@ -19,18 +19,18 @@
 """Provide the visitor implementation for cross-compiling Notion JSON objects to tuples of elements.
 
 This module provides two different visitors to accomplish the following cross-compilation tasks from
-:class:`notiondbapi._model.NotionPage` or :class:`notiondbapi._model.NotionDatabase` objects, which have been constructed by parsing the 
-JSON object return by the Notion API:
+:class:`normlite.notiondbapi._model.NotionPage` or :class:`normlite.notiondbapi._model.NotionDatabase` objects, which have been constructed by parsing the 
+JSON object returned by the Notion API:
     
     1. Create a DBAPI row: :class:`normlite.notiondbapi._visitor_impl.ToRowVisitor`.
 
     2. Create a DBAPI description: :class:`normlite.notiondbapi._visitor_impl.ToDescVisitor`.
 
-:class:`ToRowVisitor` constructs the row objects returned by :meth:`normlite.notiondbapi.dbapi2.Cursor.fetchone()` and 
-:meth:`normlite.notiondbapi.dbapi2.Cursor.fetchall()`. A row object is a Python ``tuple`` containing one value for each column 
+:class:`ToRowVisitor` constructs the row objects returned by :meth:`normlite.notiondbapi.dbapi2.Cursor.fetchone` and 
+:meth:`normlite.notiondbapi.dbapi2.Cursor.fetchall`. A row object is a Python ``tuple`` containing one value for each column 
 in the table representing the corresponding Notion object.
 
-:class:`ToDescVisitor` construct the cursor description object returned by the read-only attribute
+:class:`ToDescVisitor` constructs the cursor description object returned by the read-only attribute
 :attr:`normlite.notiondbapi.dbapi2.Cursor.description`. A description object is a sequence of Python tuples containing metadata
 used by the :class:`normlite.cursor.CursorResult` to construct :class:`normlite.cursor.Row` objects for a more pythonic hanlding
 of the query results.  
@@ -133,7 +133,7 @@ relevant keys ommitted for brevity):
         }
     }
 
-Then the cross-compiler returns a tuple constructed as follows::
+Then the cross-compiler :class:`ToRowVisitor` returns a tuple constructed as follows::
 
     (
         '59833787-2cf9-4fdf-8782-e53db20768a5',     # object id
@@ -149,8 +149,9 @@ The following complete example shows how the DBAPI row looks like when a databas
 object is returned after creation::
 
     # example row returned by the Notion API when creating a new database object
-    # parameters is the corresponding dictionary containing the keys "payload" and "params"
-    cursor.execute({"endpoint": "databases", "request": "create"}, parameters)
+    # the paylod is part of the operation dictionary
+    # parameters is the corresponding dictionary containing the key "params"
+    cursor.execute({"endpoint": "databases", "request": "create", "payload": payload}, parameters)
     row = cursor.fetchone()
     print(row)
     (
@@ -216,13 +217,16 @@ class ToRowVisitor(NotionObjectVisitor):
             * - REST API
               - DBAPI row
               - Example and explanation
-            * - ``pages.create``
+            * - ``pages.create`` or ``pages.update``
               - (<object-id>, <modified>, <in_trash>, [<property-id>]+,)
               - ``("59833787-2cf9-4fdf-8782-e53db20768a5", False, None, '%3AUPp', 'A%40Hk', 'BJXS',)``: 
-                When a new page is created, the DBAPI row contains the object and property ids.
-            * - ``pages.retrieved``
+                When a new page is either created or updated, the DBAPI row contains the object and property ids only.
+            * - ``pages.retrieve``
               - (<object-id>, <modified>, <in_trash>, [<property-value>]+,))
-              - ``()``
+              - ``('bc1211ca-e3f1-4939-ae34-5260b16f627c', False, False, 2.5, 'A dark green leafy vegetable', 'Tuscan kale',)``
+            * - ``database.create``
+              - TODO
+              - TODO
         
         Args:
             page (NotionPage): _description_
@@ -280,9 +284,9 @@ class ToDescVisitor(NotionObjectVisitor):
             ('__id__', 'string', None,),         # object id
             ('__archived__', None, None, )       # the archived flag
             ('__in_trash__', None, None, )       # the in_trash flag
-            ('id', 'number', 'evWq',),       # property name 'id'
-            ('name', 'title', 'title',),     # property name 'name'
-            ('grade', 'rich_text', 'V}lX' ), # property name 'grade'
+            ('id', 'number', 'evWq',),           # property name 'id'
+            ('name', 'title', 'title',),         # property name 'name'
+            ('grade', 'rich_text', 'V}lX' ),     # property name 'grade'
         )
 
     When pages are queried (with the endpoint database.query), this visitor constructs a
@@ -298,18 +302,22 @@ class ToDescVisitor(NotionObjectVisitor):
         (
             ('__id__', 'string', None,),         # object id
             ('__archived__', None, None, )       # the archived flag
-            ('id', None, 'evWq',),           # id only for property name 'id'
-            ('name', None, 'title',),        # id only for property name 'name'
-            ('grade', None, 'V}lX' ),        # id only for property name 'grade'
+            ('id', None, 'evWq',),               # id only for property name 'id'
+            ('name', None, 'title',),            # id only for property name 'name'
+            ('grade', None, 'V}lX' ),            # id only for property name 'grade'
         )
 
-    .. versionchanged:: 0.4.0
-        The overall cross-compilation implemented in :class:`ToDescVisitor` has been refactored to be fully DBAPI 2.0 compliant.
-
+    .. versionchanged:: 0.7.0:
+        The metacolumns now use the constants defined in `normlite._constants.SpecialColumns`.
+        
     .. versionchanged:: 0.5.0
         Additional metacolumns names changed to avoid name clashes with user-defined columns:
         ``__id__`` (formerly ``__id__``), ``__archived__`` (formerly ``archived``), ``__in_trash__`` (formerly ``in_trash``),
         ``__title__`` (formerly ``title``).
+
+    .. versionchanged:: 0.4.0
+        The overall cross-compilation implemented in :class:`ToDescVisitor` has been refactored to be fully DBAPI 2.0 compliant.
+
     
     """
     

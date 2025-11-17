@@ -789,7 +789,7 @@ class TxnConnection(Connection):
             cursor._parse_result_set(result_set)
             self._cursors.append(cursor)
 
-class CompositeCursor(Cursor):
+class OldCompositeCursor(Cursor):
     """Extend a DBAPI cursor to manage multiple child cursors, one per result set returned
     from a multi-statement transaction commit.
     """

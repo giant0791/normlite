@@ -20,9 +20,10 @@
 
 This module provides the Flask routes that constitute the REST API for the transaction proxy server.
 All endpoints return JSON objects according to the following schema.
-** Success (health)**:
 
-..code-block:: json
+**Success (health)**:
+
+.. code-block:: json
 
   {
     "state": "ALIVE"
@@ -52,7 +53,7 @@ All endpoints return JSON objects according to the following schema.
 
 **Error**:
 
-..code-block:: json
+.. code-block:: json
 
   {
     "error": {

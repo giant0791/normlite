@@ -32,12 +32,13 @@ if TYPE_CHECKING:
     from normlite.notiondbapi.dbapi2 import Cursor
 
 class Visitable(ABC):
-    """Base class for any AST node that can be 'visited' by a compiler.
+    """Base class for any AST node that can be "visited" by a compiler.
 
     It provides the :meth:`Visitable._compiler_dispatch()` method that delegates compilation
     to a compiler based on :attr:`__visit_name__`.
 
-    .. versionchanged:: 0.7.0 This class has been completely redesigned to better separate
+    .. versionchanged:: 0.7.0 
+        This class has been completely redesigned to better separate
         concerns related to AST nodes, compilation, and compiled objects produced by the compilation.
     """
     __visit_name__: str
@@ -49,14 +50,14 @@ class Visitable(ABC):
         The compiler must implement a method named `visit_<__visit_name__>`.
 
         Args:
-            compiler (SQLCompiler): The compiler object to be used for compilation
-            kwargs (Any): Additional parameters to be passed to the compiler's visit method.
+            compiler (SQLCompiler): The compiler object to be used for compilation.
+            **kwargs (Any): Additional parameters to be passed to the compiler's visit method to allow context-sensitive compilation.
 
         Raises:
             UnsupportedCompilationError: If the instance owning this method is missing the :attr:`__visit_name__` or if it has no visit method.
 
         Returns:
-            dict: The compilation result in form of a dictionary (JSON) object
+            dict: The compilation result in form of a dictionary (JSON) object.
         """
         visit_name = getattr(self, '__visit_name__', None)
 
@@ -76,12 +77,30 @@ class Visitable(ABC):
 
 class ClauseElement(Visitable):
     """Base class for SQL elements that can be compiled by the compiler.
+
+    This class orchestrates for all subclasses the compilation process by implementing the :meth:`compile`.
+    Subclasses do not have to take care of the compilation.   
     
-    .. versionadded: 0.7.0
+    .. versionadded:: 0.7.0
+        In this version, the :meth:`compile` method supports standard compilation.
+        The compilation process can be fine-tuned using keyword arguments for context-sensitive compilation
+        (for example ``{"literal_binds": True}`` could be used to render the values in the compiled object *literalized* 
+        instead of parameterized for logging or debugging purposes). 
+        
+        This feature will be added in a future version.
     """
     __visit_name__ = 'clause'
 
     def compile(self, compiler: SQLCompiler, **kwargs: Any) -> Compiled:
+        """Compile this clause element.
+
+        Args:
+            compiler (SQLCompiler): The compiler to be used for the compilation.
+            **kwargs (Any): Keyword arguments for context-sensitive compilation. **Not supported yet**.
+
+        Returns:
+            Compiled: The compiled object rusult of the compilation.
+        """
         compiled_dict = compiler.process(self, **kwargs)
         result_columns = compiled_dict.get('result_columns', None)
         if result_columns:
@@ -90,17 +109,33 @@ class ClauseElement(Visitable):
         return Compiled(self, compiled_dict, result_columns)
 
     def get_table(self) -> ReadOnlyColumnCollection:
+        """Return a collection of columns this clause element refers to."""
         raise NotImplementedError
 
 class Executable(ClauseElement):
     """Provide the interface for all executable SQL statements.
+
+    This base class implements the command design pattern for execution of clause elements.
+    The :meth:`execute` method has a base implementation of the execution flow that can be used as default implementation
+    in the subclasses.
+
+    It provides a post execution hook with the :meth:`_post_exec` that is intended to be optionally implemented in 
+    the subclasses.
     
     .. versionadded:: 0.7.0
-    
+        This bas class fully supports the connection-driven execution flow of SQL statements.
     """
 
     def execute(self, context: ExecutionContext, parameters: Optional[dict] = None) -> CursorResult:
-        """Run this executable within the context setup by the connection."""
+        """Run this executable within the context setup by the connection.
+
+        Args:
+            context (ExecutionContext): The runtime context for the execution of this statement.
+            parameters (Optional[dict], optional): The dictionary containing parameters to be bound. Defaults to ``None``.
+
+        Returns:
+            CursorResult: The :class:`normlite.cursor.CursorResult` object containing the result set of the statement.
+        """
 
         # TODO: for INSERT/UPDATE statements that do not have values, parameters is not None
         # Implement this use case and bind the supplied parameters
@@ -113,33 +148,53 @@ class Executable(ClauseElement):
         return result
 
     def _post_exec(self, result: CursorResult, context: ExecutionContext) -> None:
-        """Optional hook for subclassess."""
+        """Optional hook for subclassess.
+
+        Subclasses can use this method to extract information from the provided cursor result.
+
+        Args:
+            result (CursorResult): The :class:`normlite.cursor.CursorResult` object returned by the execution.
+            context (ExecutionContext): The runtime context for the execution of this statement.
+        """
         ...
 
 class Compiled:
     """The result of compiling :class:`ClauseElement` subclasses.
 
-    .. versionadded:: 0.7.0
+    This class provides an abstraction for compilation results.
 
+    .. versionadded:: 0.7.0
+        This version implements the main basic functions for a compiled object.
     """
 
     def __init__(self, element: ClauseElement, compiled: dict, result_columns: Optional[Sequence[str]] = None):
         self._element = element
+        """The compiled clause element."""
+
         self._compiled = compiled
+        """The dictionary containing the compilation result."""
+        
         self._result_columns = result_columns
+        """Optional sequence of strings specifying the column names to be considered 
+        in the rows produced by the :class:`normlite.cursor.CursorResult` methods.
+        """
 
     @property
     def string(self) -> str:
+        """Provide a linted string of this compiled object."""
         return json.dumps(self._compiled, indent=2)
     
     @property
     def params(self) -> dict:
+        """Provide the bind parameters for this compiled object."""
         return self._compiled['parameters']
     
     def as_dict(self) -> dict:
+        """Return this compiled object in the original dictionary form."""
         return self._compiled
     
     def result_columns(self) -> Optional[Sequence[str]]:
+        """Optionally return the column names for the cursor result."""
         return self._result_columns
     
     def __str__(self) -> str:
@@ -150,14 +205,43 @@ class Compiled:
 
 
 class SQLCompiler(Protocol):
+    """Base class for SQL compilers.
+
+    This class defines the standard interface for SQL compilers.
+    Concrete compilers take a :class:`Visitable` object and generate executable code.
+
+    .. seealso::
+        :class:`normlite.sql.compiler` for a Notion specific compiler. 
+
+    .. versionadded:: 0.7.0
+        This version supports compilation of ``CREATE TABLE`` and ``INSERT`` statements.   
+    """
     def process(self, element: ClauseElement, **kwargs: Any) -> dict:
+        """Entry point for the compilation process.
+
+        This method is called by :meth:`ClauseElement.compile` to produce a :class:`Compiled` object,
+        which stores the compilation result.
+
+        Note:
+            The return type dict allows to model the compilation result as a JSON object (Python dictionary).
+            This is very flexible as it enables the implementation of compilers, 
+            which have to provide specific downstream methods for representing their own generated code.
+            For example, the :class:`normlite.sql.compiler.NotionCompiler` class generates Notion payload objects for
+            several Notion API requests.
+
+        Returns:
+            dict: The JSON object representing the compilation result.
+        """
         return element._compiler_dispatch(self, **kwargs)
 
     def visit_create_table(self, table: CreateTable) -> dict:
+        """Compile a table (DDL ``CREATE TABLE``)."""
         ...
 
     def visit_create_column(self, column: CreateColumn) -> dict:
+        """Compile a column."""
         ...
 
     def visit_insert(self, insert: Insert) -> dict:
+        """Compile an insert statement (DML ``INSERT``)."""
         ...

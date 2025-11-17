@@ -15,3 +15,10 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Provide a proxy server for ``normlite`` clients for transaction management on Notion REST API requests.
+
+Warning:
+    The code in this package is experimental and subject to breaking changes in the future.
+    
+    **Do not use it yet!**
+"""
