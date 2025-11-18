@@ -17,6 +17,17 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Provide a proxy server for ``normlite`` clients for transaction management on Notion REST API requests.
 
+This package provides transaction management for Notion.
+It implements under the wood a Flask proxy that sits between the ``normlite`` client and Notion.
+The ``normlite`` client application interacts with the Flask proxy via the :class:`normlite.engine.base.Engine` class.
+
+.. versionchanged:: 0.7.0
+    The package implements an in-process test client based on the pytest Flask plugin via :class:`normlite.proxy.client.InProcessProxyClient`
+    through a uniform interface (defined by :class:`normlite.proxy.base.BaseProxyClient`).
+
+.. versionadded: 0.6.0
+    Initial version. Experimental code. Tests successful.
+
 Warning:
     The code in this package is experimental and subject to breaking changes in the future.
     

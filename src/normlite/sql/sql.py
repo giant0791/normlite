@@ -23,6 +23,10 @@ Central module providing SQL parsing as well as cross-compiling SQL-to-JSON capa
 To generate ``INSERT`` constructs, the cross-compiler needs a repository where all 
 the table metada are stored and accessible.
 
+.. deprecated:: 0.7.0
+    This module is deprecated and will be fundamentally refactored in a later version.
+    **DO NOT USE IT**
+
 Example usage for the :class:`Parser`:
     >>> # create an AST for a supported SQL construct
     >>> sql = "create table students (id int, name title_varchar(255), grade varchar(1))"

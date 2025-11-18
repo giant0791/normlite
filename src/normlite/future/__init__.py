@@ -15,3 +15,32 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Explorations and early prototyping of future features.
+
+This package is a playgorund to test new ideas in explorations and for early prototyping.
+It resembles the main packge structure, and it allows to add new modules without disrupting
+the code base.
+
+Here a quick example of how it is used.
+
+.. code-block:: python
+
+    # normlite/future/notion_sdk/dbapi2.py
+    # prototype new commit and rollback in DBAPI connection.
+    # ...
+
+    def commit(self) -> None:
+        response = self._proxy_client.post(
+            f'/transactions/{self._tx_id}/commit'
+        )
+
+        if response.status_code != 200:
+            raise DatabaseError(
+                f'Failed to commit transaction: {self._tx_id}. '
+                f'Reason: {response.get_json()['error']}'
+            )
+        
+        # create cursors
+        self._create_cursors(response.get_json()['data'])
+
+"""

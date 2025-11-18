@@ -229,6 +229,7 @@ class Table(HasIdentifier):
 
         
     .. versionadded: 0.7.0
+        This version fully supports the main use cases.
 
     """
     def __init__(self, name: str, metadata: MetaData, *columns: Column, **kwargs: Any):
@@ -343,6 +344,17 @@ class Table(HasIdentifier):
         return insert_stmt
 
     def create(self, bind: Engine) -> None:
+        """Create a new table using the provided bind.
+
+        This method generates a :class:`normlite.sql.ddl.CreateTable` DDL statement,
+        and it executes it on the provided bind.
+
+        Args:
+            bind (Engine): The bind to use to connect to the database (Notion).
+
+        .. versionadded:: 0.7.0
+            Initial version, experimental not working code.
+        """
         from normlite.sql.ddl import CreateTable
         ddl_stmt = CreateTable(self)
         bind.connect().execute(ddl_stmt)
@@ -395,7 +407,7 @@ class ColumnCollection:
     a method to test column existence in the collection (see :meth:`__contains__()`).
 
     .. versionadded:: 0.7.0
-
+        This version fully supports all the main use cases.
     """
     __slots__ = ('_collection', '_index', '_colset')
 
@@ -560,7 +572,11 @@ class ColumnCollection:
         return ReadOnlyColumnCollection(self)
     
 class ReadOnlyCollectionMixin:
-    """Mixin for read-only collections."""
+    """Mixin for read-only collections.
+    
+    .. versionadded:: 0.7.0
+        This version implements the main use cases.
+    """
     __slots__ = ()
 
     def _readonly(self) -> NoReturn:
