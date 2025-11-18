@@ -5,14 +5,14 @@ on:
     branches: ["main"]
   pull_request:
 
+permissions:
+  contents: read        # allow reading repository
+  pages: write          # allow deploying to GitHub Pages
+  id-token: write       # required for OIDC authentication for deploy-pages
+
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read        # allow reading repository
-      pages: write          # allow deploying to GitHub Pages
-      id-token: write       # required for OIDC authentication for deploy-pages
 
     steps:
       - name: Checkout
@@ -41,6 +41,11 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+
+    # FIX: explicitly set permissions here too
+    permissions:
+      pages: write
+      id-token: write
 
     # Deployment step *must* use this environment
     environment:
