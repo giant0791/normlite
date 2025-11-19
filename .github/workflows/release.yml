@@ -23,7 +23,7 @@ jobs:
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install deps
-        run: uv sync --dev
+        run: uv sync --all-extras
 
       - name: Run commitizen bump
         run: uv run cz bump --yes
