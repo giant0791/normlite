@@ -23,7 +23,12 @@ jobs:
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install deps
-        run: uv sync --dev
+        run: uv sync --all-extras
+
+      - name: Configure Git user
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
 
       - name: Run commitizen bump
         run: uv run cz bump --yes
@@ -36,5 +41,33 @@ jobs:
         run: |
           git push --follow-tags origin HEAD:${REF_NAME}
 
-      # Optional: publish to PyPI using trusted publisher
-      # extention point not implemented yet
+      - name: Build documentation
+        run: |
+          uv run sphinx-build -b html docs/ docs/_build/html --color
+
+      - name: Upload documentation
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_build/html
+
+  deploy:
+    needs: release
+    runs-on: ubuntu-latest
+
+    # FIX: explicitly set permissions here too
+    permissions:
+      pages: write
+      id-token: write
+
+    # Deployment step *must* use this environment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+    # Optional: publish to PyPI using trusted publisher
+    # extention point not implemented yet

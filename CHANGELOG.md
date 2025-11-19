@@ -1,3 +1,53 @@
+## 0.7.0 (2025-11-19)
+
+### Feat
+
+- add random access to `InMemoryNotionClient` store (#90).
+- add random access to `InMemoryNotionClient` store.
+- add random access to `InMemoryNotionClient` store.
+- add random access to `InMemoryNotionClient` store.
+- add random access to `InMemoryNotionClient` store.
+- add random access to `InMemoryNotionClient` store.
+- Add engine abstraction and connection management (#77)
+- Add an SQL compiler infrastructure (#100)
+- Cursor result and row management #99
+- Provide programmatic API for creating and reflecting tables (#97)
+- Add DBAPI 2.0 compliant Connection class (#96)
+- Extend the Notion row and description visitors to support property identifiers (#91).
+- Extend the class `InMemoryNotionClient` to provide property ids (#89).
+- Add full proxy server functionality for executing INSERT.
+- Add a client for interacting with the proxy server (#73).
+- Add `CREATE TABLE` SQL statement execution (#30)
+- Add central registry of schema objects feature to MetaData (#68)
+- Add ``autoload_with`` keyword option to reflect a table in its constructor (#66).
+- Add table creation flow (#62)
+- Add information_schema management to InMemoryNotionClient (#63)
+- Add the `Table` SQL construct (#54).
+- Add Notion type system (#53)
+- Add Notion type system
+- Add Notion type system
+- Explore code generator for SQL node classes
+- Initial commit for new SQL compiler features.
+- Add fully DBAPI compliant `Connection` and `Cursor` classes (#50)
+- Add DBAPI 2.0 compliant Connection (#48).
+
+### Fix
+
+- `_parser.parse_property() does not handle retrieved objects correctly
+- `InMemoryNotionClient._add() does not validate payload correctly (#93)
+- Fix issues with Notion specific database properties (#49).
+- String bind processor delivers wrong Notion object (#87)
+- Parsing text content does not handle correctly lists of text objects (#86)
+- Do not provide the key "type" to get_col_spec() in the type engine system (#85)
+- Fix error handling in transactions and operations.
+
+### Refactor
+
+- InMemoryNotionClient to always contain an initial root page (#103).
+- Add execution context
+- Refactor SQL `INSERT` statement (#55)
+- Extend `CursorResult` to be compatible with single and multiple result sets (#51)
+
 ## 0.6.0 (2025-08-07)
 
 ### Feat
