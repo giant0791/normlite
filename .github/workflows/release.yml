@@ -25,6 +25,11 @@ jobs:
       - name: Install deps
         run: uv sync --all-extras
 
+      - name: Configure Git user
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
       - name: Run commitizen bump
         run: uv run cz bump --yes
         env:
