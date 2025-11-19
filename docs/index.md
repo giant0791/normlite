@@ -6,5 +6,6 @@
 :hidden:
 
 changelog.md
+contributing.md
 autoapi/index
 ```
