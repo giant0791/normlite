@@ -25,11 +25,10 @@ from normlite.exceptions import UnsupportedCompilationError
 from normlite.engine.context import ExecutionContext
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import ReadOnlyColumnCollection
-    from normlite.sql.ddl import CreateTable, CreateColumn
+    from normlite.sql.schema import Table
+    from normlite.sql.ddl import CreateTable, CreateColumn, HasTable
     from normlite.sql.dml import Insert
     from normlite.cursor import CursorResult
-    from normlite.notiondbapi.dbapi2 import Cursor
 
 class Visitable(ABC):
     """Base class for any AST node that can be "visited" by a compiler.
@@ -108,7 +107,7 @@ class ClauseElement(Visitable):
 
         return Compiled(self, compiled_dict, result_columns)
 
-    def get_table(self) -> ReadOnlyColumnCollection:
+    def get_table(self) -> Table:
         """Return a collection of columns this clause element refers to."""
         raise NotImplementedError
 
@@ -240,6 +239,10 @@ class SQLCompiler(Protocol):
 
     def visit_create_column(self, column: CreateColumn) -> dict:
         """Compile a column."""
+        ...
+
+    def visit_has_table(self, hastable: HasTable) -> dict:
+        """Compile the pseudo DDL statement for checking for table existence."""
         ...
 
     def visit_insert(self, insert: Insert) -> dict:
