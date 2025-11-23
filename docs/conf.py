@@ -80,6 +80,10 @@ html_theme = "furo"
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
+html_theme_options = {
+    "light_logo": "logo-light-mode.png",
+    "dark_logo": "logo-dark-mode.png",
+}
 
 # Patch CSS for responsive tables in docstrings
 # See RTD issue: https://github.com/readthedocs/sphinx_rtd_theme/issues/1505
