@@ -37,11 +37,16 @@ copyright = f'{datetime.date.today().year} -{author}'
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
-    "myst_nb",
+    #"myst_nb",
     "autoapi.extension",
     "sphinx.ext.napoleon",
-    "sphinx.ext.viewcode"
+    "sphinx.ext.viewcode",
+    "myst_parser",
+    "sphinx_design",
 ]
+
+# use recommended colon fence syntax extension
+myst_enable_extensions = ["colon_fence"]
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
