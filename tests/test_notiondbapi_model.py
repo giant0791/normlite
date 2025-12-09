@@ -1,18 +1,27 @@
 import json
-import pdb
 from typing import Any, Dict
 import pytest
 
 from normlite._constants import SpecialColumns
+from normlite.exceptions import CompileError
+#from normlite.notiondbapi._model import NotionDatabase, NotionPage, NotionProperty
+#from normlite.notiondbapi._parser import parse_database, parse_page, parse_property
+#from normlite.notiondbapi._visitor_impl import ToDescVisitor, ToRowVisitor
+from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+from normlite.notiondbapi._parser import parse_page, parse_database, parse_page_property, parse_database_property
+from normlite.notiondbapi.compiler import DescriptionCompiler, RowCompiler
 from normlite.notiondbapi._model import NotionDatabase, NotionPage, NotionProperty
-from normlite.notiondbapi._parser import parse_database, parse_page, parse_property
-from normlite.notiondbapi._visitor_impl import ToDescVisitor, ToRowVisitor
+
 
 @pytest.fixture
 def created_database() -> Dict[str, Any]:
     return {
         "object": "database",
         "id": "bc1211ca-e3f1-4939-ae34-5260b16f627c",
+        "parent": {
+            "type": "page_id",
+            "page_id": "ac1211ca-e3f1-9939-ae34-5260b16f628c"
+        },
         "title": [
             {
                 "type": "text",
@@ -28,7 +37,7 @@ def created_database() -> Dict[str, Any]:
     }
 
 @pytest.fixture
-def retrieved_page() -> dict:
+def page_retrieved() -> dict:
     return {
         "object": "page",
         "id": "59833787-2cf9-4fdf-8782-e53db20768a5",
@@ -145,26 +154,7 @@ def retrieved_page() -> dict:
     }
 
 @pytest.fixture
-def created_page() -> dict:
-    return {
-        "object": "page",
-        "id": "59833787-2cf9-4fdf-8782-e53db20768a5",
-        "archived": False,
-        "properties": {
-            "id": {
-                "id": "%3AUPp",
-            },
-            "name": {
-                "id": "A%40Hk",
-           },
-            "grade": {
-                "id": "BJXS",
-            }
-        }
-    }
-
-@pytest.fixture
-def updated_page() -> dict:
+def page_created_or_updated() -> dict:
     return {
         "object": "page",
         "id": "59833787-2cf9-4fdf-8782-e53db20768a5",
@@ -284,6 +274,7 @@ def database_retrieved() -> dict:
             "page_id": "98ad959b-2b6a-4774-80ee-00246fb0ea9b"
         },
         "archived": false,
+        "in_trash": false,
         "is_inline": false,
         "public_url": null
     }
@@ -366,205 +357,152 @@ def float_number_val() -> Dict[str, Any]:
 def test_parse_dollar_number_def_property(dollar_number_def: dict):
     """Test that the description visitor correctly parses the number definition"""
     expected =  (
-        'Price', 'number.dollar', 'evWq', None, None, None, None,
+        'Price', DBAPITypeCode.NUMBER_DOLLAR, None, None, None, None, None,
     )
 
-    property: NotionProperty = parse_property('Price', dollar_number_def['Price'])
-    assert expected == property.accept(ToDescVisitor())
+    property: NotionProperty = parse_database_property('Price', dollar_number_def['Price'])
+    assert expected == property.compile(DescriptionCompiler())
 
 def test_parse_number_def_property(number_def: dict):
     expected = (
-        'id', 'number', '_e:Wq', None, None, None, None,
+        'id', DBAPITypeCode.NUMBER, None, None, None, None, None,
     )
 
-    property: NotionProperty = parse_property('id', number_def['id'])
-    assert expected == property.accept(ToDescVisitor())
+    property: NotionProperty = parse_database_property('id', number_def['id'])
+    assert expected == property.compile(DescriptionCompiler())
 
 def test_parse_int_or_float_number_def_property(int_or_float_number_def: dict):
     expected = (
-        'Price', 'number.number', '%7B%5D_P', None, None, None, None, 
+        'Price', DBAPITypeCode.NUMBER, None, None, None, None, None, 
     )
 
-    property: NotionProperty = parse_property('Price', int_or_float_number_def['Price'])
-    assert expected == property.accept(ToDescVisitor())
+    property: NotionProperty = parse_database_property('Price', int_or_float_number_def['Price'])
+    assert expected == property.compile(DescriptionCompiler())
 
 def test_parse_int_number_val_property(int_number_val: dict):
-    expected = 1870
-    property: NotionProperty = parse_property('Price', int_number_val['Price'])
-    pvalue = property.accept(ToRowVisitor())
+    expected = ('Price', {'number': 1870},)
+    property: NotionProperty = parse_page_property('Price', int_number_val['Price'])
+    pvalue = property.compile(RowCompiler())
     assert expected == pvalue
 
 def test_parse_float_number_val_property(float_number_val: Dict[str, Any]):
-    expected = 18.70
+    expected = ('Price', {'number': 18.70})
+    property: NotionProperty = parse_page_property('Price', float_number_val['Price'])
+    pvalue = property.compile(RowCompiler())
+    assert expected == pvalue
 
-    property: NotionProperty = parse_property('Price', float_number_val['Price'])
-    assert expected == property.accept(ToRowVisitor())
+def test_parse_multi_array_rich_text(page_retrieved: dict):
+    expected = ('Description', {'rich_text': [{'text': {'content': 'A dark ', 'link': None}}, {'text': {'content': 'green', 'link': None}}, {'text': {'content': ' leafy vegetable', 'link': None}}]})
+    properties = page_retrieved['properties']
+    property: NotionProperty = parse_page_property('Description', properties['Description'])
+    pvalue = property.compile(RowCompiler())
 
-def test_parse_multi_array_rich_text(retrieved_page: Dict[str, Any]):
-    expected = 'A dark green leafy vegetable'
-    properties = retrieved_page['properties']
-    property: NotionProperty = parse_property('Description', properties['Description'])
+    assert expected == pvalue
 
-    assert expected == property.value
-
-def test_parse_single_array_title(retrieved_page: Dict[str, Any]):
-    expected = 'Tuscan kale'
-    properties = retrieved_page['properties']
-    property: NotionProperty = parse_property('Name', properties['Name'])
+def test_parse_single_array_title(page_retrieved: dict):
+    expected = {'title': [{'text': {'content': 'Tuscan kale', 'link': None}}]}
+    properties = page_retrieved['properties']
+    property: NotionProperty = parse_page_property('Name', properties['Name'])
 
     assert expected == property.value
 
 def test_unsupported_property_type(unsupported_prop_type: Dict[str, Any]):
     
     with pytest.raises(TypeError, match="Unexpected or unsupported property type"):
-        property: NotionProperty = parse_property(
+        property: NotionProperty = parse_page_property(
             'Store availability', 
             unsupported_prop_type['Store availability']
         )
+        desc = property.compile(DescriptionCompiler())
 
-def test_compile_page_created(created_page: dict):
-    # created pages return the object and property ids as result
-    expected = (
-        "59833787-2cf9-4fdf-8782-e53db20768a5",         
-        False, 
-        None,                                    
-        '%3AUPp', 
-        'A%40Hk', 
-        'BJXS',                    
-    )
-    page_object: NotionPage = parse_page(created_page)
-    visitor = ToRowVisitor()
-    row = page_object.accept(visitor)
-    assert expected == row
+def test_compile_database_created(created_database: dict):
+    COL_NAME = 0
+    COL_ID   = 1
+    COL_VAL  = 2
+    ex_description = [
+        (SpecialColumns.NO_ID, DBAPITypeCode.ID, None, None, None, None, None, ),
+        (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.CHECKBOX, None, None, None, None, None, ),
+        (SpecialColumns.NO_TITLE, DBAPITypeCode.TITLE, None, None, None, None, None, ),
+        ('id', DBAPITypeCode.NUMBER, None, None, None, None, None, ),
+        ('name', DBAPITypeCode.TITLE, None, None, None, None, None,),
+        ('grade', DBAPITypeCode.RICH_TEXT, None, None, None, None, None, ),
+    ]
+    database_object: NotionDatabase = parse_database(created_database)
+    description = database_object.compile(DescriptionCompiler())
+    row_data = database_object.compile(RowCompiler())
+    assert ex_description == description
+    assert len(row_data) == 6
+    first_col = row_data[0]
+    last_col = row_data[-1]
+
+    assert first_col[COL_NAME] == SpecialColumns.NO_ID
+    assert first_col[COL_ID] is None
+    assert first_col[COL_VAL] == 'bc1211ca-e3f1-4939-ae34-5260b16f627c'
+    assert last_col[COL_NAME] == 'grade'
+    assert last_col[COL_ID] == 'V}lX'
+    assert last_col[COL_VAL] is None
 
 def test_compile_database_retrieved(database_retrieved: dict):
-    expected = (
-        'bc1211ca-e3f1-4939-ae34-5260b16f627c',
-        'Grocery List',
-        False,
-        None,                                   
-        'evWq',                    
-        'V}lX', 
-        'title',
-     )
-    database_object: NotionDatabase = parse_database(database_retrieved)
-    visitor = ToRowVisitor()
-    row = database_object.accept(visitor)
+    # description returned by DBAPI Cursor.description
+    # The DBAPI description provides a sequence of column names and DBAPI types
+    ex_description = [
+        (SpecialColumns.NO_ID, DBAPITypeCode.ID, None, None, None, None, None, ),
+        (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.CHECKBOX, None, None, None, None, None, ),
+        (SpecialColumns.NO_TITLE, DBAPITypeCode.TITLE, None, None, None, None, None, ),
+        ('Price', DBAPITypeCode.NUMBER_DOLLAR, None, None, None, None, None, ),
+        ('Description', DBAPITypeCode.RICH_TEXT, None, None, None, None, None, ),
+        ('Name', DBAPITypeCode.TITLE, None, None, None, None, None,),
+    ]
+
+    notion_database = parse_database(database_retrieved)
+    description = notion_database.compile(DescriptionCompiler())
+    assert ex_description == description
+
+def test_compile_page_created_or_updated(page_created_or_updated: dict):
+    # created pages return the object and property ids as result
+    expected = [
+        (SpecialColumns.NO_ID, '59833787-2cf9-4fdf-8782-e53db20768a5',), 
+        (SpecialColumns.NO_ARCHIVED, False,), 
+        (SpecialColumns.NO_IN_TRASH, None,), 
+        ('Price', 'BJXS',), 
+        ('Description', '_Tc_',), 
+        ('Name', 'title',)
+    ]
+    page_created: NotionPage = parse_page(page_created_or_updated)
+    row = page_created.compile(RowCompiler())
+    assert all([p.is_page_created_or_updated for p in page_created.properties])
     assert expected == row
 
-def test_compile_page_retrieved(retrieved_page: Dict[str, Any]):
-    expected = (
-        '59833787-2cf9-4fdf-8782-e53db20768a5',
-        False, None,
-        2.5,
-        'A dark green leafy vegetable',
-        'Tuscan kale',
-    )
+
+def test_compile_page_retrieved(page_retrieved: Dict[str, Any]):
+    expected = [
+        (SpecialColumns.NO_ID, '59833787-2cf9-4fdf-8782-e53db20768a5',),
+        (SpecialColumns.NO_ARCHIVED, False,),
+        (SpecialColumns.NO_IN_TRASH, None,),
+        ('Price', {'number': 2.5},), 
+        ('Description', {'rich_text': [{'text': {'content': 'A dark ', 'link': None}}, {'text': {'content': 'green', 'link': None}}, {'text': {'content': ' leafy vegetable', 'link': None}}]},), 
+        ('Name', {'title': [{'text': {'content': 'Tuscan kale', 'link': None}}]},),
+    ]
     
-    page_object: NotionPage = parse_page(retrieved_page)
-    visitor = ToRowVisitor()
-    row = page_object.accept(visitor)
+    page_object: NotionPage = parse_page(page_retrieved)
+    row = page_object.compile(RowCompiler())
     assert expected == row
 
-def test_compile_page_updated(updated_page: Dict[str, Any]):
-    expected = (
-        '59833787-2cf9-4fdf-8782-e53db20768a5',
-        False, None,
-        'BJXS', '_Tc_', 'title',                    # no values available, ids are returned
-    )
-    
-    page_object: NotionPage = parse_page(updated_page)
-    visitor = ToRowVisitor()
-    row = page_object.accept(visitor)
-    assert expected == row
+def test_desc_visitor_for_page_created_or_updated(page_created_or_updated: dict):
+    with pytest.raises(CompileError, match='Cannot compile description for a page that has been created or updated.'):
+        page: NotionPage = parse_page(page_created_or_updated)
+        description = page.compile(DescriptionCompiler())
 
-def test_to_desc_visitor_for_database_created(created_database):
-    """
-    Given I have created a table (Notion database)
-    When I cross-compile the parsed JSON object returned by Notion
-    Then I get a database descriptor and the tuples describing the columns have column names and types
-    
-    """
-    expected = (
-        (SpecialColumns.NO_ID, 'string', None, None, None, None, None,),
-        (SpecialColumns.NO_TITLE, 'string', None, None, None, None, None,),
-        (SpecialColumns.NO_ARCHIVED, 'boolean', None, None, None, None, None,),
-        (SpecialColumns.NO_IN_TRASH, 'boolean', None, None, None, None, None),
-        ('id', 'number', 'evWq', None, None, None, None,),
-        ('name', 'title', 'title', None, None, None, None,),
-        ('grade', 'rich_text', 'V}lX', None, None, None, None,),
-    )
-    
-    database: NotionDatabase = parse_database(created_database)
-    visitor = ToDescVisitor()
-    description = database.accept(visitor)
+def test_desc_visitor_for_page_retrieved(page_retrieved: dict):
+    expected = [
+        (SpecialColumns.NO_ID, DBAPITypeCode.ID, None, None, None, None, None,),
+        (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.CHECKBOX, None, None, None, None, None,),
+        (SpecialColumns.NO_IN_TRASH, DBAPITypeCode.CHECKBOX, None, None, None, None, None),
+        ('Price', DBAPITypeCode.NUMBER_WITH_COMMAS, None, None, None, None, None,),
+        ('Description', DBAPITypeCode.RICH_TEXT, None, None, None, None, None,),
+        ('Name', DBAPITypeCode.TITLE, None, None, None, None, None,),
+    ]
 
+    page = parse_page(page_retrieved)
+    description = page.compile(DescriptionCompiler())
     assert expected == description
-
-def test_desc_visitor_for_page_created(created_page: dict):
-    expected = (
-        (SpecialColumns.NO_ID, 'string',  None, None, None, None, None,),
-        (SpecialColumns.NO_ARCHIVED, 'boolean', None, None, None, None, None,),
-        (SpecialColumns.NO_IN_TRASH, 'boolean', None, None, None, None, None),
-        ('id', None, '%3AUPp', None, None, None, None),
-        ('name', None, 'A%40Hk', None, None, None, None),
-        ('grade', None, 'BJXS', None, None, None, None),
-    )
-
-    page: NotionPage = parse_page(created_page)
-    visitor = ToDescVisitor()
-    description = page.accept(visitor)
-
-    assert expected == description
-
-def test_desc_visitor_for_page_retrieved(retrieved_page: dict):
-    expected = (
-        (SpecialColumns.NO_ID, 'string', None, None, None, None, None,),
-        (SpecialColumns.NO_ARCHIVED, 'boolean', None, None, None, None, None,),
-        (SpecialColumns.NO_IN_TRASH, 'boolean', None, None, None, None, None),
-        ('Price', 'number', 'BJXS', None, None, None, None,),
-        ('Description', 'rich_text', '_Tc_', None, None, None, None,),
-        ('Name', 'title', 'title', None, None, None, None,),
-    )
-
-    page: NotionPage = parse_page(retrieved_page)
-    visitor = ToDescVisitor()
-    description = page.accept(visitor)
-
-    assert expected == description
-
-def test_desc_visitor_for_page_updated(updated_page: dict):
-    expected = (
-        (SpecialColumns.NO_ID, 'string', None, None, None, None, None,),
-        (SpecialColumns.NO_ARCHIVED, 'boolean', None, None, None, None, None,),
-        (SpecialColumns.NO_IN_TRASH, 'boolean', None, None, None, None, None),
-        ('Price', None, 'BJXS', None, None, None, None,),
-        ('Description', None, '_Tc_', None, None, None, None,),
-        ('Name', None, 'title', None, None, None, None,),
-    )
-
-    page: NotionPage = parse_page(updated_page)
-    visitor = ToDescVisitor()
-    description = page.accept(visitor)
-
-    assert expected == description
-
-def test_desc_visitor_for_retrieved_database(database_retrieved: dict):
-    expected = (
-        (SpecialColumns.NO_ID, 'string', None, None, None, None, None,),
-        (SpecialColumns.NO_TITLE, 'string', None, None, None, None, None,),
-        (SpecialColumns.NO_ARCHIVED, 'boolean', None, None, None, None, None,),
-        (SpecialColumns.NO_IN_TRASH, 'boolean', None, None, None, None, None),
-        ('Price', 'number.dollar', 'evWq', None, None, None, None,),
-        ('Description', 'rich_text', 'V}lX', None, None, None, None,),
-        ('Name', 'title', 'title', None, None, None, None,),
-    )
-
-    database: NotionDatabase = parse_database(database_retrieved)
-    visitor = ToDescVisitor()
-    description = database.accept(visitor)
-
-    assert expected == description
-    
-
-

@@ -1,56 +1,8 @@
-# notiondbapi/_parser.py
-# Copyright (C) 2025 Gianmarco Antonini
-#
-# This module is part of normlite and is released under the GNU Affero General Public License.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-"""Provide the parser for Notion API objects.
-
-This module implements a simple Notion API objects parser for constructing an AST, which
-is used by the compilers for cross-compilation of Notion JSON objects into tuples of elements.
-
-.. seealso::
-
-    ``normlite``'s :py:mod:`normlite.notiondbapi.compiler` module
-        Documentation of compilers for Notion objects.
-
-    `Notion API Reference Page object <https://developers.notion.com/reference/page>`
-        Documentation of Notion page objects.
-
-.. versionchanged:: 0.8.0
-    Completely redesigned and refactor, this module now provides new parsing capabilities more in line
-    with the DBAPI 2.0 specification.
-
-Important:
-    This module is **private** to the package :mod:`notiondbapi` and it does **not** expose
-    its features outside.
-"""
-
-from normlite.exceptions import NormliteError
-from normlite.notiondbapi._model import NotionDatabase, NotionProperty, NotionPage
+import pdb
+from normlite.future.exceptions import NormliteError
+from normlite.future.notiondbapi._model import NotionDatabase, NotionProperty, NotionPage
 
 def parse_page_property(name: str, payload: dict) -> NotionProperty:
-    """Generate a Notion property object from the corresponding JSON object
-  
-    Args:
-        name (str): The property name (key).
-        payload (dict): The JSON object representing the property.
-
-    Returns:
-        NotionProperty: The parsed Notion property object.
-    """
     pid = payload.get("id")
     ptype = payload.get("type")             # ptype is None for new and updated pages
     property_type = ptype
