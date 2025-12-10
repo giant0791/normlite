@@ -333,6 +333,33 @@ class UUID(TypeEngine):
     def get_col_spec(self, dialect):
         return "UUID"
 
+class PropertyId(TypeEngine):
+    """Type engine class for property identifiers.
+    
+    .. versionadded:: 0.8.0
+        This solves the issue of generating the description for pages that were created or updated.
+        See issue `#136 <https://github.com/giant0791/normlite/issues/136>`.
+
+    """
+    def bind_processor(self, dialect):
+        def process(value: Optional[str]) -> Optional[str]:
+            if value is None:
+                return None
+            return value   # JSON-safe
+        return process
+
+    def result_processor(self, dialect, coltype=None):
+        def process(value: Optional[str]) -> Optional[str]:
+            if value is None:
+                return None
+            return value      
+        return process
+
+    def get_col_spec(self, dialect):
+        return "id"
+
+
+
 class ObjectId(UUID):
     """Special UUID type representing Notion's "id" property.
     
@@ -367,6 +394,7 @@ class ArchivalFlag(Boolean):
 
 type_mapper: dict[str, TypeEngine] = {
     DBAPITypeCode.ID: ObjectId(),
+    DBAPITypeCode.PROPERTY_ID: PropertyId(),
     DBAPITypeCode.TITLE: String(is_title=True),
     DBAPITypeCode.RICH_TEXT: String(),
     DBAPITypeCode.CHECKBOX: Boolean(),

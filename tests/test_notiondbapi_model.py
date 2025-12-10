@@ -473,7 +473,6 @@ def test_compile_page_created_or_updated(page_created_or_updated: dict):
     assert all([p.is_page_created_or_updated for p in page_created.properties])
     assert expected == row
 
-
 def test_compile_page_retrieved(page_retrieved: Dict[str, Any]):
     expected = [
         (SpecialColumns.NO_ID, '59833787-2cf9-4fdf-8782-e53db20768a5',),
@@ -489,9 +488,18 @@ def test_compile_page_retrieved(page_retrieved: Dict[str, Any]):
     assert expected == row
 
 def test_desc_visitor_for_page_created_or_updated(page_created_or_updated: dict):
-    with pytest.raises(CompileError, match='Cannot compile description for a page that has been created or updated.'):
-        page: NotionPage = parse_page(page_created_or_updated)
-        description = page.compile(DescriptionCompiler())
+    expected = [
+        (SpecialColumns.NO_ID, DBAPITypeCode.ID, None, None, None, None, None,),
+        (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.CHECKBOX, None, None, None, None, None,),
+        (SpecialColumns.NO_IN_TRASH, DBAPITypeCode.CHECKBOX, None, None, None, None, None),
+        ('Price', DBAPITypeCode.PROPERTY_ID, None, None, None, None, None,),
+        ('Description', DBAPITypeCode.PROPERTY_ID, None, None, None, None, None,),
+        ('Name', DBAPITypeCode.PROPERTY_ID, None, None, None, None, None,),
+
+    ]
+    page: NotionPage = parse_page(page_created_or_updated)
+    description = page.compile(DescriptionCompiler())
+    assert expected == description
 
 def test_desc_visitor_for_page_retrieved(page_retrieved: dict):
     expected = [

@@ -54,6 +54,7 @@ from abc import ABC
 from typing import Any, Optional, Protocol, Sequence, Union
 
 from normlite.exceptions import UnsupportedCompilationError
+from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 
 class NotionObject(ABC):
     """Base for all Notion model objects.
@@ -164,7 +165,7 @@ class NotionProperty(NotionObject):
     @property
     def is_page_created_or_updated(self) -> bool:
         """``True`` if this property object belongs to a page returned by a pages create or update endpoints."""
-        return self._is_page_property and (self.type is None and self.arg is None and self.value is None)
+        return self._is_page_property and (self.type == DBAPITypeCode.PROPERTY_ID and self.arg is None and self.value is None)
 
     def __repr__(self) -> str:
         return f'Property(name="{self.name}", is_page_property={self._is_page_property}, id="{self.id}", type="{self.type}", value={self.value})'

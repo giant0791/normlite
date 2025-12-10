@@ -111,6 +111,7 @@ of the query results.
 
 """
 
+import pdb
 from typing import Optional, Sequence
 from normlite._constants import SpecialColumns
 from normlite.notiondbapi._model import NotionDatabase, NotionPage, NotionProperty, NotionObjectCompiler
@@ -125,7 +126,8 @@ _typecode_mapper: dict[str, DBAPITypeCode] = {
     'number_with_commas': DBAPITypeCode.NUMBER_WITH_COMMAS,
     'dollar': DBAPITypeCode.NUMBER_DOLLAR,
     'checkbox': DBAPITypeCode.CHECKBOX,
-    'date': DBAPITypeCode.DATE
+    'date': DBAPITypeCode.DATE,
+    'property_id': DBAPITypeCode.PROPERTY_ID
 }
 """Mapping to translate Notion types into DBAPI type codes.
 
@@ -187,7 +189,11 @@ class RowCompiler(NotionObjectCompiler):
             return (prop.name, prop.id, prop.value,)
     
 class DescriptionCompiler(NotionObjectCompiler):
-    """Cross-compile Notion objects into a DBAPI compliant description
+    """Cross-compile Notion objects into a DBAPI compliant description.
+
+    The description for created or updated pages returns the special columns only. 
+    This is because the properties of such pages contain "id" keys only and thus the type
+    cannot be determined. The type of the special columns is known.
     
     .. versionadded: 0.8.0
         This class is a more powerful version of the old visitor implementation.
@@ -200,12 +206,6 @@ class DescriptionCompiler(NotionObjectCompiler):
         return col_desc
 
     def visit_page(self, page: NotionPage) -> Sequence[tuple]:
-        if page.is_page_created_or_updated:
-            raise CompileError(
-                'Cannot compile description for a page that has been created or updated. '
-                'Properties do not have "type" keys.'
-            )
-
         return [
             self._add_not_used_seq((SpecialColumns.NO_ID, DBAPITypeCode.ID,)), 
             self._add_not_used_seq((SpecialColumns.NO_ARCHIVED, DBAPITypeCode.CHECKBOX,)),

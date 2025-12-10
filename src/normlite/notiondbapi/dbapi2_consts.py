@@ -31,6 +31,7 @@ class DBAPITypeCode(StrEnum):
         With this enum the module :mod:`dbapi.py` is more PEP 249 compliant.
     """
     ID                 = 'object_id'
+    PROPERTY_ID        = 'property_id'
     TITLE              = 'title'
     CHECKBOX           = 'checkbox'
     NUMBER             = 'number'

@@ -40,6 +40,7 @@ Important:
 
 from normlite.exceptions import NormliteError
 from normlite.notiondbapi._model import NotionDatabase, NotionProperty, NotionPage
+from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 
 def parse_page_property(name: str, payload: dict) -> NotionProperty:
     """Generate a Notion property object from the corresponding JSON object
@@ -62,11 +63,10 @@ def parse_page_property(name: str, payload: dict) -> NotionProperty:
             is_page_property=True,
             name=name, 
             id=pid,
-            type=None,
+            type=DBAPITypeCode.PROPERTY_ID,         # inferred because the property belongs to a created or updated page
             arg=None,
             value=None
         )
-
 
     value = payload.get(ptype)
     if ptype == 'number':
