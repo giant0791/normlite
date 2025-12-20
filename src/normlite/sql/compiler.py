@@ -20,11 +20,10 @@ import pdb
 from typing import TYPE_CHECKING
 
 from normlite._constants import SpecialColumns
-
 from normlite.sql.base import SQLCompiler
 
 if TYPE_CHECKING:
-    from normlite.sql.ddl import CreateColumn, CreateTable, HasTable
+    from normlite.sql.ddl import CreateColumn, CreateTable, HasTable, ReflectTable
     from normlite.sql.dml import Insert
 
 class NotionCompiler(SQLCompiler):
@@ -286,8 +285,23 @@ class NotionCompiler(SQLCompiler):
             'table_name': hastable.table_name,
             'table_catalog': hastable._table_catalog
         }
-        result_columns = [SpecialColumns.NO_ID.value]
+
+        # IMPORTANT: You need the table_id column which stores the found database's id
+        result_columns = ['table_id']
         return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}
+    
+    def visit_reflect_table(self, reflect_table: ReflectTable) -> dict:
+        operation = dict(endpoint='databases', request='retrieve', template={'database_id': ':database_id'})
+        database_id = reflect_table.get_table().get_oid()
+        parameters = {}
+        if database_id:
+            parameters = {'database_id': database_id}
+            
+        return {
+            'operation': operation, 
+            'parameters': parameters, 
+            'is_ddl': True
+        }     
 
     def visit_insert(self, insert: Insert) -> dict:
         """Compile the ``INSERT`` DML statement.

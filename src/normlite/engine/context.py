@@ -44,16 +44,15 @@ The design of SQL statement execution separates responsibilities cleanly using t
 
 """
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 import copy
 
-from normlite.cursor import CursorResult
 from normlite.exceptions import ArgumentError
-from normlite.notiondbapi.dbapi2 import Cursor
-from normlite.sql.type_api import TypeEngine
 
 if TYPE_CHECKING:
     from normlite.sql.base import Compiled
+    from normlite.engine.cursor import CursorResult
+    from normlite.notiondbapi.dbapi2 import Cursor
 
 class ExecutionContext:
     """Orchestrate binding, compilation, and result setup.
@@ -77,7 +76,7 @@ class ExecutionContext:
         It raises :exc:`normlite.exceptions.ArgumentError` if this is not the case.
 
     """
-    def __init__(self, dbapi_cursor: Cursor, compiled: Compiled):
+    def __init__(self, dbapi_cursor: Cursor, compiled: Compiled, parameters: Optional[dict] = None):
         self._dbapi_cursor = dbapi_cursor
         """The DBAPI cursor holding the result set of the executed statement."""
 
@@ -87,7 +86,13 @@ class ExecutionContext:
         self._element = compiled._element
         """The statement object."""
 
-        self._binds = copy.deepcopy(compiled.params)
+        compiled_params = compiled.params or {}
+        execution_params = parameters or {}
+        
+        self._binds = {
+            **compiled_params,
+            **execution_params
+        }
         """The parameters to be bound."""
 
         self._result = None
@@ -139,7 +144,8 @@ class ExecutionContext:
             # int, float, None …
             return template
         
-    def _setup_cursor_result(self, cursor: Cursor) -> CursorResult:
+    def _setup_cursor_result(self) -> CursorResult:
             """Setup the cursor result to be returned."""
-            self._result = CursorResult(cursor, self._compiled.result_columns())
+            from normlite.engine.cursor import CursorResult
+            self._result = CursorResult(self._dbapi_cursor, self._compiled)
             return self._result

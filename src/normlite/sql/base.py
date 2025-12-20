@@ -19,14 +19,14 @@ from __future__ import annotations
 from abc import ABC
 import json
 import pdb
-from typing import Any, Optional, Protocol, TYPE_CHECKING, Sequence
+from typing import Any, ClassVar, Optional, Protocol, TYPE_CHECKING, Sequence
 
 from normlite.exceptions import UnsupportedCompilationError
 from normlite.engine.context import ExecutionContext
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table
-    from normlite.sql.ddl import CreateTable, CreateColumn, HasTable
+    from normlite.sql.ddl import CreateTable, CreateColumn, HasTable, ReflectTable
     from normlite.sql.dml import Insert
     from normlite.cursor import CursorResult
 
@@ -101,15 +101,17 @@ class ClauseElement(Visitable):
             Compiled: The compiled object rusult of the compilation.
         """
         compiled_dict = compiler.process(self, **kwargs)
-        result_columns = compiled_dict.get('result_columns', None)
-        if result_columns:
-            compiled_dict.pop('result_columns')
-
-        return Compiled(self, compiled_dict, result_columns)
+        result_columns = compiled_dict.pop('result_columns', None)
+        is_ddl = compiled_dict.pop('is_ddl', False)
+        if is_ddl:
+            return DDLCompiled(self, compiled_dict, result_columns)
+        else:
+            return Compiled(self, compiled_dict, result_columns)
 
     def get_table(self) -> Table:
         """Return a collection of columns this clause element refers to."""
         raise NotImplementedError
+    
 
 class Executable(ClauseElement):
     """Provide the interface for all executable SQL statements.
@@ -142,7 +144,7 @@ class Executable(ClauseElement):
         cursor = context._dbapi_cursor
         compiled = context._compiled
         cursor.execute(compiled.as_dict()['operation'], compiled.params)
-        result = context._setup_cursor_result(cursor)
+        result = context._setup_cursor_result()
         self._post_exec(result, context)
         return result
 
@@ -162,8 +164,18 @@ class Compiled:
 
     This class provides an abstraction for compilation results.
 
+    .. versionchanged:: 0.8.0
+        This version introduces the :attr:`is_ddl` class attribute. 
+
     .. versionadded:: 0.7.0
         This version implements the main basic functions for a compiled object.
+    """
+
+    is_ddl: ClassVar[bool] = False
+    """``True`` if the compiled class represents a compiled DDL statement.
+    
+    .. versionadded:: 0.8.0
+        This class attribute is used by :class:`normlite.cursor.CursorResult` to properly process the cursor description and the result set.
     """
 
     def __init__(self, element: ClauseElement, compiled: dict, result_columns: Optional[Sequence[str]] = None):
@@ -201,7 +213,9 @@ class Compiled:
     
     def __repr__(self):
         return f"Compiled {self.element.__class__.__name__}"
-
+    
+class DDLCompiled(Compiled):
+    is_ddl: ClassVar[bool] = True
 
 class SQLCompiler(Protocol):
     """Base class for SQL compilers.
@@ -244,6 +258,9 @@ class SQLCompiler(Protocol):
     def visit_has_table(self, hastable: HasTable) -> dict:
         """Compile the pseudo DDL statement for checking for table existence."""
         ...
+
+    def visit_reflect_table(self, reflect_table: ReflectTable) -> dict:
+        """Compile the DDL statement for reflecting an existing table."""
 
     def visit_insert(self, insert: Insert) -> dict:
         """Compile an insert statement (DML ``INSERT``)."""

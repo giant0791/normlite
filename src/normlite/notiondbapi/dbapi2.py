@@ -277,7 +277,12 @@ class Cursor:
         for page_or_database in results_as_json:
             try: 
                 row = self._parse_object(page_or_database)
-                self._result_set.append(row)
+                if page_or_database['object'] == 'database':
+                    # DDL case: row contains a list of rows describing the database columns
+                    self._result_set.extend(row)
+                else:
+                    # row contain the values of a page
+                    self._result_set.append(row)
             except ValueError as ve:
                 raise InterfaceError(
                     f'Unable to parse object: {page_or_database}, '

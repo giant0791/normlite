@@ -39,6 +39,10 @@ class DBAPITypeCode(StrEnum):
     NUMBER_DOLLAR      = 'dollar'
     RICH_TEXT          = 'rich_text'
     DATE               = 'date'
+    META_COL_NAME      = 'column_name'
+    META_COL_TYPE      = 'column_type'
+    META_COL_ID        = 'column_id'
+    META_COL_VALUE     = 'column_value'
 
 
 

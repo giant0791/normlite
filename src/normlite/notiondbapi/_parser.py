@@ -110,7 +110,7 @@ def parse_database_property(name: str, payload: dict) -> NotionProperty:
         id=pid, 
         type=property_type, 
         arg=parg, 
-        value=None
+        value=value
     )
 
 
