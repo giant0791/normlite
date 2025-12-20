@@ -44,16 +44,15 @@ The design of SQL statement execution separates responsibilities cleanly using t
 
 """
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 import copy
 
-from normlite.cursor import CursorResult
 from normlite.exceptions import ArgumentError
-from normlite.notiondbapi.dbapi2 import Cursor
-from normlite.sql.type_api import TypeEngine
 
 if TYPE_CHECKING:
     from normlite.sql.base import Compiled
+    from normlite.engine.cursor import CursorResult
+    from normlite.notiondbapi.dbapi2 import Cursor
 
 class ExecutionContext:
     """Orchestrate binding, compilation, and result setup.
@@ -63,12 +62,21 @@ class ExecutionContext:
     After execution, it sets up the :class:`normlite.cursor.CursorResult` object to be returned using the owned :class:`normlite.notiondbapi.dbapi2.Cursor` 
     (which contains the result set of the executed statement). 
 
+    .. versionchanged:: 0.8.0
+        :meth:`_bind_params()` now binds values to named arguments by looking up parameters recursively.
+        This enables to support bind parameters for all DDL/DML constructs.
+
+        .. seealso::
+
+            `normlite` SQL compiler :py:mod:`normlite.sql.compiler` module
+                Here you find examples illustrating the code emitted for various DDL/DML constructs.
+
     .. versionadded:: 0.7.0
         :meth:`_bind_params()` expects that parameters have been provided for all columns.
         It raises :exc:`normlite.exceptions.ArgumentError` if this is not the case.
 
     """
-    def __init__(self, dbapi_cursor: Cursor, compiled: Compiled):
+    def __init__(self, dbapi_cursor: Cursor, compiled: Compiled, parameters: Optional[dict] = None):
         self._dbapi_cursor = dbapi_cursor
         """The DBAPI cursor holding the result set of the executed statement."""
 
@@ -78,7 +86,13 @@ class ExecutionContext:
         self._element = compiled._element
         """The statement object."""
 
-        self._binds = compiled.params
+        compiled_params = compiled.params or {}
+        execution_params = parameters or {}
+        
+        self._binds = {
+            **compiled_params,
+            **execution_params
+        }
         """The parameters to be bound."""
 
         self._result = None
@@ -87,11 +101,19 @@ class ExecutionContext:
     def setup(self) -> None:
         """Perform value binding and type adaptation before execution.""" 
         operation = self._compiled.as_dict().get('operation')
-        params = self._binds
         
         if self._binds:
             # bind the parameters into the template and build the payload
-            payload = self._bind_params(operation['template'], params)
+            template = copy.deepcopy(operation['template'])
+            payload = self._bind_params(template, self._binds)
+
+            if self._binds:
+                # not all bind parameters have been used
+                not_bound = [key for key in self._binds.keys()]
+                not_bound_cols = ', '.join(not_bound)
+                raise ArgumentError(
+                    f'Could not bind all columns: {not_bound_cols}.'
+                )
 
         else:
             payload = operation['template']
@@ -101,38 +123,29 @@ class ExecutionContext:
     def _bind_params(self, template: dict, params: dict) -> dict:
         """Helper for binding parameters at runtime."""
 
-        payload = copy.deepcopy(template)
-        properties = payload.get('properties')
-        payload_properties = {}
-        for pname, pvalue in params.items():
-            # params = {'student_id': 123456, 'name': 'Galileo Galilei', 'grade': 'A'}
-            # pname = 'student_id', pvalue = 123456
-            # properties = {{'student_id': {'number': ':student_id'}, {'name': {'title': {'text': {'context': ':name'}}}}, ...}
-            col_type: TypeEngine = self._element.get_table()[pname].type_
-            # col_type = Integer()
+        if isinstance(template, dict):
+            return {k: self._bind_params(v, params) for k, v in template.items()}
 
-            bind_processor = col_type.bind_processor()
-            bound_value = bind_processor(pvalue)
-            # bound_value = {'number': 123456}
-            
-            payload_properties[pname] = bound_value
-            # payload_properties = {'student_id': {'number': 123456}}
+        elif isinstance(template, list):
+            return [self._bind_params(item, params) for item in template]
 
-            properties.pop(pname)
-            # properties = {{'name': {'title': {'text': {'context': ':name'}}}}, ...}
+        elif isinstance(template, str):
+            # parameter placeholder?
+            if template.startswith(":"):
+                name = template[1:]
+                if name not in params:
+                    raise KeyError(f"Missing parameter: {name}")
+                param = params[name]
+                params.pop(name) 
+                return param
+            return template
+
+        else:
+            # int, float, None …
+            return template
         
-        if not properties:
-            # params does not contain all binding values
-            not_bound = [key for key in properties.keys()]
-            not_bound_cols = ', '.join(not_bound)
-            raise ArgumentError(
-                f'Could not bind all columns: {not_bound_cols}.'
-            )
-
-        payload['properties'] = payload_properties
-        return payload
-
-    def _setup_cursor_result(self, cursor: Cursor) -> CursorResult:
+    def _setup_cursor_result(self) -> CursorResult:
             """Setup the cursor result to be returned."""
-            self._result = CursorResult(cursor, self._compiled.result_columns())
+            from normlite.engine.cursor import CursorResult
+            self._result = CursorResult(self._dbapi_cursor, self._compiled)
             return self._result

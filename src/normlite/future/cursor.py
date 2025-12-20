@@ -21,7 +21,7 @@ import pdb
 from typing import Any, List, Mapping, NamedTuple, NoReturn, Sequence, Tuple, Union
 
 from normlite.cursor import CursorResultMetaData
-from normlite.notiondbapi.dbapi2 import Cursor
+from normlite.notiondbapi.dbapi2 import CompositeCursor, Cursor
     
 class _FrozenAttributeMixin:
     """A mixin that prevents setting or deleting attributes listed in self._frozen_attributes.
@@ -114,3 +114,53 @@ class Row(_FrozenAttributeMixin):
 
     def __repr__(self):
         return f"Row({{ {', '.join(f'{k!r}: {self[k]!r}' for k in self._metadata.key_to_index)} }})"
+
+class CompositeCursorResult(CursorResult):
+    """Prototype for new type of cursor result for handling multiple result sets.
+
+    The :class:`CompositeCursorResult` is intended for use with results produced by a
+    multi-statement transaction. In this case, multiple result sets are produced.
+    This class introduces the :meth:`next_result()` method to advance to the next result set.
+    
+    .. versionadded:: 0.7.0
+
+    Warning:
+        Experimental, DON'T USE YET.
+
+    """
+
+    # TODO: 
+    # DECIDE: Composition over inheritance?
+    # THINK: CursorResultBase or better just Result in case of composition?
+    # --------------------------------------------------------------------------------------
+    # 1. Put current CursorResult implementation into CursorResultBase
+    # 2. Refactor CursorResult as subclass of CursorResultBase and use this implementation
+    # 3. Add CursorResultBase.close() and CursorResult.close() methods 
+    # --------------------------------------------------------------------------------------
+    
+    def __init__(self, dbapi_cursor: CompositeCursor):
+        self._dbapi_cursor = dbapi_cursor
+        self._current_result = CursorResult(self._dbapi_cursor._current_cursor)
+
+    def next_result(self) -> bool:
+        """Advance to the next cursor, if available."""
+        if self._dbapi_cursor.nextset():
+            # next result set is available
+            # first close the current cursor result
+            # TODO: Replace with self._current_cursor.close()
+            self._current_result._metadata = _NO_CURSOR_RESULT_METADATA
+
+            # update the current cursor result
+            self._current_result = CursorResult(self._dbapi_cursor._current_cursor)
+            return True
+        
+        # all result sets depleted
+        # TODO: add self.close()
+        return False
+    
+    def one(self) -> Row:
+        return self._current_result.one()
+    
+    def all(self) -> Sequence[Row]:
+        return self._current_result.all()
+

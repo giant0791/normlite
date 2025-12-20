@@ -1,4 +1,4 @@
-# normlite/exceptions.py
+# normlite/future/exceptions.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -15,7 +15,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 """Provide ``normlite`` specific exceptions.
 
 .. versionadded:: 0.5.0

@@ -37,11 +37,16 @@ copyright = f'{datetime.date.today().year} -{author}'
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
-    "myst_nb",
+    #"myst_nb",
     "autoapi.extension",
     "sphinx.ext.napoleon",
-    "sphinx.ext.viewcode"
+    "sphinx.ext.viewcode",
+    "myst_parser",
+    "sphinx_design",
 ]
+
+# use recommended colon fence syntax extension
+myst_enable_extensions = ["colon_fence"]
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
@@ -74,12 +79,16 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # a list of builtin themes.
 #
 #html_theme = 'alabaster'
-html_theme = "sphinx_rtd_theme"
+html_theme = "furo"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
+html_theme_options = {
+    "light_logo": "logo-light-mode.png",
+    "dark_logo": "logo-dark-mode.png",
+}
 
 # Patch CSS for responsive tables in docstrings
 # See RTD issue: https://github.com/readthedocs/sphinx_rtd_theme/issues/1505

@@ -67,18 +67,19 @@ Here a quick example of how to use :class:`Engine` and :class:`Connection`.
 from __future__ import annotations
 from pathlib import Path
 import pdb
-from typing import Any, Optional, TypeAlias, TYPE_CHECKING
+from typing import Any, Optional, Sequence, TypeAlias, TYPE_CHECKING
 from dataclasses import dataclass
 from typing import Optional, Literal, Union
 from urllib.parse import urlparse, parse_qs, unquote
 import uuid
 
-from normlite.cursor import CursorResult
+from normlite.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext
-from normlite.exceptions import ArgumentError, NormliteError
+from normlite.exceptions import ArgumentError
+from normlite.future.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.sql.compiler import NotionCompiler
-from normlite.sql.type_api import Boolean, Number, String
+from normlite.sql.ddl import HasTable, ReflectTable
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, IsolationLevel
 
 if TYPE_CHECKING:
@@ -124,7 +125,8 @@ class Connection:
             (see :class:`normlite.sql.dml.Insert`), ``UPDATE`` or ``DELETE`` return an 
             **empty** result immediately.
 
-        Important:
+ 
+       Important:
             The cursor result object associated with the last :meth:`Connection.execute()` contains
             a single result set of the last statement executed.
 
@@ -142,7 +144,6 @@ class Connection:
 
         compiler = self._engine._sql_compiler
         compiled = stmt.compile(compiler)
-
         ctx = ExecutionContext(self.connection.cursor(), compiled)
         ctx.setup()
 
@@ -491,7 +492,36 @@ class Engine:
     def raw_connection(self) -> Connection:
         """Provide the underlying DBAPI connection."""
         return self._dbapi_connection
-                   
+    
+    def _check_if_exists(self, table_name: str) -> HasTable:
+        """Helper method to check for existence of a table."""
+        # execute the DDL statement
+        with self.connect() as connection:
+            hastable = HasTable(
+                table_name, 
+                self._tables_id, 
+                'normlite' if table_name == 'tables' else self._database
+            )
+
+            # result is not needed, the check result
+            # can be queried using the found() method 
+            _ = connection.execute(hastable)
+
+        return hastable
+        
+    def _reflect_table(self, table: Table) -> ReflectedTableInfo:
+            has_table = self._check_if_exists(table.name)
+            if has_table.found():
+                with self.connect() as connection:
+                    table.set_oid(has_table.get_oid())
+                    reflect_table = ReflectTable(table)
+                    _ = connection.execute(reflect_table)
+
+            else:
+                raise ArgumentError(f"No table found with name: {table.name}")
+            
+            return reflect_table._as_info()
+                       
 class Inspector:
     """Provide facilities for inspecting database objects.
 
@@ -505,8 +535,24 @@ class Inspector:
         self._engine = engine
         """The engine it connects to."""
 
+    def get_columns(self, table_name: str) -> Sequence[ReflectedColumnInfo]:
+        from normlite.sql.schema import Table, MetaData
+        metadata = MetaData()
+        table = Table(table_name, metadata)
+        database_info = self._engine._reflect_table(table)
+        return database_info.get_columns()
+
     def has_table(self, table_name: str) -> bool:
         """Check whether the specified table name exists in the database being inspected.
+
+        This method queries the INFORMATION_SCHEMA.tables database to check existence of the
+        requested table.
+
+        .. versionchanged:: 0.8.0
+            This method uses the new class :class:`normlite.sql.ddl.HasTable` as executable construct.
+
+        .. versionadded:: 0.7.0
+            This method uses internal private helper to query the tables database and check existence.
 
         Args:
             table_name (str): The name of the table to search for.
@@ -517,74 +563,13 @@ class Inspector:
         Returns:
             bool: ``True`` if the table exists, ``False`` otherwise. 
         """
-
-        # query all rows with the table_name in tables
-        result = self._find_table_in_catalog(
-            table_name,
-            'normlite' if table_name == 'tables' else self._engine._database
-        )
-
-        if len(result) > 1:
-            raise NormliteError(f'Internal error. Found: {len(result)} {table_name} in catalog: {self._engine._database}')
-
-        if len(result) == 0:
-            return False
-        
-        return True
+        hastable = self._engine._check_if_exists(table_name)
+        return hastable.found()
+    
+    def reflect_table(self, table: Table) -> ReflectedTableInfo:
+        return self._engine._reflect_table(table)
             
-    def reflect_table(self, table: Table) -> None:
-        """Construct a table by reflecting it from the database.
-
-        Args:
-            table (Table): The table object to reflect.
-
-        Raises:
-            NormliteError: If more than one table exists in the database or if the table does not exist.
-            NormliteError: If an unsupported property type is detected during reflection.
-        """
-        from normlite.sql.schema import Column
-
-        # 1. Get the table id by looking up the table name
-        pages = self._find_table_in_catalog(
-            table.name, 
-            'normlite' if table.name == 'tables' else self._engine._database
-        )
-
-        if len(pages) != 1:
-            raise NormliteError(f'Reflection of multiple or non existing tables not supported yet: {pages}')
-        
-        table_id_prop = pages[0]['properties']['table_id']
-        table._database_id = table_id_prop['rich_text'][0]['text']['content']
-
-        # 2. Get the Notion database object
-        database = self._engine._client.databases_retrieve({'id': table._database_id})
-
-        # 3. Construct the table by parsing the properties
-        for col_name, col_spec in database['properties'].items():
-            col_type = col_spec['type']
-            col = None
-            if col_type in ['title', 'rich_text']:
-                col = Column(col_name, String(is_title=(col_type == 'title')))
-            elif col_type == 'number':
-                format = col_spec.get('format')
-                col = Column(col_name, Number(format)) if format else Column(col_name, Number('number'))
-            elif col_type == 'checkbox':
-                col = Column(col_name, Boolean())
-            else:
-                raise NormliteError(f'Unsupported property type during table reflection: {col_spec}')
-            
-            table.append_column(col)
-
-        # 4. ensure implicit columns are created
-        table._ensure_implicit_columns()
-
-        # 5. reflect primary keys
-        # TODO: Not implemented yet
-
-        # 6. reflect foreign keys
-        # TODO: Not implemented yet
-
-    def get_id(self, has_id: HasIdentifier) -> str:
+    def get_oid(self, has_id: HasIdentifier) -> str:
         """Return the Notion object id for the supplied table.
 
         This method takes a :py:class:`normlite.sql.schema.HasIdentifier` object and returns
@@ -599,12 +584,12 @@ class Inspector:
             inspector.reflect_table(students)
 
             # access the Notion database object identifier
-            print(f'Object ID: "{inspector.get_id(students)}"')     # uuid string
+            print(f'Object ID: "{inspector.get_oid(students)}"')     # uuid string
 
             # access the Notion property identifier associate to a column
             print(
                 f'Property "{students.c.student_name.name}": '
-                f'"{inspector.get_id(students)}"')                  # uuid string associated to the property
+                f'"{inspector.get_oid(students)}"')                  # uuid string associated to the property
 
         .. versionadded:: 0.7.0
             The current version supports both Notion object and property identifiers.

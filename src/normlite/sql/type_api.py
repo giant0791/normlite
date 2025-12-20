@@ -72,8 +72,11 @@ Usage::
 from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Callable, List, Literal, Optional, Protocol, TypeAlias, Union
+import pdb
+from typing import Any, Callable, List, Literal, Optional, Protocol, Type, TypeAlias, Union
 import uuid
+
+from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 
 class TypeEngine(Protocol):
     """Base class for all Notion/SQL datatypes.
@@ -140,6 +143,15 @@ class Number(TypeEngine):
             number = value['number']
             return Decimal(number) if self.format != "number" else int(number)
         return process
+
+    def __repr__(self) -> str:
+        kwarg = []
+        if self.format:
+            kwarg.append('format')
+        
+        return "Number(%s)" % ", ".join(
+            ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
+        )
 
 class Integer(Number):
     """Covenient type engine for Notion "number" objetcs with format = "number".
@@ -235,10 +247,10 @@ class Boolean(TypeEngine):
         return process
 
     def result_processor(self, dialect, coltype=None):
-        def process(value: Optional[dict]) -> Optional[bool]:
+        def process(value: Optional[bool]) -> Optional[bool]:
             if value is None:
                 return None
-            return bool(value['checkbox'])
+            return value
         return process
     
 class Date(TypeEngine):
@@ -321,6 +333,33 @@ class UUID(TypeEngine):
     def get_col_spec(self, dialect):
         return "UUID"
 
+class PropertyId(TypeEngine):
+    """Type engine class for property identifiers.
+    
+    .. versionadded:: 0.8.0
+        This solves the issue of generating the description for pages that were created or updated.
+        See issue `#136 <https://github.com/giant0791/normlite/issues/136>`.
+
+    """
+    def bind_processor(self, dialect):
+        def process(value: Optional[str]) -> Optional[str]:
+            if value is None:
+                return None
+            return value   # JSON-safe
+        return process
+
+    def result_processor(self, dialect, coltype=None):
+        def process(value: Optional[str]) -> Optional[str]:
+            if value is None:
+                return None
+            return value      
+        return process
+
+    def get_col_spec(self, dialect):
+        return "id"
+
+
+
 class ObjectId(UUID):
     """Special UUID type representing Notion's "id" property.
     
@@ -353,3 +392,14 @@ class ArchivalFlag(Boolean):
             return bool(value)
         return process
 
+type_mapper: dict[str, TypeEngine] = {
+    DBAPITypeCode.ID: ObjectId(),
+    DBAPITypeCode.PROPERTY_ID: PropertyId(),
+    DBAPITypeCode.TITLE: String(is_title=True),
+    DBAPITypeCode.RICH_TEXT: String(),
+    DBAPITypeCode.CHECKBOX: Boolean(),
+    DBAPITypeCode.NUMBER: Integer(),
+    DBAPITypeCode.NUMBER_WITH_COMMAS: Numeric(),
+    DBAPITypeCode.NUMBER_DOLLAR: Money('dollar'),
+    DBAPITypeCode.DATE: Date()
+}

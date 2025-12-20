@@ -26,12 +26,26 @@ from enum import StrEnum
 
 class SpecialColumns(StrEnum):
     """Define enum constants for column names to access Notion-specific columns ("special columns").
+
+    .. versionchanged:: 0.8.0
+        This enum class adds parent id as important attribute for Notion pages and databases, so that these ids are
+        readily available in their ``normlite`` counterparts.
     
     .. versionadded:: 0.7.0
 
     """
     NO_ID = "_no_id"
     """Notion "id" key for all objects."""
+
+    NO_PID = "_no_parent_id"
+    """Parent identifier for a Notion entity.
+    
+    The parent identifier is the "database_id" key for pages belonging to a database and
+    the "page_id" for databases.
+
+    .. versionadded:: 0.8.0
+    
+    """
 
     NO_TITLE = "_no_title"
     """Notion "title" key for database objects."""

@@ -138,7 +138,7 @@ def test_cursor_as_iterable(dbapi_cursor: Cursor):
     # and then the cursor does not returns rows anymore
     assert not result.returns_rows
 
-def test_cursor_one(dbapi_cursor: Cursor):
+def test_cursor_one_for_rows(dbapi_cursor: Cursor):
     # Given a CursorResult that returns rows and only one row is in the result set
     make_result_set(dbapi_cursor)
 
@@ -160,6 +160,40 @@ def test_cursor_one(dbapi_cursor: Cursor):
     # Any subsequent call raises an error
     with pytest.raises(ResourceClosedError, match='closed state'):
         row = result.first()
+
+def test_cursor_one_for_table(dbapi_cursor: Cursor):
+    # Given a database result is expected, but none was found
+    dbapi_cursor._parse_result_set({
+        "object": "list",
+        "results": [{
+            "object": "database",
+            "id": "680dee41-b447-451d-9d36-c6eaff13fb46",
+                "archived": False,
+                "in_trash": False,
+            "parent": {
+                "type": "page_id",
+                "page_id": "ac1211ca-e3f1-9939-ae34-5260b16f628c"
+            },
+            "title": [
+                {
+                    "type": "text",
+                    "text": {"content": "students"}
+                }
+            ],
+            "properties": {
+                "id": {"id": "evWq", "name": "id", "type": "number", "number": {}},
+                "name": {"id": "title", "name": "name", "type": "title", "title": {}},
+                "grade": {"id": "V}lX", "name": "grade", "type": "rich_text", "rich_text": {}},
+            },           
+        }]
+    })
+
+    result = CursorResult(dbapi_cursor)
+    
+    map = row.mapping()
+    pdb.set_trace()
+
+
 
 def test_result_was_required_but_none_found(dbapi_cursor: Cursor):
     # Given a database result is expected, but none was found

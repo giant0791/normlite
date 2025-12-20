@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 import pdb
-from typing import Any, Generator
+from typing import Any, Generator, Literal
 import uuid
 from flask.testing import FlaskClient
 import pytest
@@ -57,3 +57,24 @@ def dbapi_connection(proxy_client: FlaskClient, client: AbstractNotionClient) ->
 @pytest.fixture(scope="function")
 def dbapi_cursor(client: AbstractNotionClient) -> Cursor:
     return Cursor(client)
+
+# =================================================================
+# Helper accessor methods
+# =================================================================
+class PropertyAccessor:
+    """Helper class for accessing property values to be used in a session fixture."""
+    def get_text_property_value(self, name: str, type_: Literal['title', 'rich_text'], obj: dict) -> str:
+        return obj['properties'][name][type_][0]['text']['content']
+
+    def get_number_property_value(self, name: str, obj: dict) -> int:
+        return obj['properties'][name]['number']
+
+    def get_db_prop_type(self, name: str, obj: dict) -> str:
+        return obj['properties'][name].get('type', None)
+
+    def get_page_title(self, obj: dict) -> str:
+        return obj['properties']['Title']['title'][0]['text']['content']
+
+@pytest.fixture(scope='session')
+def paccessor() -> PropertyAccessor:
+    return PropertyAccessor()

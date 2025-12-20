@@ -1,4 +1,4 @@
-# Release Workflow
+# Contributing
 
 ```{include} ../CONTRIBUTING.md
 ```

@@ -95,58 +95,40 @@ def for_page_queries(client: InMemoryNotionClient, page_payloads: list[dict]) ->
 
     return client
 
-def get_name(obj: dict) -> str:
-    return obj['properties']['name']['title'][0]['text']['content']
-
-def get_id(obj: dict) -> int:
-    return obj['properties']['id']['number']
-
-def get_grade(obj: dict) -> str:
-    pass
-
-def get_db_prop_type(name: str, obj: dict) -> str:
-    return obj['properties'][name].get('type', None)
-
-def get_page_title(obj: dict) -> str:
-    return obj['properties']['Title']['title'][0]['text']['content']
-
-# =================================================================
-# Helper methods
-# =================================================================
-def test_client_store_correctly_initialized(fresh_client: InMemoryNotionClient):
+def test_client_store_correctly_initialized(fresh_client: InMemoryNotionClient, paccessor):
     root_page_id = InMemoryNotionClient._ROOT_PAGE_ID_
     
     assert fresh_client._store_len() == 1
-    assert get_page_title(fresh_client._get_by_id(root_page_id)) == InMemoryNotionClient._ROOT_PAGE_TITLE_
+    assert paccessor.get_page_title(fresh_client._get_by_id(root_page_id)) == InMemoryNotionClient._ROOT_PAGE_TITLE_
 
-def test_client_get_by_id(for_page_queries: InMemoryNotionClient):
+def test_client_get_by_id(for_page_queries: InMemoryNotionClient, paccessor):
     newton = for_page_queries._get_by_id('680dee41-b447-451d-9d36-c6eaff13fb45')
     galileo = for_page_queries._get_by_id('680dee41-b447-451d-9d36-c6eaff13fb46')
     ada = for_page_queries._get_by_id('680dee41-b447-451d-9d36-c6eaff13fb47')
     assert newton
     assert galileo
     assert ada
-    assert get_name(newton) == 'Isaac Newton'
-    assert get_id(newton) == 12345
-    assert get_name(galileo) == 'Galileo Galilei'
-    assert get_id(galileo) == 67890
-    assert get_name(ada) == 'Ada Lovelace'
-    assert get_id(ada) == 32165
+    assert paccessor.get_text_property_value('name', 'title', newton) == 'Isaac Newton'
+    assert paccessor.get_number_property_value('id', newton) == 12345
+    assert paccessor.get_text_property_value('name', 'title', galileo) == 'Galileo Galilei'
+    assert paccessor.get_number_property_value('id', galileo) == 67890
+    assert paccessor.get_text_property_value('name', 'title', ada) == 'Ada Lovelace'
+    assert paccessor.get_number_property_value('id', ada) == 32165
 
-def test_client_add_page(fresh_client: InMemoryNotionClient, database_payload: dict, page_payload: dict):
+def test_client_add_page(fresh_client: InMemoryNotionClient, database_payload: dict, page_payload: dict, paccessor):
     fresh_client._add('database', database_payload, page_payload['parent']['database_id'])
     page = fresh_client._add('page', page_payload)
     retrieved_page = fresh_client._get_by_id(page['id'])
-    assert get_name(retrieved_page) == "Ada Lovelace"
-    assert get_id(retrieved_page) == 32165
+    assert paccessor.get_text_property_value('name', 'title', retrieved_page) == "Ada Lovelace"
+    assert paccessor.get_number_property_value('id', retrieved_page) == 32165
 
-def test_client_add_database(fresh_client: InMemoryNotionClient, database_payload: dict):
+def test_client_add_database(fresh_client: InMemoryNotionClient, database_payload: dict, paccessor):
     database = fresh_client._add('database', database_payload)
     property_names = list(database['properties'].keys())
-    property_types = [get_db_prop_type(prop_name, database) for prop_name in property_names]
+    property_types = [paccessor.get_db_prop_type(prop_name, database) for prop_name in property_names]
     assert all(property_types)
     retrieved_db = fresh_client._get_by_id(database['id'])
-    retrieved_db_prop_types = [get_db_prop_type(prop_name, retrieved_db) for prop_name in property_names]
+    retrieved_db_prop_types = [paccessor.get_db_prop_type(prop_name, retrieved_db) for prop_name in property_names]
     assert all(retrieved_db_prop_types)
     assert retrieved_db_prop_types == property_types
 
@@ -249,7 +231,7 @@ def test_client_databases_retrieve(client: InMemoryNotionClient, database_payloa
     assert client._store_len() == 2 + 1
     assert database_retrieved == client._store[database_created['id']]
 
-def test_client_databases_query(for_page_queries: InMemoryNotionClient):
+def test_client_databases_query(for_page_queries: InMemoryNotionClient, paccessor):
     assert for_page_queries._store_len() == 5
     results = for_page_queries.databases_query({
         'database_id': _STUDENTS_ID_,
@@ -274,8 +256,8 @@ def test_client_databases_query(for_page_queries: InMemoryNotionClient):
     })
     assert results['object'] == 'list'
     assert len(results['results']) == 2
-    assert get_name(results['results'][0]) == 'Isaac Newton'
-    assert get_name(results['results'][1]) == 'Galileo Galilei'
+    assert paccessor.get_text_property_value('name', 'title', results['results'][0]) == 'Isaac Newton'
+    assert paccessor.get_text_property_value('name', 'title',   results['results'][1]) == 'Galileo Galilei'
 
 # =================================================================
 # Endpoint: databases, error cases

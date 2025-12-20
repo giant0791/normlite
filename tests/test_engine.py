@@ -156,6 +156,7 @@ def test_engine_inspect_has_table_user(engine: Engine, inspector: Inspector):
 def test_engine_inspector_reflect_sys_table(engine: Engine, inspector: Inspector):
     metadata = MetaData()
     tables: Table = Table('tables', metadata)
+    #pdb.set_trace()
     inspector.reflect_table(tables)
 
     assert tables._database_id == engine._tables_id

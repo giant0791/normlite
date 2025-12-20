@@ -2,6 +2,7 @@ import copy
 import pdb
 from typing import Any, Dict
 import pytest
+from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.notiondbapi.dbapi2 import Cursor, InterfaceError
 
 @pytest.fixture
@@ -23,7 +24,10 @@ def new_pg_payload() -> Dict[str,Any]:
 
 @pytest.fixture
 def new_db_payload() -> dict:
-    parent = dict(type = 'page_id', page_id = 'd9824bdc-8445-4325-ce8b-5b47500af6ce')
+    # IMPORTANT
+    # use the client's root page id otherwise every database creat operation will fail with:
+    # Could not find page with ID: ...
+    parent = dict(type = 'page_id', page_id = InMemoryNotionClient._ROOT_PAGE_ID_)
     payload = {
         'title': [
         {
@@ -52,15 +56,19 @@ def test_dbapi_cursor_execute_create_databases(dbapi_cursor: Cursor, new_db_payl
     dbapi_cursor.execute(operation)
     assert dbapi_cursor.rowcount == 1
     row = dbapi_cursor.fetchone()      
-    database_id = row[0]
-    database_name = row[1]
+    
+    # IMPORTANT: unwrap because the row elements are 3-value tuples
+    _, _, database_id = row[0]
+    _, _, database_name = row[1]
 
-    operation = dict(endpoint='databases', request='retrieve', payload={'id': database_id})
+    operation = dict(endpoint='databases', request='retrieve', payload={'database_id': database_id})
     dbapi_cursor.execute(operation)
     assert dbapi_cursor.rowcount == 1
     row = dbapi_cursor.fetchone()
-    assert row[0] == database_id
-    assert row[1] == database_name 
+    _, _, ret_database_id = row[0]
+    _, _, ret_database_name = row[1]
+    assert ret_database_id == database_id
+    assert ret_database_name == database_name 
     
 
 def test_dbapi_cursor_execute_create_pages(dbapi_cursor: Cursor, new_db_payload: dict, new_pg_payload: dict):
@@ -68,12 +76,13 @@ def test_dbapi_cursor_execute_create_pages(dbapi_cursor: Cursor, new_db_payload:
     dbapi_cursor.execute(operation)
     assert dbapi_cursor.rowcount == 1
     row = dbapi_cursor.fetchone()      
-    database_id = row[0]
+    _, _, database_id = row[0]
 
     parent = dict(type='database_id', database_id=database_id)
     updated_payload = update_payload(new_pg_payload, 'parent', parent)
     operation = dict(endpoint = 'pages', request = 'create', payload=updated_payload)
-    rows = dbapi_cursor.execute(operation).fetchall()
+    dbapi_cursor.execute(operation)
+    rows = dbapi_cursor.fetchall()
     assert len(rows) == 1
 
 def test_dbapi_cursor_execute_update_pages(dbapi_cursor: Cursor, new_db_payload: dict, new_pg_payload: dict):
@@ -82,23 +91,25 @@ def test_dbapi_cursor_execute_update_pages(dbapi_cursor: Cursor, new_db_payload:
     dbapi_cursor.execute(operation)
     assert dbapi_cursor.rowcount == 1
     row = dbapi_cursor.fetchone()      
-    database_id = row[0]
+    _, _, database_id = row[0]
 
     # 2. add a page
     parent = dict(type='database_id', database_id=database_id)
     updated_payload = update_payload(new_pg_payload, 'parent', parent)
     operation = dict(endpoint = 'pages', request = 'create', payload=updated_payload)
     row = dbapi_cursor.execute(operation).fetchone()
-    page_id = row[0]
-    archived = row[1]
+
+    # IMPORTANT: unwrap because the row elements are 2-value tuples for pages
+    _, page_id = row[0]
+    _, archived = row[1]
 
     # 3. modify page attribute archived to True
-    data = dict(archived=True)
-    payload = dict(id=page_id, data=data)
+    payload = dict(page_id=page_id, archived=True)
     operation = dict(endpoint='pages', request='update', payload=payload)
-    row = dbapi_cursor.execute(operation)
+    dbapi_cursor.execute(operation)
     row = dbapi_cursor.fetchone()
-    assert archived != row[1]
+    _, new_archived = row[1]
+    assert archived != new_archived
 
 def test_dbapi_cursor_no_properties(dbapi_cursor: Cursor, new_db_payload: dict):
     payload_wo_properties = copy.deepcopy(new_db_payload)

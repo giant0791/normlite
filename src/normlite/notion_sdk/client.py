@@ -393,7 +393,7 @@ class InMemoryNotionClient(AbstractNotionClient):
         """Return the first occurrence in the store of page or database with the passed title."""
         # TODO: rewrite using filter()
         if self._store_len() > 0:
-            for o in self._store['store']:
+            for o in self._store.values():
                 if o['object'] == type and type == 'database':
                     object_title = o.get('title')
                     if object_title and object_title[0]['text']['content'] == title:
@@ -474,10 +474,26 @@ class InMemoryNotionClient(AbstractNotionClient):
                 )
                 
             for prop_name, prop_obj in properties.items():
-                # page objects just contain the key 'id' in their properties from the schema object
-                prod_id = schema['properties'][prop_name]['id']
-                prop_obj['id'] =  prod_id
-                ret_new_pg['properties'][prop_name]['id'] = prod_id
+                # Bug fix: the page properties contain the following keys: "id", "type" and the value of "type" as key to represent the value
+                # Example:
+                # "Last ordered": {
+                #   "id": "Jsfb",
+                #   "type": "date",
+                #   "date": {
+                #       "start": "2022-02-22",
+                #       "end": null,
+                #       "time_zone": null
+                #   }
+                # }
+
+                # construct new page object for the store
+                prop_id = schema['properties'][prop_name]['id']
+                prop_type = schema['properties'][prop_name]['type']
+                prop_obj['id'] =  prop_id
+                prop_obj['type'] = prop_type
+
+                # constrcut the page object to be returned
+                ret_new_pg['properties'][prop_name]['id'] = prop_id
         else:
             # parent is a page, generate new property ids
             # TODO: add test for availability of page under page_id
@@ -486,6 +502,8 @@ class InMemoryNotionClient(AbstractNotionClient):
             # See https://developers.notion.com/reference/post-page#choosing-a-parent
             for prop_name, prop_obj in properties.items():
                 prop_type = list(prop_obj.keys())
+                
+                # new pages with parent = page have only the 'title' type
                 prop_obj['id'] = 'title' if prop_type[0] == 'title' else self._generate_property_id()
                 ret_new_pg['properties'][prop_name]['id'] = prop_obj['id']
 
