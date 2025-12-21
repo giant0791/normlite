@@ -239,18 +239,28 @@ class Boolean(TypeEngine):
     def get_col_spec(self, dialect=None):
         return {"checkbox": {}}
 
-    def bind_processor(self, dialect):
+    def bind_processor(self, dialect=None):
         def process(value: Optional[bool]) -> Optional[dict]:
             if value is None:
                 return None
+            if isinstance(value, str):
+                # bind parameter
+                return {"checkbox": value}
             return {"checkbox": bool(value)}
         return process
 
-    def result_processor(self, dialect, coltype=None):
-        def process(value: Optional[bool]) -> Optional[bool]:
+    def result_processor(self, dialect=None, coltype=None):
+        def process(value: Optional[Union[dict, bool]]) -> Optional[bool]:
             if value is None:
                 return None
-            return value
+            
+            if isinstance(value, dict):
+                return value.get('checkbox', None)
+            
+            if isinstance(value, bool):
+                return value
+
+            raise TypeError('Boolean must be a dictionary with a key called "checkbox".')
         return process
     
 class Date(TypeEngine):
@@ -258,10 +268,13 @@ class Date(TypeEngine):
     
     .. versionadded:: 0.7.0
     """
-    def bind_processor(self, dialect):
+    def bind_processor(self, dialect=None):
         def process(value: Optional[_DateTimeRangeType]) -> Optional[dict]:
             if value is None:
                 return None
+            
+            if isinstance(value, str) and value.startswith(':'):
+                return {"date": value}
             
             if isinstance(value, tuple):
                 start, end = value
@@ -285,7 +298,7 @@ class Date(TypeEngine):
             raise TypeError("Date must be datetime or (start, end) tuple")
         return process
 
-    def result_processor(self, dialect, coltype=None):
+    def result_processor(self, dialect=None, coltype=None):
         def process(value: Optional[dict]) -> Optional[Union[tuple, datetime]]:
             if value is None:
                 return None
@@ -357,8 +370,6 @@ class PropertyId(TypeEngine):
 
     def get_col_spec(self, dialect):
         return "id"
-
-
 
 class ObjectId(UUID):
     """Special UUID type representing Notion's "id" property.
