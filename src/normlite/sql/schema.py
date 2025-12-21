@@ -232,7 +232,14 @@ class Table(HasIdentifier):
         This version fully supports the main use cases.
 
     """
-    def __init__(self, name: str, metadata: MetaData, *columns: Column, **kwargs: Any):
+    def __init__(
+            self, 
+            name: str, 
+            metadata: MetaData, 
+            *columns: Column,
+            autoload_with: Optional[Engine] = None, 
+            **kwargs: Any
+    ):
         self.name = name
         """Table name."""
 
@@ -270,12 +277,11 @@ class Table(HasIdentifier):
         This is the Notion page id containing all the tables which belong to the same database. 
         """
 
-        if kwargs:
+        if autoload_with:
             if columns:
-                raise ArgumentError('Columns cannot be specified when using autoload_with keyword argument')
+                raise ArgumentError('Columns cannot be specified when using "autoload_with" keyword argument')
             
-            if 'autoload_with' in kwargs:
-                self._autoload(kwargs['autoload_with'])
+            self._autoload(autoload_with)
         
         if columns:
             # add user-declared columns
@@ -384,10 +390,7 @@ class Table(HasIdentifier):
         self._primary_key = PrimaryKeyConstraint(*table_pks)
 
     def _autoload(self, engine: Engine) -> None:
-        from normlite.engine.base import Inspector
-
-        inspector: Inspector = engine.inspect()
-        inspector.reflect_table(self)
+        engine._reflect_table(self)
 
     def _set_table_oid(self, oid: str) -> None:
         self._database_id = oid
