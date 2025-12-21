@@ -244,3 +244,25 @@ def test_reflect_user_table_w_ddl(inspector: Inspector):
     assert 'is_active' in students.c
     assert len(students.primary_key.c) == 1
     assert students.primary_key.c._no_id == students.c._no_id
+
+def test_reflect_sys_tables_w_autoload(engine: Engine):
+    metadata = MetaData()
+    sys_tables = Table('tables', metadata, autoload_with=engine)
+    assert 'table_name' in sys_tables.c
+    assert 'table_schema' in sys_tables.c
+    assert 'table_catalog' in sys_tables.c
+    assert 'table_id' in sys_tables.c
+    assert len(sys_tables.primary_key.c) == 1
+    assert sys_tables.primary_key.c._no_id == sys_tables.c._no_id
+
+def test_reflect_user_table_w_autoload(engine: Engine):
+    create_students_db(engine)
+    metadata = MetaData()
+    students = Table('students', metadata, autoload_with=engine)
+
+    assert 'student_id' in students.c
+    assert 'name' in students.c
+    assert 'grade' in students.c
+    assert 'is_active' in students.c
+    assert len(students.primary_key.c) == 1
+    assert students.primary_key.c._no_id == students.c._no_id
