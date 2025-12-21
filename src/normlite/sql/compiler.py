@@ -329,7 +329,7 @@ class NotionCompiler(SQLCompiler):
         
         properties = {}
         for col in insert._table.c:
-            if col.name.startswith('_no_'):
+            if col.name in SpecialColumns.values():
                 continue
             bind_proc = col.type_.bind_processor()
             # bind the named parameter not the value yet

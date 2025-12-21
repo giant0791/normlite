@@ -10,89 +10,84 @@ Note:
 import pdb
 import pytest
 from normlite._constants import SpecialColumns
-from normlite.engine.base import Connection
-from normlite.engine.context import ExecutionContext
-from normlite.sql.compiler import NotionCompiler
+from normlite.engine.base import Connection, Engine, create_engine
+from normlite.engine.cursor import CursorResult
+from normlite.engine.row import Row
 from normlite.sql.dml import Insert, insert
 from normlite.sql.ddl import CreateTable
-from normlite.sql.schema import MetaData, Column, Table
-from normlite.sql.type_api import Integer, String
+from normlite.sql.schema import MetaData, Table
 
 @pytest.fixture
-def metadata() -> MetaData:
-    return MetaData()
-
-@pytest.fixture
-def students(metadata: MetaData) -> Table:
-    students = Table(
-        'students',
-        metadata,
-        Column('student_id', Integer()),
-        Column('name', String(is_title=True)),
-        Column('grade', String())
+def engine() -> Engine:
+    return create_engine(
+        'normlite:///:memory:',
+        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
+        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
+        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
+        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
     )
 
-    # IMPORTANT: mock the parent id to avoid "page_id" in the parent object to be None
-    students._database_id = '12345678-0000-0000-1111-123456789012'
-    return students
+def create_students_db(engine: Engine) -> None:
+    # create a new table students in memory
+    db = engine._client._add('database', {
+        'parent': {
+            'type': 'page_id',
+            'page_id': engine._db_page_id
+        },
+        "title": [
+            {
+                "type": "text",
+                "text": {
+                    "content": "students",
+                    "link": None
+                },
+                "plain_text": "students",
+                "href": None
+            }
+        ],
+        'properties': {
+            'student_id': {'number': {}},
+            'name': {'title': {}},
+            'grade': {'rich_text': {}},
+            'is_active': {'checkbox': {}}
+        }
+    })
 
-def test_insert_can_compile(students: Table, paccessor):
-    expected_params = {
-        'database_id': '12345678-0000-0000-1111-123456789012',
-        'student_id': 1234567,
-        'name': 'Galileo Galilei', 
+    # add the students to tables
+    engine._client._add('page', {
+        'parent': {
+            'type': 'database_id',
+            'database_id': engine._tables_id
+        },
+        'properties': {
+            'table_name': {'title': [{'text': {'content': 'students'}}]},
+            'table_schema': {'rich_text': [{'text': {'content': ''}}]},
+            'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
+            'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]}
+        }
+    })
+
+def test_insert_can_add_new_row(engine: Engine):
+    expected_values= {
+        'student_id': 1,
+        'name': 'Galileo Galilei',
         'grade': 'A',
-     }
-    stmt: Insert = insert(students).values(**expected_params)
-    compiled = stmt.compile(NotionCompiler())
-    compile_dict = compiled.as_dict()
-    context = ExecutionContext(None, compiled)
-    context.setup()
-    payload = compile_dict['operation']['payload']
+        'is_active': False
+    }
+    create_students_db(engine)
+    metadata = MetaData()
+    students = Table('students', metadata, autoload_with=engine)
+    assert 'is_active' in students.c
 
-    # check compilation
-    assert 'operation' in compile_dict
-    assert compile_dict['operation']['endpoint'] == 'pages'
-    assert compiled.params == expected_params
+    stmt: Insert = insert(students).values(**expected_values)
+    with engine.connect() as connection:
+        result: CursorResult = connection.execute(stmt)
+        row: Row = result.one()
+        assert row._no_id
+        with pytest.raises(AttributeError):
+            # This should raise an AttributeError as special columns only are returned
+            assert row.student_id
 
-    # check parameter bind
-    assert payload['parent']['database_id'] == expected_params['database_id']
-    assert paccessor.get_number_property_value('student_id', payload) == expected_params['student_id']
-    assert paccessor.get_text_property_value('name', 'title', payload) == expected_params['name']
-    assert paccessor.get_text_property_value('grade', 'rich_text', payload) == expected_params['grade']
-
-@pytest.mark.skip(reason='Requires refactoring and new info_schema.')
-def test_connection_exec_insert(connection: Connection, students: Table):
-    # add the students table
-    stmt = CreateTable(students)
-    connection.execute(stmt)
-
-    # insert a row
-    stmt: Insert = insert(students).values(student_id=1234567, name='Galileo Galilei', grade='A')
-    result = connection.execute(stmt)
-    row = result.one()
-    client = connection._engine._client
-
-    assert row[SpecialColumns.NO_ID]
-    assert client._get(row[0])
-
-@pytest.mark.skip(reason='returning clause not implemented in the executable.')
-def test_connection_exec_insert_returning(connection: Connection, students: Table):
-    # add the students table
-    stmt = CreateTable(students)
-    connection.execute(stmt)
-
-    # insert a row
-    stmt: Insert = insert(students).values(student_id=1234567, name='Galileo Galilei', grade='A')
-    stmt.returning(students.c.student_id, students.c.name)
-    result = connection.execute(stmt)
-    row = result.one()
-    client = connection._engine._client
-
-    assert row[SpecialColumns.NO_ID]
-    assert client._get(row[0])
-    assert row.student_id == 1234567
-    assert row.name == 'Galileo Galilei'
 
 
 

@@ -21,8 +21,6 @@ import pdb
 from types import MappingProxyType
 from typing import Any, Optional, Self, Sequence, Union, TYPE_CHECKING
 from normlite._constants import SpecialColumns
-from normlite.cursor import CursorResult
-from normlite.engine.context import ExecutionContext
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable
 
