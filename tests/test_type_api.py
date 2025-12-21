@@ -82,8 +82,8 @@ from normlite import (
     )
 ])
 def test_typeengine_datatypes(type_obj: TypeEngine, no_obj: dict, py_obj: object, no_type: dict):
-    bind = type_obj.bind_processor(dialect=None)
-    result = type_obj.result_processor(dialect=None, coltype=None)
+    bind = type_obj.bind_processor()
+    result = type_obj.result_processor()
 
     bound = bind(py_obj)
     restored = result(no_obj)
@@ -91,5 +91,5 @@ def test_typeengine_datatypes(type_obj: TypeEngine, no_obj: dict, py_obj: object
     assert result(bind(py_obj)) == py_obj   
     assert bound == no_obj
     assert restored == py_obj
-    assert type_obj.get_col_spec(dialect=None) == no_type
+    assert type_obj.get_col_spec() == no_type
 
