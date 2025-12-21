@@ -7,6 +7,7 @@
 
 get-started.md
 user-guide.md
+advanced-guide.md
 autoapi/index
 ```
 
