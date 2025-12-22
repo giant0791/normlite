@@ -73,7 +73,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 import pdb
-from typing import Any, Callable, List, Literal, Optional, Protocol, TypeAlias, Union, TYPE_CHECKING
+from typing import Any, Callable, List, Literal, NoReturn, Optional, Protocol, TypeAlias, Union, TYPE_CHECKING
 import uuid
 
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
@@ -102,6 +102,14 @@ class TypeEngine(Protocol):
     
     def __repr__(self):
         return self.__class__.__name__
+    
+    def _raise_if_val_not_dict(self, value: dict) -> NoReturn:
+        if not isinstance(value, dict):
+                raise ValueError(
+                    f'{self.get_col_spec()} value must be a dict. '
+                    f'Value type is: {value.__class__.__name__}'
+                )
+
     
 _NumericType: TypeAlias = Union[int, Decimal]
 """Type alias for numeric datatypes. It is not part of the public API."""
@@ -133,21 +141,30 @@ class Number(TypeEngine):
         self.format = format
 
     def get_col_spec(self):
-        return {"number": {"format": self.format}}
+        return "number"
 
     def bind_processor(self):
-        def process(value: Optional[_NumericType]) -> Optional[dict]:
+        def process(value: Optional[Union[_NumericType, str]]) -> Optional[dict]:
             if value is None:
                 return None
-            return {"number": value}
+            return {self.get_col_spec(): value}
         return process
 
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[_NumericType]:
             if value is None:
                 return None
-            number = value['number']
-            return Decimal(number) if self.format != "number" else int(number)
+            
+            self._raise_if_val_not_dict(value)
+            num_value = value.get('number')
+            if isinstance(num_value, Decimal):
+                num_value = float(num_value)            
+            if not isinstance(num_value, (float, int,)):
+                raise ValueError(
+                    'Number value can be either float or int. '
+                    f'Value type is: {num_value.__class__.__name__}'
+                )
+            return Decimal(num_value) if isinstance(num_value, float) else int(num_value)
         return process
 
     def __repr__(self) -> str:
@@ -212,24 +229,29 @@ class String(TypeEngine):
         def process(value: Optional[str]) -> Optional[List[dict]]:
             if value is None:
                 return None
-            block = {}
-            block['text'] = {'content': str(value)}
-            text_type = list(self.get_col_spec())[-1]
-            return {text_type: [block]}
+            return {self.get_col_spec(): [{'text': {'content': str(value)}}]}
         return process
 
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[str]:
             if value is None:
                 return None
-             # Notion rich_text is a list of text objects → extract 'text'
-            text_type = list(self.get_col_spec())[-1]
-            text_value = value.get(text_type) 
+            
+            self._raise_if_val_not_dict(value)
+            text_value = value.get(self.get_col_spec())
+            
+            if not isinstance(text_value, list):
+                raise ValueError(
+                    f'{self.get_col_spec()} value must be a list. '
+                    f'Value type is: {value.__class__.__name__}'
+                )
+            
+            # Notion rich_text is a list of text objects → extract 'text'
             return "".join([block.get("text").get("content") for block in text_value])
         return process
 
     def get_col_spec(self):
-        return {"title": {}} if self.is_title else {"rich_text": {}}
+        return "title" if self.is_title else "rich_text"
     
     def __repr__(self) -> str:
         kwarg = []
@@ -249,30 +271,25 @@ class Boolean(TypeEngine):
     comparator_factory = BooleanComparator
 
     def get_col_spec(self):
-        return {"checkbox": {}}
+        return "checkbox"
 
     def bind_processor(self):
         def process(value: Optional[bool]) -> Optional[dict]:
             if value is None:
                 return None
             if isinstance(value, str):
-                # bind parameter
-                return {"checkbox": value}
-            return {"checkbox": bool(value)}
+                # bind parameter: :is_active or :param_01
+                return {self.get_col_spec(): value}
+            return {self.get_col_spec(): bool(value)}
         return process
 
     def result_processor(self):
-        def process(value: Optional[Union[dict, bool]]) -> Optional[bool]:
+        def process(value: Optional[dict]) -> Optional[bool]:
             if value is None:
                 return None
             
-            if isinstance(value, dict):
-                return value.get('checkbox', None)
-            
-            if isinstance(value, bool):
-                return value
-
-            raise TypeError('Boolean must be a dictionary with a key called "checkbox".')
+            self._raise_if_val_not_dict(value)
+            return value.get('checkbox', None)
         return process
     
 class Date(TypeEngine):
@@ -286,7 +303,7 @@ class Date(TypeEngine):
                 return None
             
             if isinstance(value, str) and value.startswith(':'):
-                return {"date": value}
+                return {self.get_col_spec(): value}
             
             if isinstance(value, tuple):
                 start, end = value
@@ -299,15 +316,21 @@ class Date(TypeEngine):
                 if not end and not isinstance(end, datetime):
                     raise ValueError(f'End date must be a valid datetime, received: {end}')
 
-                return {"date": {
-                    "start": start.isoformat(),
-                    "end": end.isoformat() if end else None,
-                }}
+                return {
+                    self.get_col_spec(): {
+                        "start": start.isoformat(),
+                        "end": end.isoformat() if end else None
+                    }
+                }
             
             if isinstance(value, datetime):
-                return {"date": {"start": value.isoformat(), "end": None}}
+                return { 
+                    self.get_col_spec(): {
+                        "start": value.isoformat(), 
+                        "end": None
+                    }
+                }
             
-            raise TypeError("Date must be datetime or (start, end) tuple")
         return process
 
     def result_processor(self):
@@ -315,24 +338,24 @@ class Date(TypeEngine):
             if value is None:
                 return None
             
-            date_value = value.get("date")
-            if isinstance(value, dict):
-                start = datetime.fromisoformat(date_value["start"]) if date_value.get("start") else None
-                end = datetime.fromisoformat(date_value["end"]) if date_value.get("end") else None
-                restored = (start, end)
+            self._raise_if_val_not_dict(value)
+            date_value = value.get('date')
+
+            start = datetime.fromisoformat(date_value["start"]) if date_value.get("start") else None
+            end = datetime.fromisoformat(date_value["end"]) if date_value.get("end") else None
+            restored = (start, end)
+        
+            if restored == (None, None):
+                return None
             
-                if restored == (None, None):
-                    return None
-                
-                if restored[1] is None:
-                    return restored[0]
-                
-                return restored
+            if restored[1] is None:
+                return restored[0]
             
+            return restored
         return process
 
     def get_col_spec(self):
-        return {"date": {}}
+        return "date"
 
 class UUID(TypeEngine):
     """Base type engine class for UUID ids.

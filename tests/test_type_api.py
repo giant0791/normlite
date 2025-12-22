@@ -24,49 +24,49 @@ from normlite import (
         Integer(), 
         {"number": 25}, 
         25, 
-        {"number": {"format": "number"}}
+        "number"
     ),
     (
         Numeric(), 
         {"number": 2.5}, 
         Decimal(2.5), 
-        {"number": {"format": "number_with_commas"}}
+        "number"
     ), 
     (
         Money('euro'), 
         {"number": 1.8}, 
         Decimal(1.8), 
-        {"number": {"format": "euro"}}
+        "number"
     ),
     (
         Boolean(), 
         {"checkbox" : True}, 
         True, 
-        {"checkbox": {}}
+        "checkbox"
     ),
     (
         Date(), 
         {"date": {"start": "2023-02-23T00:00:00", "end": None}}, 
         datetime(2023, 2, 23), 
-        {"date": {}}
+        "date"
     ),
     (
         Date(), 
         {"date": {"start": "2023-02-23T00:00:00", "end": "2023-04-23T00:00:00"}}, 
         (datetime(2023,2,23), datetime(2023,4,23)), 
-        {"date": {}}
+        "date"
     ),
     (
         String(), 
         {'rich_text':[{"text": {"content": "A nice, woderful day with you"}}]},
         "A nice, woderful day with you", 
-        {"rich_text": {}}
+        "rich_text"
     ),
     (
         String(is_title=True), 
         {'title':[{"text": {"content": "A nice, woderful day with you"}}]}, 
         "A nice, woderful day with you", 
-        {"title": {}}
+        "title"
     ),
     (
         ObjectId(),
