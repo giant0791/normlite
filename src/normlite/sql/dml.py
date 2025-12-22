@@ -167,6 +167,12 @@ class Insert(Executable):
             raise KeyError(f'Missing value for: {ke.args[0]}')
         
         return MappingProxyType(kv_pairs)
+    
+class Select(Executable):
+    pass
+
+def select(table: Table) -> Select:
+    pass
         
 
 def insert(table: Table) -> Insert:

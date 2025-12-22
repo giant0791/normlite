@@ -57,10 +57,12 @@ You can inspect the table's primary key constraints by calling the :attr:`primar
 """
 from __future__ import annotations
 from abc import ABC, abstractmethod
+import pdb
 from typing import Any, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, Tuple, Union, overload, TYPE_CHECKING
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError
+from normlite.sql.elements import ColumnElement, Comparator
 from normlite.sql.type_api import ArchivalFlag, ObjectId, TypeEngine
 
 if TYPE_CHECKING:
@@ -82,7 +84,7 @@ class HasIdentifier(ABC):
     def set_oid(self, id_: str) -> None:
         """Common API to set the object identifier (oid)."""
 
-class Column(HasIdentifier):
+class Column(HasIdentifier, ColumnElement):
     """A single table column specifying the type and its constraints.
 
     The :class:`Column` objects model Notion properties. You define a column by assigning it a name
@@ -102,6 +104,8 @@ class Column(HasIdentifier):
     .. versionadded:: 0.7.0
 
     """
+    __visit_name__ = 'column'
+
     def __init__(self, name: str, type_: TypeEngine, id_: str = None, primary_key: bool = False):
         self.name = name
         """The column name. This must be unique within the same table."""
@@ -115,6 +119,8 @@ class Column(HasIdentifier):
         .. versionadded:: 0.7.0
         """
 
+        self.comparator = self.type_.comparator_factory(self)
+
         self.primary_key = primary_key
         """Whether this column is a primary key or not."""
 
@@ -123,6 +129,16 @@ class Column(HasIdentifier):
         Initially ``None``, it is set when this column is appended to its table.
         See :meth:`Table.append_column()` for more details.
         """
+
+    def __eq__(self, other) -> Comparator: 
+        return self.comparator.__eq__(other)
+    
+    def __ne__(self, other) -> Comparator: 
+        return self.comparator.__ne__(other)
+    
+    def __hash__(self) -> int:
+        return hash((self.name, self.parent.name, self._id, self.type_))
+
 
     def get_oid(self) -> str:
         return self._id

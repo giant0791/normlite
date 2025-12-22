@@ -18,7 +18,6 @@
 from __future__ import annotations
 from abc import ABC
 import json
-import pdb
 from typing import Any, ClassVar, Optional, Protocol, TYPE_CHECKING, Sequence
 
 from normlite.exceptions import UnsupportedCompilationError
@@ -28,7 +27,8 @@ if TYPE_CHECKING:
     from normlite.sql.schema import Table
     from normlite.sql.ddl import CreateTable, CreateColumn, HasTable, ReflectTable
     from normlite.sql.dml import Insert
-    from normlite.cursor import CursorResult
+    from normlite.sql.elements import ColumnElement
+    from normlite.engine.cursor import CursorResult
 
 class Visitable(ABC):
     """Base class for any AST node that can be "visited" by a compiler.
@@ -264,4 +264,7 @@ class SQLCompiler(Protocol):
 
     def visit_insert(self, insert: Insert) -> dict:
         """Compile an insert statement (DML ``INSERT``)."""
+        ...
+
+    def visit_column_element(self, column: ColumnElement) -> dict:
         ...

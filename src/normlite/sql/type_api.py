@@ -73,16 +73,20 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 import pdb
-from typing import Any, Callable, List, Literal, Optional, Protocol, Type, TypeAlias, Union
+from typing import Any, Callable, List, Literal, Optional, Protocol, TypeAlias, Union, TYPE_CHECKING
 import uuid
 
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+from normlite.sql.elements import BooleanComparator, Comparator, NumberComparator, CheckboxComparator, ObjectIdComparator, StringComparator
+
 
 class TypeEngine(Protocol):
     """Base class for all Notion/SQL datatypes.
     
     .. versionadded:: 0.7.0
     """
+
+    comparator_factory: Comparator
 
     def bind_processor(self) -> Optional[Callable[[Any], Any]]:
         """Python → SQL/Notion (prepare before sending)."""
@@ -115,6 +119,8 @@ class Number(TypeEngine):
     
     .. versionadded:: 0.7.0
     """
+
+    comparator_factory = NumberComparator
 
     def __init__(self, format: str):
         """
@@ -195,6 +201,9 @@ class String(TypeEngine):
 
     .. versionadded:: 0.7.0
     """
+
+    comparator_factory = StringComparator
+
     def __init__(self, is_title: bool = False):
         self.is_title = is_title
         """``True`` if it is a "title", ``False`` if it is a "richt_text"."""
@@ -236,6 +245,9 @@ class Boolean(TypeEngine):
     
     .. versionadded:: 0.7.0
     """
+
+    comparator_factory = BooleanComparator
+
     def get_col_spec(self):
         return {"checkbox": {}}
 
@@ -376,6 +388,8 @@ class ObjectId(UUID):
     
     .. versionadded:: 0.7.0
     """
+    comparator_factory = ObjectIdComparator
+
     def get_col_spec(self):
         return "id"
 

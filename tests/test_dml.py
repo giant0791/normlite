@@ -13,9 +13,12 @@ from normlite._constants import SpecialColumns
 from normlite.engine.base import Connection, Engine, create_engine
 from normlite.engine.cursor import CursorResult
 from normlite.engine.row import Row
-from normlite.sql.dml import Insert, insert
+from normlite.sql.base import Compiled
+from normlite.sql.dml import Insert, insert, select
 from normlite.sql.ddl import CreateTable
-from normlite.sql.schema import MetaData, Table
+from normlite.sql.elements import BinaryExpression, BindParameter
+from normlite.sql.schema import Column, MetaData, Table
+from normlite.sql.type_api import String
 
 @pytest.fixture
 def engine() -> Engine:
@@ -88,6 +91,29 @@ def test_insert_can_add_new_row(engine: Engine):
             # This should raise an AttributeError as special columns only are returned
             assert row.student_id
 
+@pytest.mark.skip(reason='Integration test, not ready yet.')
+def test_select_w_simple_condition(engine: Engine):
+    expected_values= {
+        'student_id': 1,
+        'name': 'Galileo Galilei',
+        'grade': 'A',
+        'is_active': False
+    }
+    create_students_db(engine)
+    metadata = MetaData()
+    students = Table('students', metadata, autoload_with=engine)
+    assert 'is_active' in students.c
 
+    stmt: Insert = insert(students).values(**expected_values)
+    connection = engine.connect()
+    connection.execute(stmt)
 
+    select_stmt = select(students).where(students.c.name == 'Galileo Galilei')
 
+def test_compile_simple_col_expr(engine: Engine):
+    metadata = MetaData()
+    students = Table('students', metadata, Column('name', String(is_title=True)))
+    exp: BinaryExpression = students.c.name == 'Galileo Galilei'
+    assert isinstance(exp, BinaryExpression)
+    assert isinstance(exp.value, BindParameter)
+    assert exp.value.effective_value == {'title': [{'text': {'content': 'Galileo Galilei'}}]}
