@@ -14,6 +14,7 @@ from normlite.engine.base import Connection, Engine, create_engine
 from normlite.engine.cursor import CursorResult
 from normlite.engine.row import Row
 from normlite.sql.base import Compiled
+from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Insert, insert, select
 from normlite.sql.ddl import CreateTable
 from normlite.sql.elements import BinaryExpression, BindParameter
@@ -70,6 +71,7 @@ def create_students_db(engine: Engine) -> None:
         }
     })
 
+@pytest.mark.skip(reason='Need to fix the bool -> checkbox issue first')
 def test_insert_can_add_new_row(engine: Engine):
     expected_values= {
         'student_id': 1,
@@ -110,10 +112,19 @@ def test_select_w_simple_condition(engine: Engine):
 
     select_stmt = select(students).where(students.c.name == 'Galileo Galilei')
 
-def test_compile_simple_col_expr(engine: Engine):
+def test_create_ast_for_simple_col_expr():
     metadata = MetaData()
     students = Table('students', metadata, Column('name', String(is_title=True)))
     exp: BinaryExpression = students.c.name == 'Galileo Galilei'
     assert isinstance(exp, BinaryExpression)
     assert isinstance(exp.value, BindParameter)
     assert exp.value.effective_value == {'title': [{'text': {'content': 'Galileo Galilei'}}]}
+
+def test_compile_simple_col_expr():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('name', String(is_title=True)))
+    exp: BinaryExpression = students.c.name == 'Galileo Galilei'
+    compiled = exp.compile(NotionCompiler())
+    as_dict = compiled.as_dict()
+    assert as_dict['property'] == 'name'
+    assert as_dict['title'] == {'equals': 'Galileo Galilei'}

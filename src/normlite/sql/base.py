@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from normlite.sql.schema import Table
     from normlite.sql.ddl import CreateTable, CreateColumn, HasTable, ReflectTable
     from normlite.sql.dml import Insert
-    from normlite.sql.elements import ColumnElement
+    from normlite.sql.elements import ColumnElement, BinaryExpression
     from normlite.engine.cursor import CursorResult
 
 class Visitable(ABC):
@@ -267,4 +267,7 @@ class SQLCompiler(Protocol):
         ...
 
     def visit_column_element(self, column: ColumnElement) -> dict:
+        ...
+
+    def visit_binary_expression(self, expression: BinaryExpression) -> dict:
         ...

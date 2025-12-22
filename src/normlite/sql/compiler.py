@@ -25,6 +25,7 @@ from normlite.sql.base import SQLCompiler
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateColumn, CreateTable, HasTable, ReflectTable
     from normlite.sql.dml import Insert
+    from normlite.sql.elements import ColumnElement, BinaryExpression, BindParameter
 
 class NotionCompiler(SQLCompiler):
     """Notion compiler for SQL statements.
@@ -345,4 +346,33 @@ class NotionCompiler(SQLCompiler):
         # IMPORTANT: concatenate the values tuple containing the special columns WITH the returning tuple.
         # This ensures that the values for the special columns are always available even if the returning tuple is ().
         result_columns = SpecialColumns.values() + insert._returning
-        return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}    
+        return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}  
+
+    def visit_binary_expression(self, expression: BinaryExpression) -> dict:
+        return {
+            "property": expression.column.name,
+            **self._compile_type_filter(
+                expression.column,
+                expression.operator,
+                expression.value
+            )
+        }
+
+    def _compile_type_filter(
+            self, 
+            column: ColumnElement, 
+            operator: str, 
+            bindparam: BindParameter
+    ) -> dict:
+        type_ = column.type_
+        notion_type = type_.get_col_spec()
+        # IMPORTANT: Note the inverted logic.
+        # Here the bind_processor() should be used instead, but the property objects in a
+        # Notion filter need the opposite: the result_processor() applied to the effective value.
+        value = type_.result_processor()(bindparam.effective_value)
+
+        return {
+            notion_type: {
+                operator: value
+            }
+        }

@@ -31,6 +31,8 @@ class ColumnElement(ClauseElement):
 
     __visit_name__ = 'column_element'
 
+    name: str
+
     type_: TypeEngine
     """The type of this :class:`ColumnElement` object."""
 
@@ -57,6 +59,8 @@ class ColumnExpression(ClauseElement):
       - logical: AND / OR
       - property filter
     """
+    __visit_name__ = 'column_expression'
+
     pass
 
 class UnaryExpression(ColumnElement):
@@ -66,7 +70,14 @@ class UnaryExpression(ColumnElement):
         self.element = element
 
 class BinaryExpression(ColumnExpression):
-    def __init__(self, column, operator: str, value):
+    __visit_name__ = 'binary_expression'
+
+    def __init__(
+            self, 
+            column: ColumnElement, 
+            operator: str, 
+            value: Any
+    ):
         self.column = column              # Column
         self.operator = operator          # Notion operator string
         self.value = value                # BindParam
