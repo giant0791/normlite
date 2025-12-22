@@ -19,7 +19,7 @@
 from __future__ import annotations
 from enum import Enum
 import pdb
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol
 
 from normlite.sql.base import ClauseElement
 
@@ -96,7 +96,26 @@ class BooleanClauseList(ColumnElement):
             else:
                 self.clauses.append(clause)
 
+class HasComparator(Protocol):
+    comparator: ComparatorProtocol
+
+class ComparatorProtocol(Protocol):
+    def __eq__(self, other: Any): 
+        ...
+    
+    def __ne__(self, other: Any): 
+        ...
+    
+    def in_(self, other: Any): 
+        ...
+
+    def __lt__(self, other):
+        ...
+
 class ColumnOperators:
+    if TYPE_CHECKING:
+        comparator: ComparatorProtocol  # for type checkers only
+
     def __eq__(self, other):
         return self.operate("eq", other)
 
@@ -105,6 +124,9 @@ class ColumnOperators:
 
     def __lt__(self, other):
         return self.operate("lt", other)
+    
+    def in_(self, other):
+        return self.comparator.in_(other)
 
     def operate(self, op, other):
         raise NotImplementedError
@@ -134,34 +156,31 @@ class CheckboxComparator(Comparator):
         )
 
 class StringComparator(Comparator):
-    def operate(self, op, other):
-        if op not in ("eq", "ne", "contains"):
-            raise TypeError('String only supports equality and contains')
-        
-        notion_op = "equals" if op == "eq" else "does_not_equal"
-
-        return BinaryExpression(
-            column=self.expr,
-            operator=notion_op,
-            value=coerce_to_bindparam(other, self.type_),
-        )
+    OPS = {
+        "eq": "equals",
+        "ne": "does_not_equal",
+        "in": "contains", 
+    }
+    def operate(self, op, other) -> Optional[BinaryExpression]:
+        try:
+            notion_op = self.OPS[op]
+            return BinaryExpression(
+                column=self.expr,
+                operator=notion_op,
+                value=coerce_to_bindparam(other, self.type_),
+            )
+        except KeyError as ke:
+            raise TypeError(f'Unsopported or unknown string operator: {str(ke)}') from ke
 
     def __eq__(self, other) -> BinaryExpression:
-        return self._binary("equals", other)
+        return self.operate("eq", other)
     
     def __ne__(self, other):
-        return self._binary("does_not_equal", other)
+        return self.operate("ne", other)
 
-    def contains(self, other) -> BinaryExpression:
-        return self._binary("contains", other)
-
-    def _binary(self, notion_op, other) -> BinaryExpression:
-        return BinaryExpression(
-            column=self.expr,
-            operator=notion_op,
-            value=coerce_to_bindparam(other, self.type_),
-        )
-
+    def in_(self, other) -> BinaryExpression:
+        return self.operate("in", other)
+    
 class NumberComparator(Comparator):
     OPS = {
         "eq": "equals",

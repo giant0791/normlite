@@ -62,7 +62,7 @@ from typing import Any, Dict, Iterable, Iterator, List, NoReturn, Optional, Set,
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError
-from normlite.sql.elements import ColumnElement, Comparator
+from normlite.sql.elements import ColumnElement, Comparator, ColumnOperators
 from normlite.sql.type_api import ArchivalFlag, ObjectId, TypeEngine
 
 if TYPE_CHECKING:
@@ -84,7 +84,7 @@ class HasIdentifier(ABC):
     def set_oid(self, id_: str) -> None:
         """Common API to set the object identifier (oid)."""
 
-class Column(HasIdentifier, ColumnElement):
+class Column(HasIdentifier, ColumnElement, ColumnOperators):
     """A single table column specifying the type and its constraints.
 
     The :class:`Column` objects model Notion properties. You define a column by assigning it a name

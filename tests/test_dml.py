@@ -120,7 +120,7 @@ def test_create_ast_for_simple_col_expr():
     assert isinstance(exp.value, BindParameter)
     assert exp.value.effective_value == {'title': [{'text': {'content': 'Galileo Galilei'}}]}
 
-def test_compile_simple_col_expr():
+def test_compile_binexp_title_eq():
     metadata = MetaData()
     students = Table('students', metadata, Column('name', String(is_title=True)))
     exp: BinaryExpression = students.c.name == 'Galileo Galilei'
@@ -128,3 +128,23 @@ def test_compile_simple_col_expr():
     as_dict = compiled.as_dict()
     assert as_dict['property'] == 'name'
     assert as_dict['title'] == {'equals': 'Galileo Galilei'}
+
+def test_compile_binexp_title_neq():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('name', String(is_title=True)))
+    exp: BinaryExpression = students.c.name != 'Galileo Galilei'
+    compiled = exp.compile(NotionCompiler())
+    as_dict = compiled.as_dict()
+    assert as_dict['property'] == 'name'
+    assert as_dict['title'] == {'does_not_equal': 'Galileo Galilei'}
+
+def test_compile_binexp_title_in():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('name', String(is_title=True)))
+    exp: BinaryExpression = students.c.name.in_('Galileo')
+    compiled = exp.compile(NotionCompiler())
+    as_dict = compiled.as_dict()
+    assert as_dict['property'] == 'name'
+    assert as_dict['title'] == {'contains': 'Galileo'}
+
+
