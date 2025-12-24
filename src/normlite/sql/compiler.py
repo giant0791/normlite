@@ -20,7 +20,7 @@ import pdb
 from typing import TYPE_CHECKING
 
 from normlite._constants import SpecialColumns
-from normlite.sql.base import SQLCompiler
+from normlite.sql.base import CompilerState, SQLCompiler
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateColumn, CreateTable, HasTable, ReflectTable
@@ -199,6 +199,22 @@ class NotionCompiler(SQLCompiler):
                 'result_columns': ['_no_id']
             }
     """
+
+    def __init__(self):
+        self._compiler_state = CompilerState()
+        self._bind_counter = 0
+
+    def _next_bind_key(self) -> str:
+        key = f"param_{self._bind_counter}"
+        self._bind_counter += 1
+        return key
+
+    def _add_bindparam(self, bindparam: BindParameter) -> str:
+        key = self._next_bind_key()
+        self._compiler_state.execution_binds[key] = bindparam
+        return key
+
+
     def visit_create_table(self, ddl_stmt: CreateTable) -> dict:
         """Compile a ``CREATE TABLE`` statement.
         
@@ -366,13 +382,14 @@ class NotionCompiler(SQLCompiler):
     ) -> dict:
         type_ = column.type_
         notion_type = type_.get_col_spec()
-        # IMPORTANT: Note the inverted logic.
-        # Here the bind_processor() should be used instead, but the property objects in a
-        # Notion filter need the opposite: the result_processor() applied to the effective value.
-        value = type_.result_processor()(bindparam.effective_value)
 
+        # allocate placeholder
+        key = self._add_bindparam(bindparam)
+
+        # IMPORTANT: No processing here.
+        # Compiler must stay syntactic, binding (and processing) is done at execution time
         return {
             notion_type: {
-                operator: value
+                operator: f':{key}'
             }
         }

@@ -7,6 +7,7 @@ Compilation correctness means that tests check
 Note:
     DML construct execution is not in the test scope here.
 """
+from datetime import datetime
 import pdb
 import pytest
 from normlite._constants import SpecialColumns
@@ -19,7 +20,7 @@ from normlite.sql.dml import Insert, insert, select
 from normlite.sql.ddl import CreateTable
 from normlite.sql.elements import BinaryExpression, BindParameter
 from normlite.sql.schema import Column, MetaData, Table
-from normlite.sql.type_api import String
+from normlite.sql.type_api import Date, String
 
 @pytest.fixture
 def engine() -> Engine:
@@ -147,4 +148,29 @@ def test_compile_binexp_title_in():
     assert as_dict['property'] == 'name'
     assert as_dict['title'] == {'contains': 'Galileo'}
 
+def test_compile_binexp_title_not_in():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('name', String(is_title=True)))
+    exp: BinaryExpression = students.c.name.not_in('Galileo')
+    compiled = exp.compile(NotionCompiler())
+    as_dict = compiled.as_dict()
+    assert as_dict['property'] == 'name'
+    assert as_dict['title'] == {'does_not_contain': 'Galileo'}
 
+def test_compile_binexp_title_endswith():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('name', String(is_title=True)))
+    exp: BinaryExpression = students.c.name.endswith('lilei')
+    compiled = exp.compile(NotionCompiler())
+    as_dict = compiled.as_dict()
+    assert as_dict['property'] == 'name'
+    assert as_dict['title'] == {'ends_with': 'lilei'}
+
+def test_compile_binexp_date_before():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('start_date', Date()))
+    exp: BinaryExpression = students.c.start_date.before(datetime.now().date())
+    compiled = exp.compile(NotionCompiler())
+    as_dict = compiled.as_dict()
+    assert as_dict['property'] == 'start_date'
+    assert as_dict['date']['before'] == ':param_0'

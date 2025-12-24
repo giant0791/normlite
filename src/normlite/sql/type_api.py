@@ -77,7 +77,7 @@ from typing import Any, Callable, List, Literal, NoReturn, Optional, Protocol, T
 import uuid
 
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
-from normlite.sql.elements import BooleanComparator, Comparator, NumberComparator, CheckboxComparator, ObjectIdComparator, StringComparator
+from normlite.sql.elements import BooleanComparator, Comparator, NumberComparator, DateComparator, CheckboxComparator, ObjectIdComparator, StringComparator
 
 
 class TypeEngine(Protocol):
@@ -297,6 +297,9 @@ class Date(TypeEngine):
     
     .. versionadded:: 0.7.0
     """
+
+    comparator_factory = DateComparator
+
     def bind_processor(self):
         def process(value: Optional[_DateTimeRangeType]) -> Optional[dict]:
             if value is None:

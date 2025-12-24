@@ -109,7 +109,16 @@ class ComparatorProtocol(Protocol):
     def in_(self, other: Any): 
         ...
 
+    def not_in(self, other):
+        ...
+
+    def endswith(self, other):
+        ...
+
     def __lt__(self, other):
+        ...
+
+    def before(self, other):
         ...
 
 class ColumnOperators:
@@ -127,6 +136,15 @@ class ColumnOperators:
     
     def in_(self, other):
         return self.comparator.in_(other)
+    
+    def not_in(self, other):
+        return self.comparator.not_in(other)
+    
+    def endswith(self, other):
+        return self.comparator.endswith(other)
+    
+    def before(self, other):
+        return self.comparator.before(other)
 
     def operate(self, op, other):
         raise NotImplementedError
@@ -160,6 +178,8 @@ class StringComparator(Comparator):
         "eq": "equals",
         "ne": "does_not_equal",
         "in": "contains", 
+        "ni": "does_not_contain",
+        "ew": "ends_with"
     }
     def operate(self, op, other) -> Optional[BinaryExpression]:
         try:
@@ -170,7 +190,7 @@ class StringComparator(Comparator):
                 value=coerce_to_bindparam(other, self.type_),
             )
         except KeyError as ke:
-            raise TypeError(f'Unsopported or unknown string operator: {str(ke)}') from ke
+            raise TypeError(f'Unsupported or unknown string operator: {str(ke)}') from ke
 
     def __eq__(self, other) -> BinaryExpression:
         return self.operate("eq", other)
@@ -180,6 +200,12 @@ class StringComparator(Comparator):
 
     def in_(self, other) -> BinaryExpression:
         return self.operate("in", other)
+    
+    def not_in(self, other) -> BinaryExpression:
+        return self.operate("ni", other)
+    
+    def endswith(self, other) -> BinaryExpression:
+        return self.operate("ew", other)
     
 class NumberComparator(Comparator):
     OPS = {
@@ -201,6 +227,20 @@ class NumberComparator(Comparator):
             self.expr,
             notion_op,
             coerce_to_bindparam(other, self.type_),
+        )
+    
+class DateComparator(Comparator):
+    def before(self, other):
+        return self.operate('before', other)
+
+    def operate(self, op, other):
+        if op != 'before':
+            raise TypeError(f'Invalid date operator: {op}')
+        
+        return BinaryExpression(
+            self.expr,
+            op,
+            coerce_to_bindparam(other, self.type_)
         )
 
 
@@ -225,8 +265,11 @@ class BindParameter(ClauseElement):
 
     @property
     def effective_value(self):
+        pdb.set_trace()
         raw = self.callable_() if self.callable_ else self.value
         bind_processor = self.type.bind_processor()
+        if bind_processor is None:
+            return raw
         return bind_processor(raw)
 
 

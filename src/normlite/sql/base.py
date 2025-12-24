@@ -17,6 +17,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from abc import ABC
+from dataclasses import dataclass, field
 import json
 from typing import Any, ClassVar, Optional, Protocol, TYPE_CHECKING, Sequence
 
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from normlite.sql.schema import Table
     from normlite.sql.ddl import CreateTable, CreateColumn, HasTable, ReflectTable
     from normlite.sql.dml import Insert
-    from normlite.sql.elements import ColumnElement, BinaryExpression
+    from normlite.sql.elements import ColumnElement, BinaryExpression, BindParameter
     from normlite.engine.cursor import CursorResult
 
 class Visitable(ABC):
@@ -159,6 +160,13 @@ class Executable(ClauseElement):
         """
         ...
 
+@dataclass
+class CompilerState:
+    is_ddl: bool = False
+    params: dict[str, Any] = field(default_factory=dict)
+    execution_binds:  dict[str, BindParameter] = field(default_factory=dict)
+    result_columns: list = field(default_factory=list)
+
 class Compiled:
     """The result of compiling :class:`ClauseElement` subclasses.
 
@@ -217,6 +225,7 @@ class Compiled:
 class DDLCompiled(Compiled):
     is_ddl: ClassVar[bool] = True
 
+
 class SQLCompiler(Protocol):
     """Base class for SQL compilers.
 
@@ -229,6 +238,9 @@ class SQLCompiler(Protocol):
     .. versionadded:: 0.7.0
         This version supports compilation of ``CREATE TABLE`` and ``INSERT`` statements.   
     """
+
+    _compiler_state: CompilerState
+
     def process(self, element: ClauseElement, **kwargs: Any) -> dict:
         """Entry point for the compilation process.
 
