@@ -209,3 +209,18 @@ def test_compile_select():
         if col not in (SpecialColumns.NO_PID.value, SpecialColumns.NO_TITLE.value)
     ]
     assert result_columns == compiled.result_columns()
+
+def test_compile_select_w_where():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('start_date', Date()))
+    # monkey patch the id to simulate reflection
+    database_id = str(uuid.uuid5)
+    students.set_oid(database_id)
+    stmt = select(students).where(students.c.start_date.before(date.today))
+    sql_compiler = NotionCompiler()
+    compiled = stmt.compile(sql_compiler)
+    as_dict = compiled.as_dict()
+    filter = as_dict['operation']['template']['filter']
+    assert filter['property'] == 'start_date'
+    _, usage = sql_compiler._compiler_state.execution_binds['param_0']
+    assert usage == 'filter'

@@ -19,7 +19,7 @@
 from __future__ import annotations
 from enum import Enum
 import pdb
-from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Protocol
 
 from normlite.sql.base import ClauseElement
 

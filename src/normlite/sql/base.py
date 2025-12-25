@@ -102,8 +102,8 @@ class ClauseElement(Visitable):
             Compiled: The compiled object rusult of the compilation.
         """
         compiled_dict = compiler.process(self, **kwargs)
-        result_columns = compiled_dict.pop('result_columns', None)
-        is_ddl = compiled_dict.pop('is_ddl', False)
+        result_columns = compiler._compiler_state.result_columns
+        is_ddl = compiler._compiler_state.is_ddl
         if is_ddl:
             return DDLCompiled(self, compiled_dict, result_columns)
         else:
@@ -112,7 +112,6 @@ class ClauseElement(Visitable):
     def get_table(self) -> Table:
         """Return a collection of columns this clause element refers to."""
         raise NotImplementedError
-    
 
 class Executable(ClauseElement):
     """Provide the interface for all executable SQL statements.
@@ -174,6 +173,11 @@ class Executable(ClauseElement):
 @dataclass
 class CompilerState:
     is_ddl: bool = False
+    is_select: bool = False
+    is_insert: bool = False
+    is_update: bool = False
+    is_delete: bool = False
+    in_where: bool = False
     params: dict[str, Any] = field(default_factory=dict)
     execution_binds:  dict[str, BindParameter] = field(default_factory=dict)
     result_columns: list = field(default_factory=list)
@@ -235,7 +239,6 @@ class Compiled:
     
 class DDLCompiled(Compiled):
     is_ddl: ClassVar[bool] = True
-
 
 class SQLCompiler(Protocol):
     """Base class for SQL compilers.

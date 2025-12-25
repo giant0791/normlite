@@ -23,6 +23,7 @@ from typing import Any, Optional, Self, Sequence, Union, TYPE_CHECKING
 from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable
+from normlite.sql.elements import ColumnExpression
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
@@ -174,6 +175,11 @@ class Select(Executable):
 
     def __init__(self, table: Table):
         self.table = table
+        self._whereclause = None
+
+    def where(self, clause: ColumnExpression) -> Self:
+        self._whereclause = clause
+        return self 
 
 def select(table: Table) -> Select:
     return Select(table)

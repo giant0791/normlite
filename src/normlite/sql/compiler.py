@@ -16,6 +16,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
+from contextlib import contextmanager
+import copy
 import pdb
 from typing import TYPE_CHECKING
 
@@ -212,7 +214,10 @@ class NotionCompiler(SQLCompiler):
 
     def _add_bindparam(self, bindparam: BindParameter) -> str:
         key = self._next_bind_key()
-        self._compiler_state.execution_binds[key] = bindparam
+        # IMPORTANT: Store usage together with the bindparam
+        # for later use at execution time
+        usage = "filter" if self._compiler_state.in_where else "value"
+        self._compiler_state.execution_binds[key] = (bindparam, usage)
         return key
 
 
@@ -366,13 +371,22 @@ class NotionCompiler(SQLCompiler):
         return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}  
 
     def visit_select(self, select: Select) -> dict:
+        self._compiler_state.is_select = select.is_select
         operation = dict(endpoit='databases', request='query', template={})
         database_id = select.table.get_oid()
         if database_id is None:
             raise CompileError(f'Table: {select.table.name} has not been previously reflected.')
         paramters = dict(database_id=database_id)
-        result_columns = list(select.table.columns.keys())
-        return {'operation': operation, 'parameters': paramters, 'result_columns': result_columns}
+
+        if select._whereclause:
+            with self._where_context():
+                # emit the JSON code for the filter object of the query
+                # in the right context
+                filter_obj = select._whereclause._compiler_dispatch(self)
+                operation['template']['filter'] = filter_obj 
+
+        self._compiler_state.result_columns = list(select.table.columns.keys())
+        return {'operation': operation, 'parameters': paramters}
 
     def visit_binary_expression(self, expression: BinaryExpression) -> dict:
         return {
@@ -403,3 +417,13 @@ class NotionCompiler(SQLCompiler):
                 operator: f':{key}'
             }
         }
+    
+    @contextmanager
+    def _where_context(self):
+        prev = self._compiler_state
+        self._compiler_state = copy.copy(prev)
+        self._compiler_state.is_insert = False
+        self._compiler_state.is_update = False
+        self._compiler_state.in_where = True
+        yield
+        self._compiler_state = prev
