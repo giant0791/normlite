@@ -27,7 +27,7 @@ from normlite.engine.context import ExecutionContext
 if TYPE_CHECKING:
     from normlite.sql.schema import Table
     from normlite.sql.ddl import CreateTable, CreateColumn, HasTable, ReflectTable
-    from normlite.sql.dml import Insert
+    from normlite.sql.dml import Insert, Select
     from normlite.sql.elements import ColumnElement, BinaryExpression, BindParameter
     from normlite.engine.cursor import CursorResult
 
@@ -123,10 +123,21 @@ class Executable(ClauseElement):
 
     It provides a post execution hook with the :meth:`_post_exec` that is intended to be optionally implemented in 
     the subclasses.
+
+    ..versionchanged: 0.8.0
+        It introduces global context for compilation with `is_*` attributes.
     
     .. versionadded:: 0.7.0
-        This bas class fully supports the connection-driven execution flow of SQL statements.
+        This base class fully supports the connection-driven execution flow of SQL statements.
     """
+
+    is_insert: bool = False
+
+    is_update: bool = False
+
+    is_select: bool = False
+
+    is_update: bool = False
 
     def execute(self, context: ExecutionContext, parameters: Optional[dict] = None) -> CursorResult:
         """Run this executable within the context setup by the connection.
@@ -276,6 +287,9 @@ class SQLCompiler(Protocol):
 
     def visit_insert(self, insert: Insert) -> dict:
         """Compile an insert statement (DML ``INSERT``)."""
+        ...
+
+    def visit_select(self, select: Select) -> dict:
         ...
 
     def visit_column_element(self, column: ColumnElement) -> dict:

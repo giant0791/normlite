@@ -265,17 +265,24 @@ class BindParameter(ClauseElement):
 
     @property
     def effective_value(self):
-        pdb.set_trace()
-        raw = self.callable_() if self.callable_ else self.value
-        bind_processor = self.type.bind_processor()
-        if bind_processor is None:
-            return raw
-        return bind_processor(raw)
-
+        return self.callable_() if self.callable_ else self.value
 
 def coerce_to_bindparam(value: Any, type_):
     if isinstance(value, BindParameter):
         if value.type is None:
             value.type = type_
         return value
-    return BindParameter(None, value=value, type_=type_)
+
+    if callable(value):
+        return BindParameter(
+            None,
+            value=None,
+            callable_=value,
+            type_=type_,
+        )
+
+    return BindParameter(
+        None,
+        value=value,
+        type_=type_,
+    )

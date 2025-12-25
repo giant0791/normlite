@@ -7,7 +7,8 @@ Compilation correctness means that tests check
 Note:
     DML construct execution is not in the test scope here.
 """
-from datetime import datetime
+from datetime import datetime, date
+import uuid
 import pdb
 import pytest
 from normlite._constants import SpecialColumns
@@ -169,8 +170,42 @@ def test_compile_binexp_title_endswith():
 def test_compile_binexp_date_before():
     metadata = MetaData()
     students = Table('students', metadata, Column('start_date', Date()))
-    exp: BinaryExpression = students.c.start_date.before(datetime.now().date())
+    exp: BinaryExpression = students.c.start_date.before(date.today)
     compiled = exp.compile(NotionCompiler())
     as_dict = compiled.as_dict()
     assert as_dict['property'] == 'start_date'
     assert as_dict['date']['before'] == ':param_0'
+
+def test_exec_binexp_date_before():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('start_date', Date()))
+    exp: BinaryExpression = students.c.start_date.before(date.today)
+    sql_compiler = NotionCompiler()
+    compiled = exp.compile(sql_compiler)
+    as_dict = compiled.as_dict()
+    assert as_dict['property'] == 'start_date'
+    assert as_dict['date']['before'] == ':param_0'
+    bind_param = sql_compiler._compiler_state.execution_binds['param_0']
+    raw = bind_param.effective_value
+    filter_value_proc = bind_param.type.filter_value_processor()
+    effective_value = filter_value_proc(raw)
+    assert effective_value == str(datetime.fromisoformat("2025-12-25").date())
+
+def test_compile_select():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('start_date', Date()))
+    # monkey patch the id to simulate reflection
+    database_id = str(uuid.uuid5)
+    students.set_oid(database_id)
+    stmt = select(students)
+    sql_compiler = NotionCompiler()
+    compiled = stmt.compile(sql_compiler)
+    as_dict = compiled.as_dict()
+    assert as_dict['operation']['request'] == 'query'
+    assert compiled.params['database_id'] == database_id
+    result_columns = ['start_date'] + [
+        col 
+        for col in SpecialColumns.values() 
+        if col not in (SpecialColumns.NO_PID.value, SpecialColumns.NO_TITLE.value)
+    ]
+    assert result_columns == compiled.result_columns()

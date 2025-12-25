@@ -70,7 +70,7 @@ Usage::
 """
 
 from __future__ import annotations
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 import pdb
 from typing import Any, Callable, List, Literal, NoReturn, Optional, Protocol, TypeAlias, Union, TYPE_CHECKING
@@ -82,7 +82,12 @@ from normlite.sql.elements import BooleanComparator, Comparator, NumberComparato
 
 class TypeEngine(Protocol):
     """Base class for all Notion/SQL datatypes.
-    
+
+    .. versionchanged:: 0.8.0
+        :class:`TypeEngine` now defines a new processor API for processing filter values.
+        Notion requires this additional processor API as filter values used in queries
+        are different from page values.
+
     .. versionadded:: 0.7.0
     """
 
@@ -95,6 +100,9 @@ class TypeEngine(Protocol):
     def result_processor(self) -> Optional[Callable[[Any], Any]]:
         """SQL/Notion → Python (process values after fetching)."""
         return None
+    
+    def filter_value_processor(self) -> Optional[Callable[[Any], Any]]:
+        return None 
 
     def get_col_spec(self) -> str:
         """Return a string for the SQL-like type name."""
@@ -355,6 +363,23 @@ class Date(TypeEngine):
                 return restored[0]
             
             return restored
+        return process
+    
+    def filter_value_processor(self):
+        def process(value: Union[datetime, date, str]) -> Optional[str]:
+            if value is None:
+                return None
+            
+            if not isinstance(value, (datetime, date, str,)):
+                raise ValueError(
+                    f'{self.get_col_spec()} value must be either a date or a str. '
+                    f'Value type is: {value.__class__.__name__}.'
+                )
+
+            if isinstance(value, str):
+                value = datetime.fromisoformat(value)
+
+            return value.isoformat()
         return process
 
     def get_col_spec(self):

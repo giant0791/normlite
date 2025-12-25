@@ -20,11 +20,12 @@ import pdb
 from typing import TYPE_CHECKING
 
 from normlite._constants import SpecialColumns
+from normlite.exceptions import CompileError
 from normlite.sql.base import CompilerState, SQLCompiler
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateColumn, CreateTable, HasTable, ReflectTable
-    from normlite.sql.dml import Insert
+    from normlite.sql.dml import Insert, Select
     from normlite.sql.elements import ColumnElement, BinaryExpression, BindParameter
 
 class NotionCompiler(SQLCompiler):
@@ -363,6 +364,15 @@ class NotionCompiler(SQLCompiler):
         # This ensures that the values for the special columns are always available even if the returning tuple is ().
         result_columns = SpecialColumns.values() + insert._returning
         return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}  
+
+    def visit_select(self, select: Select) -> dict:
+        operation = dict(endpoit='databases', request='query', template={})
+        database_id = select.table.get_oid()
+        if database_id is None:
+            raise CompileError(f'Table: {select.table.name} has not been previously reflected.')
+        paramters = dict(database_id=database_id)
+        result_columns = list(select.table.columns.keys())
+        return {'operation': operation, 'parameters': paramters, 'result_columns': result_columns}
 
     def visit_binary_expression(self, expression: BinaryExpression) -> dict:
         return {

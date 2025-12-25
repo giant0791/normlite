@@ -169,10 +169,14 @@ class Insert(Executable):
         return MappingProxyType(kv_pairs)
     
 class Select(Executable):
-    pass
+    __visit_name__ = 'select'
+    is_select = True
+
+    def __init__(self, table: Table):
+        self.table = table
 
 def select(table: Table) -> Select:
-    pass
+    return Select(table)
         
 
 def insert(table: Table) -> Insert:
