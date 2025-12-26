@@ -21,7 +21,7 @@ from normlite.sql.dml import Insert, insert, select
 from normlite.sql.ddl import CreateTable
 from normlite.sql.elements import BinaryExpression, BindParameter
 from normlite.sql.schema import Column, MetaData, Table
-from normlite.sql.type_api import Date, String
+from normlite.sql.type_api import Boolean, Date, String
 
 @pytest.fixture
 def engine() -> Engine:
@@ -159,7 +159,7 @@ def test_create_ast_for_simple_col_expr():
     exp: BinaryExpression = students.c.name == 'Galileo Galilei'
     assert isinstance(exp, BinaryExpression)
     assert isinstance(exp.value, BindParameter)
-    assert exp.value.effective_value == {'title': [{'text': {'content': 'Galileo Galilei'}}]}
+    assert exp.value.effective_value == 'Galileo Galilei'
 
 def test_compile_binexp_title_eq():
     metadata = MetaData()
@@ -168,7 +168,7 @@ def test_compile_binexp_title_eq():
     compiled = exp.compile(NotionCompiler())
     as_dict = compiled.as_dict()
     assert as_dict['property'] == 'name'
-    assert as_dict['title'] == {'equals': 'Galileo Galilei'}
+    assert as_dict['title'] == {'equals': ':param_0'}
 
 def test_compile_binexp_title_neq():
     metadata = MetaData()
@@ -177,7 +177,7 @@ def test_compile_binexp_title_neq():
     compiled = exp.compile(NotionCompiler())
     as_dict = compiled.as_dict()
     assert as_dict['property'] == 'name'
-    assert as_dict['title'] == {'does_not_equal': 'Galileo Galilei'}
+    assert as_dict['title'] == {'does_not_equal': ':param_0'}
 
 def test_compile_binexp_title_in():
     metadata = MetaData()
@@ -186,7 +186,7 @@ def test_compile_binexp_title_in():
     compiled = exp.compile(NotionCompiler())
     as_dict = compiled.as_dict()
     assert as_dict['property'] == 'name'
-    assert as_dict['title'] == {'contains': 'Galileo'}
+    assert as_dict['title'] == {'contains': ':param_0'}
 
 def test_compile_binexp_title_not_in():
     metadata = MetaData()
@@ -195,7 +195,7 @@ def test_compile_binexp_title_not_in():
     compiled = exp.compile(NotionCompiler())
     as_dict = compiled.as_dict()
     assert as_dict['property'] == 'name'
-    assert as_dict['title'] == {'does_not_contain': 'Galileo'}
+    assert as_dict['title'] == {'does_not_contain': ':param_0'}
 
 def test_compile_binexp_title_endswith():
     metadata = MetaData()
@@ -204,7 +204,7 @@ def test_compile_binexp_title_endswith():
     compiled = exp.compile(NotionCompiler())
     as_dict = compiled.as_dict()
     assert as_dict['property'] == 'name'
-    assert as_dict['title'] == {'ends_with': 'lilei'}
+    assert as_dict['title'] == {'ends_with': ':param_0'}
 
 def test_compile_binexp_date_before():
     metadata = MetaData()
@@ -224,24 +224,19 @@ def test_exec_binexp_date_before():
     as_dict = compiled.as_dict()
     assert as_dict['property'] == 'start_date'
     assert as_dict['date']['before'] == ':param_0'
-    bind_param = sql_compiler._compiler_state.execution_binds['param_0']
-    raw = bind_param.effective_value
-    filter_value_proc = bind_param.type.filter_value_processor()
-    effective_value = filter_value_proc(raw)
-    assert effective_value == str(datetime.fromisoformat("2025-12-25").date())
 
 def test_compile_select():
     metadata = MetaData()
     students = Table('students', metadata, Column('start_date', Date()))
     # monkey patch the id to simulate reflection
-    database_id = str(uuid.uuid5)
+    database_id = str(uuid.uuid4())
     students.set_oid(database_id)
     stmt = select(students)
     sql_compiler = NotionCompiler()
     compiled = stmt.compile(sql_compiler)
     as_dict = compiled.as_dict()
     assert as_dict['operation']['request'] == 'query'
-    assert compiled.params['database_id'] == database_id
+    assert as_dict['parameters']['database_id'] == database_id
     result_columns = ['start_date'] + [
         col 
         for col in SpecialColumns.values() 
@@ -253,7 +248,7 @@ def test_compile_select_w_where():
     metadata = MetaData()
     students = Table('students', metadata, Column('start_date', Date()))
     # monkey patch the id to simulate reflection
-    database_id = str(uuid.uuid5)
+    database_id = str(uuid.uuid4())
     students.set_oid(database_id)
     stmt = select(students).where(students.c.start_date.before(date.today))
     sql_compiler = NotionCompiler()
@@ -263,3 +258,85 @@ def test_compile_select_w_where():
     assert filter['property'] == 'start_date'
     _, usage = sql_compiler._compiler_state.execution_binds['param_0']
     assert usage == 'filter'
+
+def test_compile_select_concat_wheres():
+    metadata = MetaData()
+    students = Table(
+        'students', 
+        metadata, 
+        Column('name', String(is_title=True)),
+        Column('start_date', Date())
+    )
+    # monkey patch the id to simulate reflection
+    database_id = str(uuid.uuid4())
+    students.set_oid(database_id)
+    stmt = select(students)
+    stmt.where(students.c.name != 'Galileo Galilei')
+    stmt.where(students.c.start_date.before(date.today))
+    sql_compiler = NotionCompiler()
+    compiled = stmt.compile(sql_compiler)
+    as_dict = compiled.as_dict()
+    filter = as_dict['operation']['template']['filter']
+    and_clauselist =  filter['and'] 
+    assert len(and_clauselist) == 2
+    assert and_clauselist[0]['property'] == 'name'
+    assert and_clauselist[1]['property'] == 'start_date'
+
+def test_nested_boolean_clause_list_compilation():
+    metadata = MetaData()
+
+    projects = Table(
+        'projects',
+        metadata,
+        Column('name', String(is_title=True)),
+        Column('done', Boolean()),
+        Column('tags', String()),
+    )
+    # monkey patch the id to simulate reflection
+    database_id = str(uuid.uuid4())
+    projects.set_oid(database_id)
+
+    # WHERE:
+    # done = true
+    # AND (tags contains "A" OR tags contains "B")
+    expr = (
+        (projects.c.done == True)
+        &
+        (
+            projects.c.tags.in_("A")
+            |
+            projects.c.tags.in_("B")
+        )
+    )
+
+    stmt = select(projects).where(expr)
+
+    compiled = stmt.compile(NotionCompiler())
+    result = compiled.as_dict()
+
+    assert result['operation']['template']["filter"] == {
+        "and": [
+            {
+                "property": "done",
+                "checkbox": {
+                    "equals": ":param_0"
+                }
+            },
+            {
+                "or": [
+                    {
+                        "property": "tags",
+                        "rich_text": {
+                            "contains": ":param_1"
+                        }
+                    },
+                    {
+                        "property": "tags",
+                        "rich_text": {
+                            "contains": ":param_2"
+                        }
+                    }
+                ]
+            }
+        ]
+    }

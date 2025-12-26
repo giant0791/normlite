@@ -77,7 +77,7 @@ from typing import Any, Callable, List, Literal, NoReturn, Optional, Protocol, T
 import uuid
 
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
-from normlite.sql.elements import BooleanComparator, Comparator, NumberComparator, DateComparator, CheckboxComparator, ObjectIdComparator, StringComparator
+from normlite.sql.elements import BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, StringComparator
 
 
 class TypeEngine(Protocol):

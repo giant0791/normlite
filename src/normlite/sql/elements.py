@@ -52,16 +52,6 @@ class ColumnElement(ClauseElement):
             return NotImplemented
         return BooleanClauseList("or", [self, other])
         
-class ColumnExpression(ClauseElement):
-    """
-    Represents a Notion filter expression node.
-    Can be either:
-      - logical: AND / OR
-      - property filter
-    """
-    __visit_name__ = 'column_expression'
-
-    pass
 
 class UnaryExpression(ColumnElement):
     def __init__(self, operator: str, element: ColumnElement):
@@ -69,7 +59,7 @@ class UnaryExpression(ColumnElement):
         self.operator = operator
         self.element = element
 
-class BinaryExpression(ColumnExpression):
+class BinaryExpression(ColumnElement):
     __visit_name__ = 'binary_expression'
 
     def __init__(
@@ -83,7 +73,8 @@ class BinaryExpression(ColumnExpression):
         self.value = value                # BindParam
 
 class BooleanClauseList(ColumnElement):
-    def __init__(self, operator, clauses):
+    __visit_name__ = 'boolean_clause_list'
+    def __init__(self, operator, clauses: list[ColumnElement]) -> None:
         self.operator = operator
         self.clauses = []
 
@@ -158,9 +149,6 @@ class ObjectIdComparator(Comparator):
     pass
 
 class BooleanComparator(Comparator):
-    pass
-
-class CheckboxComparator(Comparator):
     def operate(self, op, other):
         if op not in ("eq", "ne"):
             raise TypeError("Checkbox only supports equality")

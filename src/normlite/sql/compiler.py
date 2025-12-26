@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError
 from normlite.sql.base import CompilerState, SQLCompiler
+from normlite.sql.elements import BooleanClauseList
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateColumn, CreateTable, HasTable, ReflectTable
@@ -356,11 +357,11 @@ class NotionCompiler(SQLCompiler):
             raise CompileError(f'Table: {select.table.name} has not been previously reflected.')
         paramters = dict(database_id=database_id)
 
-        if select._whereclause:
+        if select._whereclause.expression:
             with self._where_context():
                 # emit the JSON code for the filter object of the query
                 # in the right context
-                filter_obj = select._whereclause._compiler_dispatch(self)
+                filter_obj = select._whereclause.expression._compiler_dispatch(self)
                 operation['template']['filter'] = filter_obj 
 
         self._compiler_state.result_columns = list(select.table.columns.keys())
@@ -374,6 +375,16 @@ class NotionCompiler(SQLCompiler):
                 expression.operator,
                 expression.value
             )
+        }
+    
+    def visit_boolean_clause_list(self, expression: BooleanClauseList) -> dict:
+        with self._where_context():
+            clauses = [
+                clause._compiler_dispatch(self)
+                for clause in expression.clauses
+            ]
+        return {
+            expression.operator: clauses
         }
 
     def _next_bind_key(self) -> str:

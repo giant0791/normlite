@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from normlite.sql.schema import Table
     from normlite.sql.ddl import CreateTable, CreateColumn, HasTable, ReflectTable
     from normlite.sql.dml import Insert, Select
-    from normlite.sql.elements import ColumnElement, BinaryExpression, BindParameter
+    from normlite.sql.elements import ColumnElement, BinaryExpression, BindParameter, BooleanClauseList
     from normlite.engine.cursor import CursorResult
 
 class Visitable(ABC):
@@ -177,7 +177,7 @@ class CompilerState:
     is_delete: bool = False
     in_where: bool = False
     
-    execution_binds:  dict[str, BindParameter] = field(default_factory=dict)
+    execution_binds:  dict[str, tuple[BindParameter, str]] = field(default_factory=dict)
     """Bind parameters to be evaluated at execution time."""
 
     result_columns: list = field(default_factory=list)
@@ -302,4 +302,7 @@ class SQLCompiler(Protocol):
         ...
 
     def visit_binary_expression(self, expression: BinaryExpression) -> dict:
+        ...
+
+    def visit_boolean_clause_list(self, expression: BooleanClauseList) -> dict:
         ...

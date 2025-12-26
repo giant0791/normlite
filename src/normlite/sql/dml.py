@@ -22,8 +22,8 @@ from types import MappingProxyType
 from typing import Any, Optional, Self, Sequence, Union, TYPE_CHECKING
 from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
-from normlite.sql.base import Executable
-from normlite.sql.elements import BindParameter, ColumnExpression
+from normlite.sql.base import Executable, ClauseElement
+from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElement
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
@@ -189,17 +189,32 @@ def insert(table: Table) -> Insert:
     """
     return Insert(table)
 
+class WhereClause(ClauseElement):
+    __visit_name__ = 'where_clause'
+    def __init__(self, expression: Optional[ColumnElement] = None):
+        self.expression = expression
+
+    def where(self, expr: ColumnElement) -> WhereClause:
+        if self.expression is None:
+            self.expression = expr
+        else:
+            self.expression = BooleanClauseList(
+                operator="and",
+                clauses=[self.expression, expr]
+            )
+        return self
+
 class Select(Executable):
     __visit_name__ = 'select'
     is_select = True
 
     def __init__(self, table: Table):
         self.table = table
-        self._whereclause = None
+        self._whereclause = WhereClause()
 
-    def where(self, clause: ColumnExpression) -> Self:
-        self._whereclause = clause
-        return self 
+    def where(self, expr: ColumnElement) -> Self:
+        self._whereclause.where(expr)
+        return self
 
 def select(table: Table) -> Select:
     return Select(table)
