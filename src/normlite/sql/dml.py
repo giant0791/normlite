@@ -23,12 +23,13 @@ from typing import Any, Optional, Self, Sequence, Union, TYPE_CHECKING
 from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable
-from normlite.sql.elements import ColumnExpression
+from normlite.sql.elements import BindParameter, ColumnExpression
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
 
 class Insert(Executable):
+    is_insert = True
     __visit_name__ = 'insert'
 
     """Provide the SQL ``INSERT`` node to create a new row in the specified table. 
@@ -68,12 +69,12 @@ class Insert(Executable):
         Now, the new class provides all features of the SQL ``INSERT`` statement.
 
     """
-    def __init__(self):
+    def __init__(self, table: Table):
         super().__init__()
         self._values: MappingProxyType = None
         """The immutable mapping holding the values."""
 
-        self._table: Table = None
+        self._table: Table = table
         """The table object to insert a new row to."""
 
         self._returning = ()
@@ -90,6 +91,10 @@ class Insert(Executable):
     
     def values(self, *args: Union[dict, Sequence[Any]], **kwargs: Any) -> Self:
         """Provide the ``VALUES`` clause to specify the values to be inserted in the new row.
+
+        .. versionchanged:: 0.8.0
+            The values provided are now coerced to :class:`normlite.sql.elements.BindParameter`
+            objects.
 
         Raises:
             ArgumentError: If both positional and keyword arguments are passes, or
@@ -163,12 +168,27 @@ class Insert(Executable):
                 if col.name in SpecialColumns.__members__.values():
                     # skip Notion-managed columns
                     continue
-                kv_pairs[col.name] = dict_arg[col.name]
+                value = dict_arg[col.name]
+                kv_pairs[col.name] = BindParameter(col.name, value)
         except KeyError as ke:
             raise KeyError(f'Missing value for: {ke.args[0]}')
         
         return MappingProxyType(kv_pairs)
     
+def insert(table: Table) -> Insert:
+    """Construct an insert statement.
+
+    This class constructs an SQL ``INSERT`` statement capable of inserting rows
+    to this table.
+
+    .. versionchanged:: 0.7.0
+        Now, it uses the :class:`normlite.sql.schema.Table` as table object.
+
+    Returns:
+        Insert: A new insert statement for this table. 
+    """
+    return Insert(table)
+
 class Select(Executable):
     __visit_name__ = 'select'
     is_select = True
@@ -185,18 +205,3 @@ def select(table: Table) -> Select:
     return Select(table)
         
 
-def insert(table: Table) -> Insert:
-    """Construct an insert statement.
-
-    This class constructs an SQL ``INSERT`` statement capable of inserting rows
-    to this table.
-
-    .. versionchanged:: 0.7.0
-        Now, it uses the :class:`normlite.sql.schema.Table` as table object.
-
-    Returns:
-        Insert: A new insert statement for this table. 
-    """
-    insert_stmt = Insert()
-    insert_stmt._set_table(table)
-    return insert_stmt

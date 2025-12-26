@@ -73,6 +73,45 @@ def create_students_db(engine: Engine) -> None:
         }
     })
 
+def test_insert_bind_values():
+    metadata = MetaData()
+    students = Table(
+        'students', 
+        metadata,
+        Column('name', String(is_title=True)),
+        Column('year_reg', Date())
+    )
+    stmt = insert(students).values(name='Galileo Galilei', year_reg=datetime(1689, 9, 1))
+    name = stmt._values['name']
+    year_reg = stmt._values['year_reg']
+    assert stmt.is_insert
+    assert isinstance(name, BindParameter)
+    assert name.value == 'Galileo Galilei'
+    assert isinstance(year_reg, BindParameter)
+    assert year_reg.value == datetime(1689, 9, 1) 
+
+def test_compile_insert_bindparams():
+    metadata = MetaData()
+    students = Table(
+        'students', 
+        metadata,
+        Column('name', String(is_title=True)),
+        Column('year_reg', Date())
+    )
+    # monkey patch the id to simulate reflection
+    database_id = str(uuid.uuid5)
+    students.set_oid(database_id)
+    stmt = insert(students).values(name='Galileo Galilei', year_reg=datetime(1689, 9, 1))
+    sql_compiler = NotionCompiler()
+    compiled = stmt.compile(sql_compiler)
+    name, name_usage = compiled.params['name']
+    year_reg, year_reg_usage = compiled.params['year_reg']
+    assert isinstance(name, BindParameter)
+    assert name_usage == 'value'
+    assert name.value == 'Galileo Galilei'
+    assert year_reg_usage == 'value'
+    assert year_reg.value == datetime(1689, 9, 1)
+
 @pytest.mark.skip(reason='Need to fix the bool -> checkbox issue first')
 def test_insert_can_add_new_row(engine: Engine):
     expected_values= {

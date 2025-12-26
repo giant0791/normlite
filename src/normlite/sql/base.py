@@ -102,12 +102,10 @@ class ClauseElement(Visitable):
             Compiled: The compiled object rusult of the compilation.
         """
         compiled_dict = compiler.process(self, **kwargs)
-        result_columns = compiler._compiler_state.result_columns
-        is_ddl = compiler._compiler_state.is_ddl
-        if is_ddl:
-            return DDLCompiled(self, compiled_dict, result_columns)
+        if compiler._compiler_state.is_ddl:
+            return DDLCompiled(self, compiled_dict, compiler)
         else:
-            return Compiled(self, compiled_dict, result_columns)
+            return Compiled(self, compiled_dict, compiler)
 
     def get_table(self) -> Table:
         """Return a collection of columns this clause element refers to."""
@@ -178,8 +176,10 @@ class CompilerState:
     is_update: bool = False
     is_delete: bool = False
     in_where: bool = False
-    params: dict[str, Any] = field(default_factory=dict)
+    
     execution_binds:  dict[str, BindParameter] = field(default_factory=dict)
+    """Bind parameters to be evaluated at execution time."""
+
     result_columns: list = field(default_factory=list)
 
 class Compiled:
@@ -201,14 +201,17 @@ class Compiled:
         This class attribute is used by :class:`normlite.cursor.CursorResult` to properly process the cursor description and the result set.
     """
 
-    def __init__(self, element: ClauseElement, compiled: dict, result_columns: Optional[Sequence[str]] = None):
+    def __init__(self, element: ClauseElement, compiled: dict, compiler: SQLCompiler):
         self._element = element
         """The compiled clause element."""
 
         self._compiled = compiled
         """The dictionary containing the compilation result."""
         
-        self._result_columns = result_columns
+        self._execution_binds = compiler._compiler_state.execution_binds
+        """The bind parameters for this compiled object."""
+
+        self._result_columns = compiler._compiler_state.result_columns
         """Optional sequence of strings specifying the column names to be considered 
         in the rows produced by the :class:`normlite.cursor.CursorResult` methods.
         """
@@ -221,7 +224,7 @@ class Compiled:
     @property
     def params(self) -> dict:
         """Provide the bind parameters for this compiled object."""
-        return self._compiled['parameters']
+        return self._execution_binds
     
     def as_dict(self) -> dict:
         """Return this compiled object in the original dictionary form."""
@@ -235,7 +238,7 @@ class Compiled:
         return self.string
     
     def __repr__(self):
-        return f"Compiled {self.element.__class__.__name__}"
+        return f"Compiled {self._element.__class__.__name__}"
     
 class DDLCompiled(Compiled):
     is_ddl: ClassVar[bool] = True

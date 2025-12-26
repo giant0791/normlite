@@ -207,20 +207,6 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state = CompilerState()
         self._bind_counter = 0
 
-    def _next_bind_key(self) -> str:
-        key = f"param_{self._bind_counter}"
-        self._bind_counter += 1
-        return key
-
-    def _add_bindparam(self, bindparam: BindParameter) -> str:
-        key = self._next_bind_key()
-        # IMPORTANT: Store usage together with the bindparam
-        # for later use at execution time
-        usage = "filter" if self._compiler_state.in_where else "value"
-        self._compiler_state.execution_binds[key] = (bindparam, usage)
-        return key
-
-
     def visit_create_table(self, ddl_stmt: CreateTable) -> dict:
         """Compile a ``CREATE TABLE`` statement.
         
@@ -350,25 +336,17 @@ class NotionCompiler(SQLCompiler):
            'database_id': ':database_id'
         }
         
-        properties = {}
-        for col in insert._table.c:
-            if col.name in SpecialColumns.values():
-                continue
-            bind_proc = col.type_.bind_processor()
-            # bind the named parameter not the value yet
-            properties[col.name] = bind_proc(f':{col.name}')        
 
-        no_insert_obj['properties'] = properties
+        no_insert_obj['properties'] = self._compile_insert_update_values(insert._values)
         operation = dict(endpoint='pages', request='create', template=no_insert_obj)
 
         # parameters also contains the parent id, the database id the row being inserted belongs
         parameters = dict(database_id=insert._table._database_id)
-        parameters.update(dict(**insert._values) if insert._values else dict())
 
         # IMPORTANT: concatenate the values tuple containing the special columns WITH the returning tuple.
         # This ensures that the values for the special columns are always available even if the returning tuple is ().
-        result_columns = SpecialColumns.values() + insert._returning
-        return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}  
+        self._compiler_state.result_columns = SpecialColumns.values() + insert._returning
+        return {'operation': operation, 'parameters': parameters}  
 
     def visit_select(self, select: Select) -> dict:
         self._compiler_state.is_select = select.is_select
@@ -398,6 +376,23 @@ class NotionCompiler(SQLCompiler):
             )
         }
 
+    def _next_bind_key(self) -> str:
+        key = f"param_{self._bind_counter}"
+        self._bind_counter += 1
+        return key
+
+    def _add_bindparam(self, bindparam: BindParameter) -> str:
+        # IMPORTANT: INSERT/UPDATE bindparams have keys (column names),
+        # use the available key. 
+        # For WHERE bindparams, generate param_<n> keys
+        key = bindparam.key if bindparam.key else self._next_bind_key()
+
+        # IMPORTANT: Store usage together with the bindparam
+        # for later use at execution time
+        usage = "filter" if self._compiler_state.in_where else "value"
+        self._compiler_state.execution_binds[key] = (bindparam, usage)
+        return key
+
     def _compile_type_filter(
             self, 
             column: ColumnElement, 
@@ -418,12 +413,30 @@ class NotionCompiler(SQLCompiler):
             }
         }
     
+    def _compile_insert_update_values(self, values: dict) -> dict:
+        properties = {}
+        for key, value in values.items():
+            if key in SpecialColumns.values():
+                continue
+            param_key = self._add_bindparam(value)
+            properties[key] = f':{param_key}'
+    
     @contextmanager
     def _where_context(self):
         prev = self._compiler_state
         self._compiler_state = copy.copy(prev)
         self._compiler_state.is_insert = False
         self._compiler_state.is_update = False
+        self._compiler_state.in_where = True
+        yield
+        self._compiler_state = prev
+
+    @contextmanager
+    def _dml_context(self):
+        prev = self._compiler_state
+        self._compiler_state = copy.copy(prev)
+        self._compiler_state.is_insert = True
+        self._compiler_state.is_update = True
         self._compiler_state.in_where = True
         yield
         self._compiler_state = prev
