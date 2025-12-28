@@ -13,6 +13,7 @@ import pdb
 import pytest
 from normlite._constants import SpecialColumns
 from normlite.engine.base import Connection, Engine, create_engine
+from normlite.engine.context import ExecutionContext
 from normlite.engine.cursor import CursorResult
 from normlite.engine.row import Row
 from normlite.sql.base import Compiled
@@ -72,6 +73,32 @@ def create_students_db(engine: Engine) -> None:
             'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]}
         }
     })
+
+def insert_student(
+    engine: Engine,
+    *,
+    student_id: int,
+    name: str,
+    grade: str,
+    is_active: bool
+) -> None:
+    engine._client._add('page', {
+        'parent': {
+            'type': 'database_id',
+            'database_id': engine._client._get_by_title('students', 'database')['id']
+        },
+        'properties': {
+            'student_id': {'number': student_id},
+            'name': {
+                'title': [{'text': {'content': name}}]
+            },
+            'grade': {
+                'rich_text': [{'text': {'content': grade}}]
+            },
+            'is_active': {'checkbox': is_active}
+        }
+    })
+
 
 def test_insert_bind_values():
     metadata = MetaData()
@@ -282,7 +309,7 @@ def test_compile_select_concat_wheres():
     assert and_clauselist[0]['property'] == 'name'
     assert and_clauselist[1]['property'] == 'start_date'
 
-def test_nested_boolean_clause_list_compilation():
+def test_compile_nested_boolean_clause_list():
     metadata = MetaData()
 
     projects = Table(
@@ -292,6 +319,7 @@ def test_nested_boolean_clause_list_compilation():
         Column('done', Boolean()),
         Column('tags', String()),
     )
+
     # monkey patch the id to simulate reflection
     database_id = str(uuid.uuid4())
     projects.set_oid(database_id)
@@ -340,3 +368,61 @@ def test_nested_boolean_clause_list_compilation():
             }
         ]
     }
+
+def test_select_where_filter_binding(dbapi_cursor):
+    metadata = MetaData()
+
+    students = Table(
+        'students',
+        metadata,
+        Column('name', String(is_title=True)),
+        Column('start_date', Date()),
+    )
+
+    # monkey patch the id to simulate reflection
+    database_id = str(uuid.uuid4())
+    students.set_oid(database_id)
+
+    stmt = (
+        select(students)
+        .where(students.c.start_date.before(date(2020, 1, 1)))
+    )
+
+    compiled = stmt.compile(NotionCompiler())
+    ctx = ExecutionContext(dbapi_cursor, compiled)
+    ctx.setup()
+    payload = compiled.as_dict()['operation']['payload']
+
+    assert payload['filter'] == {
+        "property": "start_date",
+        "date": {
+            "before": "2020-01-01"
+        }
+    }
+
+def test_select_all_students(engine: Engine):
+    create_students_db(engine)
+
+    insert_student(engine, student_id=1, name='Galileo Galilei', grade='A', is_active=True)
+    insert_student(engine, student_id=2, name='Isaac Newton', grade='A', is_active=False)
+    insert_student(engine, student_id=3, name='Marie Curie', grade='B', is_active=True)
+    insert_student(engine, student_id=4, name='Albert Einstein', grade='C', is_active=True)
+
+    metadata = MetaData()
+    students = Table('students', metadata, autoload_with=engine)
+
+    with engine.connect() as connection:
+        stmt = select(students)
+        result = connection.execute(stmt)
+
+        rows = result.fetchall()
+
+    assert len(rows) == 4
+    assert {r.name for r in rows} == {
+        'Galileo Galilei',
+        'Isaac Newton',
+        'Marie Curie',
+        'Albert Einstein',
+    }
+
+

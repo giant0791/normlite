@@ -77,7 +77,14 @@ class AbstractNotionClient(ABC):
             for name in AbstractNotionClient.__abstractmethods__
         }
 
-    def __call__(self, endpoint: str, request: str, payload: dict) -> dict:
+    def __call__(
+            self, 
+            endpoint: str, 
+            request: str,
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
         """Enable function call style for REST Notion API client objects.
 
         Example::
@@ -106,7 +113,9 @@ class AbstractNotionClient(ABC):
         Args:
             endpoint (str): The REST API endpoint, example: ``databases``. 
             request (str): The REST API request, example: ``create``.
-            payload (dict): The JSON object as payload.
+            path_params (dict): Optional REST API path parameters, example: ``{"page_id": "b55c9c91-384d-452b-81db-d1ef79372b75"}
+            query_params (dict): The REST API query parameters, example: ``{"filter_properties": ["title", "status"]}
+            payload (dict): The JSON object as payload (also called body of the request).
 
         Raises:
             NotionError: Unknown or unsupported operation. 
@@ -121,7 +130,7 @@ class AbstractNotionClient(ABC):
                 f"Allowed: {sorted(self.__class__.allowed_operations)}"
             )
         method = getattr(self, method_name)
-        return method(payload)
+        return method(path_params, query_params=query_params, payload=payload)
 
     @property
     def ischema_page_id(self) -> Optional[str]:
@@ -134,7 +143,12 @@ class AbstractNotionClient(ABC):
         return self._ischema_page_id 
 
     @abstractmethod
-    def pages_create(self, payload: dict) -> dict:
+    def pages_create(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
         """Create a page object.
 
         This method creates a new page that is a child of an existing page or database.
@@ -149,7 +163,12 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def pages_retrieve(self, payload: dict) -> dict:
+    def pages_retrieve(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+       ) -> dict:
         """Retrieve a page object.
 
         This method is used as follows::
@@ -176,7 +195,12 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    def pages_update(self, payload: dict) -> dict:
+    def pages_update(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
         """Update a page object.
         
         Use this API to modify attributes of a Notion page object, such as properties, title, etc.
@@ -225,7 +249,12 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    def databases_create(self, payload: dict) -> dict:
+    def databases_create(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
         """Create a database as a subpage in the specified parent page, with the specified properties schema.
 
         Args:
@@ -237,7 +266,12 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    def databases_retrieve(self, payload: dict) -> dict:
+    def databases_retrieve(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
         """Retrieve a database object for the provided ID
 
         Args:
@@ -250,10 +284,18 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    def databases_query(self, payload: dict) -> List[dict]:
+    def databases_query(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> List[dict]:
         """Get a list pages contained in the database.
 
         Args:
+            path_params (dict): A dictionary containing a "database_id" key for the database to
+                query.
+            query_params (dict): A dictionary containing "filter" object to select.
             payload (dict): A dictionary that must contain a "database_id" key for the database to
                 query and "filter" object to select.
 
@@ -581,18 +623,32 @@ class InMemoryNotionClient(AbstractNotionClient):
     def _store_len(self) -> int:
         return len(self._store)
     
-    def pages_create(self, payload: dict) -> dict:
+    def pages_create(
+            self,
+            path_params: Optional[dict] = None, 
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
+        if not payload:
+            raise NotionError(
+                'Body failed validation: body empty or None (null).'
+            )
         return self._add('page', payload)
     
-    def pages_retrieve(self, payload: dict) -> dict:
-        page_id = payload.get('page_id', None)
+    def pages_retrieve(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
+        page_id = path_params.get('page_id', None)
 
         if page_id is None:
             raise NotionError(
                 'Invalid request URL.'
             )
 
-        retrieved_object = self._get_by_id(payload['page_id'])
+        retrieved_object = self._get_by_id(page_id)
 
         if not retrieved_object:
             raise NotionError(
@@ -602,9 +658,14 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         return retrieved_object
     
-    def pages_update(self, payload)-> dict:
+    def pages_update(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    )-> dict:
         if self._store_len() > 0:
-            page_id = payload.get('page_id', None)
+            page_id = path_params.get('page_id', None)
 
             if page_id is None:
                 raise NotionError(
@@ -632,18 +693,31 @@ class InMemoryNotionClient(AbstractNotionClient):
                     'Make sure the relevant pages and databases are shared with your integration.'
                 )
 
-
-    def databases_create(self, payload: dict) -> dict:
+    def databases_create(
+            self, 
+            path_params: Optional[dict] = None, 
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
+        if not payload:
+            raise NotionError(
+                'Body failed validation: body empty or None (null).'
+            )
         return self._add('database', payload)
     
-    def databases_retrieve(self, payload: dict) -> dict:
-        database_id = payload.get('database_id', None)
+    def databases_retrieve(
+            self, 
+            path_params: Optional[dict] = None, 
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
+        database_id = path_params.get('database_id', None)
         if database_id is None:
             raise NotionError(
                 'Invalid request URL.'
             )
 
-        retrieved_object = self._get_by_id(payload['database_id'])
+        retrieved_object = self._get_by_id(database_id)
         if not retrieved_object:
             raise NotionError(
                     f'Could not find database with ID: {database_id} '
@@ -652,7 +726,28 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         return retrieved_object
     
-    def databases_query(self, payload: dict) -> dict:
+    def _filter_properties(
+            self, 
+            original_obj: dict, 
+            filter_list: Optional[list[str]] = []
+        ) -> dict:
+        props = original_obj.get('properties', {})
+        filtered_props = {
+            k: v for k, v in props.items()
+            if not filter_list or k in filter_list
+        }
+
+        return {
+            **original_obj,
+            'properties': filtered_props
+        }
+    
+    def databases_query(
+            self, 
+            path_params: Optional[dict] = None, 
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
         query_results = []
         query_result_object = {
             'object': 'list',
@@ -665,16 +760,30 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         if self._store_len() > 0:
             # perform search only if store contains data        
-            db_id = payload['database_id']
+            database_id = path_params.get('database_id', None)
+            if database_id is None:
+                raise NotionError(
+                    'Invalid request URL.'
+                )
+
             for obj in self._store.values():
                 if obj['object'] == 'page' and obj['parent']['type'] == 'database_id':
                     # select only pages whose parent is a database
-                    if obj['parent']['database_id'] == db_id:
+                    if obj['parent']['database_id'] == database_id:
                         # select only pages belonging to the db specified in the payload
                         filter = _Filter(obj, payload)
                         if filter.eval():
                             # select only those pages for which the filter evaluates to True 
-                            query_results.append(obj)
+                            if query_params:
+                                filter_properties = query_params.get('filter_properties', None)
+                                if filter_properties is None:
+                                    filter_properties = []
+                                # return only those properties specified in the query params
+                                query_results.append(
+                                    self._filter_properties(obj, filter_properties)
+                                )
+                            else:
+                                query_results.append(obj)
 
         return query_result_object      
 
@@ -759,78 +868,152 @@ class FileBasedNotionClient(InMemoryNotionClient):
 #--------------------------------------------------
 # Private classes for implementing database queries
 #--------------------------------------------------
+class _Expression(ABC):
+    @abstractmethod
+    def eval(self) -> bool:
+        pass
 
-class _Condition:
-    _op_map: dict = {
+class _Condition(_Expression):
+    _allowed_ops = {
+        "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "equals"},
+        "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "equals"},
+        "number":    {"equals", "greater_than", "less_than"},
+    }
+
+    _op_map = {
         'equals': operator.eq,
         'greater_than': operator.gt,
         'less_than': operator.lt,
-        'contains': operator.contains,
-        'does_not_contain': lambda a, b: b not in a,
-        'or': operator.or_,
-        'and': operator.and_,
-        'not': operator.not_
+        'contains': lambda a, b: isinstance(a, str) and b in a,
+        'does_not_contain': lambda a, b: isinstance(a, str) and b not in a,
+        'starts_with': lambda a, b: isinstance(a, str) and a.startswith(b),
+        'ends_with': lambda a, b: isinstance(a, str) and a.endswith(b),
+        'is_empty': lambda a, _: (a is None or a == "" or a == []),
     }
 
     def __init__(self, page: dict, condition: dict):
-        prop_name = condition['property']
-        self.property_obj = page['properties'][prop_name]
-        self.type_name, self.type_filter = self._extract_filter(condition)
+        self.page = page
+        self.condition = condition
 
-    def _extract_filter(self, cond: dict) -> tuple[str, dict]:
-        """Return (type_name, filter_dict) from a Notion condition."""
-        return next((k, v) for k, v in cond.items() if k != "property")
+        self.prop_name = self._extract_property()
+        self.property_obj = self._extract_property_obj()
+        self.type_name, self.type_filter = self._extract_filter()
+        self.actual_type = self._extract_actual_type()
 
-    def eval(self) -> bool:
-        op, val = next(iter(self.type_filter.items()))
+        self._validate_type()
+        self.op, self.value = self._extract_operator()
+        self._validate_operator()
+
+    def _extract_property(self) -> str:
         try:
-            func = _Condition._op_map[op]
-            if self.type_name in ['title', 'rich_text']:
-                operand = self.property_obj[self.type_name][0]['text']['content']
-            else:
-                operand = self.property_obj[self.type_name]
-            result = func(operand, val)
-            return result
-        except KeyError as ke:
-            raise Exception(f'Operator: {ke.args[0]} not supported or unknown') 
+            return self.condition["property"]
+        except KeyError:
+            raise ValueError("Filter condition missing 'property' key")
 
-class _CompositeCondition(_Condition):
-    def __init__(self, logical_op: str, conditions: Sequence[_Condition]):
-        self.logical_op = logical_op
-        self.conditions = conditions
+    def _extract_property_obj(self) -> dict:
+        try:
+            return self.page["properties"][self.prop_name]
+        except KeyError:
+            raise ValueError(f"Property '{self.prop_name}' not found on page")
+
+    def _extract_filter(self) -> tuple[str, dict]:
+        filters = [(k, v) for k, v in self.condition.items() if k != "property"]
+        if len(filters) != 1:
+            raise ValueError(f"Invalid filter structure for property '{self.prop_name}'")
+        return filters[0]
+
+    def _extract_actual_type(self) -> str:
+        try:
+            return next(iter(self.property_obj.keys()))
+        except Exception:
+            raise ValueError(f"Malformed property object for '{self.prop_name}'")
+
+    def _validate_type(self):
+        if self.type_name != self.actual_type:
+            raise ValueError(
+                f"Invalid filter: property '{self.prop_name}' is of type '{self.actual_type}', "
+                f"not '{self.type_name}'"
+            )
+
+    def _extract_operator(self):
+        if len(self.type_filter) != 1:
+            raise ValueError(f"Invalid operator specification for '{self.prop_name}'")
+        return next(iter(self.type_filter.items()))
+
+    def _validate_operator(self):
+        allowed = self._allowed_ops[self.type_name]
+        if self.op not in allowed:
+            raise ValueError(
+                f"Operator '{self.op}' not allowed for type '{self.type_name}'. "
+                f"Allowed: {sorted(allowed)}"
+            )
 
     def eval(self) -> bool:
-        # IMPORTANT: You have to first eval all the conditions in an iterable!
-        iterable_cond = [cond.eval() for cond in self.conditions]
-        if self.logical_op == 'and':
-            result = all(iterable_cond)
-        elif self.logical_op == 'or':
-            result = any(iterable_cond)
-        else:
-            raise Exception(f'Logical operator {self.logical_op} not supported or unknown')
-        
-        return result
+        func = self._op_map[self.op]
 
-class _Filter(_Condition):
-    """Initial implementation, it **does not supported nested composite conditions**."""
+        if self.type_name in ("title", "rich_text"):
+            operand = self.property_obj[self.type_name][0]["text"]["content"]
+        else:
+            operand = self.property_obj[self.type_name]
+
+        return func(operand, self.value)
+
+class _LogicalCondition(_Expression):
+    def __init__(self, op: str, expressions: list[_Expression]):
+        self.op = op
+        self.expressions = expressions
+
+        if self.op == "not" and len(expressions) != 1:
+            raise ValueError("'not' operator requires exactly one condition")
+
+    def eval(self) -> bool:
+        if self.op == "and":
+            return all(expr.eval() for expr in self.expressions)
+        elif self.op == "or":
+            return any(expr.eval() for expr in self.expressions)
+        elif self.op == "not":
+            return not self.expressions[0].eval()
+        else:
+            raise ValueError(f"Unknown logical operator '{self.op}'")
+
+class _Filter:
     def __init__(self, page: dict, filter: dict):
         self.page = page
         self.filter = filter
-        self.compiled: _Condition = None
-        
-    def _compile(self) -> None:
-        filter_obj: dict = self.filter['filter']
-        is_composite = filter_obj.get('and') or filter_obj.get('or')
-        if is_composite:
-            conditions = []
-            logical_op, conds = next(iter(filter_obj.items()))
-            conditions = [_Condition(self.page, cond) for cond in conds]
-            self.compiled = _CompositeCondition(logical_op, conditions)
-        else:
-            self.compiled = _Condition(self.page, filter_obj)
+        self.compiled: _Expression | None = None
+
+    def _compile_expression(self, node: dict) -> _Expression:
+        # Logical nodes
+        if "and" in node:
+            return _LogicalCondition(
+                "and",
+                [self._compile_expression(child) for child in node["and"]],
+            )
+
+        if "or" in node:
+            return _LogicalCondition(
+                "or",
+                [self._compile_expression(child) for child in node["or"]],
+            )
+
+        if "not" in node:
+            return _LogicalCondition(
+                "not",
+                [self._compile_expression(node["not"])],
+            )
+
+        # Leaf node
+        return _Condition(self.page, node)
+
+    def _compile(self):
+        try:
+            filter_obj = self.filter["filter"]
+        except KeyError:
+            raise ValueError("Filter missing 'filter' key")
+
+        self.compiled = self._compile_expression(filter_obj)
 
     def eval(self) -> bool:
         if not self.compiled:
             self._compile()
-
         return self.compiled.eval()

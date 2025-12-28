@@ -24,7 +24,24 @@ def is_valid_uuid(uuid_str: str) -> bool:
 
 @pytest.fixture
 def inmem_client() -> InMemoryNotionClient:
-    return InMemoryNotionClient()
+    client = InMemoryNotionClient()
+    ischema_page = {
+        'parent' : {
+            'type': 'page_id',
+            'page_id': str(uuid.uuid4())
+        },
+        'properties': {
+            'Name': {
+                'title': [{
+                    'type': 'text',
+                    'text': {'content': 'INFORMATION_SCHEMA', 'link': None}
+                }]
+            }
+        }
+    }
+    ischema_page_obj = client._add('page', ischema_page)
+    client._ischema_page_id = ischema_page_obj['id']
+    return client
 
 @pytest.fixture
 def file_path() -> str:
@@ -74,24 +91,25 @@ def test_add_page_to_page(inmem_client: InMemoryNotionClient):
     pg_payload = {
         'parent': {
             'type': "page_id",
-            'page_id': "98ad959b-2b6a-4774-80ee-00246fb0ea9b",
+            'page_id': inmem_client.ischema_page_id,
         },
         'properties': {
             'Name': {'title': {}},
             'Description': {'rich_text': {}}
         }
     }
-    new_pg_obj = inmem_client.pages_create(pg_payload)
-    retrieved_pg_obj = inmem_client.pages_retrieve({'id': new_pg_obj['id']})
+    new_pg_obj = inmem_client.pages_create(payload=pg_payload)
+    retrieved_pg_obj = inmem_client.pages_retrieve(
+        path_params={'page_id': new_pg_obj['id']},
+    )
     assert _compare_property_ids(new_pg_obj, retrieved_pg_obj)
-
 
 def test_add_page_to_database(inmem_client: InMemoryNotionClient):
     # 1. Create a new database
     db_payload = {
         'parent': {
             'type': "page_id",
-            'page_id': "98ad959b-2b6a-4774-80ee-00246fb0ea9b",
+            'page_id': inmem_client.ischema_page_id,
         },
         'title': [{
             'type': 'text',
@@ -102,8 +120,8 @@ def test_add_page_to_database(inmem_client: InMemoryNotionClient):
             'Description': {'rich_text': {}}
         }
     }
-    new_db_obj = inmem_client.databases_create(db_payload)
-    assert new_db_obj['parent']['page_id'] == "98ad959b-2b6a-4774-80ee-00246fb0ea9b"
+    new_db_obj = inmem_client.databases_create(payload=db_payload)
+    assert new_db_obj['parent']['page_id'] == inmem_client.ischema_page_id
     assert not new_db_obj['archived'] 
     assert not new_db_obj['in_trash']
     property_keys = [k for k in new_db_obj['properties'].keys()]
@@ -126,7 +144,7 @@ def test_add_page_to_database(inmem_client: InMemoryNotionClient):
         }
     }
 
-    new_pg_obj = inmem_client.pages_create(pg_payload)
+    new_pg_obj = inmem_client.pages_create(payload=pg_payload)
     assert _compare_property_ids(new_pg_obj, new_db_obj)
 
 def test_add_database(inmem_client: InMemoryNotionClient):
@@ -134,7 +152,7 @@ def test_add_database(inmem_client: InMemoryNotionClient):
     db_payload = {
         'parent': {
             'type': "page_id",
-            'page_id': "98ad959b-2b6a-4774-80ee-00246fb0ea9b",
+            'page_id': inmem_client.ischema_page_id,
         },
         'title': [{
             'type': 'text',
@@ -145,6 +163,132 @@ def test_add_database(inmem_client: InMemoryNotionClient):
             'Description': {'rich_text': {}}
         }
     }
-    new_db_obj = inmem_client.databases_create(db_payload)
-    retrieved_db_obj = inmem_client.databases_retrieve({'id': new_db_obj['id']})
+    new_db_obj = inmem_client.databases_create(payload=db_payload)
+    retrieved_db_obj = inmem_client.databases_retrieve(path_params={'database_id': new_db_obj['id']})
     assert new_db_obj == retrieved_db_obj
+
+def _add_page_to_database(
+        inmem_client: InMemoryNotionClient, 
+        database_id: str,
+        *,
+        name: str,
+        description: str,
+        price: float
+    ):
+    payload = {
+        'parent': {
+            'type': 'database_id',
+            'database_id': database_id
+        },
+        'properties': {
+            'name': {
+                'title': [{'text': {'content': name}}]
+            },
+            'description': {
+                'rich_text': [{'text': {'content': description}}]
+            },
+            'price': {
+                'number': price
+            }
+            
+        }
+    }
+    
+    inmem_client.pages_create(payload=payload)
+
+def _setup_test_for_database_query(inmem_client: InMemoryNotionClient):
+    # 1. Create a new database
+    db_payload = {
+        'parent': {
+            'type': "page_id",
+            'page_id': inmem_client.ischema_page_id,
+        },
+        'title': [{
+            'type': 'text',
+            'text': {'content': 'Grocery List', 'link': None}
+        }],
+        'properties': {
+            'name': {'title': {}},
+            'description': {'rich_text': {}},
+            'price': {'number': {'format': 'number_with_commas'}}
+        }
+    }
+    database = inmem_client.databases_create(payload=db_payload)
+
+    # 2. add some pages
+    _add_page_to_database(
+        inmem_client, 
+        database['id'],
+        name='Spinach',
+        description='A vegetable',
+        price=0.5
+    )
+
+    _add_page_to_database(
+        inmem_client, 
+        database['id'],
+        name='Banana',
+        description='A fruit',
+        price=2.5
+    )
+
+    _add_page_to_database(
+        inmem_client, 
+        database['id'],
+        name='Potato',
+        description='Another vegetable',
+        price=0.75
+    )
+
+    return database['id']
+
+
+def test_query_database(inmem_client: InMemoryNotionClient):
+    database_id = _setup_test_for_database_query(inmem_client)
+    filter_obj = {
+            'and': [
+                {
+                    'property': 'description',
+                    'rich_text': {'contains': 'vegetable'}
+                },
+                {
+                    'property': 'price',
+                    'number': {'less_than': 2.5}
+                }
+            ]
+    }
+
+    result_pages = inmem_client.databases_query(
+        path_params={'database_id': database_id},
+        payload={'filter': filter_obj}
+    ) 
+
+    assert len(result_pages['results']) == 2
+
+def test_query_database_with_filter_properties(inmem_client: InMemoryNotionClient):
+    database_id = _setup_test_for_database_query(inmem_client)
+
+    filter_obj = {
+            'and': [
+                {
+                    'property': 'description',
+                    'rich_text': {'contains': 'vegetable'}
+                },
+                {
+                    'property': 'price',
+                    'number': {'less_than': 2.5}
+                }
+            ]
+    }
+
+    result_pages = inmem_client.databases_query(
+        path_params={'database_id': database_id},
+        query_params={'filter_properties': ['name', 'price']},
+        payload={'filter': filter_obj}
+    ) 
+
+    assert len(result_pages['results']) == 2
+
+
+
+
