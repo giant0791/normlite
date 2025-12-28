@@ -44,7 +44,6 @@ The design of SQL statement execution separates responsibilities cleanly using t
 
 """
 from __future__ import annotations
-import pdb
 from typing import TYPE_CHECKING, Optional
 import copy
 
@@ -54,8 +53,6 @@ if TYPE_CHECKING:
     from normlite.sql.base import Compiled
     from normlite.engine.cursor import CursorResult
     from normlite.notiondbapi.dbapi2 import Cursor
-    from normlite.sql.elements import BindParameter
-
 
 class ExecutionContext:
     """Orchestrate binding, compilation, and result setup.
@@ -105,30 +102,24 @@ class ExecutionContext:
         """Perform value binding and type adaptation before execution.""" 
         operation = self._compiled.as_dict().get('operation')
         
-        template = operation['template']
-        payload = self._bind_params(
-            copy.deepcopy(template),
-            self._compiled.params,
-        )
+        if self._binds:
+            # bind the parameters into the template and build the payload
+            template = copy.deepcopy(operation['template'])
+            payload = self._bind_params(template, self._binds)
 
-        if self._compiled.params:
-            raise ArgumentError(
-                f"Unused bind parameters: {', '.join(self._compiled.params.keys())}"
-            )
+            if self._binds:
+                # not all bind parameters have been used
+                not_bound = [key for key in self._binds.keys()]
+                not_bound_cols = ', '.join(not_bound)
+                raise ArgumentError(
+                    f'Could not bind all columns: {not_bound_cols}.'
+                )
+
+        else:
+            payload = operation['template']
 
         self._compiled._compiled['operation']['payload'] = payload
-
-    def _resolve_bindparam(self, bindparam: BindParameter, usage: str) -> dict:
-        raw = bindparam.callable_() if bindparam.callable_ else bindparam.value
-        type_ = bindparam.type
-
-        if usage == "filter":
-            processor = type_.filter_value_processor()
-        else:
-            processor = type_.bind_processor()
-
-        return processor(raw) if processor else raw
-     
+        
     def _bind_params(self, template: dict, params: dict) -> dict:
         """Helper for binding parameters at runtime."""
 
@@ -138,17 +129,20 @@ class ExecutionContext:
         elif isinstance(template, list):
             return [self._bind_params(item, params) for item in template]
 
-        elif isinstance(template, str) and template.startswith(":"):
+        elif isinstance(template, str):
             # parameter placeholder?
-            key = template[1:]
-            if key not in params:
-                raise KeyError(f"Missing parameter: {key}")
-            
-            bindparam, usage = params.pop(key)
-            return self._resolve_bindparam(bindparam, usage)
+            if template.startswith(":"):
+                name = template[1:]
+                if name not in params:
+                    raise KeyError(f"Missing parameter: {name}")
+                param = params[name]
+                params.pop(name) 
+                return param
+            return template
 
-        # int, float, None …
-        return template
+        else:
+            # int, float, None …
+            return template
         
     def _setup_cursor_result(self) -> CursorResult:
             """Setup the cursor result to be returned."""

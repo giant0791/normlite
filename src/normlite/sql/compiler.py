@@ -296,7 +296,6 @@ class NotionCompiler(SQLCompiler):
             'table_catalog': hastable._table_catalog
         }
 
-
         # IMPORTANT: You need the table_id column which stores the found database's id
         result_columns = ['table_id']
         return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}
@@ -356,7 +355,7 @@ class NotionCompiler(SQLCompiler):
         database_id = select.table.get_oid()
         if database_id is None:
             raise CompileError(f'Table: {select.table.name} has not been previously reflected.')
-        parameters = dict(database_id=database_id)
+        paramters = dict(database_id=database_id)
 
         if select._whereclause.expression:
             with self._where_context():
@@ -366,7 +365,7 @@ class NotionCompiler(SQLCompiler):
                 operation['template']['filter'] = filter_obj 
 
         self._compiler_state.result_columns = list(select.table.columns.keys())
-        return {'operation': operation, 'parameters': parameters}
+        return {'operation': operation, 'parameters': paramters}
 
     def visit_binary_expression(self, expression: BinaryExpression) -> dict:
         return {
