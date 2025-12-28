@@ -152,7 +152,7 @@ class Executable(ClauseElement):
         # Suppor the same SqlAlchemy convention that parameters override the values() clause.
         cursor = context._dbapi_cursor
         compiled = context._compiled
-        cursor.execute(compiled.as_dict()['operation'], compiled.params)
+        cursor.execute(compiled.as_dict()['operation'], compiled.as_dict()['parameters'])
         result = context._setup_cursor_result()
         self._post_exec(result, context)
         return result
