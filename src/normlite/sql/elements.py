@@ -54,6 +54,7 @@ class ColumnElement(ClauseElement):
         
 
 class UnaryExpression(ColumnElement):
+    __visit_name__ = 'unary_expression'
     def __init__(self, operator: str, element: ColumnElement):
         assert operator == "not"
         self.operator = operator
@@ -106,6 +107,9 @@ class ComparatorProtocol(Protocol):
     def endswith(self, other):
         ...
 
+    def __gt__(self, other):
+        ...
+
     def __lt__(self, other):
         ...
 
@@ -117,13 +121,16 @@ class ColumnOperators:
         comparator: ComparatorProtocol  # for type checkers only
 
     def __eq__(self, other):
-        return self.operate("eq", other)
+        return self.comparator.operate("eq", other)
 
     def __ne__(self, other):
-        return self.operate("ne", other)
+        return self.comparator.operate("ne", other)
+
+    def __gt__(self, other):
+        return self.comparator.operate("gt", other)
 
     def __lt__(self, other):
-        return self.operate("lt", other)
+        return self.comparator.operate("lt", other)
     
     def in_(self, other):
         return self.comparator.in_(other)

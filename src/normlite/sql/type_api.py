@@ -190,6 +190,8 @@ class Integer(Number):
     .. versionadded:: 0.7.0
     """
 
+    comparator_factory = NumberComparator
+
     def __init__(self):
         super().__init__('number')
 

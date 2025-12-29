@@ -29,7 +29,7 @@ from normlite.sql.elements import BooleanClauseList
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateColumn, CreateTable, HasTable, ReflectTable
     from normlite.sql.dml import Insert, Select
-    from normlite.sql.elements import ColumnElement, BinaryExpression, BindParameter
+    from normlite.sql.elements import ColumnElement, UnaryExpression, BinaryExpression, BindParameter
 
 class NotionCompiler(SQLCompiler):
     """Notion compiler for SQL statements.
@@ -376,6 +376,18 @@ class NotionCompiler(SQLCompiler):
                 expression.operator,
                 expression.value
             )
+        }
+    
+    def visit_unary_expression(self, expression: UnaryExpression) -> dict:
+        if expression.operator != "not":
+            raise NotImplementedError(
+                f"Unsupported unary operator: {expression.operator}"
+            )
+
+        inner = expression.element._compiler_dispatch(self)
+
+        return {
+            "not": inner
         }
     
     def visit_boolean_clause_list(self, expression: BooleanClauseList) -> dict:
