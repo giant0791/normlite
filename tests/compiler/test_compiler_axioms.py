@@ -96,3 +96,26 @@ def test_compile_not(name_col, ref_compiler, prod_compiler):
     expr = ~(name_col == "Galilei")
     assert_compile_equal(expr, ref_compiler.process, prod_compiler.process)
 
+#-------------------------------------------
+# Associativity invariants
+#-------------------------------------------
+def test_and_associativity(name_col, grade_col, id_col, ref_compiler, prod_compiler):
+    """AND associativity"""
+    e1 = (name_col == "A") & ((grade_col == "B") & (id_col > 10))
+    e2 = ((name_col == "A") & (grade_col == "B")) & (id_col > 10)
+
+    assert_compile_equal(e1, ref_compiler.process, prod_compiler.process)
+    assert_compile_equal(e2, ref_compiler.process, prod_compiler.process)
+
+    assert reference_compile(e1) == reference_compile(e2)
+
+def test_or_associativity(name_col, grade_col, id_col, ref_compiler, prod_compiler):
+    """OR associativity"""
+    e1 = (name_col == "A") | ((grade_col == "B") | (id_col > 10))
+    e2 = ((name_col == "A") | (grade_col == "B")) | (id_col > 10)
+
+    assert_compile_equal(e1, ref_compiler.process, prod_compiler.process)
+    assert_compile_equal(e2, ref_compiler.process, prod_compiler.process)
+
+    assert reference_compile(e1) == reference_compile(e2)
+
