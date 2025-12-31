@@ -116,6 +116,9 @@ class ComparatorProtocol(Protocol):
     def before(self, other):
         ...
 
+    def after(self, other):
+        ...
+
 class ColumnOperators:
     if TYPE_CHECKING:
         comparator: ComparatorProtocol  # for type checkers only

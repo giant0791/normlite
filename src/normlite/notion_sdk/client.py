@@ -868,6 +868,20 @@ class FileBasedNotionClient(InMemoryNotionClient):
 #--------------------------------------------------
 # Private classes for implementing database queries
 #--------------------------------------------------
+def _parse_notion_date(value: Optional[str]) -> Optional[datetime]:
+    """Helper for implementing after and before operators on dates."""
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        raise TypeError(f"Expected date string, got {type(value)}")
+
+    try:
+        # Python 3.11+ handles ISO 8601 offsets cleanly
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError(f"Invalid Notion date string: {value!r}")
+
 class _Expression(ABC):
     @abstractmethod
     def eval(self) -> bool:
@@ -878,10 +892,12 @@ class _Condition(_Expression):
         "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "equals"},
         "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "equals"},
         "number":    {"equals", "greater_than", "less_than"},
+        "date":      {"after", "before", "equals", "does_not_equal", "is_empty", "is_not_empty"}
     }
 
     _op_map = {
         'equals': operator.eq,
+        'does_not_equal': operator.ne,
         'greater_than': operator.gt,
         'less_than': operator.lt,
         'contains': lambda a, b: isinstance(a, str) and b in a,
@@ -889,6 +905,18 @@ class _Condition(_Expression):
         'starts_with': lambda a, b: isinstance(a, str) and a.startswith(b),
         'ends_with': lambda a, b: isinstance(a, str) and a.endswith(b),
         'is_empty': lambda a, _: (a is None or a == "" or a == []),
+        'is_not_empy': lambda a, _: (a is not None and a != "" and a != []),
+        'after': lambda a, b: (
+            a is not None
+            and b is not None
+            and a > b
+        ),
+
+        'before': lambda a, b: (
+            a is not None
+            and b is not None
+            and a< b
+        ),
     }
 
     def __init__(self, page: dict, condition: dict):
@@ -924,7 +952,7 @@ class _Condition(_Expression):
 
     def _extract_actual_type(self) -> str:
         try:
-            return next(iter(self.property_obj.keys()))
+            return self.property_obj['type']
         except Exception:
             raise ValueError(f"Malformed property object for '{self.prop_name}'")
 
@@ -953,6 +981,11 @@ class _Condition(_Expression):
 
         if self.type_name in ("title", "rich_text"):
             operand = self.property_obj[self.type_name][0]["text"]["content"]
+
+        elif self.type_name == 'date':
+            operand = _parse_notion_date(self.property_obj[self.type_name]['start'])
+            self.value = _parse_notion_date(self.value)
+
         else:
             operand = self.property_obj[self.type_name]
 
