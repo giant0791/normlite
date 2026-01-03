@@ -23,7 +23,7 @@ If these tests fail, **nothing else matters**.
 """
 from tests.reference.evaluator import reference_eval
 
-PAGE = {"properties": {"x": 1}}
+PAGE = {"properties": {"x": {"type": "number", "number": 1}}}
 
 TRUE = {"property": "x", "number": {"equals": 1}}
 FALSE = {"property": "x", "number": {"equals": 2}}

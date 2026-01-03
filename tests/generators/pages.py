@@ -1,8 +1,6 @@
-import pdb
-from faker import Faker
 import random
 
-fake = Faker()
+from tests.generators.genutils import fake, generate_iso_string
 
 def generate_page(schema):
     props = {}
@@ -13,6 +11,8 @@ def generate_page(schema):
             props[prop] = {"type": "rich_text", "rich_text": [{"text": {"content": random.choice(["A","B","C"])}}]}
         elif typ == "number":
             props[prop] = {"type": "number", "number": random.randint(0, 1000)}
+        elif typ == "date":
+            props[prop] = {"type": "date", "date": {"start": generate_iso_string(random.choice([False, True]))}}
     return {"properties": props}
 
 def generate_pages(schema, n=50):

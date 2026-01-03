@@ -29,10 +29,9 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 import json
-import operator
 from pathlib import Path
 import pdb
-from typing import Any, List, NoReturn, Optional, Self, Sequence, Set, Type
+from typing import Any, List, NoReturn, Optional, Self, Set, Type
 from types import TracebackType
 from abc import ABC, abstractmethod
 import uuid
@@ -41,6 +40,8 @@ import random
 import string
 import urllib.parse
 import warnings
+
+from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
 
 class NotionError(Exception):
     """Exception raised for all errors related to the Notion REST API."""
@@ -887,37 +888,72 @@ class _Expression(ABC):
     def eval(self) -> bool:
         pass
 
+class _EmptyType:
+    """Centralized sentinel class for signaling empty properties."""
+    __slots__ = ()
+
+    def __repr__(self):
+        return "<EMPTY>"
+
+EMPTY_DATE = _EmptyType()
+EMPTY_TEXT = _EmptyType()
+EMPTY_NUMBER = _EmptyType()
+EMPTY_CHECKBOX = _EmptyType()
+
+
 class _Condition(_Expression):
     _allowed_ops = {
-        "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "equals"},
-        "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "equals"},
+        "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
+        "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
         "number":    {"equals", "greater_than", "less_than"},
-        "date":      {"after", "before", "equals", "does_not_equal", "is_empty", "is_not_empty"}
+        "date":      {"after", "before", "equals", "does_not_equal", "is_empty", "is_not_empty"},
+        "checkbox":  {"equals", "does_not_equal"},
     }
 
     _op_map = {
-        'equals': operator.eq,
-        'does_not_equal': operator.ne,
-        'greater_than': operator.gt,
-        'less_than': operator.lt,
-        'contains': lambda a, b: isinstance(a, str) and b in a,
-        'does_not_contain': lambda a, b: isinstance(a, str) and b not in a,
-        'starts_with': lambda a, b: isinstance(a, str) and a.startswith(b),
-        'ends_with': lambda a, b: isinstance(a, str) and a.endswith(b),
-        'is_empty': lambda a, _: (a is None or a == "" or a == []),
-        'is_not_empy': lambda a, _: (a is not None and a != "" and a != []),
-        'after': lambda a, b: (
-            a is not None
-            and b is not None
-            and a > b
+        # date
+        "date.is_empty":                lambda a, _: a is None,
+        "date.is_not_empty":            lambda a, _: a is not None,
+        "date.equals":                  lambda a, b: a == b,
+        "date.does_not_equal":          lambda a, b: a != b,
+        "date.after": lambda a, b: (
+            a["start"] is not None
+            and b["start"] is not None
+            and a["start"] > b["start"]
+        ),
+        "date.before": lambda a, b: (
+            a["start"] is not None
+            and b["start"] is not None
+            and a["start"] < b["start"]
         ),
 
-        'before': lambda a, b: (
-            a is not None
-            and b is not None
-            and a< b
-        ),
+        # rich_text
+        "rich_text.equals":             lambda a, b: a == b if a is not EMPTY_TEXT else False,
+        "rich_text.is_empty":           lambda a, _: a is EMPTY_TEXT,
+        "rich_text.is_not_empty":       lambda a, _: a is not EMPTY_TEXT,
+        "rich_text.contains":           lambda a, b: False if a is EMPTY_TEXT else b in a,
+        "rich_text.does_not_contain":   lambda a, b: True if a is EMPTY_TEXT else b not in a,
+        "rich_text.starts_with":        lambda a, b: False if a is EMPTY_TEXT else a.startswith(b),
+        "rich_text.ends_with":          lambda a, b: False if a is EMPTY_TEXT else a.endswith(b),
+
+        # title
+        "title.equals":                 lambda a, b: a == b if a is not EMPTY_TEXT else False,
+        "title.is_empty":               lambda a, _: a is EMPTY_TEXT,
+        "title.is_not_empty":           lambda a, _: a is not EMPTY_TEXT, 
+        "title.contains":               lambda a, b: False if a is EMPTY_TEXT else b in a,
+        "title.does_not_contain":       lambda a, b: True if a is EMPTY_TEXT else b not in a,
+        "title.starts_with":            lambda a, b: False if a is EMPTY_TEXT else a.startswith(b),
+        "title.ends_with":              lambda a, b: False if a is EMPTY_TEXT else a.endswith(b),
+
+        # number
+        "number.equals":                lambda a, b: a == b,
+        "number.greater_than":          lambda a, b: a > b,
+        "number.less_than":             lambda a, b: a < b,
+
+        # checkbox
+        "checkbox.equals":              lambda a, b: a is b,
     }
+
 
     def __init__(self, page: dict, condition: dict):
         self.page = page
@@ -977,14 +1013,29 @@ class _Condition(_Expression):
             )
 
     def eval(self) -> bool:
-        func = self._op_map[self.op]
+        opname = f'{self.type_name}.{self.op}'
+        func = self._op_map[opname]
 
         if self.type_name in ("title", "rich_text"):
-            operand = self.property_obj[self.type_name][0]["text"]["content"]
+            texts = self.property_obj[self.type_name]
+            operand = (
+                texts[0]["text"]["content"]
+                if texts
+                else EMPTY_TEXT
+            )
 
         elif self.type_name == 'date':
-            operand = _parse_notion_date(self.property_obj[self.type_name]['start'])
-            self.value = _parse_notion_date(self.value)
+            operand = normalize_page_date(self.property_obj.get("date"))
+
+            # unary operators
+            if self.op in ("is_empty", "is_not_empty"):
+                return func(operand, None)
+
+            # binary operators
+            self.value = normalize_filter_date(self.value)
+
+            if operand is None or self.value is None:
+                return False
 
         else:
             operand = self.property_obj[self.type_name]

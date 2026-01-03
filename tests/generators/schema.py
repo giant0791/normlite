@@ -3,13 +3,15 @@ import random
 
 from normlite.sql.elements import ColumnElement, UnaryExpression
 from normlite.sql.schema import Column
-from normlite.sql.type_api import Integer, String, TypeEngine
+from normlite.sql.type_api import Date, Integer, String, TypeEngine
 from normlite.sql.elements import UnaryExpression, BinaryExpression, BooleanClauseList, BindParameter
+from tests.generators.genutils import generate_iso_string
 
 SCHEMA = {
     "name": "title",
     "grade": "rich_text",
     "student_id": "number",
+    "start_on": "date"
 }
 
 STRING_TYPES = ["title", "rich_text"]
@@ -22,6 +24,7 @@ OPS_BY_TYPE = {
     "title": ["equals", "contains", "starts_with", "ends_with"],
     "rich_text": ["equals", "contains", "starts_with", "ends_with"],
     "number": ["equals", "greater_than", "less_than"],
+    "date": ["after", "before", "is_empty", "is_not_empty"],
     "checkbox": []
 }
 
@@ -34,6 +37,9 @@ def create_type_engine(typ: str) -> TypeEngine:
     
     if typ == 'rich_text':
         return String()
+    
+    if typ == 'date':
+        return Date()
     
     raise AssertionError(f'Unsupported type: {typ}')
 
@@ -62,6 +68,8 @@ def gen_value_for_type(rng, typ):
         return rng.choice(["Alice", "Bob", "Galilei", "Newton"])
     if typ == "number":
         return rng.randint(0, 1000)
+    if typ == "date":
+        return generate_iso_string(rng.choice([True, False]))
     raise AssertionError("unknown type")
 
 def gen_binary_expr(rng, columns):
