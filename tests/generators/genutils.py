@@ -1,12 +1,14 @@
+from decimal import Decimal
 import pdb
 from faker import Faker
 import random
 import math
 from collections import defaultdict
-from typing import Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Sequence
 
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql import type_api
+from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement, UnaryExpression
 from normlite.sql.schema import Column, MetaData, Table
 
 fake = Faker()
@@ -144,6 +146,16 @@ class ReferenceGenerator:
             "greater_than",
             "less_than",
         },
+        "number_with_commas": {
+            "equals",
+            "greater_than",
+            "less_than",
+        },
+        "dollar": {
+            "equals",
+            "greater_than",
+            "less_than",
+        },
         "date": {
             "equals",
             "does_not_equal",
@@ -193,6 +205,86 @@ class ReferenceGenerator:
         
         table = Table(f'table_{self.faker.uuid4()}', self.metadata, *cols)
         return table
+    
+    def _gen_bindparam_value(self, typ: str) -> Any:
+        value_obj = self._gen_property_value(typ)
+        val = None
+        if typ == 'date':
+            val = value_obj.get('start', {})
+                   
+        elif typ in ('number_with_commas', 'dollar',):
+            val = value_obj['number']
+        else:
+            val = value_obj[typ]
+
+        return val
+    
+    def gen_binary_expr(self, columns: Sequence[Column]) -> BinaryExpression:
+        col = self.rng.choice(columns)
+        typ = col.type_.get_col_spec()
+
+        op = self.rng.choice(tuple(self.OPERATORS[typ]))
+
+        return BinaryExpression(
+            column=col,
+            operator=op,
+            value=BindParameter(
+                key=None, 
+                value=self._gen_bindparam_value(typ)        # IMPORTANT: This must mimic the coerce_to_bindparam() behavior
+            )      
+        )
+
+    def gen_expr(
+        self,
+        columns: Sequence[Column],
+        depth: int,
+        max_depth: int,
+    ) -> tuple[ColumnElement, int]:
+
+        # forced leaf at max depth
+        if depth >= max_depth:
+            expr = self.gen_binary_expr(columns)
+            return expr, 1
+
+        choice = self.rng.random()
+
+        # leaf
+        if choice < 0.4:
+            expr = self.gen_binary_expr(columns)
+            return expr, 1
+
+        # unary
+        if choice < 0.55:
+            inner, inner_depth = self.gen_expr(
+                columns, depth + 1, max_depth
+            )
+            return UnaryExpression("not", inner), inner_depth + 1
+
+        # boolean
+        left, left_depth = self.gen_expr(
+            columns, depth + 1, max_depth
+        )
+        right, right_depth = self.gen_expr(
+            columns, depth + 1, max_depth
+        )
+
+        expr = BooleanClauseList(
+            operator=self.rng.choice(["and", "or"]),
+            clauses=[left, right],
+        )
+
+        return expr, max(left_depth, right_depth) + 1
+    
+    def gen_ast(self, min_cols=1, max_cols=16, max_depth=4) -> tuple[Sequence[Column], ColumnElement, int]:
+        columns = self.gen_table(min_cols, max_cols).get_user_defined_colums()
+        
+        # bias toward extrem depth
+        if self.rng.random() < 0.6:
+            max_depth = self.rng.randint(20, 60)
+        
+
+        expr, exdepth = self.gen_expr(columns, depth=0, max_depth=max_depth)
+        return columns, expr, exdepth
             
     def gen_page(self, schema: dict) -> dict:
         properties = {}
@@ -222,6 +314,23 @@ class ReferenceGenerator:
             return {
                 "type": "number",
                 "number": self.rng.randint(0, 1000)
+            }
+
+        if typ == "number_with_commas":
+            return {
+                "type": "number",
+                "number": self.faker.pydecimal(
+                    left_digits=4,
+                    right_digits=3,
+                    min_value=-9999.999,
+                    max_value=9999.999
+                )
+            }
+        
+        if typ == "dollar":
+            return {
+                "type": "number",
+                "number": Decimal(self.rng.randint(-9999, 9999)) / 100
             }
 
         if typ == "checkbox":
