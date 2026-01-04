@@ -149,7 +149,7 @@ class Number(TypeEngine):
         self.format = format
 
     def get_col_spec(self):
-        return "number"
+        return self.format
 
     def bind_processor(self):
         def process(value: Optional[Union[_NumericType, str]]) -> Optional[dict]:
