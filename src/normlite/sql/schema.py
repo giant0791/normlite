@@ -340,6 +340,15 @@ class Table(HasIdentifier):
         """
         return self._primary_key
     
+    def get_user_defined_colums(self) -> ReadOnlyColumnCollection:
+        """Return all user-defined columns."""
+        non_special_columns = ColumnCollection()
+        for c in self.c:
+            if c.name not in SpecialColumns.values():
+                non_special_columns.add(c)
+        return non_special_columns.as_readonly()
+
+    
     def get_oid(self) -> str:
         return self._database_id
     
