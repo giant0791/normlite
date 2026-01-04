@@ -3,7 +3,11 @@ from faker import Faker
 import random
 import math
 from collections import defaultdict
-from typing import Dict, Iterable
+from typing import Dict, Iterable, List
+
+from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+from normlite.sql import type_api
+from normlite.sql.schema import Column, MetaData, Table
 
 fake = Faker()
 
@@ -111,6 +115,13 @@ class ReferenceGenerator:
         "checkbox",
     }
 
+    COL_TYPES = {
+        DBAPITypeCode.NUMBER_DOLLAR.value,
+        DBAPITypeCode.NUMBER_WITH_COMMAS,
+    }
+
+    ALL_COL_TYPES = TYPES | COL_TYPES 
+
     OPERATORS = {
         "title": {
             "equals",
@@ -153,6 +164,7 @@ class ReferenceGenerator:
             self.faker.seed_instance(seed)
 
         self.coverage = CoverageRegistry()
+        self.metadata = MetaData()
 
     def gen_schema(self, min_props=1, max_props=6) -> dict:
         schema = {}
@@ -164,7 +176,24 @@ class ReferenceGenerator:
             schema[name] = {"type": typ}
 
         return schema
+    
+    def gen_table(self, min_cols=1, max_cols=6) -> Table:
+        cols = []
+        n = self.rng.randint(min_cols, max_cols)
 
+        for i in range(n):
+            typ = self.rng.choice(tuple(self.ALL_COL_TYPES))
+            cols.append(
+                Column(
+                    name=f"col_{i}",
+                    type_=type_api.type_mapper[typ],
+                    primary_key=(i == 0)
+                )
+            )
+        
+        table = Table(f'table_{self.faker.uuid4()}', self.metadata, *cols)
+        return table
+            
     def gen_page(self, schema: dict) -> dict:
         properties = {}
 
@@ -273,3 +302,5 @@ class ReferenceGenerator:
             return self._gen_iso_date()
 
         raise ValueError(f"Unsupported type/operator: {typ}/{op}")
+    
+
