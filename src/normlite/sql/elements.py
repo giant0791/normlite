@@ -104,6 +104,9 @@ class ComparatorProtocol(Protocol):
     def not_in(self, other):
         ...
 
+    def startswith(self, other):
+        ...
+
     def endswith(self, other):
         ...
 
@@ -141,6 +144,9 @@ class ColumnOperators:
     def not_in(self, other):
         return self.comparator.not_in(other)
     
+    def startswith(self, other):
+        return self.comparator.startswith(other)
+    
     def endswith(self, other):
         return self.comparator.endswith(other)
     
@@ -177,7 +183,8 @@ class StringComparator(Comparator):
         "ne": "does_not_equal",
         "in": "contains", 
         "ni": "does_not_contain",
-        "ew": "ends_with"
+        "ew": "ends_with",
+        "sw": "starts_with"
     }
     def operate(self, op, other) -> Optional[BinaryExpression]:
         try:
@@ -201,6 +208,9 @@ class StringComparator(Comparator):
     
     def not_in(self, other) -> BinaryExpression:
         return self.operate("ni", other)
+    
+    def startswith(self, other) -> BinaryExpression:
+        return self.operate("sw", other)
     
     def endswith(self, other) -> BinaryExpression:
         return self.operate("ew", other)

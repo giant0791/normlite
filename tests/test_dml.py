@@ -233,6 +233,15 @@ def test_compile_binexp_title_endswith():
     assert as_dict['property'] == 'name'
     assert as_dict['title'] == {'ends_with': ':param_0'}
 
+def test_compile_binexp_title_startswith():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('name', String(is_title=True)))
+    exp: BinaryExpression = students.c.name.startswith('lilei')
+    compiled = exp.compile(NotionCompiler())
+    as_dict = compiled.as_dict()
+    assert as_dict['property'] == 'name'
+    assert as_dict['title'] == {'starts_with': ':param_0'}
+
 def test_compile_binexp_date_before():
     metadata = MetaData()
     students = Table('students', metadata, Column('start_date', Date()))
