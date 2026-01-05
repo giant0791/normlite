@@ -22,7 +22,7 @@ from normlite.sql.dml import Insert, insert, select
 from normlite.sql.ddl import CreateTable
 from normlite.sql.elements import BinaryExpression, BindParameter
 from normlite.sql.schema import Column, MetaData, Table
-from normlite.sql.type_api import Boolean, Date, String
+from normlite.sql.type_api import Boolean, Date, Integer, Money, Numeric, String
 
 @pytest.fixture
 def engine() -> Engine:
@@ -241,6 +241,38 @@ def test_compile_binexp_title_startswith():
     as_dict = compiled.as_dict()
     assert as_dict['property'] == 'name'
     assert as_dict['title'] == {'starts_with': ':param_0'}
+
+def test_compile_binexp_number_operators():
+    metadata = MetaData()
+    students = Table(
+        'students', 
+        metadata, 
+        Column('id', Integer()),
+        Column('rate', Money(currency='dollar')),
+        Column('grade', Numeric())    
+    )
+
+    e1 = students.c.id == 123456
+    e2 = students.c.rate < 200_000
+    e3 = students.c.grade > 1.6
+
+    # reusing the compiler means that
+    # the bind param counter increments and does not get reset
+    nc = NotionCompiler()                                       
+    c1 = e1.compile(nc)
+    c2 = e2.compile(nc)
+    c3 = e3.compile(nc)
+
+    d1 = c1.as_dict()
+    d2 = c2.as_dict()
+    d3 = c3.as_dict()
+
+    assert d1['property'] == 'id'
+    assert d2['property'] == 'rate'
+    assert d3['property'] == 'grade'
+    assert d1['number'] == {'equals': ':param_0'}               
+    assert d2['number'] == {'less_than': ':param_1'}            # because you are using the same compiler instance
+    assert d3['number'] == {'greater_than': ':param_2'}         # because you are using the same compiler instance
 
 def test_compile_binexp_date_before():
     metadata = MetaData()
