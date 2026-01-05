@@ -52,6 +52,17 @@ class ColumnElement(ClauseElement):
             return NotImplemented
         return BooleanClauseList("or", [self, other])
         
+    def __bool__(self):
+        """Forbid Python truthiness.
+
+        Raises:
+            TypeError: Always, boolean value of a SQL/Notion expression is not defined.
+        """
+
+        raise TypeError(
+            "Boolean value of a SQL/Notion expression is not defined. "
+            "Use explicit comparison."
+        )
 
 class UnaryExpression(ColumnElement):
     __visit_name__ = 'unary_expression'
@@ -132,6 +143,12 @@ class ColumnOperators:
 
     def after(self, other):
         return self.operate("af", other)
+    
+    def is_(self, other):
+        return self.operate("eq", other)
+    
+    def is_not(self, other):
+        return self.operate("ne", other)
 
 class Comparator:
     def __init__(self, expr: ColumnElement):

@@ -19,7 +19,6 @@ from normlite.engine.row import Row
 from normlite.sql.base import Compiled
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Insert, insert, select
-from normlite.sql.ddl import CreateTable
 from normlite.sql.elements import BinaryExpression, BindParameter
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, Money, Numeric, String
@@ -283,15 +282,58 @@ def test_compile_binexp_date_before():
     assert as_dict['property'] == 'start_date'
     assert as_dict['date']['before'] == ':param_0'
 
-def test_exec_binexp_date_before():
+def test_compile_binexp_date_after():
     metadata = MetaData()
     students = Table('students', metadata, Column('start_date', Date()))
-    exp: BinaryExpression = students.c.start_date.before(date.today)
+    exp: BinaryExpression = students.c.start_date.after(date.today)
     sql_compiler = NotionCompiler()
     compiled = exp.compile(sql_compiler)
     as_dict = compiled.as_dict()
     assert as_dict['property'] == 'start_date'
-    assert as_dict['date']['before'] == ':param_0'
+    assert as_dict['date']['after'] == ':param_0'
+
+def test_compile_binexp_bool_opertors():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('is_active', Boolean()))
+    e1: BinaryExpression = students.c.is_active == True
+    e2: BinaryExpression = students.c.is_active != True
+    e3: BinaryExpression = students.c.is_active.is_(True)
+    e4: BinaryExpression = students.c.is_active.is_not(True)
+    nc = NotionCompiler()
+    c1 = e1.compile(nc)
+    c2 = e2.compile(nc)
+    c3 = e3.compile(nc)
+    c4 = e4.compile(nc)
+    d1 = c1.as_dict()
+    d2 = c2.as_dict()
+    d3 = c3.as_dict()
+    d4 = c4.as_dict()
+    bp1, u1 = c1._execution_binds['param_0']
+    bp2, u2 = c2._execution_binds['param_1']
+    bp3, u3 = c3._execution_binds['param_2']
+    bp4, u4 = c4._execution_binds['param_3']
+    assert d1['property'] == 'is_active'
+    assert d1['checkbox']['equals'] == ':param_0'
+    assert u1 == u2 == 'value'
+    assert bp1.effective_value
+    assert d2['property'] == 'is_active'
+    assert d2['checkbox']['does_not_equal'] == ':param_1'
+    assert bp2.effective_value
+    assert d3['property'] == 'is_active'
+    assert d3['checkbox']['equals'] == ':param_2'
+    assert u3 == u4 == 'value'
+    assert bp3.effective_value
+    assert d4['property'] == 'is_active'
+    assert d4['checkbox']['does_not_equal'] == ':param_3'
+    assert bp4.effective_value
+
+def test_compile_binexp_bool_forbid_truthiness():
+    metadata = MetaData()
+    students = Table('students', metadata, Column('is_active', Boolean()))
+
+    with pytest.raises(TypeError, match='Use explicit comparison.'):
+       if students.c.is_active:
+           pass
 
 def test_compile_select():
     metadata = MetaData()

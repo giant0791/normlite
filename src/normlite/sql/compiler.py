@@ -358,7 +358,7 @@ class NotionCompiler(SQLCompiler):
             raise CompileError(f'Table: {select.table.name} has not been previously reflected.')
         parameters = dict(database_id=database_id)
 
-        if select._whereclause.expression:
+        if select._whereclause.has_expression():
             with self._where_context():
                 # emit the JSON code for the filter object of the query
                 # in the right context

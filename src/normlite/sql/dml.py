@@ -190,9 +190,33 @@ def insert(table: Table) -> Insert:
     return Insert(table)
 
 class WhereClause(ClauseElement):
+    """Base class for DML statements have a where-clause.
+    
+    .. versionadded:: 0.8.0
+    """
+
     __visit_name__ = 'where_clause'
+
     def __init__(self, expression: Optional[ColumnElement] = None):
         self.expression = expression
+        """The column expression in this where clause."""
+
+    def has_expression(self) -> bool:
+        """Explicit test on expression availability to avoid :exc:`TyperError`.
+        
+        Users of the :class:`WhereClause` shall test for presence of an expression 
+        by invoking this method and not simply 
+        This safely bypasses Python thruthiness invocation, which otherwise raises
+        a :exc:`TyperError`.
+
+        .. seealso::
+            :meth:`normlite.sql.elements.ColumnElement.__bool__` 
+                This method is overloaded to forbid Python truthiness.             
+
+        Returns:
+            bool: ``True`` if :attr:`expression` is not ``None``.
+        """
+        return self.expression is not None
 
     def where(self, expr: ColumnElement) -> WhereClause:
         if self.expression is None:
