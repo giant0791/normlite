@@ -6,12 +6,11 @@ import math
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Sequence
 
+from normlite._constants import SpecialColumns
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql import type_api
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement, UnaryExpression
 from normlite.sql.schema import Column, MetaData, Table
-
-fake = Faker()
 
 def generate_iso_string(include_time: bool = True) -> str:
     """
@@ -411,5 +410,156 @@ class ReferenceGenerator:
             return self._gen_iso_date()
 
         raise ValueError(f"Unsupported type/operator: {typ}/{op}")
-    
+
+class ExpressionGenerator:
+    """
+    Generates *Python column expressions* like:
+
+        start_on.after(date(2025, 1, 1))
+        grade <= Decimal("1.5")
+        isactive.is_(True)
+        name.startswith("Ann")
+
+    This generator is:
+    - type aware
+    - deterministic (seedable)
+    - safe to exec()
+    """
+
+    METHOD_OPS = {
+        type_api.Integer: [
+            "is_empty",
+            "is_not_empty",
+        ],
+        type_api.Numeric: [
+            "is_empty",
+            "is_not_empty",
+        ],
+        type_api.Money: [
+            "is_empty",
+            "is_not_empty",
+        ],
+        type_api.Date: [
+            "after",
+            "before",
+            "is_empty",
+            "is_not_empty",
+        ],
+        type_api.Boolean: [
+            "is_",
+            "is_not",
+        ],
+        type_api.String: [
+            "in_",
+            "not_in",
+            "startswith",
+            "endswith",
+            "is_empty",
+            "is_not_empty",
+        ],
+    }
+
+    INFIX_OPS = {
+        type_api.Integer: ["==", "!=", "<", ">"],
+        type_api.Numeric: ["==", "!=", "<", ">"],
+        type_api.Money:   ["==", "!=", "<", ">"],
+        type_api.Date:    ["==", "!="],
+        type_api.Boolean: ["==", "!="],
+        type_api.String:  ["==", "!="],
+    }
+
+    def __init__(self, seed: int | None = None):
+        self.rng = random.Random(seed)
+        self.faker = Faker()
+        if seed is not None:
+            self.faker.seed_instance(seed)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def gen_column_expr(self, column: Column) -> str:
+        """
+        Generate a valid Python expression string for a single Column.
+        """
+        typ = type(column.type_)
+
+        candidates = []
+        if typ in self.METHOD_OPS:
+            candidates.extend(("method", op) for op in self.METHOD_OPS[typ])
+        if typ in self.INFIX_OPS:
+            candidates.extend(("infix", op) for op in self.INFIX_OPS[typ])
+
+        if not candidates:
+            raise ValueError(f"No operators available for type {typ}")
+
+        kind, op = self.rng.choice(candidates)
+
+        if kind == "method":
+            return self._gen_method_expr(column, op)
+        else:
+            return self._gen_infix_expr(column, op)
+
+    # ------------------------------------------------------------------
+    # Expression builders
+    # ------------------------------------------------------------------
+
+    def _gen_method_expr(self, column: Column, op: str) -> str:
+        if op in ("is_empty", "is_not_empty"):
+            return f"{column.parent.name}.c.{column.name}.{op}()"
+
+        value = self._gen_value(column.type_)
+        return f"{column.parent.name}.c.{column.name}.{op}({value})"
+
+    def _gen_infix_expr(self, column: Column, op: str) -> str:
+        value = self._gen_value(column.type_)
+        return f"{column.parent.name}.c.{column.name} {op} {value}"
+
+    # ------------------------------------------------------------------
+    # Literal generation
+    # ------------------------------------------------------------------
+
+    def _gen_value(self, type_engine: type_api.TypeEngine) -> str:
+        """
+        Generate a Python literal suitable for the given TypeEngine.
+        """
+        if isinstance(type_engine, type_api.Integer):
+            return str(self.rng.randint(0, 1000))
+
+        if isinstance(type_engine, type_api.Numeric):
+            return f"Decimal('{self.rng.uniform(0, 1000):.2f}')"
+
+        if isinstance(type_engine, type_api.Money):
+            return f"Decimal('{self.rng.uniform(0, 1000):.2f}')"
+
+        if isinstance(type_engine, type_api.Boolean):
+            return "True" if self.rng.choice([True, False]) else "False"
+
+        if isinstance(type_engine, type_api.String):
+            return repr(self.faker.first_name())
+
+        if isinstance(type_engine, type_api.Date):
+            d = self.faker.date_between("-10y", "today")
+            return f"date({d.year}, {d.month}, {d.day})"
+
+        raise TypeError(f"Unsupported type engine: {type_engine!r}")
+
+    def generate(self, table: Table) -> str:
+        """
+        Entry point.
+
+        Selects a random Column from `columns` and generates
+        a valid Python column expression string.
+
+        Example output:
+            start_on.after(date(2023, 5, 1))
+            grade <= Decimal("1.25")
+            isactive.is_(True)
+        """
+        if not table:
+            raise ValueError("generate() requires a Table object")
+        
+        columns = [col for col in table.columns if col.name not in SpecialColumns.values()]
+        column = self.rng.choice(columns)
+        return self.gen_column_expr(column)
 

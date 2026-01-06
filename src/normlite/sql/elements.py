@@ -227,10 +227,11 @@ class NumberComparator(Comparator):
     
 class DateComparator(Comparator):
     OPS = {
+        "eq": "equals",
+        "ne": "does_not_equal",
         "af": "after",
         "be": "before",
-        "eq": "equals",
-        "is": "is_empty",
+        "ie": "is_empty",
         "ine": "is_not_empty"        
     }
 
@@ -256,12 +257,12 @@ class _NoArg(Enum):
 class BindParameter(ClauseElement):
     def __init__(
         self, 
-        key: str, 
+        key: Optional[str], 
         value: Any =_NoArg.NO_ARG, 
         callable_: Optional[Callable[[], Any]] = None, 
         type_: Optional[TypeEngine]=None
     ):
-        self.key = key
+        self.key = key if key else None
         self.value = value
         self.callable_ = callable_
         self.type = type_
