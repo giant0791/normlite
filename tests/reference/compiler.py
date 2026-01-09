@@ -1,6 +1,7 @@
 from datetime import date
 import json
 import difflib
+import pdb
 from typing import Callable, NoReturn
 
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement, UnaryExpression
@@ -52,6 +53,11 @@ def assert_compile_equal(
         raise AssertionError(f"Compiler outputs differ:\n{diff}")
     
 class ReferenceCompiler:
+    """AST to JSON Reference compiler.
+
+    Simple ground-truth compiler to be used in differential testing to validate the
+    production compiler implemented in the :class:`normlite.sql.compiler.NotionCompiler` class.
+    """
     def __init__(self):
         self._bind_counter = 0
         self._bind_map: dict[BindParameter, str] = {}
@@ -99,8 +105,21 @@ def reference_compile(expr: ColumnElement) -> dict:
     compiler = ReferenceCompiler()
     return compiler.process(expr)
 
-
 class PythonExpressionCompiler:
+    """AST to Python code compiler.
+
+    This compiler produces a string containing Python code corresponding to
+    the initial AST.
+    :class:`PythonExpressionCompiler` is used in round-trip differential testing.
+
+    Example:
+        >>> ast = BinaryExpression(students.c.name, "equals", BindParameter("Isaac Newton"))
+        >>> pec = PythonExpressionCompiler()
+        >>> compiled = pec.compile(ast)
+        >>> print(compiled)
+        "students.c.name == 'Isaac Newton'"
+
+    """
     INFIX_OPS = {
         "equals": "==",
         "does_not_equal": "!=",
@@ -142,6 +161,11 @@ class PythonExpressionCompiler:
 
         value = bp.value
 
+        # IMPORTANT: 
+        # None values (e.g. empty Notion date) must render to "None"
+        if value is None:
+            return "None"
+
         if isinstance(value, str):
             return repr(value)
 
@@ -154,160 +178,27 @@ class PythonExpressionCompiler:
         raise TypeError(f"Unsupported bind value: {value!r}")
 
     def visit_UnaryExpression(self, expr) -> str:
-        operand = self.visit(expr.element)
         if expr.operator == "not":
-            return f"(~{operand})"
+            return f"not_({self.visit(expr.element)})"
         raise ValueError(f"Unsupported unary operator: {expr.operator}")
 
     def visit_BooleanClauseList(self, expr) -> str:
-        op = "&" if expr.operator == "and" else "|"
-        compiled = [self.visit(c) for c in expr.clauses]
-        return "(" + f" {op} ".join(compiled) + ")"
+        fn = "and_" if expr.operator == "and" else "or_"
+        args = ", ".join(self.visit(c) for c in expr.clauses)
+        return f"{fn}({args})"
 
-def exec_expression(source: str, namespace: dict):
-    globals_ = {
-        "__builtins__": {},
-        "date": date,
-    }
-    locals_ = dict(namespace)
-    exec(f"result = {source}", globals_, locals_)
-    return locals_["result"]
+    def visit_BinaryExpression(self, expr) -> str:
+        left = self.visit(expr.column)
+        right = self.visit(expr.value)
+        op = expr.operator
 
-def ast_equal(a, b) -> bool:
-    if a is b:
-        return True
+        if op in self.INFIX_OPS:
+            return f"({left} {self.INFIX_OPS[op]} {right})"
 
-    if type(a) is not type(b):
-        return False
+        if op in self.METHOD_OPS:
+            if op in ("is_empty", "is_not_empty"):
+                return f"({left}.{op}())"
+            return f"({left}.{op}({right}))"
 
-    method = f"_eq_{type(a).__name__}"
-    try:
-        return globals()[method](a, b)
-    except KeyError:
-        raise NotImplementedError(f"No equality defined for {type(a).__name__}")
+        raise ValueError(f"Unsupported operator: {op}")
 
-def _eq_Column(a, b):
-    return (
-        a.name == b.name
-        and a.table.name == b.table.name
-    )
-
-def _eq_BindParameter(a, b):
-    if a.callable_ is not None or b.callable_ is not None:
-        return a.callable_ is b.callable_
-
-    return (
-        a.value == b.value
-        and a.type == b.type
-    )
-
-def _eq_BinaryExpression(a, b):
-    return (
-        a.operator == b.operator
-        and ast_equal(a.column, b.column)
-        and ast_equal(a.value, b.value)
-    )
-
-def _eq_UnaryExpression(a, b):
-    return (
-        a.operator == b.operator
-        and ast_equal(a.element, b.element)
-    )
-
-def _eq_BooleanClauseList(a, b):
-    if a.operator != b.operator:
-        return False
-
-    if len(a.clauses) != len(b.clauses):
-        return False
-
-    return all(
-        ast_equal(x, y)
-        for x, y in zip(a.clauses, b.clauses)
-    )
-
-class RoundTripFailure(Exception):
-    def __init__(self, original, compiled, reconstructed):
-        self.original = original
-        self.compiled = compiled
-        self.reconstructed = reconstructed
-        super().__init__("AST round-trip mismatch")
-
-
-def assert_round_trip(expr, compiler, namespace):
-    source = compiler.compile(expr)
-    reconstructed = exec_expression(source, namespace)
-
-    if not ast_equal(expr, reconstructed):
-        raise RoundTripFailure(expr, source, reconstructed)
-
-#---------------------------------------------
-# Failure minimization
-#---------------------------------------------
-def ast_children(expr):
-    if isinstance(expr, UnaryExpression):
-        return [expr.element]
-
-    if isinstance(expr, BinaryExpression):
-        return [expr.column, expr.value]
-
-    if isinstance(expr, BooleanClauseList):
-        return list(expr.clauses)
-
-    return []
-
-def replace_child(expr, old, new):
-    if isinstance(expr, UnaryExpression):
-        return UnaryExpression(expr.operator, new)
-
-    if isinstance(expr, BinaryExpression):
-        if expr.column is old:
-            return BinaryExpression(new, expr.operator, expr.value)
-        if expr.value is old:
-            return BinaryExpression(expr.column, expr.operator, new)
-
-    if isinstance(expr, BooleanClauseList):
-        new_clauses = [
-            new if c is old else c
-            for c in expr.clauses
-        ]
-        return BooleanClauseList(expr.operator, new_clauses)
-
-    return expr
-
-def minimize_failure(expr, compiler, namespace):
-    """Zeller's delta debugging for AST"""
-    def fails(e):
-        try:
-            assert_round_trip(e, compiler, namespace)
-            return False
-        except RoundTripFailure:
-            return True
-
-    assert fails(expr), "Not a failing expression"
-
-    changed = True
-    current = expr
-
-    while changed:
-        changed = False
-
-        for child in ast_children(current):
-            # Try replacing with child
-            if fails(child):
-                current = child
-                changed = True
-                break
-
-            # Try structural shrink
-            for grandchild in ast_children(child):
-                candidate = replace_child(current, child, grandchild)
-                if fails(candidate):
-                    current = candidate
-                    changed = True
-                    break
-
-            if changed:
-                break
-
-    return current

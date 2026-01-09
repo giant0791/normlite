@@ -23,7 +23,9 @@ It represents the ground-truth for differential testing.
 """
 
 import pdb
+
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
+
 
 def extract_page_value(page, prop, typ):
     try:

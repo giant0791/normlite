@@ -1,10 +1,12 @@
+from __future__ import annotations
 from decimal import Decimal
 import pdb
+import uuid
 from faker import Faker
 import random
 import math
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any, Dict, Iterable, Sequence, Generic, TypeVar, Protocol
 
 from normlite._constants import SpecialColumns
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
@@ -98,16 +100,6 @@ class CoverageRegistry:
         section("Logical nodes", self.logical_nodes)
         section("Schemas", self.schemas)
 
-
-class ReferenceGenerator:
-    """Reference workload gerator for filters and pages in ``normlite``.
-
-    :class:`ReferenceGenerator` is **single source of truth** for types, operators, and value generation.
-    It provides **bi-derectional compatibility** page <--> filters semantics.
-    It is exendible: Adding a new type touches *one place* only.
-    It is deterministic: Seedable RNG + Faker
-    """
-
     TYPES = {
         "title",
         "rich_text",
@@ -168,6 +160,15 @@ class ReferenceGenerator:
         },
     }
 
+class ReferenceGenerator:
+    """Reference workload generator for filters and pages in ``normlite``.
+
+    :class:`ReferenceGenerator` is **single source of truth** for types, operators, and value generation.
+    It provides **bi-derectional compatibility** page <--> filters semantics.
+    It is exendible: Adding a new type touches *one place* only.
+    It is deterministic: Seedable RNG + Faker
+    """
+
     def __init__(self, seed: int | None = None):
         self.rng = random.Random(seed)
         self.faker = Faker()
@@ -202,17 +203,23 @@ class ReferenceGenerator:
                 )
             )
         
-        table = Table(f'table_{self.faker.uuid4()}', self.metadata, *cols)
+        safe_uuid = self.faker.uuid4().replace("-", "_")
+        table = Table(f'table_{safe_uuid}', self.metadata, *cols)
         return table
     
     def _gen_bindparam_value(self, typ: str) -> Any:
         value_obj = self._gen_property_value(typ)
         val = None
         if typ == 'date':
-            val = value_obj.get('start', {})
-                   
+            start = value_obj.get('start')
+            return start if start is not None else None                   
+
         elif typ in ('number_with_commas', 'dollar',):
             val = value_obj['number']
+        
+        elif typ in ('title', 'rich_text',):
+            val = value_obj[typ][0]['text']['content'] 
+
         else:
             val = value_obj[typ]
 
@@ -274,8 +281,9 @@ class ReferenceGenerator:
 
         return expr, max(left_depth, right_depth) + 1
     
-    def gen_ast(self, min_cols=1, max_cols=16, max_depth=4) -> tuple[Sequence[Column], ColumnElement, int]:
-        columns = self.gen_table(min_cols, max_cols).get_user_defined_colums()
+    def gen_ast(self, min_cols=1, max_cols=16, max_depth=4) -> tuple[Table, ColumnElement, int]:
+        table = self.gen_table(min_cols, max_cols)
+        columns = table.get_user_defined_colums()
         
         # bias toward extrem depth
         if self.rng.random() < 0.6:
@@ -283,7 +291,7 @@ class ReferenceGenerator:
         
 
         expr, exdepth = self.gen_expr(columns, depth=0, max_depth=max_depth)
-        return columns, expr, exdepth
+        return table, expr, exdepth
             
     def gen_page(self, schema: dict) -> dict:
         properties = {}
@@ -420,6 +428,10 @@ class ExpressionGenerator:
         isactive.is_(True)
         name.startswith("Ann")
 
+    .. attention::
+        :class:`ExpressionGenerator` shall only be used for random generation of
+        strings containing **Python code**.
+
     This generator is:
     - type aware
     - deterministic (seedable)
@@ -468,16 +480,81 @@ class ExpressionGenerator:
         type_api.String:  ["==", "!="],
     }
 
-    def __init__(self, seed: int | None = None):
+    BOOL_OPS = {
+        "&": "and_",
+        "|": "or_",
+        "~": "not_",
+    }
+
+    TYPES = {
+        "title",
+        "rich_text",
+        "number",
+        "date",
+        "checkbox",
+    }
+
+    COL_TYPES = {
+        DBAPITypeCode.NUMBER_DOLLAR.value,
+        DBAPITypeCode.NUMBER_WITH_COMMAS,
+    }
+
+    ALL_COL_TYPES = TYPES | COL_TYPES 
+
+    def __init__(
+        self, 
+        seed: int | None = None,
+        bool_style: str = 'function' 
+    ):
         self.rng = random.Random(seed)
         self.faker = Faker()
         if seed is not None:
             self.faker.seed_instance(seed)
 
+        if bool_style not in ['function', 'operator']:
+            raise ValueError(f'Unsupported bool_style value: {bool_style}')
+        
+        self.bool_style = bool_style
+        self.metadata = MetaData()
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
+    def generate(self, table: Table, max_depth: int = 8) -> str:
+        """
+        Generate a parenthesized boolean expression with depth <= max_depth.
+
+        Example output:
+            ((age > 18) & (name.startswith("A")))
+            (created.after(date(2020, 1, 1)) | isactive.is_(True))
+        """
+        if max_depth < 0:
+            raise ValueError("max_depth must be >= 0")
+
+        if not table:
+            raise ValueError("generate() requires a Table object")
+        
+        columns = [col for col in table.columns if col.name not in SpecialColumns.values()]
+        return self._gen_expr(columns, max_depth)
+
+    def gen_table(self, min_cols=1, max_cols=6) -> Table:
+        cols = []
+        n = self.rng.randint(min_cols, max_cols)
+
+        for i in range(n):
+            typ = self.rng.choice(tuple(self.ALL_COL_TYPES))
+            cols.append(
+                Column(
+                    name=f"col_{i}",
+                    type_=type_api.type_mapper[typ],
+                    primary_key=(i == 0)
+                )
+            )
+        
+        table = Table(f'table_{self.faker.uuid4()}', self.metadata, *cols)
+        return table
+ 
     def gen_column_expr(self, column: Column) -> str:
         """
         Generate a valid Python expression string for a single Column.
@@ -503,6 +580,48 @@ class ExpressionGenerator:
     # ------------------------------------------------------------------
     # Expression builders
     # ------------------------------------------------------------------
+
+    def _gen_expr(self, columns: list, depth: int) -> str:
+        """
+        Generate an expression with maximum remaining depth.
+        """
+        # Base case: must emit a column expression
+        if depth == 0:
+            return self._gen_atomic(columns)
+
+        # Bias toward leaf nodes to avoid degenerate deep trees
+        choice = self.rng.choices(
+            population=["leaf", "and", "or", "not"],
+            weights=[3, 2, 2, 1],
+            k=1,
+        )[0]
+
+        if choice == "leaf":
+            return self._gen_atomic(columns)
+
+        if choice == "not":
+            expr = self._gen_expr(columns, depth - 1)
+            if self.bool_style == "operator":
+                return f"(~({expr}))"
+            return f"not_({expr})"        
+    
+        left = self._gen_expr(columns, depth - 1)
+        right = self._gen_expr(columns, depth - 1)
+
+        op = "&" if choice == "and" else "|"
+
+        if self.bool_style == "operator":
+            return f"(({left}) {op} ({right}))"
+
+        fn = self.BOOL_OPS[op]
+        return f"{fn}({left}, {right})"
+
+    def _gen_atomic(self, columns: list) -> str:
+        column = self.rng.choice(columns)
+        expr = self.gen_column_expr(column)
+
+        # CRITICAL: always parenthesize atomic expressions
+        return f"({expr})"
 
     def _gen_method_expr(self, column: Column, op: str) -> str:
         if op in ("is_empty", "is_not_empty"):
@@ -543,23 +662,4 @@ class ExpressionGenerator:
             return f"date({d.year}, {d.month}, {d.day})"
 
         raise TypeError(f"Unsupported type engine: {type_engine!r}")
-
-    def generate(self, table: Table) -> str:
-        """
-        Entry point.
-
-        Selects a random Column from `columns` and generates
-        a valid Python column expression string.
-
-        Example output:
-            start_on.after(date(2023, 5, 1))
-            grade <= Decimal("1.25")
-            isactive.is_(True)
-        """
-        if not table:
-            raise ValueError("generate() requires a Table object")
-        
-        columns = [col for col in table.columns if col.name not in SpecialColumns.values()]
-        column = self.rng.choice(columns)
-        return self.gen_column_expr(column)
 
