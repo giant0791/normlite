@@ -149,6 +149,92 @@ class ColumnOperators:
     
     def is_not(self, other):
         return self.operate("ne", other)
+    
+def and_(*clauses: ColumnElement) -> BooleanClauseList:
+    """Produce a conjunction of expressions joined by ``AND``.
+
+    .. versionadded:: 0.8.0
+
+    ..code:: python
+        stmt = select(students).where(
+            and_(
+                students.c.balance.is_empty(), 
+                students.c.grade > Decimal('996.56')
+            )
+        )
+
+    The :func:`and_` conjunction is also available using the Python ``&`` operator. 
+    Note that compound expressions need to be parenthesized in order to function with Python operator precedence behavior.
+
+    ..code:: python
+        stmt = select(students).where(
+            (students.c.balance.is_empty()) & (students.c.grade > Decimal('996.56'))
+        )
+        
+    Raises:
+        ValueError: If less than two ``clauses`` are provided provided.
+
+    Returns:
+        BooleanClauseList: The AST node for this expression.
+    """
+    if len(clauses) < 2:
+        raise ValueError("and_() requires at least two clauses")
+
+    return BooleanClauseList(
+        operator="and",
+        clauses=list(clauses),
+    )
+
+def or_(*clauses: ColumnElement) -> BooleanClauseList:
+    """Produce a conjunction of expressions joined by ``OR``.
+
+    .. versionadded:: 0.8.0
+
+    ..code:: python
+        stmt = select(students).where(
+            or_(
+                students.c.balance.is_empty(), 
+                students.c.grade > Decimal('996.56')
+            )
+        )
+
+    The :func:`and_` conjunction is also available using the Python ``|`` operator. 
+    Note that compound expressions need to be parenthesized in order to function with Python operator precedence behavior.
+
+    ..code:: python
+        stmt = select(students).where(
+            (students.c.balance.is_empty()) | (students.c.grade > Decimal('996.56'))
+        )
+        
+    Raises:
+        ValueError: If less than two ``clauses`` are provided provided.
+
+    Returns:
+        BooleanClauseList: The AST node for this expression.
+    """
+    if len(clauses) < 2:
+        raise ValueError("or_() requires at least two clauses")
+
+    return BooleanClauseList(
+        operator="or",
+        clauses=list(clauses),
+    )
+
+def not_(clause: ColumnElement) -> UnaryExpression:
+    """Return a negation of the given clause, i.e. ``NOT(clause)``.
+
+    The Python ``~`` operator is also overloaded on all :class:`ColumnElement` subclasses to produce the same result.
+
+    Args:
+        clause (ColumnElement): The column element to be negated.
+
+    Returns:
+        UnaryExpression: The AST node for this expression.
+    """
+    return UnaryExpression(
+        operator="not",
+        element=clause,
+    )
 
 class Comparator:
     def __init__(self, expr: ColumnElement):
