@@ -73,11 +73,12 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 import pdb
+from types import MappingProxyType
 from typing import Any, Callable, List, Literal, NoReturn, Optional, Protocol, TypeAlias, Union, TYPE_CHECKING
 import uuid
 
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
-from normlite.sql.elements import BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, StringComparator
+from normlite.sql.elements import Operator, BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, StringComparator
 
 
 class TypeEngine(Protocol):
@@ -92,6 +93,7 @@ class TypeEngine(Protocol):
     """
 
     comparator_factory: Comparator
+    supported_ops: dict[Operator, str]
 
     def bind_processor(self) -> Optional[Callable[[Any], Any]]:
         """Python → SQL/Notion (prepare before sending)."""
@@ -117,7 +119,6 @@ class TypeEngine(Protocol):
                     f'{self.get_col_spec()} value must be a dict. '
                     f'Value type is: {value.__class__.__name__}'
                 )
-
     
 _NumericType: TypeAlias = Union[int, Decimal]
 """Type alias for numeric datatypes. It is not part of the public API."""
@@ -137,6 +138,16 @@ class Number(TypeEngine):
     """
 
     comparator_factory = NumberComparator
+    supported_ops = MappingProxyType({
+        Operator.EQ: "equals",
+        Operator.NE: "does_not_equal",
+        Operator.LT: "less_than",
+        Operator.GT: "greater_than",
+        Operator.LE: "less_than_or_equal_to",
+        Operator.GE: "greater_than_or_equal_to",
+        Operator.IS_EMPTY: "is_empty",
+        Operator.IS_NOT_EMPTY: "is_not_empty"
+    })
 
     def __init__(self, format: str):
         """
@@ -230,7 +241,17 @@ class String(TypeEngine):
     """
 
     comparator_factory = StringComparator
-
+    supported_ops = MappingProxyType({
+        Operator.EQ: "equals",
+        Operator.NE: "does_not_equal",
+        Operator.IN: "contains", 
+        Operator.NOT_IN: "does_not_contain",
+        Operator.ENDSWITH: "ends_with",
+        Operator.STARTSWITH: "starts_with",
+        Operator.IS_EMPTY: "is_empty",
+        Operator.IS_NOT_EMPTY: "is_not_empty"
+    })
+ 
     def __init__(self, is_title: bool = False):
         self.is_title = is_title
         """``True`` if it is a "title", ``False`` if it is a "richt_text"."""
@@ -277,8 +298,11 @@ class Boolean(TypeEngine):
     
     .. versionadded:: 0.7.0
     """
-
     comparator_factory = BooleanComparator
+    supported_ops = MappingProxyType({
+        Operator.EQ: "equals",
+        Operator.NE: "does_not_equal",
+    })
 
     def get_col_spec(self):
         return "checkbox"
@@ -305,10 +329,20 @@ class Boolean(TypeEngine):
 class Date(TypeEngine):
     """Convenient type engine class for "date" objects.
     
+    .. versionadded:: 0.8.0
+        Operators supported by this type engine.
+
     .. versionadded:: 0.7.0
     """
-
     comparator_factory = DateComparator
+    supported_ops = MappingProxyType({
+        Operator.EQ: "equals",
+        Operator.NE: "does_not_equal",
+        Operator.AFTER: "after",
+        Operator.BEFORE: "before",
+        Operator.IS_EMPTY: "is_empty",
+        Operator.IS_NOT_EMPTY: "is_not_empty"
+    })
 
     def bind_processor(self):
         def process(value: Optional[_DateTimeRangeType]) -> Optional[dict]:

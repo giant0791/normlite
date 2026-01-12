@@ -23,8 +23,9 @@ from typing import TYPE_CHECKING
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError
+from normlite.sql import type_api
 from normlite.sql.base import CompilerState, SQLCompiler
-from normlite.sql.elements import BooleanClauseList
+from normlite.sql.elements import BooleanClauseList, Operator
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateColumn, CreateTable, HasTable, ReflectTable
@@ -420,11 +421,12 @@ class NotionCompiler(SQLCompiler):
     def _compile_type_filter(
             self, 
             column: ColumnElement, 
-            operator: str, 
+            operator: Operator, 
             bindparam: BindParameter
     ) -> dict:
         type_ = column.type_
         notion_type = type_.get_col_spec()
+        notion_op = type_.supported_ops[operator]
 
         # allocate placeholder
         key = self._add_bindparam(bindparam)
@@ -433,7 +435,7 @@ class NotionCompiler(SQLCompiler):
         # Compiler must stay syntactic, binding (and processing) is done at execution time
         return {
             notion_type: {
-                operator: f':{key}'
+                notion_op: f':{key}'
             }
         }
     

@@ -17,9 +17,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from enum import Enum
+from enum import Enum, auto
 import pdb
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from normlite.sql.base import ClauseElement
 
@@ -79,7 +79,7 @@ class BinaryExpression(ColumnElement):
     def __init__(
             self, 
             column: ColumnElement, 
-            operator: str, 
+            operator: Operator, 
             value: Any
     ):
         self.column = column              # Column
@@ -89,6 +89,9 @@ class BinaryExpression(ColumnElement):
 class BooleanClauseList(ColumnElement):
     __visit_name__ = 'boolean_clause_list'
     def __init__(self, operator, clauses: list[ColumnElement]) -> None:
+        if operator not in ['and', 'or', 'not']:
+            raise TypeError(f"Invalid boolean clause list operator: {operator}")
+
         self.operator = operator
         self.clauses: list[ColumnElement] = []
 
@@ -101,54 +104,85 @@ class BooleanClauseList(ColumnElement):
             else:
                 self.clauses.append(clause)
 
+class Operator(Enum):
+    """Canonical backend-agnostic operators vocabulary."""
+
+    # comparison
+    EQ = auto()
+    NE = auto()
+    GT = auto()
+    LT = auto()
+    GE = auto()
+    LE = auto()
+
+    # set / string
+    IN = auto()
+    NOT_IN = auto()
+    STARTSWITH = auto()
+    ENDSWITH = auto()
+
+    # date-specific
+    BEFORE = auto()
+    AFTER = auto()
+
+    # unary / nullary
+    IS_EMPTY = auto()
+    IS_NOT_EMPTY = auto()
+
 class ColumnOperators:
     if TYPE_CHECKING:
         comparator: Comparator  # for type checkers only, this attribute exists at runtime, but is not structurally owned by this class.
 
-    def operate(self, op: str, other: Any):
+    def operate(self, op: Operator, other: Any):
         return self.comparator.operate(op, other)
 
     def __eq__(self, other):
-        return self.operate("eq", other)
+        return self.operate(Operator.EQ, other)
 
     def __ne__(self, other):
-        return self.operate("ne", other)
+        return self.operate(Operator.NE, other)
 
     def __gt__(self, other):
-        return self.operate("gt", other)
+        return self.operate(Operator.GT, other)
 
     def __lt__(self, other):
-        return self.operate("lt", other)
+        return self.operate(Operator.LT, other)
+    
+    def __ge__(self, other):
+        return self.operate(Operator.GE, other)
+    
+    def __le__(self, other):
+        return self.operate(Operator.LE, other)
 
     def in_(self, other):
-        return self.operate("in", other)
+        return self.operate(Operator.IN, other)
 
     def not_in(self, other):
-        return self.operate("ni", other)
+        return self.operate(Operator.NOT_IN, other)
 
     def startswith(self, other):
-        return self.operate("sw", other)
+        return self.operate(Operator.STARTSWITH, other)
 
     def endswith(self, other):
-        return self.operate("ew", other)
+        return self.operate(Operator.ENDSWITH, other)
 
     def is_empty(self):
-        return self.operate("ie", None)
+        return self.operate(Operator.IS_EMPTY, None)
 
     def is_not_empty(self):
-        return self.operate("ine", None)
+        return self.operate(Operator.IS_NOT_EMPTY, None)
 
     def before(self, other):
-        return self.operate("be", other)
+        return self.operate(Operator.BEFORE, other)
 
     def after(self, other):
-        return self.operate("af", other)
+        return self.operate(Operator.AFTER, other)
     
     def is_(self, other):
-        return self.operate("eq", other)
+        return self.operate(Operator.EQ, other)
     
     def is_not(self, other):
-        return self.operate("ne", other)
+        return self.operate(Operator.NE, other)
     
 def and_(*clauses: ColumnElement) -> BooleanClauseList:
     """Produce a conjunction of expressions joined by ``AND``.
@@ -241,98 +275,32 @@ class Comparator:
         self.expr = expr
         self.type_ = expr.type_
 
-    def operate(self, op: str, other: Any):
-        raise NotImplementedError
+    def operate(self, op: Operator, other):
+        if op not in self.type_.supported_ops:
+            raise TypeError(
+                f"Operator {op} not supported for type {type(self.type_).__name__}"
+            )
+
+        return BinaryExpression(
+            self.expr,
+            op,
+            coerce_to_bindparam(other, self.type_)
+        )
 
 class ObjectIdComparator(Comparator):
     pass
 
 class BooleanComparator(Comparator):
-    OPS = {
-        "eq": "equals",
-        "ne": "does_not_equal",
-    }
-
-    def operate(self, op, other):
-        try:
-            notion_op = self.OPS[op]
-        except KeyError:
-            raise TypeError("Boolean only supports equality operators")
-
-        return BinaryExpression(
-            self.expr,
-            notion_op,
-            coerce_to_bindparam(other, self.type_),
-        )
+    pass
 
 class StringComparator(Comparator):
-    OPS = {
-        "eq": "equals",
-        "ne": "does_not_equal",
-        "in": "contains", 
-        "ni": "does_not_contain",
-        "ew": "ends_with",
-        "sw": "starts_with",
-        "ie": "is_empty",
-        "ine": "is_not_empty"
-    }
-    def operate(self, op, other) -> Optional[BinaryExpression]:
-        try:
-            notion_op = self.OPS[op]
-            return BinaryExpression(
-                column=self.expr,
-                operator=notion_op,
-                value=coerce_to_bindparam(other, self.type_),
-            )
-        except KeyError:
-            raise TypeError(f'Invalid string operator: {op}')
-    
+    pass
+
 class NumberComparator(Comparator):
-    OPS = {
-        "eq": "equals",
-        "ne": "does_not_equal",
-        "lt": "less_than",
-        "gt": "greater_than",
-        "le": "less_than_or_equal_to",
-        "ge": "greater_than_or_equal_to",
-        "ie": "is_empty",
-        "ine": "is_not_empty"
-    }
+    pass
 
-    def operate(self, op, other) -> BinaryExpression:
-        try:
-            notion_op = self.OPS[op]
-        except KeyError:
-            raise TypeError(f"Invalid number operator: {op}")
-
-        return BinaryExpression(
-            self.expr,
-            notion_op,
-            coerce_to_bindparam(other, self.type_),
-        )
-    
 class DateComparator(Comparator):
-    OPS = {
-        "eq": "equals",
-        "ne": "does_not_equal",
-        "af": "after",
-        "be": "before",
-        "ie": "is_empty",
-        "ine": "is_not_empty"        
-    }
-
-    def operate(self, op, other):
-        try:
-            notion_op = self.OPS[op]
-        except KeyError:
-            raise TypeError(f"Invalid date operator: {op}")
-        
-        return BinaryExpression(
-            self.expr,
-            notion_op,
-            coerce_to_bindparam(other, self.type_)
-        )
-
+    pass
 
 class _NoArg(Enum):
     NO_ARG = 0
@@ -340,7 +308,7 @@ class _NoArg(Enum):
     def __repr__(self):
         return f"_NoArg.{self.name}"
 
-class BindParameter(ClauseElement):
+class BindParameter(ColumnElement):
     def __init__(
         self, 
         key: Optional[str], 
