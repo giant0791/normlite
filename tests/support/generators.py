@@ -35,6 +35,7 @@ from normlite.sql import type_api
 from normlite.sql.elements import (
     ColumnElement,
     BinaryExpression,
+    Operator,
     UnaryExpression,
     BooleanClauseList,
     BindParameter,
@@ -266,9 +267,22 @@ class ReferenceGenerator:
 # ------------------------------------------------------------------------------
 
 class Generator(Protocol[T]):
-    def generate(self, max_depth: int = 6) -> T:
-        ...
+    def generate(self, max_cols: int = 8, max_depth: int = 6) -> T:
+        """Generate an expression using column elements from a randomly generated table.
+        
+        Public API for expression generators.
+        It randomly generates an AST with the columns from a randomly generated table.
+        The table has ``max_cols``.
 
+
+        Args:
+            max_cols (int, optional): Number of columns in the randomly generated table. Defaults to 8.
+            max_depth (int, optional): Expression depth. Defaults to 6.
+
+        Returns:
+            T: The generated expression.
+        """
+        ...
 
 class EntityRandomGenerator(Generic[T]):
     """
@@ -278,8 +292,8 @@ class EntityRandomGenerator(Generic[T]):
     def __init__(self, impl: Generator[T]):
         self._impl = impl
 
-    def generate(self, max_depth: int = 6) -> T:
-        return self._impl.generate(max_depth=max_depth)
+    def generate(self, max_cols: int = 8, max_depth: int = 6) -> T:
+        return self._impl.generate(max_cols=max_cols, max_depth=max_depth)
 
     @classmethod
     def create_astgen(cls, seed: int | None = None) -> EntityRandomGenerator[ColumnElement]:
@@ -318,17 +332,21 @@ class _BaseGenerator(ABC, Generic[T]):
             self.faker.seed_instance(seed)
 
         self.metadata = MetaData()
+        self.last_generated_table = None
 
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
 
-    def generate(self, max_depth: int = 6) -> T:
+    def generate(self, max_cols: int = 8, max_depth: int = 6) -> T:
+        if max_cols < 0:
+            raise ValueError("max_cols must be >= 0")
         if max_depth < 0:
             raise ValueError("max_depth must be >= 0")
 
-        table = self._gen_table()
-        columns = list(table.columns)
+        table = self._gen_table(max_cols)
+        self.last_generated_table = table.name
+        columns = list(table.get_user_defined_colums())
 
         return self._gen_expr(
             table=table,
@@ -373,28 +391,17 @@ class _BaseGenerator(ABC, Generic[T]):
         column = self.rng.choice(columns)
         operator = self._choose_operator(column.type_)
         value = self._gen_literal(column.type_)
+        if operator in (Operator.IS_EMPTY, Operator.IS_NOT_EMPTY):
+            value = None
         return self._emit_binary(column, operator, value)
 
     # ------------------------------------------------------------------
     # Operator selection
     # ------------------------------------------------------------------
 
-    def _choose_operator(self, typ: type_api.TypeEngine) -> str:
-        t = type(typ)
-
-        OPS = {
-            type_api.Integer: ["==", "!=", ">", "<"],
-            type_api.Numeric: ["==", "!=", ">", "<"],
-            type_api.Money: ["==", "!=", ">", "<"],
-            type_api.Date: ["after", "before"],
-            type_api.Boolean: ["is_", "is_not"],
-            type_api.String: ["startswith", "endswith", "in_", "not_in"],
-        }
-
-        try:
-            return self.rng.choice(OPS[t])
-        except KeyError:
-            raise ValueError(f"No operators defined for type {t}")
+    def _choose_operator(self, typ: type_api.TypeEngine) -> Operator:
+        supported_ops = list(typ.supported_ops)
+        return self.rng.choice(supported_ops)
 
     # ------------------------------------------------------------------
     # Literal generation
@@ -426,11 +433,11 @@ class _BaseGenerator(ABC, Generic[T]):
     # Table generation
     # ------------------------------------------------------------------
 
-    def _gen_table(self) -> Table:
-        name = f"table_{self.faker.uuid4().hex}"
+    def _gen_table(self, max_cols: int = 8) -> Table:
+        name = f"table_{self.faker.uuid4()}".replace("-", "_")
 
         cols: list[Column] = []
-        for i in range(self.rng.randint(2, 6)):
+        for i in range(max_cols):
             typ = self._gen_type()
             cols.append(Column(f"col_{i}", typ))
 
@@ -453,7 +460,7 @@ class _BaseGenerator(ABC, Generic[T]):
     # Abstract emission hooks
     # ------------------------------------------------------------------
     @abstractmethod
-    def _emit_binary(self, column: Column, op: str, value: Any) -> T:
+    def _emit_binary(self, column: Column, op: Operator, value: Any) -> T:
         raise NotImplementedError
 
     @abstractmethod
@@ -474,7 +481,7 @@ class ASTGenerator(_BaseGenerator[ColumnElement]):
     Generates real ColumnElement trees.
     """
 
-    def _emit_binary(self, column: Column, op: str, value: Any) -> ColumnElement:
+    def _emit_binary(self, column: Column, op: Operator, value: Any) -> ColumnElement:
         return BinaryExpression(
             column=column,
             operator=op,
@@ -501,6 +508,25 @@ class ExpressionGenerator(_BaseGenerator[str]):
     Generates Python expressions that, when executed,
     produce ColumnElement trees.
     """
+    INFIX_OPS = {
+        Operator.EQ: "==",
+        Operator.NE: "!=",
+        Operator.GT: ">",
+        Operator.LT: "<",
+        Operator.LE: "<=",
+        Operator.GE: ">=",
+    }
+
+    METHOD_OPS = {
+        Operator.IN: "in_",
+        Operator.NOT_IN: "not_in",
+        Operator.STARTSWITH: "startswith",
+        Operator.ENDSWITH: "endswith",
+        Operator.AFTER: "after",
+        Operator.BEFORE: "before",
+        Operator.IS_EMPTY: "is_empty",
+        Operator.IS_NOT_EMPTY: "is_not_empty",
+    }
 
     def __init__(
         self,
@@ -514,13 +540,18 @@ class ExpressionGenerator(_BaseGenerator[str]):
 
         self.bool_style = bool_style
 
-    def _emit_binary(self, column: Column, op: str, value: Any) -> str:
+    def _emit_binary(self, column: Column, op: Operator, value: Any) -> str:
         col = f"{column.parent.name}.c.{column.name}"
 
-        if op in ("==", "!=", ">", "<"):
-            return f"({col} {op} {repr(value)})"
+        if op in self.INFIX_OPS:
+            return f"({col} {self.INFIX_OPS[op]} {repr(value)})"
+        
+        if op in self.METHOD_OPS:
+            if op in (Operator.IS_EMPTY, Operator.IS_NOT_EMPTY):
+                return f"({col}.{self.METHOD_OPS[op]}())"
+            return f"({col}.{self.METHOD_OPS[op]}({repr(value)}))"
 
-        return f"({col}.{op}({repr(value)}))"
+        raise ValueError(f"Unsupported operator: {op}")
 
     def _emit_bool(self, op: BoolOp, left: str, right: str) -> str:
         if self.bool_style == "function":

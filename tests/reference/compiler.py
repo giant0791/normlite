@@ -1,10 +1,11 @@
 from datetime import date
+from decimal import Decimal
 import json
 import difflib
 import pdb
 from typing import Callable, NoReturn
 
-from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement, UnaryExpression
+from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement, Operator, UnaryExpression
 from normlite.sql.schema import Column
 
 def normalize_json(obj: dict) -> str:
@@ -58,6 +59,22 @@ class ReferenceCompiler:
     Simple ground-truth compiler to be used in differential testing to validate the
     production compiler implemented in the :class:`normlite.sql.compiler.NotionCompiler` class.
     """
+    OPS = {
+        Operator.EQ: "equals",
+        Operator.NE: "does_not_equal",
+        Operator.GT: "greater_than",
+        Operator.LT: "less_than",
+        Operator.LE: "less_than_or_equal_to",
+        Operator.GE: "greater_than_or_equal_to",
+        Operator.IN: "contains",
+        Operator.NOT_IN: "does_not_contain",
+        Operator.STARTSWITH: "starts_with",
+        Operator.ENDSWITH: "ends_with",
+        Operator.AFTER: "after",
+        Operator.BEFORE: "before",
+        Operator.IS_EMPTY: "is_empty",
+        Operator.IS_NOT_EMPTY: "is_not_empty",
+    }
     def __init__(self):
         self._bind_counter = 0
         self._bind_map: dict[BindParameter, str] = {}
@@ -75,10 +92,15 @@ class ReferenceCompiler:
 
     def _compile_binary_expression(self, expr: BinaryExpression) -> dict:
         column = expr.column
-        operator = expr.operator
+        notion_type = column.type_.get_col_spec()
+
+        try:
+            operator = self.OPS[expr.operator]
+        except KeyError:
+            raise TypeError(f'Unsupported operator: {operator} for Notion type: "{notion_type}"')
+
         bindparam = expr.value
 
-        notion_type = column.type_.get_col_spec()
         key = self._add_bindparam(bindparam)
 
         return {
@@ -121,21 +143,23 @@ class PythonExpressionCompiler:
 
     """
     INFIX_OPS = {
-        "equals": "==",
-        "does_not_equal": "!=",
-        "greater_than": ">",
-        "less_than": "<",
+        Operator.EQ: "==",
+        Operator.NE: "!=",
+        Operator.GT: ">",
+        Operator.LT: "<",
+        Operator.LE: "<=",
+        Operator.GE: ">=",
     }
 
     METHOD_OPS = {
-        "after": "after",
-        "before": "before",
-        "contains": "in_",
-        "does_not_contain": "not_in",
-        "starts_with": "startswith",
-        "ends_with": "endswith",
-        "is_empty": "is_empty",
-        "is_not_empty": "is_not_empty",
+        Operator.IN: "in_",
+        Operator.NOT_IN: "not_in",
+        Operator.STARTSWITH: "startswith",
+        Operator.ENDSWITH: "endswith",
+        Operator.AFTER: "after",
+        Operator.BEFORE: "before",
+        Operator.IS_EMPTY: "is_empty",
+        Operator.IS_NOT_EMPTY: "is_not_empty",
     }
 
     def __init__(self):
@@ -169,7 +193,7 @@ class PythonExpressionCompiler:
         if isinstance(value, str):
             return repr(value)
 
-        if isinstance(value, (int, float, bool)):
+        if isinstance(value, (int, float, bool, Decimal)):
             return repr(value)
 
         if hasattr(value, "isoformat"):  # date / datetime
@@ -196,9 +220,9 @@ class PythonExpressionCompiler:
             return f"({left} {self.INFIX_OPS[op]} {right})"
 
         if op in self.METHOD_OPS:
-            if op in ("is_empty", "is_not_empty"):
-                return f"({left}.{op}())"
-            return f"({left}.{op}({right}))"
+            if op in (Operator.IS_EMPTY, Operator.IS_NOT_EMPTY):
+                return f"({left}.{self.METHOD_OPS[op]}())"
+            return f"({left}.{self.METHOD_OPS[op]}({right}))"
 
         raise ValueError(f"Unsupported operator: {op}")
 

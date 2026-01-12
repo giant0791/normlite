@@ -31,6 +31,7 @@ def test_differential_random_dryrun():
     FILTERS_PER_SCHEMA = 100
     counters = []
 
+    print()
     for _ in tqdm(range(NUM_SCHEMAS), desc="Comparing ref vs prod filter eval dryrun", unit="schema"):
         # 1. Generate schema
         schema = refgen.gen_schema(min_props=3, max_props=30)
@@ -40,12 +41,7 @@ def test_differential_random_dryrun():
         pages = [refgen.gen_page(schema) for _ in range(PAGES_PER_SCHEMA)]
 
         # 3. Generate and test filters
-        for _ in tqdm(
-            range(FILTERS_PER_SCHEMA),
-            desc="Filters",
-            unit="filter",
-            leave=False,
-        ):
+        for _ in range(FILTERS_PER_SCHEMA):
             filt = refgen.gen_filter(schema, depth=3, max_depth=8)
             filter_payload = {"filter": filt}
 

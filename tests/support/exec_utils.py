@@ -15,13 +15,22 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import datetime
 from datetime import date
-from normlite.sql.elements import ColumnElement
+
+from decimal import Decimal
+from normlite.sql.elements import ColumnElement, and_, or_, not_
 
 def exec_expression(source: str, namespace: dict) -> ColumnElement:
     globals_ = {
         "__builtins__": {},
-        "date": date,
+        "date": date,               # datetime.date
+        "datetime": datetime,       # datetime MODULE
+        "Decimal": Decimal,
+        "and_": and_,
+        "or_": or_,
+        "not_": not_,
+
     }
     locals_ = dict(namespace)
     exec(f"result = ({source})", globals_, locals_)
