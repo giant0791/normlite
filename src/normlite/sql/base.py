@@ -18,18 +18,37 @@
 from __future__ import annotations
 from abc import ABC
 from dataclasses import dataclass, field
+from enum import Enum, auto
+from functools import wraps
 import json
+import pdb
 from typing import Any, ClassVar, Optional, Protocol, TYPE_CHECKING, Sequence
+import copy
 
 from normlite.exceptions import UnsupportedCompilationError
 from normlite.engine.context import ExecutionContext
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import Table
+    from normlite.sql.schema import Table, Column
     from normlite.sql.ddl import CreateTable, CreateColumn, HasTable, ReflectTable
     from normlite.sql.dml import Insert, Select
     from normlite.sql.elements import ColumnElement, UnaryExpression, BinaryExpression, BindParameter, BooleanClauseList
     from normlite.engine.cursor import CursorResult
+
+class Generative:
+    """Mixin providing SQLAlchemy-style generative behavior."""
+
+    def _generate(self):
+        """Return a shallow copy of this statement."""
+        return copy.copy(self)
+
+def generative(fn):
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        new = self._generate()
+        fn(new, *args, **kwargs)
+        return new
+    return wrapper
 
 class Visitable(ABC):
     """Base class for any AST node that can be "visited" by a compiler.
@@ -74,8 +93,11 @@ class Visitable(ABC):
             )
 
         return visit_fn(self, **kwargs)
+    
+    def __repr__(self) -> str:
+        return self.__class__.__name__
 
-class ClauseElement(Visitable):
+class ClauseElement(Generative, Visitable):
     """Base class for SQL elements that can be compiled by the compiler.
 
     This class orchestrates for all subclasses the compilation process by implementing the :meth:`compile`.
@@ -134,8 +156,6 @@ class Executable(ClauseElement):
 
     is_select: bool = False
 
-    is_update: bool = False
-
     def execute(self, context: ExecutionContext, parameters: Optional[dict] = None) -> CursorResult:
         """Run this executable within the context setup by the connection.
 
@@ -168,20 +188,41 @@ class Executable(ClauseElement):
         """
         ...
 
+class _CompileState(Enum):
+    NOT_STARTED           = auto()
+    COMPILING_VALUES      = auto()
+    COMPILING_WHERE       = auto()
+    COMPILING_DBAPI_PARAM = auto()
+
+
 @dataclass
 class CompilerState:
+    # statement being compiled
+    stmt: ClauseElement = None
+
+    # statement kind flags
     is_ddl: bool = False
+    is_dml: bool = False
     is_select: bool = False
     is_insert: bool = False
     is_update: bool = False
     is_delete: bool = False
+
+    # location flags
     in_where: bool = False
-    
-    execution_binds:  dict[str, tuple[BindParameter, str]] = field(default_factory=dict)
+
+    # bind handling
+    execution_binds: dict[str, tuple[BindParameter, str]] = field(
+        default_factory=dict
+    )
     """Bind parameters to be evaluated at execution time."""
 
-    result_columns: list = field(default_factory=list)
+    # result metadata
+    result_columns: Optional[list[Column]] = None
 
+    # compiler phase
+    compile_state: _CompileState = _CompileState.NOT_STARTED
+ 
 class Compiled:
     """The result of compiling :class:`ClauseElement` subclasses.
 
@@ -208,6 +249,9 @@ class Compiled:
         self._compiled = compiled
         """The dictionary containing the compilation result."""
         
+        # IMPORTANT: The _compiler_state.execution_binds contains the mapping that associates
+        # a bind param key to a tuple[BindParameter, str], where str is the usage="value" | "filter"
+        # This is used by the ExecutionContext to choose the right bind processor (bind_processor | filter_processor)
         self._execution_binds = compiler._compiler_state.execution_binds
         """The bind parameters for this compiled object."""
 

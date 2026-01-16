@@ -19,12 +19,20 @@
 from __future__ import annotations
 from enum import Enum, auto
 import pdb
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 from normlite.sql.base import ClauseElement
 
 if TYPE_CHECKING:
     from normlite.sql.type_api import TypeEngine
+
+class _BindURoleType(Enum):
+    """
+    """
+    COL_VALUE  = "column_value"
+    COL_FILTER = "column_filter"
+    EXEC       = "execution"
+    NO_ROLE    = "no_role"
 
 class ColumnElement(ClauseElement):
     """Base class for SQLAlchemy-style expressions."""
@@ -308,27 +316,49 @@ class _NoArg(Enum):
     def __repr__(self):
         return f"_NoArg.{self.name}"
 
+class _BindRole(Enum):
+    NO_BINDROLE   = auto()
+    COLUMN_VALUE  = auto()
+    COLUMN_FILTER = auto()
+    DBAPI_PARAM   = auto()
+
 class BindParameter(ColumnElement):
     def __init__(
         self, 
         key: Optional[str], 
         value: Any =_NoArg.NO_ARG, 
         callable_: Optional[Callable[[], Any]] = None, 
-        type_: Optional[TypeEngine]=None
-    ):
+        type_: Optional[TypeEngine]=None,
+   ):
         self.key = key if key else None
         self.value = value
         self.callable_ = callable_
-        self.type = type_
+        self.type_ = type_
+        self.role = _BindRole.NO_BINDROLE
 
     @property
     def effective_value(self):
         return self.callable_() if self.callable_ else self.value
+    
+    def __repr__(self) -> str:
+        kwarg = []
+        if self.key:
+            kwarg.append('key')
 
-def coerce_to_bindparam(value: Any, type_) -> BindParameter:
+        if self.value:
+            kwarg.append('value')
+        
+        kwarg.append('role')
+
+        
+        return "BindParameter(%s)" % ", ".join(
+            ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
+        )
+
+def coerce_to_bindparam(value: Any, type_: TypeEngine) -> BindParameter:
     if isinstance(value, BindParameter):
-        if value.type is None:
-            value.type = type_
+        if value.type_ is None:
+            value.type_ = type_
         return value
 
     if callable(value):

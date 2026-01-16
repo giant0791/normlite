@@ -22,13 +22,86 @@ from types import MappingProxyType
 from typing import Any, Optional, Self, Sequence, Union, TYPE_CHECKING
 from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
-from normlite.sql.base import Executable, ClauseElement
+from normlite.sql.base import Executable, ClauseElement, generative
 from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElement
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
 
-class Insert(Executable):
+class ValuesBase(Executable):
+    _values: Optional[MappingProxyType] = None
+    """The immutable mapping holding the values."""
+
+    def __init__(self, table: Table):
+        self.table = table
+        self._values = None
+
+    @generative
+    def values(self, *args: Union[dict, Sequence[Any]], **kwargs: Any) -> Self:
+        """Provide the ``VALUES`` clause to specify the values to be inserted in the new row.
+
+        .. versionchanged:: 0.8.0
+            The values provided are now coerced to :class:`normlite.sql.elements.BindParameter`
+            objects.
+
+        Raises:
+            ArgumentError: If both positional and keyword arguments are passes, or
+                if not enough values are supplied for all columns, or if values are passed 
+                with a class that is neither a dictionary not a tuple. 
+
+        Returns:
+            Self: This instance for generative usage.
+
+        """
+        existing = dict(self._values) if self._values else {}
+
+        if args:
+            # positional args have been passed:
+            # either a dict or a sequence has been provided
+            # IMPORTANT: args is a tuple containing the dict or sequence as first element
+            arg = args[0]
+            if kwargs:
+                # either positional or kwargs but not both are allowed
+                raise ArgumentError(
+                    'Cannot pass positional and keyword arguments '
+                    'to values() simultanesously'
+                )
+
+            if len(args) != 1:
+                raise ArgumentError(
+                    "values() accepts at most one positional argument"
+                )
+            arg = args[0]
+
+            if not isinstance(arg, dict):
+                raise ArgumentError(
+                    "Positional argument to values() must be a dict"
+                )
+
+            new_values = arg
+        else:
+            new_values = kwargs
+
+        # Convert raw values → BindParameter
+        for key, value in new_values.items():
+            # structural validation
+            if key not in self.table.columns:
+                raise ArgumentError(f"Wrong key supplied: {key}")
+
+            if isinstance(value, BindParameter):
+                bp = value
+            else:
+                bp = BindParameter(
+                    key=key,
+                    value=value,
+                    type_=None      # compiler will fill this
+                )
+
+            existing[key] = bp
+
+        self._values = MappingProxyType(existing)
+
+class Insert(ValuesBase):
     is_insert = True
     __visit_name__ = 'insert'
 
@@ -65,14 +138,16 @@ class Insert(Executable):
         In this case, the parameters passed in the :meth:`normlite.connection.Connection.execute()` are bound
         as ``VALUES`` clause parameters at execution time.
 
-    .. versionchanged:: 0.7.0 The old construct has been completely redesigned and refactored.
+    .. versionchanged:: 0.8.0
+        New base class
+
+    .. versionchanged:: 0.7.0 
+        The old construct has been completely redesigned and refactored.
         Now, the new class provides all features of the SQL ``INSERT`` statement.
 
     """
     def __init__(self, table: Table):
-        super().__init__()
-        self._values: MappingProxyType = None
-        """The immutable mapping holding the values."""
+        super().__init__(table)
 
         self._table: Table = table
         """The table object to insert a new row to."""
@@ -88,58 +163,6 @@ class Insert(Executable):
 
     def get_table(self) -> ReadOnlyColumnCollection:
         return self._table.columns
-    
-    def values(self, *args: Union[dict, Sequence[Any]], **kwargs: Any) -> Self:
-        """Provide the ``VALUES`` clause to specify the values to be inserted in the new row.
-
-        .. versionchanged:: 0.8.0
-            The values provided are now coerced to :class:`normlite.sql.elements.BindParameter`
-            objects.
-
-        Raises:
-            ArgumentError: If both positional and keyword arguments are passes, or
-                if not enough values are supplied for all columns, or if values are passed 
-                with a class that is neither a dictionary not a tuple. 
-
-        Returns:
-            Self: This instance for generative usage.
-
-       """
-        if args:
-            # positional args have been passed:
-            # either a dict or a sequence has been provided
-            # IMPORTANT: args is a tuple containing the dict or sequence as first element
-            arg = args[0]
-            if kwargs:
-                # either positional or kwargs but not both are allowed
-                raise ArgumentError(
-                    'Cannot pass positional and keyword arguments '
-                    'to values() simultanesously'
-                )
-
-            if isinstance(arg, dict):
-                self._values = self._process_dict_values(arg)
-
-            elif isinstance(arg, tuple):
-                if len(arg) != self._table.c.len():
-                    raise ArgumentError(
-                        'Not enough values supplied for all columns: '
-                        f'Required: {self._table.c.len()}, '
-                        f'supplied: {len(arg)}'
-                    )
-                
-                kv_pairs = {col.name: value for col, value in zip(self._table.c, arg)}
-                self._values = self._process_dict_values(kv_pairs)
-            else:
-                raise ArgumentError(
-                    f'dict or tuple values are supported only: {arg.__class__.__name__}'
-                )
-
-        else:
-            # kwargs have been passed        
-            self._values = self._process_dict_values(kwargs)
-
-        return self
     
     def returning(self, *cols: Column) -> Self:
         """Provide the ``RETURNING`` clause to specify the column to be returned.
@@ -164,17 +187,28 @@ class Insert(Executable):
     def _process_dict_values(self, dict_arg: dict) -> MappingProxyType:
         kv_pairs = {}
         try:
-            for col in self._table.c:
-                if col.name in SpecialColumns.__members__.values():
-                    # skip Notion-managed columns
-                    continue
+            for col in self._table.get_user_defined_colums():
                 value = dict_arg[col.name]
-                kv_pairs[col.name] = BindParameter(col.name, value)
+                kv_pairs[col.name] = BindParameter(col.name, value, col.type_)
         except KeyError as ke:
             raise KeyError(f'Missing value for: {ke.args[0]}')
         
         return MappingProxyType(kv_pairs)
-    
+
+
+    def __repr__(self):
+        kwarg = []
+        if self._table:
+            kwarg.append('table')
+
+        if self._values:
+            kwarg.append('values')
+
+        
+        return "Insert(%s)" % ", ".join(
+            ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
+        )
+        
 def insert(table: Table) -> Insert:
     """Construct an insert statement.
 
@@ -190,7 +224,7 @@ def insert(table: Table) -> Insert:
     return Insert(table)
 
 class WhereClause(ClauseElement):
-    """Base class for DML statements have a where-clause.
+    """Base class for DML statements that have a where-clause.
     
     .. versionadded:: 0.8.0
     """
