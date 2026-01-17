@@ -28,7 +28,7 @@ from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElemen
 if TYPE_CHECKING:
     from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
 
-class ValuesBase(Executable):
+class ValuesBase(ClauseElement):
     _values: Optional[MappingProxyType] = None
     """The immutable mapping holding the values."""
 
@@ -223,7 +223,7 @@ def insert(table: Table) -> Insert:
     """
     return Insert(table)
 
-class WhereClause(ClauseElement):
+class WhereClause(ColumnElement):
     """Base class for DML statements that have a where-clause.
     
     .. versionadded:: 0.8.0
@@ -236,10 +236,10 @@ class WhereClause(ClauseElement):
         """The column expression in this where clause."""
 
     def has_expression(self) -> bool:
-        """Explicit test on expression availability to avoid :exc:`TyperError`.
+        """Explicit test on expression availability to avoid :exc:`TypeError`.
         
         Users of the :class:`WhereClause` shall test for presence of an expression 
-        by invoking this method and not simply 
+        by invoking this method and not simply ...
         This safely bypasses Python thruthiness invocation, which otherwise raises
         a :exc:`TyperError`.
 
@@ -254,27 +254,73 @@ class WhereClause(ClauseElement):
 
     def where(self, expr: ColumnElement) -> WhereClause:
         if self.expression is None:
-            self.expression = expr
-        else:
-            self.expression = BooleanClauseList(
+            return WhereClause(expr)
+
+        return WhereClause(
+            BooleanClauseList(
                 operator="and",
                 clauses=[self.expression, expr]
             )
-        return self
+        )
 
 class Select(Executable):
     __visit_name__ = 'select'
     is_select = True
 
-    def __init__(self, table: Table):
-        self.table = table
+    def __init__(self, *entities: Union[Table, Column]):
+        from normlite.sql.schema import Column, Table
+
+        if not entities:
+            raise ArgumentError(
+                """
+                    select() requires either table or a list of columns,
+                    no arguments were provided.
+                """
+            )
+
         self._whereclause = WhereClause()
 
+        if len(entities) == 1 and isinstance(entities[0], Table):
+            # a Table object has been provided
+            table = entities[0]
+            self.table = table
+            self._projection = None  # project all columns
+            return
+
+        # A list of columns has bein provided
+        tables = set()
+        columns: list[Column] = []
+
+        for ent in entities:
+            if not isinstance(ent, Column):
+                raise ArgumentError(
+                    "select() arguments must be either a Table or Column objects"
+                )
+            tables.add(ent.parent)
+            columns.append(ent)
+
+        if len(tables) != 1:
+            raise ArgumentError(
+                "All selected columns must belong to the same table"
+            )
+
+        self.table: Table = tables.pop()
+        # --- SAFEGUARD: column names must exist on the table ---
+        table_columns = self.table.get_user_defined_colums()
+
+        for col in columns:
+            if col.name not in table_columns:
+                raise ArgumentError(
+                    f'Column: {col.name} does not belong to table: {self.table.name}'
+                )
+        self._projection = list(columns)
+
+    @generative
     def where(self, expr: ColumnElement) -> Self:
-        self._whereclause.where(expr)
+        self._whereclause = self._whereclause.where(expr)
         return self
 
-def select(table: Table) -> Select:
-    return Select(table)
+def select(*entities: Union[Table, Column]) -> Select:
+    return Select(*entities)
         
 

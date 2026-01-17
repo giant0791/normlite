@@ -354,6 +354,7 @@ class BindParameter(ColumnElement):
         return "BindParameter(%s)" % ", ".join(
             ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
         )
+    
 
 def coerce_to_bindparam(value: Any, type_: TypeEngine) -> BindParameter:
     if isinstance(value, BindParameter):
