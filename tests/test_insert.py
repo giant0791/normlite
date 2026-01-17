@@ -1,5 +1,4 @@
 from datetime import date
-import pdb
 import uuid
 import pytest
 
@@ -148,9 +147,53 @@ def test_compiler_detects_missing_values(students: Table, insert_values: dict):
         stmt._values = insert_values
         compiled = stmt.compile(nc)
 
+#---------------------------------------------
+# NotionCompiler._add_bindparam() failure
+# modes tests
+#---------------------------------------------
+
 def test_bindparam_role_already_assigned_error():
     nc = NotionCompiler()
     with pytest.raises(CompileError, match='role already assigned'):
         bp = BindParameter(key='fake')
         bp.role = _BindRole.COLUMN_VALUE
         nc._add_bindparam(bp)
+
+def test_bindparam_invalid_compile_state_error(students: Table):
+    nc = NotionCompiler()
+    with pytest.raises(expected_exception=CompileError, match='Invalid compiler state: ') as exc_info:
+        bp = BindParameter(key='fake')
+        bp.role = _BindRole.NO_BINDROLE
+        nc._compiler_state.compile_state = _CompileState.NOT_STARTED
+        nc._compiler_state.stmt = insert(students)
+        nc._add_bindparam(bp)
+
+def test_bindparam_require_column_name_error(students: Table):
+    nc = NotionCompiler()
+    with pytest.raises(expected_exception=CompileError, match='insert/update require a column name') as exc_info:
+        bp = BindParameter(key='fake')
+        bp.role = _BindRole.NO_BINDROLE
+        nc._compiler_state.compile_state = _CompileState.COMPILING_VALUES
+        nc._compiler_state.stmt = insert(students)
+        nc._add_bindparam(bp)
+
+def test_bindparam_column_name_required_error(students: Table):
+    nc = NotionCompiler()
+    with pytest.raises(expected_exception=CompileError, match='in a where clause shall not have a column name') as exc_info:
+        bp = BindParameter(key='fake')
+        bp.role = _BindRole.NO_BINDROLE
+        nc._compiler_state.compile_state = _CompileState.COMPILING_WHERE
+        nc._compiler_state.stmt = insert(students)
+        nc._add_bindparam(bp, column_name='another_fake')
+
+def test_bindparam_column_name_not_found_error(students: Table):
+    nc = NotionCompiler()
+    with pytest.raises(expected_exception=CompileError, match='Column name: another_fake') as exc_info:
+        bp = BindParameter(key='fake')
+        bp.role = _BindRole.NO_BINDROLE
+        nc._compiler_state.compile_state = _CompileState.COMPILING_VALUES
+        nc._compiler_state.stmt = insert(students)
+        nc._add_bindparam(bp, column_name='another_fake')
+
+
+

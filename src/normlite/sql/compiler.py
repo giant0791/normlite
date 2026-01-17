@@ -443,7 +443,7 @@ class NotionCompiler(SQLCompiler):
            # INSERT / UPDATE: key must be column name
             if not column_name:
                 raise CompileError(
-                    "BindParameter in insert/update requires a column name"
+                    "Bind parameters in insert/update require a column name"
                 )
             key = column_name
             bindparam.key = key
@@ -475,7 +475,7 @@ class NotionCompiler(SQLCompiler):
         else:
             stmt = self._compiler_state.stmt
             raise CompileError(
-                f'Invalid compiler state detected: {state}, '
+                f'Invalid compiler state: {state}, '
                 f'while compiling statement: {repr(stmt)}.'
             )
 
