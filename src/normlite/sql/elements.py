@@ -26,14 +26,6 @@ from normlite.sql.base import ClauseElement
 if TYPE_CHECKING:
     from normlite.sql.type_api import TypeEngine
 
-class _BindURoleType(Enum):
-    """
-    """
-    COL_VALUE  = "column_value"
-    COL_FILTER = "column_filter"
-    EXEC       = "execution"
-    NO_ROLE    = "no_role"
-
 class ColumnElement(ClauseElement):
     """Base class for SQLAlchemy-style expressions."""
 
@@ -80,6 +72,17 @@ class UnaryExpression(ColumnElement):
             raise ValueError(f"Unsupported unary operator: {operator}")
         self.operator = operator
         self.element = element
+
+class ModifierExpression(ClauseElement):
+    """Base class for statement modifiers."""
+    ...
+
+class OrderByExpression(ModifierExpression):
+    __visit_name__ = 'order_by_expression'
+
+    def __init__(self, column: ColumnElement, direction: str):
+        self.column = column
+        self.direction = direction
 
 class BinaryExpression(ColumnElement):
     __visit_name__ = 'binary_expression'
@@ -137,6 +140,12 @@ class Operator(Enum):
     IS_EMPTY = auto()
     IS_NOT_EMPTY = auto()
 
+class Modifier(Enum):
+    ORDER_BY    = "order_by"
+    NULLS_FIRST = "nulls_first"
+    NULLS_LAST  = "nulls_last"
+    ROLLUP      = "rollup"
+
 class ColumnOperators:
     if TYPE_CHECKING:
         comparator: Comparator  # for type checkers only, this attribute exists at runtime, but is not structurally owned by this class.
@@ -191,6 +200,12 @@ class ColumnOperators:
     
     def is_not(self, other):
         return self.operate(Operator.NE, other)
+    
+    def asc(self) -> ModifierExpression:
+        return self.comparator.modify(Modifier.ORDER_BY, direction='asc')
+    
+    def desc(self) -> ModifierExpression:
+        return self.comparator.modify(Modifier.ORDER_BY, direction='desc')
     
 def and_(*clauses: ColumnElement) -> BooleanClauseList:
     """Produce a conjunction of expressions joined by ``AND``.
@@ -294,6 +309,23 @@ class Comparator:
             op,
             coerce_to_bindparam(other, self.type_)
         )
+
+    def modify(self, modifier: Modifier, **kw: dict[str, Any]) -> ModifierExpression:
+        if modifier == Modifier.ORDER_BY:
+            direction = kw.get("direction")
+            if direction not in ("asc", "desc"):
+                raise ValueError(
+                    f"""
+                        'order_by' requires direction='asc' or 'desc',
+                        supplied direction='{direction}'
+                    """
+                )
+            return OrderByExpression(
+                self.expr, 
+                'ascending' if direction == 'asc' else 'descending'
+            )
+            
+        raise TypeError(f"Unsupported modifier: {modifier}")
 
 class ObjectIdComparator(Comparator):
     pass

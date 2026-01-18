@@ -23,16 +23,15 @@ from typing import TYPE_CHECKING, Optional
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError
-from normlite.sql import type_api
 from normlite.sql.base import _CompileState, CompilerState, SQLCompiler
-from normlite.sql.elements import _BindRole, _BindURoleType, BooleanClauseList, Operator
+from normlite.sql.dml import OrderByClause
+from normlite.sql.elements import _BindRole, BooleanClauseList, Operator, OrderByExpression, ColumnElement
 from normlite.sql.elements import BindParameter
-
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateColumn, CreateTable, HasTable, ReflectTable
     from normlite.sql.dml import Insert, Select
-    from normlite.sql.elements import ColumnElement, UnaryExpression, BinaryExpression, BindParameter
+    from normlite.sql.elements import UnaryExpression, BinaryExpression, BindParameter
 
 class NotionCompiler(SQLCompiler):
     """Notion compiler for SQL statements.
@@ -363,6 +362,33 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state.result_columns = SpecialColumns.values() + insert._returning
         return {'operation': operation, 'payload': payload}  
 
+    def visit_order_by_clause(self, clause: OrderByClause) -> dict:
+        if not clause.clauses:
+            return {}
+
+        sorts = []
+        for expr in clause.clauses:
+            compiled = expr._compiler_dispatch(self)
+            sorts.append(compiled)
+
+        return sorts
+    
+    def visit_order_by_expression(self, expr: OrderByExpression) -> dict:
+        column = expr.column
+
+        if not isinstance(column, ColumnElement):
+            raise CompileError(
+                f"""
+                    order_by() only supports column elements,
+                    supplied: {column.__class__.__name__}
+                """
+            )
+        
+        return {
+            'property': column.name,
+            'direction': expr.direction
+        }
+
     def visit_select(self, select: Select) -> dict:
         self._compiler_state.is_select = select.is_select
         self._compiler_state.stmt = select
@@ -370,7 +396,9 @@ class NotionCompiler(SQLCompiler):
         operation = dict(endpoit='databases', request='query')
         path_params = {}
         query_params = {}
-        payload = {}
+        payload = {
+            'page_size': 100        # Notion imposed max page size
+        }
         database_id = select.table.get_oid()
         if database_id is None:
             raise CompileError(f'Table: {select.table.name} has not been previously reflected.')
@@ -408,12 +436,20 @@ class NotionCompiler(SQLCompiler):
             self._compiler_state.result_columns = list(col for col in projection)
             query_params['filter_properties'] = column_names
 
-        return {
+        if select._order_by.has_expression():
+            sorts_obj = select._order_by._compiler_dispatch(self)
+            payload['sorts'] = sorts_obj
+
+        compiled_dict = {
             'operation': operation, 
             'path_params': path_params, 
-            'query_params': query_params, 
             'payload': payload
         }
+
+        if  query_params:           
+            compiled_dict['query_params'] = query_params
+
+        return compiled_dict
 
     def visit_binary_expression(self, expression: BinaryExpression) -> dict:
         return {

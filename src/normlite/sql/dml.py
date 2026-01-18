@@ -19,7 +19,7 @@
 from __future__ import annotations
 import pdb
 from types import MappingProxyType
-from typing import Any, Optional, Self, Sequence, Union, TYPE_CHECKING
+from typing import Any, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
 from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable, ClauseElement, generative
@@ -223,7 +223,13 @@ def insert(table: Table) -> Insert:
     """
     return Insert(table)
 
-class WhereClause(ColumnElement):
+class HasExpression(Protocol):
+    """Mixin for elements that have an expression."""
+
+    def has_expression(self) -> bool:
+        ...
+
+class WhereClause(HasExpression, ColumnElement):
     """Base class for DML statements that have a where-clause.
     
     .. versionadded:: 0.8.0
@@ -262,6 +268,18 @@ class WhereClause(ColumnElement):
                 clauses=[self.expression, expr]
             )
         )
+    
+class OrderByClause(HasExpression, ClauseElement):
+    __visit_name__ = 'order_by_clause'
+
+    def __init__(self, clauses: tuple[ColumnElement, ...] = ()):      
+        self.clauses = clauses
+
+    def add(self, *clauses: ColumnElement) -> OrderByClause:
+        return OrderByClause(self.clauses + clauses)
+    
+    def has_expression(self) -> bool:
+        return self.clauses
 
 class Select(Executable):
     __visit_name__ = 'select'
@@ -279,6 +297,7 @@ class Select(Executable):
             )
 
         self._whereclause = WhereClause()
+        self._order_by = OrderByClause()
 
         if len(entities) == 1 and isinstance(entities[0], Table):
             # a Table object has been provided
@@ -319,6 +338,20 @@ class Select(Executable):
     def where(self, expr: ColumnElement) -> Self:
         self._whereclause = self._whereclause.where(expr)
         return self
+
+    @generative
+    def order_by(self, *clauses: ColumnElement) -> Self:
+        if not clauses:
+            raise ArgumentError(
+                """
+                    order_by() requires at least one clause,
+                    no arguments provided.
+                """
+            )
+
+        self._order_by = self._order_by.add(*clauses)
+        return self
+
 
 def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)
