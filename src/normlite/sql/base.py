@@ -34,6 +34,8 @@ if TYPE_CHECKING:
     from normlite.sql.dml import Insert, Select
     from normlite.sql.elements import ColumnElement, UnaryExpression, BinaryExpression, BindParameter, BooleanClauseList
     from normlite.engine.cursor import CursorResult
+    from normlite.engine.interfaces import _CoreAnyExecuteParams
+    from normlite.engine.base import Connection
 
 class Generative:
     """Mixin providing SQLAlchemy-style generative behavior."""
@@ -150,11 +152,25 @@ class Executable(ClauseElement):
         This base class fully supports the connection-driven execution flow of SQL statements.
     """
 
-    is_insert: bool = False
+    supports_execution: bool = True
+    """Structural flag denoting the main characteristic for an executable of supporting execution.
+    
+    ..versionadded:: 0.8.0
+    """
 
-    is_update: bool = False
+    is_ddl: bool = False
+    """``True`` if the executable subclass is a DDL statement.
+    
+    ..versionadded:: 0.8.0
+    """
 
-    is_select: bool = False
+    def _execute_on_connection(
+            self, 
+            connection: Connection, 
+            params: Optional[_CoreAnyExecuteParams], 
+            execution_options: Optional[dict] = None
+    ) -> CursorResult:
+        raise NotImplementedError
 
     def execute(self, context: ExecutionContext, parameters: Optional[dict] = None) -> CursorResult:
         """Run this executable within the context setup by the connection.

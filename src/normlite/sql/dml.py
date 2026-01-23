@@ -28,7 +28,15 @@ from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElemen
 if TYPE_CHECKING:
     from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
 
-class ValuesBase(ClauseElement):
+class ExecutableClauseElement(Executable):
+    is_ddl = False
+
+    def _execute_on_connection(self, connection, params, execution_options):
+        return connection._execute_clauseelement(
+            self, params, execution_options
+        )
+
+class ValuesBase(ExecutableClauseElement):
     _values: Optional[MappingProxyType] = None
     """The immutable mapping holding the values."""
 

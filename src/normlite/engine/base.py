@@ -74,17 +74,20 @@ from urllib.parse import urlparse, parse_qs, unquote
 import uuid
 
 from normlite.engine.cursor import CursorResult
-from normlite.engine.context import ExecutionContext
-from normlite.exceptions import ArgumentError
+from normlite.engine.context import DMLExecContex, ExecutionContext
+from normlite.engine.interfaces import _distill_params
+from normlite.exceptions import ArgumentError, ObjectNotExecutableError
 from normlite.future.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo
 from normlite.notion_sdk.client import InMemoryNotionClient
+from normlite.sql.base import Compiled
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.ddl import HasTable, ReflectTable
-from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, IsolationLevel
+from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, IsolationLevel, Cursor as DBAPICursor
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table, HasIdentifier
     from normlite.sql.base import Executable
+    from normlite.engine.interfaces import _CoreAnyExecuteParams
 
 class Connection:
     """Provide high level API to a connection to Notion databases.
@@ -110,7 +113,11 @@ class Connection:
         """Provide the underlying DBAPI connection managed by this connection object."""
         return self._engine.raw_connection()
 
-    def execute(self, stmt: Executable, parameters: Optional[dict] = None) -> CursorResult:
+    def execute(
+            self, 
+            stmt: Executable, 
+            parameters: Optional[_CoreAnyExecuteParams] = None
+    ) -> CursorResult:
         """Execute an SQL statement.
 
         This method executes both DML and DDL statements in an enclosing (implicit) transaction.
@@ -132,23 +139,28 @@ class Connection:
 
         Args:
             stmt (Executable): The statement to execute.
-            parameters (Optional[dict]): An optional dictionary containing the parameters to be
+            parameters (Optional[d_CoreAnyExecuteParams]): An optional mapping or sequence of mappings containing the parameters to be
                 bound to the SQL statement.   
 
         Returns:
             CursorResult: The result of the statement execution as cursor result.
 
+        .. versionchanged: 0.8.0
+
         .. versionadded:: 0.7.0
 
         """
+        
+        # normalize parameters to sequence of mappings
+        distilled_params = _distill_params(parameters)
 
-        compiler = self._engine._sql_compiler
-        compiled = stmt.compile(compiler)
-        ctx = ExecutionContext(self.connection.cursor(), compiled)
-        ctx.setup()
-
-        result = stmt.execute(ctx, parameters)
-        return result
+        # delegate to statement execution trigger
+        try:
+            exec_method = stmt._execute_on_connection(self, distilled_params)
+        except AttributeError as ae:
+            raise ObjectNotExecutableError(stmt) from ae 
+        
+        return exec_method
 
 
     def commit(self) -> None:
@@ -521,6 +533,28 @@ class Engine:
                 raise ArgumentError(f"No table found with name: {table.name}")
             
             return reflect_table._as_info()
+    
+    #----------------------------------------------------
+    # Execution context management methods
+    #----------------------------------------------------
+
+    def _create_execution_context(self, stmt: Executable, compiled: Compiled) -> ExecutionContext:
+        if compiled.is_ddl:
+            return DMLExecContex(
+                cursor=self._dbapi_connection.cursor(),
+                statement=stmt,
+                compiled=compiled
+            )
+        else:
+            pass
+
+    def do_execute(
+            self,
+            cursor: DBAPICursor,
+            operation: dict,
+            parameters: dict,
+    ) -> None:
+        cursor.execute(operation, parameters)
                        
 class Inspector:
     """Provide facilities for inspecting database objects.
