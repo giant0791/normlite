@@ -467,32 +467,115 @@ class InMemoryNotionClient(AbstractNotionClient):
         parent_page_id = new_object.get('parent').get('page_id', None)
         if parent_page_id is None:
             raise NotionError(
-                'Body failed validation: body.parent.page_id should be defined, instead was undefined.'
+                """
+                    Body failed validation: 
+                    body.parent.page_id should be defined, instead was undefined.
+                """
             )
 
         if not self._get_by_id(parent_page_id):
             raise NotionError(
-                f'Could not find page with ID: {parent_page_id} '
-                'Make sure the relevant pages and databases are shared with your integration.'
+                f"""
+                    Could not find page with ID: {parent_page_id}.
+                    Make sure the relevant pages and databases are shared with your integration.
+                """
             )
 
         new_object['is_inline'] = False
-        property_keys = [key for key in new_object.get('properties').keys()]
-        ret_new_db = copy.deepcopy(new_object)
-        ret_new_db.pop('properties')
-        ret_new_db['properties'] = {name: {} for name in property_keys}
         properties = new_object['properties']
         for prop_name, prop_obj in properties.items():
-            prop_type = list(prop_obj.keys())
-            properties[prop_name]['type'] = prop_type[0]
-            # database objects contain the keys 'type' and 'id' instead
-            # ids are generated for databases
-            properties[prop_name]['id'] = 'title' if prop_type[0] == 'title' else self._generate_property_id()
-            ret_new_db['properties'][prop_name] = properties[prop_name]
+            # inject keys "type" and "id" in each property:
+            # ids are generated for databases, for "title" the 
+            # id = "title"
+            prop_type = list(prop_obj.keys())[0]
+            properties[prop_name]['type'] = prop_type
+            properties[prop_name]['id'] = (
+                'title' 
+                if prop_type == 'title' 
+                else 
+                self._generate_property_id()
+            )
 
-        return ret_new_db
+        return new_object
+
+    def _add_page_to_database(self, new_page: dict) -> dict:
+        """Helper to add a new page to an exisiting database.
         
-    def _add_page(self, new_object: dict) -> dict:
+        This method injects the "type" and "id" objects from the database into
+        each property in the new_page['properties'] object.
+        Since the new_page is being created, it stores properties with **values**.
+        This method returns the new_page augmented with the "type" and "id" objects for all
+        of its properties.
+        """
+        # retrieve database schema
+        parent = new_page.get('parent')
+        schema = self._get_by_id(parent.get('database_id'))
+        if not schema:
+            # no database found for this page object
+            raise NotionError(
+                f"""
+                    Could not find database with ID: {parent.get('database_id')}.
+                    Make sure the relevant pages and databases are shared with your integration.
+                """
+            )
+        
+        schema_properties = schema.get('properties')
+        new_page_properties = new_page.get('properties')
+        for key in new_page_properties.keys():
+            page_prop = new_page_properties.get(key)
+            schema_prop = schema_properties.get(key)
+            if schema_prop is None:
+                # all page "properties" keys must match the parent database's properties
+                raise NotionError(
+                    f"""
+                        Could not find page property: {key} in database: {schema.get('title')} 
+                        Make sure the relevant pages and databases are shared with your integration.
+                    """
+                )
+
+            schema_value_key = list(schema_prop.keys())[0]
+            schema_value = schema_prop[schema_value_key]
+            page_prop[key] == {**schema_value, **page_prop}
+
+        return new_page
+    
+    def _add_page_to_page(self, new_page: dict) -> dict:
+        parent = new_page.get('parent')
+        parent_page = self._get_by_id(parent.get('page_id'))
+        if not parent_page:
+            raise NotionError(
+                f"""
+                    Could not find page with ID: {parent.get('page_id')}.
+                    Make sure the relevant pages and databases are shared with your integration.
+                """
+            )
+
+        new_page_properties = new_page.get('properties')
+        prop_key = list(new_page_properties.keys())
+        prop_value = new_page_properties.get(prop_key[0])
+
+        if len(prop_key) != 1 or prop_value.get('title') is None:
+            # title is the only valid property in the properties body parameter.
+                raise NotionError(
+                    f"""
+                        New page is a child of page: {new_page.get('parent').get('page_id')}. 
+                        "title" is the only valid property in the properties body parameter.
+                    """
+                )
+
+        if prop_value.get('type') is None:
+            prop_value['type'] = 'title'
+        
+        return new_page
+
+    def _add_page(self, new_page: dict) -> dict:
+        if new_page.get('parent').get('type') == 'database_id':
+            return self._add_page_to_database(new_page)
+        else:
+            return self._add_page_to_page(new_page)
+        
+    def _add_page_old(self, new_object: dict) -> dict:
+        """DEPRECATED: It's been refactored. """
         # TODO: refactor to check parent ids availability and existence first
         ret_new_pg = copy.deepcopy(new_object)
         ret_new_pg.pop('properties')
