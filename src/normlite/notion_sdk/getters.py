@@ -85,9 +85,6 @@ def get_parent_id(obj: Mapping[str, Any]) -> Optional[str]:
 # Rich text helpers
 # ---------------------------------------------------------------------------
 
-from typing import Any, Iterable, Mapping
-
-
 def rich_text_to_plain_text(rich_text: Iterable[Mapping[str, Any]]) -> str:
     """
     Normalize a Notion rich-text array into plain text by concatenating
