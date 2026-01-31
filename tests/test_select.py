@@ -103,6 +103,25 @@ def test_bool_col_expr(students: Table):
     assert compiled['checkbox'] == {'equals': ':param_0'}
 
 #---------------------------------------------
+# Operation generation tests
+#---------------------------------------------
+def test_select_generate_operation(students: Table, select_stmt: Select):
+    mocked_db_id = str(uuid.uuid4())
+    students.set_oid(mocked_db_id)
+
+    stmt = (
+        select_stmt
+        .where(students.c.name == 'Galileo Galilei')
+    )
+
+    nc = NotionCompiler()
+    compiled = stmt.compile(nc)
+    asdict = compiled.as_dict()
+
+    assert asdict['operation']['endpoint'] == 'databases'
+    assert asdict['operation']['request'] == 'query'
+
+#---------------------------------------------
 # WHERE tests
 #---------------------------------------------
 def test_where_generative_one_clause(students: Table, select_stmt: Select):

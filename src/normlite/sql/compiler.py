@@ -393,7 +393,7 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state.is_select = select.is_select
         self._compiler_state.stmt = select
 
-        operation = dict(endpoit='databases', request='query')
+        operation = dict(endpoint='databases', request='query')
         path_params = {}
         query_params = {}
         payload = {
