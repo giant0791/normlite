@@ -1,7 +1,13 @@
+import uuid
 import pytest
 
 from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
-
+from normlite.notion_sdk.getters import (
+    get_object_type,
+    get_title,
+    get_title_rich_text,
+    rich_text_to_plain_text,
+)
 
 # ---------------------------------------------------------
 # Helpers
@@ -55,6 +61,8 @@ def make_db_page(database_id, name="Alice", age=20):
         },
     }
 
+def rt(*parts: str):
+    return [{"text": {"content": p}} for p in parts]
 
 # ---------------------------------------------------------
 # Root page behavior
@@ -678,3 +686,216 @@ def test_database_query_filter_and_sort():
     ]
 
     assert names == ["Alice", "Charlie"]
+
+# ----------------------------------------------------------
+# Normalization tests
+# Note: All tests deliberately avoid getters when verifying
+# normalization invariants, in order to avoid circular trusts
+# 
+# IMPORTANT:
+#     Do not use a consumer to validate a producer.
+# 
+# getters are allowed in behavioral tests, because they 
+# answers:
+#     “Does the public API behave correctly given canonical input?”
+# ----------------------------------------------------------
+
+def test_page_under_page_title_is_normalized():
+    client = InMemoryNotionClient()
+    root = client.pages_create(
+        payload= {
+            'parent': {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            'properties': {
+                "Name": {
+                    "title": [{"text": {"content": "ROOT"}}]
+                }
+            },
+        }
+    )
+
+    page = client.pages_create(
+        payload= {
+            'parent': {"type": "page_id", "page_id": root["id"]},
+            'properties': {
+                "Name": {
+                    "title": [{"text": {"content": "child"}}]
+                }
+            },
+        }
+    )
+
+    title_rt = get_title_rich_text(page)
+
+    assert isinstance(title_rt, list)
+    assert title_rt[0]["text"]["content"] == "child"
+    assert get_title(page) == "child"
+
+def test_page_under_page_rejects_extra_properties():
+    client = InMemoryNotionClient()
+    root = client.pages_create(
+        payload= {
+            'parent': {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            'properties': {
+                "Name": {
+                    "title": [{"text": {"content": "ROOT"}}]
+                }
+            },
+        }
+    )
+
+    with pytest.raises(NotionError):
+        _ = client.pages_create(
+            payload= {
+                'parent': {"type": "page_id", "page_id": root["id"]},
+                'properties': {
+                    "Name": {"title": rt("bad")},
+                    "Extra": {"rich_text": rt("nope")},                },
+            }
+        )
+
+def test_database_schema_is_finalized():
+    client = InMemoryNotionClient()
+    db = client.databases_create(payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": rt("tables"),
+            "properties": {
+                "table_name": {"title": {}},
+                "schema": {"rich_text": {}},
+            },
+        }
+    )
+
+    props = db["properties"]
+
+    assert props["table_name"]["type"] == "title"
+    assert props["table_name"]["id"] == "title"
+
+    assert props["schema"]["type"] == "rich_text"
+    assert "id" in props["schema"]
+
+def test_database_title_is_normalized():
+    client = InMemoryNotionClient()
+    db = client.databases_create(
+        payload= {
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "tables"}}],
+            "properties": {"name": {"title": {}}},
+        }
+    )
+
+    assert get_object_type(db) == "database"
+    assert get_title(db) == "tables"
+
+def test_page_under_database_properties_are_normalized():
+    client = InMemoryNotionClient()
+    db = client.databases_create(
+        payload={ 
+            'parent': {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            'title': rt("tables"),
+            'properties': {
+                'table_name': {"title": {}},
+                'schema': {"rich_text": {}},
+            }
+        }
+    )
+
+    page = client.pages_create(
+        payload={
+            'parent': {"type": "database_id", "database_id": db["id"]},
+            'properties':{
+                "table_name": {"title": rt("users")},
+                "schema": {"rich_text": rt("public")},
+            },
+        }
+    )
+
+    props = page["properties"]
+
+    assert props["table_name"]["type"] == "title"
+    assert props["table_name"]["title"][0]["text"]["content"] == "users"
+
+    assert props["schema"]["type"] == "rich_text"
+    assert props["schema"]["rich_text"][0]["text"]["content"] == "public"
+
+def test_page_schema_mismatch_raises(client):
+    client = InMemoryNotionClient()
+    db = client.databases_create(
+        payload={            
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": rt("tables"),
+            "properties": {"name": {"title": {}}},
+        }
+    )
+
+    with pytest.raises(NotionError):
+        client.pages_create(
+            payload={
+                "parent": {"type": "database_id", "database_id": db["id"]},
+                "properties": {
+                    "name": {"title": rt("ok")},
+                    "extra": {"rich_text": rt("boom")},
+                },
+            }
+        )
+
+def test_get_title_raises_on_invalid_object():
+    client = InMemoryNotionClient()
+    bad_obj = {"object": "page", "properties": {}}
+
+    # normalization invariant broken → accessor must fail
+    with pytest.raises(NotionError):
+        norm_obj = client._normalize_property(bad_obj)
+        get_title(norm_obj)
+
+def test_rich_text_normalization_uses_text_content():
+    client = InMemoryNotionClient()
+    rich = [
+        {"text": {"content": "foo"}, "plain_text": "ignored"},
+        {"text": {"content": "bar"}},
+    ]
+
+    normalized_rich = client._normalize_rich_text(rich)
+    assert rich_text_to_plain_text(normalized_rich) == "foobar"
+
+def test_get_by_title_finds_page():
+    client = InMemoryNotionClient()
+    root = client.pages_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "properties":{"Name": {"title": rt("ROOT")}},
+        }
+    )
+
+    page = client.pages_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": root["id"]},
+            "properties": {"Name": {"title": rt("information_schema")}},
+        }
+    )
+
+    result = client._get_by_title("information_schema", "page")
+
+    assert result["object"] == "list"
+    assert len(result["results"]) == 1
+    assert result["results"][0]["id"] == page["id"]
+
+def test_store_contains_only_normalized_objects():
+    client = InMemoryNotionClient()
+    page = client.pages_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "properties": {"Name": {"title": rt("X")}},
+        }
+    )
+
+    stored = client._store[page["id"]]
+
+    title_prop = next(
+        p for p in stored["properties"].values()
+        if p["type"] == "title"
+    )
+
+    assert isinstance(title_prop["title"], list)
+    assert "text" in title_prop["title"][0]
+    assert "content" in title_prop["title"][0]["text"]
+

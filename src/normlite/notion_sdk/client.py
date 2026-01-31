@@ -41,7 +41,9 @@ import string
 import urllib.parse
 import warnings
 
+from normlite.notion_sdk.getters import get_object_type, get_title
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
+from normlite.utils import normlite_deprecated
 
 class NotionError(Exception):
     """Exception raised for all errors related to the Notion REST API."""
@@ -349,14 +351,18 @@ class InMemoryNotionClient(AbstractNotionClient):
         self._ischema_page_id = ischema_page_id or '66666666-6666-6666-6666-666666666666'
         self._tables_db_id = tables_db_id or 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
         self._store: dict[str, dict] = {}
-        self._ensure_root()
 
     # ------------------------------------------------------------------
     # Store invariants
     # ------------------------------------------------------------------
 
+    @normlite_deprecated("Notion clients shall have an empty store after creation.")
     def _ensure_root(self) -> None:
-        """Create the root page at init time."""
+        """Create the root page at init time.
+        
+        .. deprecated:: 0.8.0
+            This method is deprecated and will be removed in a future version
+        """
         if self._ROOT_PAGE_ID_ not in self._store:
             self._store[self._ROOT_PAGE_ID_] = self._new_object(
                 "page",
@@ -367,6 +373,8 @@ class InMemoryNotionClient(AbstractNotionClient):
                     },
                     "properties": {
                         "Title": {
+                            "type": "title",
+                            "id": "title",
                             "title": [
                                 {"text": {"content": self._ROOT_PAGE_TITLE_}}
                             ]
@@ -379,6 +387,32 @@ class InMemoryNotionClient(AbstractNotionClient):
     def _get_by_id(self, id: str) -> dict:
         """Simple accessor to the store by object id."""
         return self._store.get(id, {})
+    
+    def _get_by_title(self, text: str, object_: str) -> dict:
+        """Return all objects with "title" text in the store. """
+
+        query_results = []
+        query_result_object = {
+            'object': 'list',
+            'results': query_results,
+            'next_cursor': None,
+            'has_more': False,
+            'type': 'page',
+            'page': {}
+        }
+
+        if self._store_len() == 0:
+            return query_result_object
+        
+        for obj in self._store.values():
+            if get_object_type(obj) != object_:
+                continue
+
+            title = get_title(obj)
+            if title and title == text:
+                query_results.append(obj)
+            
+        return query_result_object
 
     # ------------------------------------------------------------------
     # Object construction
@@ -516,6 +550,88 @@ class InMemoryNotionClient(AbstractNotionClient):
         db["is_inline"] = False
 
     # ------------------------------------------------------------------
+    # Normalization helpers
+    # ------------------------------------------------------------------
+
+    def _normalize_rich_text_item(self, rt: dict) -> dict:
+        """
+        Normalize a single rich-text item to Notion canonical form.
+        """
+        if "text" in rt:
+            content = rt["text"].get("content")
+            if not isinstance(content, str):
+                raise NotionError("Invalid rich_text item: missing text.content")
+
+            return {
+                "type": "text",
+                "text": {"content": content},
+                "plain_text": content,
+                "annotations": rt.get(
+                    "annotations",
+                    {
+                        "bold": False,
+                        "italic": False,
+                        "strikethrough": False,
+                        "underline": False,
+                        "code": False,
+                        "color": "default",
+                    },
+                ),
+            }
+
+        if "equation" in rt:
+            expr = rt["equation"].get("expression")
+            if not isinstance(expr, str):
+                raise NotionError("Invalid equation rich_text item")
+
+            return {
+                "type": "equation",
+                "equation": {"expression": expr},
+                "plain_text": expr,
+                "annotations": rt.get("annotations", {}),
+            }
+
+        raise NotionError(f"Unsupported rich_text item: {rt}")
+
+    def _normalize_rich_text(self, value: list[dict]) -> list[dict]:
+        if not isinstance(value, list):
+            raise NotionError("rich_text must be a list")
+
+        return [self._normalize_rich_text_item(rt) for rt in value]
+
+    def _normalize_property(self, prop: dict) -> dict:
+        prop_type = prop.get("type")
+        if not prop_type:
+            raise NotionError("Property missing 'type'")
+
+        if prop_type == "title":
+            if "title" not in prop:
+                raise NotionError("Title property missing 'title' field")
+            prop["title"] = self._normalize_rich_text(prop["title"])
+
+        elif prop_type == "rich_text":
+            if "rich_text" not in prop:
+                raise NotionError("rich_text property missing 'rich_text' field")
+            prop["rich_text"] = self._normalize_rich_text(prop["rich_text"])
+
+        return prop
+
+    def _normalize_properties(self, obj: dict) -> None:
+        props = obj.get("properties")
+        if not isinstance(props, dict):
+            raise NotionError("Object missing properties")
+
+        for name, prop in props.items():
+            props[name] = self._normalize_property(prop)
+
+    def _normalize_database_title(self, db: dict) -> None:
+        title = db.get("title")
+        if not isinstance(title, list):
+            raise NotionError("Database title must be a rich_text list")
+
+        db["title"] = self._normalize_rich_text(title)
+
+    # ------------------------------------------------------------------
     # Unified add entrypoint
     # ------------------------------------------------------------------
 
@@ -527,11 +643,16 @@ class InMemoryNotionClient(AbstractNotionClient):
             parent_type, parent_obj = self._resolve_parent(obj)
             if parent_type == "page":
                 self._finalize_page_under_page(obj)
+
             else:
                 self._finalize_page_under_database(obj, parent_obj)
 
+            self._normalize_properties(obj)
+                
+
         elif type_ == "database":
             self._finalize_database(obj)
+            self._normalize_database_title(obj)
 
         else:
             raise NotionError(f'"{type_}" not supported or unknown')
@@ -721,7 +842,44 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         return query_result_object
 
+    def find_child_page(self, parent_page_id: str, name: str) -> Optional[dict]:
+        for obj in self._store.values():
+            if obj["object"] != "page":
+                continue
+
+            parent = obj.get("parent", {})
+            if parent.get("page_id") != parent_page_id:
+                continue
+
+            title = (
+                obj.get("properties", {})
+                .get("Name", {})
+                .get("title", [])
+            )
+
+            if title and title[0]["text"]["content"] == name:
+                return obj
+
+        return None
+
+    def find_child_database(self, parent_page_id: str, name: str) -> Optional[dict]:
+        for obj in self._store.values():
+            if obj["object"] != "database":
+                continue
+
+            parent = obj.get("parent", {})
+            if parent.get("page_id") != parent_page_id:
+                continue
+
+            title = obj.get("title", [])
+            if title and title[0]["text"]["content"] == name:
+                return obj
+
+        return None
+
 class FileBasedNotionClient(InMemoryNotionClient):
+    STORE_VERSION = 1
+
     """Enhance the in-memory client with file based persistence.
 
     This class extends the base :class:`InMemoryNotionClient` by providing the capability
@@ -735,11 +893,29 @@ class FileBasedNotionClient(InMemoryNotionClient):
             c.pages_create(payload2)
             c.pages_create(payload3)
     """
-    def __init__(self, file_path: str):
+    def __init__(
+        self, 
+        path: str,
+        *,
+        read_only: bool = False,
+        auto_load: bool = True,
+        auto_flush: bool = True,
+    ):
         super().__init__()
 
-        self.file_path = file_path
+        self._path = Path(path)
         """The absolute path to the file storing the data contained in the file-base Notion client."""
+
+        self._read_only = read_only
+        """Readonly flag to avoid overwriting the file contents."""
+
+        self._auto_load = auto_load
+        """Auto load the store if ``True``."""
+
+        self._auto_flush = auto_flush
+        """Automatic flush """
+        if self._auto_load:
+            self.load()
 
     def load(self) -> List[dict]:
         """Load the store content from the underlying file.
@@ -747,9 +923,45 @@ class FileBasedNotionClient(InMemoryNotionClient):
         Returns:
             List[dict]: The JSON object as list of dictionaries containing the store.
         """
-        with open(self.file_path, 'r') as file:
-            return json.load(file)
+        if not self._path.exists():
+            self._store.clear()
+            return
+
+        with self._path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        version = data.get("version")
+        if version != self.STORE_VERSION:
+            raise NotionError(
+                f"Unsupported store version: {version} "
+                f"(expected {self.STORE_VERSION})"
+            )
+
+        objects = data.get("objects")
+        if not isinstance(objects, dict):
+            raise NotionError("Corrupted store: 'objects' missing or invalid")
+
+        # IMPORTANT: store must contain canonical objects
+        self._store = copy.deepcopy(objects)
     
+    def flush(self) -> None:
+        if self._read_only:
+            return
+
+        payload = {
+            "version": self.STORE_VERSION,
+            "objects": self._store,
+        }
+
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        with self._path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, sort_keys=True)
+
+    def clear(self) -> None:
+        self._store.clear()
+        if self._path.exists() and not self._read_only:
+            self._path.unlink()
+
     def __enter__(self) -> Self:
         """Initialize the Notion store in memory.
 
@@ -759,27 +971,10 @@ class FileBasedNotionClient(InMemoryNotionClient):
         Returns:
             Self: This instance as required by the context manager protocol.
         """
-        if Path(self.file_path).exists():
-            # The file containing the Notion store exists, read it into the _store class attribute
-                store = self.load()
-                self._create_store(store['store'])  # pass the list of objects as store content 
-                return self
-            
-        else:
-            # No file exists, initialize the _store class attribute
-            self._create_store()
-            return self
+        if self._auto_load:
+            self.load()
+        return self
         
-    def dump(self, store_content: List[dict]) -> None:
-        """Dump the store content onto the underlying file.
-
-        Args:
-            store_content (List[dict]): The current store content present in memory.
-        """
-
-        with open(self.file_path, 'w') as file:
-            json.dump(store_content, file, indent=2)
-
     def __exit__(
         self,
         exctype: Optional[Type[BaseException]] = None,
@@ -794,10 +989,12 @@ class FileBasedNotionClient(InMemoryNotionClient):
             exctb (Optional[TracebackType]): The traceback object. Defaults to ``None``.
 
         Returns:
-            Optional[bool]: ``None`` as it is customary for context managers.
+            Optional[bool]: ``False`` as it is customary for context managers.
         """
 
-        self.dump(FileBasedNotionClient._store)
+        if self._auto_flush:
+            self.flush()
+        return False  # never swallow exceptions
 
 #--------------------------------------------------
 # Private classes for implementing database queries
