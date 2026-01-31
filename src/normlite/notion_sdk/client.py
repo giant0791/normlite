@@ -356,12 +356,18 @@ class InMemoryNotionClient(AbstractNotionClient):
     # Store invariants
     # ------------------------------------------------------------------
 
-    @normlite_deprecated("Notion clients shall have an empty store after creation.")
     def _ensure_root(self) -> None:
         """Create the root page at init time.
         
-        .. deprecated:: 0.8.0
-            This method is deprecated and will be removed in a future version
+        .. versionchanged:: 0.8.0
+            This method is no longer part of the client's initialization.
+            Notion clients must enforce the invariant that the store is empty
+            after creation.
+            Users of this class have the responsibility to call this utility method,
+            if required (see :meth:`normlite.engine.base.Engine._bootstrap` for more 
+            details).
+
+            
         """
         if self._ROOT_PAGE_ID_ not in self._store:
             self._store[self._ROOT_PAGE_ID_] = self._new_object(

@@ -74,7 +74,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 import uuid
 
 from normlite.engine.cursor import CursorResult
-from normlite.engine.context import DMLExecContex, ExecutionContext
+from normlite.engine.context import ExecutionContext
 from normlite.engine.interfaces import _distill_params
 from normlite.exceptions import ArgumentError, ObjectNotExecutableError
 from normlite.future.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo
@@ -161,7 +161,6 @@ class Connection:
             raise ObjectNotExecutableError(stmt) from ae 
         
         return exec_method
-
 
     def commit(self) -> None:
         """Commit the transaction currently in progress.
@@ -311,6 +310,308 @@ class Engine:
         >>> NOTION_TOKEN = 'secret-token'
         >>> NOTION_VERSION = '2022-06-28' 
         >>> engine = create_engine(f'normlite+auth://internal?token={NOTION_TOKEN}&version={NOTION_VERSION}')
+
+        .. versionchanged:: 0.8.0
+            This version provides a revised bootstrap algorithm for the population of normlite pages/database
+            that includes discovery and avoids overwriting.
+            The root page is created for simulated clients only.
+    """
+    def __init__(self, uri: NotionURI, **kwargs: Any) -> None:
+        if isinstance(uri, NotionAuthURI):
+            raise NotImplementedError(
+                "Auth-based integrations are not supported yet."
+            )
+
+        self._uri = uri
+        """The Notion URI denoting the integration to connect to."""
+
+        # -------------------------
+        # Engine identity / config
+        # -------------------------
+        self._root_page_id: Optional[str] = kwargs.get("root_page_id")
+        """The id for the root page in the integration."""
+
+        self._user_database_name: Optional[str] = kwargs.get("user_database_name")
+        """The database name.
+        
+        For simulated URIs, ``memory`` if mode is memory, the file name without extension if mode is file.
+        For :class:`NotionAuthURI`, the name in the keyword argument user_database_name.
+
+        .. versionchanged:: 0.8.0
+            Renamed to make the intend clearer.
+        """
+
+        self._database: Optional[str] = None
+        """The database name.
+        
+        .. deprecated:: 0.8.0
+        """
+
+        self._ws_id: Optional[str] = kwargs.get("ws_id")
+
+        self._ischema_page_id: Optional[str] = None
+        """Id for the information schema page."""
+
+        self._tables_id: Optional[str] = None
+        """Id for the Notion database tables."""
+
+        self._user_tables_page_id: Optional[str] = None
+        """ Page id of the parent page of all databases created in the integration.
+        
+        .. versionadded:: 0.8.0
+        """
+
+        self._client = None
+        """The Notion client this engine interacts with."""
+
+        self._init_client: bool = kwargs.get("init_client", True)
+        """Whether the client shall be initialized with the ``normlite`` datastructures. Defaults to ``True``."""
+
+        self._isolation_level: IsolationLevel = "AUTOCOMMIT"
+        """Isolation level for transactions. Defaults to ``AUTOCOMMIT``."""
+
+        self._create_client(uri)
+
+        self._dbapi_connection = DBAPIConnection(self._client)
+        """The underlying DBAPI connetion.
+        
+        .. versionadded:: 0.7.0
+        """
+
+        self._sql_compiler = NotionCompiler()
+        """The SQL compiler.
+        
+        .. versionadded:: 0.7.0
+        """
+
+    # -------------------------------------------------
+    # Client creation + bootstrap
+    # -------------------------------------------------
+
+    def _create_client(self, uri: NotionSimulatedURI) -> None:
+        if uri.mode not in ("memory", "file"):
+            raise NotImplementedError
+
+        self._client = InMemoryNotionClient()
+
+        # Resolve database name
+        if uri.mode == "memory":
+            self._database = "memory"
+            self._user_database_name = self._user_database_name or "memory"
+            self._root_page_id = self._root_page_id or self._client._ROOT_PAGE_ID_
+        else:
+            self._database = Path(uri.file).stem
+            self._user_database_name = (
+                self._user_database_name or self._database
+            )
+            if not self._root_page_id:
+                raise ArgumentError("root_page_id is required for file-based engines")
+
+        if self._init_client:
+            if uri.mode in ("memory", "file"):
+                # root page is required for simulated clients
+                self._client._ensure_root()
+
+            self._bootstrap()
+
+    # -------------------------------------------------
+    # Bootstrap logic (idempotent)
+    # -------------------------------------------------
+
+    def _bootstrap(self) -> None:
+
+        # 1. information_schema page
+        self._ischema_page_id = self._get_or_create_page(
+            parent_id=self._root_page_id,
+            name="information_schema",
+        )
+
+        # 2. tables database
+        self._tables_id = self._get_or_create_database(
+            parent_id=self._ischema_page_id,
+            name="tables",
+            properties={
+                "table_name": {"title": {}},
+                "table_schema": {"rich_text": {}},
+                "table_catalog": {"rich_text": {}},
+                "table_id": {"rich_text": {}},
+            },
+        )
+
+       # 3. ensure tables self-row exists
+        self._ensure_tables_self_row()
+
+        # 4. user tables page
+        self._user_tables_page_id = self._get_or_create_page(
+            parent_id=self._root_page_id,
+            name=self._user_database_name,
+        )
+
+    # -------------------------------------------------
+    # Find-or-create helpers
+    # -------------------------------------------------
+
+    def _get_or_create_page(self, parent_id: str, name: str) -> str:
+ 
+        page = self._client.find_child_page(parent_id, name)
+        if page:
+            return page["id"]
+        
+        page = self._client._add(
+            "page",
+            {
+                "parent": {"type": "page_id", "page_id": parent_id},
+                "properties": {
+                    "Name": {"title": [{"text": {"content": name}}]}
+                },
+            },
+        )
+
+        return page['id']
+
+    def _get_or_create_database(
+        self,
+        parent_id: str,
+        name: str,
+        properties: dict,
+    ) -> str:
+        db = self._client.find_child_database(parent_id, name)
+        if db:
+            return db["id"]
+
+        db = self._client._add(
+            "database",
+            {
+                "parent": {"type": "page_id", "page_id": parent_id},
+                "title": [{"type": "text", "text": {"content": name}}],
+                "properties": properties,
+            },
+        )
+
+        return db['id']
+
+    def _ensure_tables_self_row(self) -> None:
+        existing = self._client.databases_query(
+            {
+                "database_id": self._tables_id,
+                "filter": {
+                    "property": "table_name",
+                    "title": {"equals": "tables"},
+                },
+            }
+        )
+
+        if existing.get("results"):
+            return
+
+        self._client._add(
+            "page",
+            {
+                "parent": {
+                    "type": "database_id",
+                    "database_id": self._tables_id,
+                },
+                "properties": {
+                    "table_name": {
+                        "title": [{"text": {"content": "tables"}}]
+                    },
+                    "table_schema": {
+                        "rich_text": [{"text": {"content": "information_schema"}}]
+                    },
+                    "table_catalog": {
+                        "rich_text": [{"text": {"content": "normlite"}}]
+                    },
+                    "table_id": {
+                        "rich_text": [{"text": {"content": self._tables_id}}]
+                    },
+                },
+            },
+        )
+
+    # -------------------------------------------------
+    # Table reflection helpers used by the inspector
+    # -------------------------------------------------
+
+    def _check_if_exists(self, table_name: str) -> HasTable:
+        """Helper method to check for existence of a table."""
+
+        # execute the DDL statement
+        with self.connect() as connection:
+            hastable = HasTable(
+                table_name, 
+                self._tables_id, 
+                'normlite' if table_name == 'tables' else self._database
+            )
+
+            # result is not needed, the check result
+            # can be queried using the found() method 
+            _ = connection.execute(hastable)
+
+        return hastable
+        
+    def _reflect_table(self, table: Table) -> ReflectedTableInfo:
+            has_table = self._check_if_exists(table.name)
+            if has_table.found():
+                with self.connect() as connection:
+                    table.set_oid(has_table.get_oid())
+                    reflect_table = ReflectTable(table)
+                    _ = connection.execute(reflect_table)
+
+            else:
+                raise ArgumentError(f"No table found with name: {table.name}")
+            
+            return reflect_table._as_info()
+    
+    # -------------------------------------------------
+    # Public API
+    # -------------------------------------------------
+
+    def inspect(self) -> Inspector:
+        """Return an inspector object.
+
+        Factory method to procure :class:`Inspector` objects.
+        
+        .. versionadded:: 0.7.0
+
+        """
+        return Inspector(self)
+    
+    def connect(self) -> Connection:
+        """Procure a new :class:`Connection` object."""
+        return Connection(self)
+
+    def raw_connection(self) -> DBAPIConnection:
+        """Provide the underlying DBAPI connection."""
+        return self._dbapi_connection
+    
+    #----------------------------------------------------
+    # Execution context management methods
+    #----------------------------------------------------
+
+    def do_execute(
+            self,
+            cursor: DBAPICursor,
+            operation: dict,
+            parameters: dict,
+    ) -> None:
+        cursor.execute(operation, parameters)
+ 
+
+
+class OldEngine:
+    """Provide a convenient proxy object of database connectivity to Notion integrations.
+
+    An :class:`Engine` object is instantiated by the factory :func:`create_engine()`.
+
+    Examples of possible future extensions:
+    
+        >>> # create a proxy object to a :memory: integration
+        >>> engine = create_engine('normlite::///:memory:')
+
+        >>> # create a proxy object to a Notion internal integration
+        >>> NOTION_TOKEN = 'secret-token'
+        >>> NOTION_VERSION = '2022-06-28' 
+        >>> engine = create_engine(f'normlite+auth://internal?token={NOTION_TOKEN}&version={NOTION_VERSION}')
     """
     def __init__(self, uri: NotionURI, **kwargs: Any) -> None:
 
@@ -419,7 +720,7 @@ class Engine:
         payload = {
             'parent': {                     
                 'type': 'page_id',
-                'page_id': self._ws_id
+                'page_id': self._client._ROOT_PAGE_ID_
             },
             'properties': {
                 'Name': {'title': [{'text': {'content': 'information_schema'}}]}
@@ -474,7 +775,7 @@ class Engine:
         payload = {
             'parent': {
                 'type': 'page_id',
-                'page_id': self._ws_id
+                'page_id': self._client._ROOT_PAGE_ID_
 
             },
             'properties': {
@@ -501,7 +802,7 @@ class Engine:
         """Procure a new :class:`Connection` object."""
         return Connection(self)
 
-    def raw_connection(self) -> Connection:
+    def raw_connection(self) -> DBAPIConnection:
         """Provide the underlying DBAPI connection."""
         return self._dbapi_connection
     
@@ -537,16 +838,6 @@ class Engine:
     #----------------------------------------------------
     # Execution context management methods
     #----------------------------------------------------
-
-    def _create_execution_context(self, stmt: Executable, compiled: Compiled) -> ExecutionContext:
-        if compiled.is_ddl:
-            return DMLExecContex(
-                cursor=self._dbapi_connection.cursor(),
-                statement=stmt,
-                compiled=compiled
-            )
-        else:
-            pass
 
     def do_execute(
             self,
