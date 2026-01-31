@@ -1,7 +1,7 @@
 import pytest
 from collections.abc import Mapping
 
-from normlite.utils import frozendict
+from normlite.utils import frozendict, normlite_deprecated
 # adjust import path as needed
 
 
@@ -221,3 +221,15 @@ def test_copy_with_updates_returns_new_frozendict():
     assert fd == {"a": 1}
     assert fd2 == {"a": 1, "b": 2}
     assert fd is not fd2
+
+# ---------------------------------------------------------------------
+# deprecated decorator
+# ---------------------------------------------------------------------
+def test_deprecated_util():
+
+    @normlite_deprecated("Use other API.")
+    def old_api():
+        pass
+
+    with pytest.warns(DeprecationWarning, match="other API"):
+        old_api()

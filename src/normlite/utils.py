@@ -16,9 +16,36 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from collections.abc import Mapping
-from typing import Iterator, Hashable, Any
+from typing import Iterator, Hashable, Any, Callable, TypeVar, ParamSpec
+import functools
+import warnings
 
+P = ParamSpec("P")
+R = TypeVar("R")
 
+if hasattr(warnings, "deprecated"):
+    # Python 3.13+
+    normlite_deprecated = warnings.deprecated
+
+else:
+    # Fallback for Python < 3.13
+    def normlite_deprecated(message: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
+        """
+        Backport of warnings.deprecated for Python < 3.13.
+        """
+        def decorator(func: Callable[P, R]) -> Callable[P, R]:
+            @functools.wraps(func)
+            def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+                warnings.warn(
+                    f"Call to {func.__qualname__} is deprecated. {message}",
+                    category=DeprecationWarning,
+                    stacklevel=2,
+                )
+                return func(*args, **kwargs)
+
+            return wrapper
+        return decorator
+    
 class frozendict(Mapping):
     __slots__ = ("_data", "_hash")
 
