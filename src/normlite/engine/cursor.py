@@ -57,10 +57,19 @@ class CursorResult:
         The fetcher methods now check that the cursor metadata returns row prior to execution.
         This ensures that no calls to ``None`` objects are issued.
     """
+
+    context: ExecutionContext
+    """The execution context this cursor result belongs to.
+    
+    .. versionadded:: 0.8.0
+    """
+
     def __init__(
             self, 
             context: ExecutionContext,
     ) -> None:
+        self.context = context
+        
         self._cursor = context.cursor
         """The underlying DBAPI cursor."""
 

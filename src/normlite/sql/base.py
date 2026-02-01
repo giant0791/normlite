@@ -22,11 +22,12 @@ from enum import Enum, auto
 from functools import wraps
 import json
 import pdb
-from typing import Any, ClassVar, Optional, Protocol, TYPE_CHECKING, Sequence
+from typing import Any, ClassVar, Optional, Protocol, TYPE_CHECKING, Self, Sequence, overload
 import copy
 
-from normlite.exceptions import UnsupportedCompilationError
-from normlite.engine.context import ExecutionContext
+from normlite.engine.interfaces import _distill_params
+from normlite.exceptions import ArgumentError, UnsupportedCompilationError
+from normlite.utils import frozendict
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table, Column
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
     from normlite.sql.dml import Insert, Select
     from normlite.sql.elements import ColumnElement, UnaryExpression, BinaryExpression, BindParameter, BooleanClauseList
     from normlite.engine.cursor import CursorResult
-    from normlite.engine.interfaces import _CoreAnyExecuteParams
+    from normlite.engine.interfaces import _CoreAnyExecuteParams, ExecutionOptions, ReturningStrategy
     from normlite.engine.base import Connection
 
 class Generative:
@@ -164,45 +165,77 @@ class Executable(ClauseElement):
     ..versionadded:: 0.8.0
     """
 
+    _execution_options: Optional[ExecutionOptions] = None
+    """per-statement execution options.
+    
+    .. versionadded:: 0.8.0
+    """
+
+    @overload
+    def execution_options(
+        self,
+        *,
+        returning_strategy: ReturningStrategy = "echo",
+        preserve_rowcount: bool = False,            
+        **opts: Any
+    ) -> Connection:
+        ...
+
+    @overload
+    def execution_options(self, **opts: Any) -> Connection:
+        ...
+
+    def execution_options(self, **opts: Any) -> Self:
+        """Update the execution options **in-place** returning the same executable.
+        
+        .. versionadded:: 0.8.0
+        """
+
+        if 'isolation_level' in opts:
+            raise ArgumentError(
+                """
+                    'isolation_level' execution option may only be specified 
+                    on Connection.execution_options(), or 
+                    per-engine using the isolation_level
+                    argument to create_engine().
+                """
+            )
+        
+        if 'compiled_cache' in opts:
+            raise ArgumentError(
+                """
+                    'compiled_cache' execution option may only be specified
+                    on Connection.execution_options(), not per statement. 
+                """
+            )
+
+        self._execution_options = (
+            self._execution_options or {} 
+            | frozendict(opts)
+        )
+
+        return self
+
+    def get_execution_options(self) -> ExecutionOptions:
+        """Return the execution options that will take effect during execution of this executable.
+        
+        .. versionadded:: 0.8.0
+
+        .. seealso::
+        
+            :meth:`Engine.execution_execution_options`
+        """
+        return self._execution_options
+
+
     def _execute_on_connection(
             self, 
             connection: Connection, 
-            params: Optional[_CoreAnyExecuteParams], 
-            execution_options: Optional[dict] = None
+            params: Optional[_CoreAnyExecuteParams],
+            *, 
+            execution_options: Optional[ExecutionOptions] = None
     ) -> CursorResult:
         raise NotImplementedError
-
-    def execute(self, context: ExecutionContext, parameters: Optional[dict] = None) -> CursorResult:
-        """Run this executable within the context setup by the connection.
-
-        Args:
-            context (ExecutionContext): The runtime context for the execution of this statement.
-            parameters (Optional[dict], optional): The dictionary containing parameters to be bound. Defaults to ``None``.
-
-        Returns:
-            CursorResult: The :class:`normlite.cursor.CursorResult` object containing the result set of the statement.
-        """
-
-        # TODO: for INSERT/UPDATE statements that do not have values, parameters is not None
-        # Implement this use case and bind the supplied parameters
-        # Suppor the same SqlAlchemy convention that parameters override the values() clause.
-        cursor = context._dbapi_cursor
-        compiled = context._compiled
-        cursor.execute(compiled.as_dict()['operation'], compiled.as_dict()['parameters'])
-        result = context._setup_cursor_result()
-        self._post_exec(result, context)
-        return result
-
-    def _post_exec(self, result: CursorResult, context: ExecutionContext) -> None:
-        """Optional hook for subclassess.
-
-        Subclasses can use this method to extract information from the provided cursor result.
-
-        Args:
-            result (CursorResult): The :class:`normlite.cursor.CursorResult` object returned by the execution.
-            context (ExecutionContext): The runtime context for the execution of this statement.
-        """
-        ...
 
 class _CompileState(Enum):
     NOT_STARTED           = auto()

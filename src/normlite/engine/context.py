@@ -50,11 +50,12 @@ from typing import TYPE_CHECKING, Any, Mapping, Optional
 import copy
 
 from normlite.exceptions import ArgumentError
-from normlite.engine.interfaces import _CoreMultiExecuteParams
+from normlite.engine.interfaces import _CoreMultiExecuteParams, ExecutionOptions
 from normlite.utils import frozendict
 
 if TYPE_CHECKING:
     from normlite.sql.base import Compiled
+    from normlite.engine.base import Engine, Connection
     from normlite.engine.cursor import CursorResult
     from normlite.notiondbapi.dbapi2 import Cursor as DBAPICursor
     from normlite.sql.base import Executable
@@ -104,6 +105,18 @@ class ExecutionContext:
         :meth:`_bind_params()` expects that parameters have been provided for all columns.
         It raises :exc:`normlite.exceptions.ArgumentError` if this is not the case.
 
+    """
+
+    engine: Engine
+    """Engine which the connection is associated with.
+    
+    .. versionadded:: 0.8.0
+    """
+
+    connection: Connection
+    """Connection associated with the engine.
+    
+    .. versionadded::0.8.0
     """
 
     cursor: DBAPICursor
@@ -205,7 +218,7 @@ class ExecutionContext:
 
     """
 
-    execution_options: Mapping[str, Any]
+    execution_options: ExecutionOptions
     """Execution options associated with the current statement execution."""
 
     _result: Optional[CursorResult]
@@ -215,24 +228,23 @@ class ExecutionContext:
     """
 
     def __init__(
-            self, 
+            self,
+            engine: Engine,
+            connection: Connection, 
             cursor: DBAPICursor, 
             compiled: Compiled, 
             distilled_params: Optional[_CoreMultiExecuteParams] = None,
             *,
             execution_options: Optional[Mapping[str, Any]] = None
     ) -> None:
+        self.engine = engine
+        self.connection = connection
         self.cursor = cursor
         self.compiled = compiled
         self.compiled_dict = compiled.as_dict()
         self.invoked_stmt = compiled._element
-        if execution_options is not None:
-            self.execution_options = frozendict(execution_options)
-        else:
-            # set default values for execution options
-            self.execution_options = frozendict(page_size=25, preserve_rowid=True)
-
-        self.distilled_params = distilled_params
+        self.execution_options = execution_options or frozendict() 
+        self.distilled_params = distilled_params or [{}]
         self.path_params = None
         self.query_params = None
         self.payload = None
@@ -242,13 +254,14 @@ class ExecutionContext:
         params = self.distilled_params
 
         # Single execution: no parameters or exactly one parameter set
-        if params is None or len(params) == 1:
+        if len(params) == 1:
             return ExecutionStyle.SINGLE
 
         # Bulk execution
         if self.compiled._compiler_state.is_insert:
             return ExecutionStyle.PARAMETER_BULK
 
+        # update/delete
         return ExecutionStyle.RESULT_BULK
 
     @property
@@ -296,6 +309,9 @@ class ExecutionContext:
             else
             self._resolve_parameters(self.distilled_params)
         )
+
+        # resolve execution options
+        self._resolve_exec_options()
 
         # bind the parameters for execution with the resolved values
         if 'path_params' in self.compiled_dict:
@@ -353,8 +369,21 @@ class ExecutionContext:
 
         return resolved_params
 
-    def _resolve_exec_options(self):
-        raise NotImplementedError
+    def _resolve_exec_options(self) -> None:
+        opts = {}
+
+        # update with engine and connection options
+        opts.update(self.engine.get_execution_options())
+        opts.update(self.connection.get_execution_options())
+
+        # update with the statement options
+        if self.invoked_stmt._execution_options:
+            opts.update(self.invoked_stmt._execution_options)
+
+        # update with the call options
+        opts.update(self.execution_options)
+
+        self.execution_options = frozendict(opts)
 
     def setup(self) -> None:
         raise NotImplementedError
