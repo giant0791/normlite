@@ -58,6 +58,7 @@ if TYPE_CHECKING:
     from normlite.engine.cursor import CursorResult
     from normlite.notiondbapi.dbapi2 import Cursor as DBAPICursor
     from normlite.sql.base import Executable
+    from normlite.sql.elements import BindParameter
 
 class ExecutionStyle(Enum):
     """Define the execution style for a context.
@@ -65,17 +66,17 @@ class ExecutionStyle(Enum):
     .. versionadded:: 0.8.0
     """
     
-    EXECUTE = auto()
+    SINGLE = auto()
     """A single operation is executed."""
 
-    EXECUTEMANY = auto()
+    RESULT_BULK = auto()
     """Multiple operations are executed on a result.
     
     This execution style is used for DELETE/UPDATE statements where the execution loop is
     driven by the query results.
     """
 
-    INSERTMANYVALUES = auto()
+    PARAMETER_BULK = auto()
     """The same operation is executed multiple on time with different parameters.
     
     This execution style is used for INSERT statements that add multiple rows. The execution loop is
@@ -132,7 +133,7 @@ class ExecutionContext:
                 "endpoint": "pages",
                 "request": "create",
             },
-            "payload" :[
+            "payload" : [
                 {
                     "parent": {
                         "type": "database_id",
@@ -204,18 +205,22 @@ class ExecutionContext:
 
     """
 
-    no_parameters: bool
-    """``True`` if the execution style does not use parameters"""
-
     execution_options: Mapping[str, Any]
     """Execution options associated with the current statement execution."""
+
+    _result: Optional[CursorResult]
+    """The cursor result of the operation(s) executed in this context.
+    
+    .. versionadded:: 0.8.0
+    """
 
     def __init__(
             self, 
             cursor: DBAPICursor, 
             compiled: Compiled, 
-            execution_options: Optional[Mapping[str, Any]] = None,
-            distilled_params: Optional[_CoreMultiExecuteParams] = None
+            distilled_params: Optional[_CoreMultiExecuteParams] = None,
+            *,
+            execution_options: Optional[Mapping[str, Any]] = None
     ) -> None:
         self.cursor = cursor
         self.compiled = compiled
@@ -227,56 +232,72 @@ class ExecutionContext:
             # set default values for execution options
             self.execution_options = frozendict(page_size=25, preserve_rowid=True)
 
-        if distilled_params is None:
-            self.no_parameters = True
-        else:
-            self.no_parameters = False
-
         self.distilled_params = distilled_params
+        self.path_params = None
+        self.query_params = None
+        self.payload = None
+        self._result = None
+
+    def _determine_execution_style(self) -> ExecutionStyle:
+        params = self.distilled_params
+
+        # Single execution: no parameters or exactly one parameter set
+        if params is None or len(params) == 1:
+            return ExecutionStyle.SINGLE
+
+        # Bulk execution
+        if self.compiled._compiler_state.is_insert:
+            return ExecutionStyle.PARAMETER_BULK
+
+        return ExecutionStyle.RESULT_BULK
 
     @property
     def operation(self) -> dict:
         return self.compiled_dict['operation']
     
-    def pre_exec(self) -> None:
-        raise NotImplementedError
-    
-    def post_exec(self) -> None:
-        raise NotImplementedError
-    
-    def _resolve_parameters(self, overrides: _CoreMultiExecuteParams) -> None:
-        """Resolve binding parameters using the values passed as normalized parameters in the constructor.
-        
-        .. versionadded:: 0.8.0
-        """
-        
-        from normlite.sql.elements import BindParameter
-        if self.no_parameters:
-            return
+    @property
+    def parameters(self) -> dict:
+        dbapi_params = {}
+        if self.path_params:
+            dbapi_params['path_params'] = self.path_params
 
-        resolved_params: Mapping[str, Any] = dict(self.compiled.params)
-        distilled_params: Mapping[str, Any] = None
-        if len(overrides) == 1:
-            # distilled parameters contain 1 mapping only
-            self.execution_style = ExecutionStyle.EXECUTE
-            distilled_params = overrides[0]
-        else:
-            NotImplementedError('Execution style executemanyvalues not implemented yet.')
+        if self.query_params:
+            dbapi_params['query_params'] = self.query_params
 
-        # 1. override with distilled parameters 
-        for key in distilled_params.keys():
-            old_value: BindParameter = resolved_params[key]
-            new_value = BindParameter(
-                key=key,
-                value=distilled_params[key],
-                type_=old_value.type_,
+        if self.payload:
+            dbapi_params['payload'] = (
+                self.payload[0]
+                if self.execution_style in (ExecutionStyle.SINGLE, ExecutionStyle.RESULT_BULK)
+                else
+                self.payload
             )
-            new_value.role = old_value.role
-            resolved_params.update({key: new_value})
 
+        return dbapi_params
+    
+    def pre_exec(self) -> None:
+        """Perform value binding and type adaptation before execution.
 
-        #pdb.set_trace()
-        # 2. bind the parameters for execution with the resolved values
+        .. admonition:: TODO
+            This method shall be used in future versions to perform execution option resolution, 
+            i.e. overriding options that have been set at engine creation level with those provided at
+            connection creation or in the execute call.
+        
+        .. versionchanged:: 0.8.0
+            In this version, binding has been extended to support the override case (user-provided parameters in the execute call).
+            Execution options resolution is not supported yet.
+        """ 
+        # determine execution style
+        self.execution_style = self._determine_execution_style()
+
+        # resolve parameters only if there are parameters to be resolved
+        resolved_params = (
+            self.compiled.params
+            if self.distilled_params is None
+            else
+            self._resolve_parameters(self.distilled_params)
+        )
+
+        # bind the parameters for execution with the resolved values
         if 'path_params' in self.compiled_dict:
             self.path_params = self._bind_params(
                 copy.deepcopy(self.compiled_dict['path_params']), 
@@ -295,24 +316,49 @@ class ExecutionContext:
             raise ArgumentError(
                 f"Unused bind parameters: {', '.join(resolved_params.keys())}"
             )
+        
+        # extract the query params
+        if 'query_params' in self.compiled_dict:
+            self.query_params = self.compiled_dict['query_params']
+    
+    def post_exec(self) -> None:
+        ...
+    
+    def _resolve_parameters(self, overrides: _CoreMultiExecuteParams) -> Mapping[str, BindParameter]:
+        """Resolve binding parameters using the values passed as normalized parameters in the constructor.
+        
+        .. versionadded:: 0.8.0
+        """
+        
+        from normlite.sql.elements import BindParameter
+
+        resolved_params: Mapping[str, Any] = dict(self.compiled.params)
+        distilled_params: Mapping[str, Any] = None
+        if len(overrides) == 1:
+            # distilled parameters contain 1 mapping only
+            distilled_params = overrides[0]
+        else:
+            NotImplementedError('Execution style executemanyvalues not implemented yet.')
+
+        # override with distilled parameters 
+        for key in distilled_params.keys():
+            old_value: BindParameter = resolved_params[key]
+            new_value = BindParameter(
+                key=key,
+                value=distilled_params[key],
+                type_=old_value.type_,
+            )
+            new_value.role = old_value.role
+            resolved_params.update({key: new_value})
+
+        return resolved_params
 
     def _resolve_exec_options(self):
         raise NotImplementedError
 
     def setup(self) -> None:
-        """Perform value binding and type adaptation before execution.
-
-        .. admonition:: TODO
-            This method shall be used in future versions to perform execution option resolution, 
-            i.e. overriding options that have been set at engine creation level with those provided at
-            connection creation or in the execute call.
-        
-        .. versionchanged:: 0.8.0
-            In this version, binding has been extended to support the override case (user-provided parameters in the execute call).
-            Execution options resolution is not supported yet.
-        """ 
-        self._resolve_parameters(self.distilled_params)
-
+        raise NotImplementedError
+    
     def _resolve_bindparam(self, bindparam: BindParameter) -> dict:
         from normlite.sql.elements import _BindRole
 
@@ -351,13 +397,67 @@ class ExecutionContext:
         # int, float, None …
         return template
         
-    def _setup_cursor_result(self) -> CursorResult:
-        """Setup the cursor result to be returned."""
+    def setup_cursor_result(self) -> CursorResult:
+        """Finalize execution and materialize a :class:`normlite.engine.cursor.CursorResult`.
+
+        This method represents the **terminal step of the execution pipeline**.
+        It materializes a read-only façade (`CursorResult`) over the DBAPI cursor's
+        post-execution state and freezes the outcome of this execution.
+
+        Key design guarantees
+        ---------------------
+        * **Execution is frozen**
+        Once this method is called, the execution outcome is considered final.
+        No further mutation of the underlying cursor or execution context is
+        permitted or expected.
+
+        * **Single-execution binding**
+        The returned :class:`CursorResult` is bound to exactly one execution of
+        one compiled statement. Each :class:`ExecutionContext` may produce
+        **at most one** result object.
+
+        * **Materialized result façade**
+        The :class:`CursorResult` acts as a read-only façade over the cursor’s
+        final state. It exposes rows, metadata, and identity information derived
+        from the cursor without copying or re-buffering data.
+
+        * **Identity preservation**
+        At the time this method is called:
+            - execution has fully completed
+            - all row and object identities (e.g. Notion object IDs / lastrowid)
+            have been resolved and preserved
+            - the cursor reflects the final, stable execution state
+
+        * **Source of truth**
+        The execution context and its cursor remain the authoritative source
+        of execution data. The result object does not mutate or re-interpret
+        execution state.
+
+        Lifecycle and usage
+        -------------------
+        This method is **not intended for direct invocation by users**.
+        It is called internally by the connection execution pipeline once
+        statement execution has completed successfully.
+
+        Repeated calls to this method return the same :class:`CursorResult`
+        instance, ensuring idempotence and enforcing one-time result creation.
+
+        .. note::
+           - The underlying DBAPI cursor must not be mutated after this method has been invoked.
+           - Result consumption (iteration, scalar access, identity inspection)
+            may occur lazily, but the execution itself is fully complete.
+
+        .. versionchanged:: 0.8.0
+            This version formalizes structural membership and API contract.
+            
+        Returns:
+            CursorResult: A read-only result object representing the finalized outcome of
+                this execution.
+        """
         from normlite.engine.cursor import CursorResult
-        self._result = CursorResult(self._dbapi_cursor, self._compiled)
+
+        if self._result is None:
+            self._result = CursorResult(self)
+
         return self._result
         
-
-
-class DMLExecContex(ExecutionContext):
-    pass

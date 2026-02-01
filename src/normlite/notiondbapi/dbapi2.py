@@ -410,7 +410,7 @@ class Cursor:
 
         return results
     
-    def execute(self, operation: dict, parameters: Optional[DBAPIExecuteParameters] = None) -> Self:
+    def execute(self, operation: dict, parameters: DBAPIExecuteParameters) -> Self:
         """Prepare and execute a database operation (query or command).
 
         Parameters may be provided as a mapping and will be bound to variables in the operation.
@@ -476,7 +476,13 @@ class Cursor:
 
         object_ = {}
         try:
-            object_ = self._client(operation['endpoint'], operation['request'], operation['payload'])
+            object_ = self._client(
+                operation['endpoint'], 
+                operation['request'], 
+                parameters.get('path_params'),
+                parameters.get('query_params'),
+                parameters.get('payload')
+            )
         except KeyError as ke:
             raise InterfaceError(f"Missing required key in operation dict: {ke.args[0]}")
         

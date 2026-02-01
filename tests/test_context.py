@@ -1,22 +1,30 @@
-from datetime import date
+from datetime import date, datetime
 import pdb
 import uuid
 import pytest
 
+from normlite._constants import SpecialColumns
+from normlite.engine.base import Engine, create_engine
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import _distill_params
+from normlite.notion_sdk.getters import get_object_id
 from normlite.sql.compiler import NotionCompiler
-from normlite.sql.dml import insert
+from normlite.sql.dml import insert, select
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, String
+
+@pytest.fixture
+def mocked_db_id() -> str:
+    return str(uuid.uuid4())
+
 
 @pytest.fixture
 def metadata() -> MetaData:
     return MetaData()
 
 @pytest.fixture
-def students(metadata: MetaData) -> Table:
-    return Table(
+def students(metadata: MetaData, mocked_db_id: str) -> Table:
+    students = Table(
         'students',
         metadata,
         Column('name', String(is_title=True)),
@@ -25,6 +33,8 @@ def students(metadata: MetaData) -> Table:
         Column('start_on', Date()),
         Column('grade',  String())
     )
+    students.set_oid(mocked_db_id)      # ensure table is in reflected state
+    return students
 
 @pytest.fixture
 def insert_values() -> dict:
@@ -35,6 +45,99 @@ def insert_values() -> dict:
         start_on=date(1690,1,1),
         grade='A'
     )
+
+@pytest.fixture
+def engine() -> Engine:
+    return create_engine(
+        'normlite:///:memory:',
+        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
+        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
+        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
+        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
+    )
+
+def create_students_db(engine: Engine) -> str:
+    # create a new table students under the user tables page
+    db = engine._client._add('database', {
+        'parent': {
+            'type': 'page_id',
+            'page_id': engine._user_tables_page_id
+        },
+        "title": [
+            {
+                "type": "text",
+                "text": {
+                    "content": "students",
+                    "link": None
+                },
+                "plain_text": "students",
+                "href": None
+            }
+        ],
+        'properties': {
+            'name': {'title': {}},
+            'id': {'number': {}},
+            'is_active': {'checkbox': {}},
+            'start_on': {'date': {}},
+            'grade': {'rich_text': {}},
+        }
+    })
+
+    # add the students to tables
+    engine._client._add('page', {
+        'parent': {
+            'type': 'database_id',
+            'database_id': engine._tables_id
+        },
+        'properties': {
+            'table_name': {'title': [{'text': {'content': 'students'}}]},
+            'table_schema': {'rich_text': [{'text': {'content': ''}}]},
+            'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
+            'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]}
+        }
+    })
+
+    return db.get('id')
+
+def add_students_rows(engine: Engine, students: Table) -> list[str]:
+    inserted_ids = []
+    db_id = students.get_oid()
+    page = engine._client.pages_create(
+        payload={
+            'parent': {
+                'type': 'database_id',
+                'database_id': db_id
+            },
+            'properties': {
+                'name': {'title': [{'text': {'content': 'Galileo Galilei'}}]},
+                'id': {'number': 1500},
+                'is_active': {'checkbox': False},
+                'start_on': {'date': {'start': '1581-01-01'}},
+                'grade': {'rich_text': [{'text': {'content': 'A'}}]},
+            }
+        }
+    )
+    inserted_ids.append(get_object_id(page))
+
+    page = engine._client.pages_create(
+        payload={
+            'parent': {
+                'type': 'database_id',
+                'database_id': db_id
+            },
+            'properties': {
+                'name': {'title': [{'text': {'content': 'Isaac Newton'}}]},
+                'id': {'number': 1600},
+                'is_active': {'checkbox': False},
+                'start_on': {'date': {'start': '1661-01-01'}},
+                'grade': {'rich_text': [{'text': {'content': 'A'}}]},
+            }
+        }
+    )
+    inserted_ids.append(get_object_id(page))
+
+    return inserted_ids
+
 
 #--------------------------------------------------
 # Params distillation tests
@@ -76,158 +179,107 @@ def test_not_all_mappings():
 # Resolve parameters tests
 #---------------------------------------------------
 def test_resolve_params_for_insert(students: Table, insert_values: dict):
-    mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
-
     insert_stmt = insert(students).values(
         **insert_values
     )
 
     compiled = insert_stmt.compile(NotionCompiler())
-    ctx = ExecutionContext(None, compiled, distilled_params=[{"id": 6789012}])
-    ctx.setup()
+    distilled_params = [{"id": 6789012}]
+    ctx = ExecutionContext(None, compiled, distilled_params)
+    ctx.pre_exec()
 
-    assert ctx.execution_style == ExecutionStyle.EXECUTE
+    assert ctx.execution_style == ExecutionStyle.SINGLE
     payload = ctx.payload[0]
-    assert payload['parent']['database_id'] == mocked_db_id
+    assert payload['parent']['database_id'] == students.get_oid()
     assert payload['properties']['id']['number'] == 6789012
 
+def test_resolve_params_for_select(students: Table):
+    select_stmt = select(students.c.id, students.c.is_active).where(students.c.name == 'Galileo Galilei')
+    compiled = select_stmt.compile(NotionCompiler())
+    ctx = ExecutionContext(None, compiled)
+    ctx.pre_exec()
 
+    assert ctx.execution_style == ExecutionStyle.SINGLE
+    assert ctx.path_params['database_id'] == students.get_oid()
+    assert ctx.query_params.get('filter_properties') is not None
+    assert 'id' in ctx.query_params['filter_properties']
+    name_col_val = ctx.payload[0]['filter']['title']['equals']
+    assert name_col_val == 'Galileo Galilei'
 
-def _bind_params(template: dict, params: dict):
-    """
-    Recursively walk a dict/list/primitive template and replace any
-    string of the form ':name' with params['name'].
+#---------------------------------------------------
+# Execute context tests
+#---------------------------------------------------
+def test_execute_dml_context_returning(engine: Engine, students: Table, insert_values: dict):
+    # create database and mock reflection
+    database_id = create_students_db(engine)
+    students.set_oid(database_id)
+    insert_stmt = insert(students).returning(students.c.name, students.c.id)
 
-    :param template: nested dict/list/str/etc (template)
-    :param params: dict mapping param names -> values
-    :return: template with values substituted
-    """
-    if isinstance(template, dict):
-        return {k: _bind_params(v, params) for k, v in template.items()}
+    # Connection.execute(insert_stmt, insert_values)
+    distilled_params = _distill_params(insert_values)
 
-    elif isinstance(template, list):
-        return [_bind_params(item, params) for item in template]
+    # stmt._execute_on_connection(connection, distilled_params, execution_options)
+    compiled = insert_stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        cursor=cursor,
+        compiled=compiled,
+        distilled_params=distilled_params
+    )
 
-    elif isinstance(template, str):
-        # parameter placeholder?
-        if template.startswith(":"):
-            name = template[1:]
-            if name not in params:
-                raise KeyError(f"Missing parameter: {name}")
-            param = params[name]
-            params.pop(name) 
-            return param
-        return template
+    # Connection._execute_context(context) -> CursorResult:
+    ctx.pre_exec()
+    engine.do_execute(cursor, ctx.operation, ctx.parameters)
+    ctx.post_exec()
+    result = ctx.setup_cursor_result()
+    row = result.one()
+    mapping = row.mapping()
 
-    else:
-        # int, float, None …
-        return template
+    assert students.c.name.name in mapping
+    assert students.c.id.name in mapping
+    assert not students.c.is_active.name in mapping
 
+def test_execute_dml_context_projection(engine: Engine, students: Table):
+    # create database and mock reflection
+    database_id = create_students_db(engine)
+    students.set_oid(database_id)
 
-def test_bind_params_for_has_table():
-    query_template = {
-        'database_id': ':database_id',
-        'filter': {
-            'and': [
-                {
-                    'property': 'table_name',
-                    'title' : {
-                        'equals': ':table_name'
-                    }
-                },
-                {
-                    'property': 'table_catalog',
-                    'rich_text': {
-                        'equals': ':table_catalog'
-                    }
-                }
-            ]
-        }
-    }        
+    # add rows
+    inserted_ids = add_students_rows(engine, students)
 
-    params = {
-        'database_id': '66666666-6666-6666-6666-666666666666',
-        'table_name': 'students',
-        'table_catalog': 'university'
-    }
+    # construct select with projection
+    select_stmt = (
+        select(students.c.is_active)
+        .where(students.c.start_on.after(date(1580,1,1)))
+    )
 
-    query = {
-        'database_id': '66666666-6666-6666-6666-666666666666',
-        'filter': {
-            'and': [
-                {
-                    'property': 'table_name',
-                    'title' : {
-                        'equals': 'students'
-                    }
-                },
-                {
-                    'property': 'table_catalog',
-                    'rich_text': {
-                        'equals': 'university'
-                    }
-                }
-            ]
-        }
-    }    
+    # stmt._execute_on_connection(connection, distilled_params, execution_options)
+    compiled = select_stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        cursor=cursor,
+        compiled=compiled,
+    )
 
-    bound_query = _bind_params(query_template, params)
-    assert query == bound_query
-    assert params == {}    
+    # Connection._execute_context(context) -> CursorResult:
+    ctx.pre_exec()
+    engine.do_execute(cursor, ctx.operation, ctx.parameters)
+    ctx.post_exec()
+    result = ctx.setup_cursor_result()
+    rows = result.all()
+    row_0_mapping = rows[0].mapping()
+    row_1_mapping = rows[1].mapping()
+    
+    assert len(rows) == 2
+    assert students.c.is_active.name in row_0_mapping
+    assert 'name' not in row_0_mapping
+    assert rows[0]['is_active'] == False
+    assert 'is_active' in row_1_mapping
+    assert 'start_on' not in row_1_mapping
+    assert rows[1]['is_active'] == False
 
-def test_bind_params_for_insert():
-    query_template = {
-        'properties': {
-            'name': {
-                'title': [{'text': {'content': ':name'}}],
-                
-            },
-            'id': {
-                'number': ':id'
-            },
-            'grade': {
-                'rich_text': [{'text': {'content': ':grade'}}]
-            },
-            'since': {
-                'date': {'start': ':since_start', 'end': ':since_end'}
-            },
-            'active': {
-                'checkbox': ':active'
-            }
-        }
-    }
+def test_execute_return_bulk_context(engine: Engine):
+    pass
 
-    params = {
-        'name': 'Galileo Galilei',
-        'id': 123456,
-        'grade': 'A',
-        'since_start': '1670-01-01',
-        'since_end': '1675-12-31',
-        'active': False 
-    }
-
-    query = {
-        'properties': {
-            'name': {
-                'title': [{'text': {'content': 'Galileo Galilei'}}],
-                
-            },
-            'id': {
-                'number': 123456
-            },
-            'grade': {
-                'rich_text': [{'text': {'content': 'A'}}]
-            },
-            'since': {
-                'date': {'start': '1670-01-01', 'end': '1675-12-31'}
-            },
-            'active': {
-                'checkbox': False
-            }
-        }
-    }
-
-    bound_query = _bind_params(query_template, params)
-    assert query == bound_query
-    assert params == {}    
+def test_execute_parameter_bulk_context(engine: Engine):
+    pass
