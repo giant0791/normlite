@@ -318,12 +318,25 @@ class Boolean(TypeEngine):
         return process
 
     def result_processor(self):
-        def process(value: Optional[dict]) -> Optional[bool]:
+        def process(value: Optional[Union[bool, dict]]) -> Optional[bool]:
             if value is None:
                 return None
             
-            self._raise_if_val_not_dict(value)
-            return value.get('checkbox', None)
+            if isinstance(value, dict):
+                bool_value = value.get(self.get_col_spec())
+                if bool_value is None:
+                    raise TypeError('Boolean value must have "checkbox" object')
+                return bool_value
+            
+            if isinstance(value, bool):
+                return value
+
+            raise ValueError(
+                f"""
+                    Boolean value must be either a bool or a dictionary "checkbox" object.
+                    Type of value argument: {value.__class__.__name__}
+                """
+            )
         return process
     
 class Date(TypeEngine):
@@ -370,7 +383,8 @@ class Date(TypeEngine):
                     }
                 }
             
-            if isinstance(value, datetime):
+            # IMPORTANT: Both data types must be checked as both are valid
+            if isinstance(value, (date, datetime,)):
                 return { 
                     self.get_col_spec(): {
                         "start": value.isoformat(), 
