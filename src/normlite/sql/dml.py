@@ -19,17 +19,98 @@
 from __future__ import annotations
 import pdb
 from types import MappingProxyType
-from typing import Any, Optional, Self, Sequence, Union, TYPE_CHECKING
+from typing import Any, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
 from normlite._constants import SpecialColumns
-from normlite.cursor import CursorResult
-from normlite.engine.context import ExecutionContext
 from normlite.exceptions import ArgumentError
-from normlite.sql.base import Executable
+from normlite.sql.base import Executable, ClauseElement, generative
+from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElement
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
 
-class Insert(Executable):
+class ExecutableClauseElement(Executable):
+    is_ddl = False
+
+    def _execute_on_connection(self, connection, params, execution_options):
+        return connection._execute_clauseelement(
+            self, params, execution_options
+        )
+
+class ValuesBase(ExecutableClauseElement):
+    _values: Optional[MappingProxyType] = None
+    """The immutable mapping holding the values."""
+
+    def __init__(self, table: Table):
+        self.table = table
+        self._values = None
+
+    @generative
+    def values(self, *args: Union[dict, Sequence[Any]], **kwargs: Any) -> Self:
+        """Provide the ``VALUES`` clause to specify the values to be inserted in the new row.
+
+        .. versionchanged:: 0.8.0
+            The values provided are now coerced to :class:`normlite.sql.elements.BindParameter`
+            objects.
+
+        Raises:
+            ArgumentError: If both positional and keyword arguments are passes, or
+                if not enough values are supplied for all columns, or if values are passed 
+                with a class that is neither a dictionary not a tuple. 
+
+        Returns:
+            Self: This instance for generative usage.
+
+        """
+        existing = dict(self._values) if self._values else {}
+
+        if args:
+            # positional args have been passed:
+            # either a dict or a sequence has been provided
+            # IMPORTANT: args is a tuple containing the dict or sequence as first element
+            arg = args[0]
+            if kwargs:
+                # either positional or kwargs but not both are allowed
+                raise ArgumentError(
+                    'Cannot pass positional and keyword arguments '
+                    'to values() simultanesously'
+                )
+
+            if len(args) != 1:
+                raise ArgumentError(
+                    "values() accepts at most one positional argument"
+                )
+            arg = args[0]
+
+            if not isinstance(arg, dict):
+                raise ArgumentError(
+                    "Positional argument to values() must be a dict"
+                )
+
+            new_values = arg
+        else:
+            new_values = kwargs
+
+        # Convert raw values → BindParameter
+        for key, value in new_values.items():
+            # structural validation
+            if key not in self.table.columns:
+                raise ArgumentError(f"Wrong key supplied: {key}")
+
+            if isinstance(value, BindParameter):
+                bp = value
+            else:
+                bp = BindParameter(
+                    key=key,
+                    value=value,
+                    type_=None      # compiler will fill this
+                )
+
+            existing[key] = bp
+
+        self._values = MappingProxyType(existing)
+
+class Insert(ValuesBase):
+    is_insert = True
     __visit_name__ = 'insert'
 
     """Provide the SQL ``INSERT`` node to create a new row in the specified table. 
@@ -65,16 +146,18 @@ class Insert(Executable):
         In this case, the parameters passed in the :meth:`normlite.connection.Connection.execute()` are bound
         as ``VALUES`` clause parameters at execution time.
 
-    .. versionchanged:: 0.7.0 The old construct has been completely redesigned and refactored.
+    .. versionchanged:: 0.8.0
+        New base class
+
+    .. versionchanged:: 0.7.0 
+        The old construct has been completely redesigned and refactored.
         Now, the new class provides all features of the SQL ``INSERT`` statement.
 
     """
-    def __init__(self):
-        super().__init__()
-        self._values: MappingProxyType = None
-        """The immutable mapping holding the values."""
+    def __init__(self, table: Table):
+        super().__init__(table)
 
-        self._table: Table = None
+        self._table: Table = table
         """The table object to insert a new row to."""
 
         self._returning = ()
@@ -88,54 +171,6 @@ class Insert(Executable):
 
     def get_table(self) -> ReadOnlyColumnCollection:
         return self._table.columns
-    
-    def values(self, *args: Union[dict, Sequence[Any]], **kwargs: Any) -> Self:
-        """Provide the ``VALUES`` clause to specify the values to be inserted in the new row.
-
-        Raises:
-            ArgumentError: If both positional and keyword arguments are passes, or
-                if not enough values are supplied for all columns, or if values are passed 
-                with a class that is neither a dictionary not a tuple. 
-
-        Returns:
-            Self: This instance for generative usage.
-
-       """
-        if args:
-            # positional args have been passed:
-            # either a dict or a sequence has been provided
-            # IMPORTANT: args is a tuple containing the dict or sequence as first element
-            arg = args[0]
-            if kwargs:
-                # either positional or kwargs but not both are allowed
-                raise ArgumentError(
-                    'Cannot pass positional and keyword arguments '
-                    'to values() simultanesously'
-                )
-
-            if isinstance(arg, dict):
-                self._values = self._process_dict_values(arg)
-
-            elif isinstance(arg, tuple):
-                if len(arg) != self._table.c.len():
-                    raise ArgumentError(
-                        'Not enough values supplied for all columns: '
-                        f'Required: {self._table.c.len()}, '
-                        f'supplied: {len(arg)}'
-                    )
-                
-                kv_pairs = {col.name: value for col, value in zip(self._table.c, arg)}
-                self._values = self._process_dict_values(kv_pairs)
-            else:
-                raise ArgumentError(
-                    f'dict or tuple values are supported only: {arg.__class__.__name__}'
-                )
-
-        else:
-            # kwargs have been passed        
-            self._values = self._process_dict_values(kwargs)
-
-        return self
     
     def returning(self, *cols: Column) -> Self:
         """Provide the ``RETURNING`` clause to specify the column to be returned.
@@ -160,17 +195,28 @@ class Insert(Executable):
     def _process_dict_values(self, dict_arg: dict) -> MappingProxyType:
         kv_pairs = {}
         try:
-            for col in self._table.c:
-                if col.name in SpecialColumns.__members__.values():
-                    # skip Notion-managed columns
-                    continue
-                kv_pairs[col.name] = dict_arg[col.name]
+            for col in self._table.get_user_defined_colums():
+                value = dict_arg[col.name]
+                kv_pairs[col.name] = BindParameter(col.name, value, col.type_)
         except KeyError as ke:
             raise KeyError(f'Missing value for: {ke.args[0]}')
         
         return MappingProxyType(kv_pairs)
-        
 
+
+    def __repr__(self):
+        kwarg = []
+        if self._table:
+            kwarg.append('table')
+
+        if self._values:
+            kwarg.append('values')
+
+        
+        return "Insert(%s)" % ", ".join(
+            ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
+        )
+        
 def insert(table: Table) -> Insert:
     """Construct an insert statement.
 
@@ -183,6 +229,142 @@ def insert(table: Table) -> Insert:
     Returns:
         Insert: A new insert statement for this table. 
     """
-    insert_stmt = Insert()
-    insert_stmt._set_table(table)
-    return insert_stmt
+    return Insert(table)
+
+class HasExpression(Protocol):
+    """Mixin for elements that have an expression."""
+
+    def has_expression(self) -> bool:
+        ...
+
+class WhereClause(HasExpression, ColumnElement):
+    """Base class for DML statements that have a where-clause.
+    
+    .. versionadded:: 0.8.0
+    """
+
+    __visit_name__ = 'where_clause'
+
+    def __init__(self, expression: Optional[ColumnElement] = None):
+        self.expression = expression
+        """The column expression in this where clause."""
+
+    def has_expression(self) -> bool:
+        """Explicit test on expression availability to avoid :exc:`TypeError`.
+        
+        Users of the :class:`WhereClause` shall test for presence of an expression 
+        by invoking this method and not simply ...
+        This safely bypasses Python thruthiness invocation, which otherwise raises
+        a :exc:`TyperError`.
+
+        .. seealso::
+            :meth:`normlite.sql.elements.ColumnElement.__bool__` 
+                This method is overloaded to forbid Python truthiness.             
+
+        Returns:
+            bool: ``True`` if :attr:`expression` is not ``None``.
+        """
+        return self.expression is not None
+
+    def where(self, expr: ColumnElement) -> WhereClause:
+        if self.expression is None:
+            return WhereClause(expr)
+
+        return WhereClause(
+            BooleanClauseList(
+                operator="and",
+                clauses=[self.expression, expr]
+            )
+        )
+    
+class OrderByClause(HasExpression, ClauseElement):
+    __visit_name__ = 'order_by_clause'
+
+    def __init__(self, clauses: tuple[ColumnElement, ...] = ()):      
+        self.clauses = clauses
+
+    def add(self, *clauses: ColumnElement) -> OrderByClause:
+        return OrderByClause(self.clauses + clauses)
+    
+    def has_expression(self) -> bool:
+        return self.clauses
+
+class Select(ExecutableClauseElement):
+    __visit_name__ = 'select'
+    is_select = True
+
+    _projection: Sequence[str]
+    """The column names to be projected in this select statement."""
+
+    def __init__(self, *entities: Union[Table, Column]):
+        from normlite.sql.schema import Column, Table
+
+        if not entities:
+            raise ArgumentError(
+                """
+                    select() requires either table or a list of columns,
+                    no arguments were provided.
+                """
+            )
+
+        self._whereclause = WhereClause()
+        self._order_by = OrderByClause()
+
+        if len(entities) == 1 and isinstance(entities[0], Table):
+            # a Table object has been provided
+            table = entities[0]
+            self.table = table
+            self._projection = []  # project all columns
+            return
+
+        # A list of columns has been provided
+        tables = set()
+        columns: list[Column] = []
+
+        for ent in entities:
+            if not isinstance(ent, Column):
+                raise ArgumentError(
+                    "select() arguments must be either a Table or Column objects"
+                )
+            tables.add(ent.parent)
+            columns.append(ent)
+
+        if len(tables) != 1:
+            raise ArgumentError(
+                "All selected columns must belong to the same table"
+            )
+
+        self.table: Table = tables.pop()
+        # --- SAFEGUARD: column names must exist on the table ---
+        table_columns = self.table.get_user_defined_colums()
+
+        for col in columns:
+            if col.name not in table_columns:
+                raise ArgumentError(
+                    f'Column: {col.name} does not belong to table: {self.table.name}'
+                )
+        self._projection = [col.name for col in columns]
+
+    @generative
+    def where(self, expr: ColumnElement) -> Self:
+        self._whereclause = self._whereclause.where(expr)
+        return self
+
+    @generative
+    def order_by(self, *clauses: ColumnElement) -> Self:
+        if not clauses:
+            raise ArgumentError(
+                """
+                    order_by() requires at least one clause,
+                    no arguments provided.
+                """
+            )
+
+        self._order_by = self._order_by.add(*clauses)
+        return self
+
+
+def select(*entities: Union[Table, Column]) -> Select:
+    return Select(*entities)
+        
+

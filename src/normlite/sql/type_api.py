@@ -41,63 +41,84 @@ Usage::
     int_dt = Integer()
     
     # get bind and result processors
-    bind = int_dt.bind_processor(dialect=None)
-    result = int_dt.result_processor(dialect=None, coltype=None)
+    bind = int_dt.bind_processor()
+    result = int_dt.result_processor()
 
     # covert Python datatype <--> Notion datatype
     bind(25)                    # --> {"number": 25}
     result({"number": 25})      # --> 25
 
     # get columns specification (Notion type representation)
-    int_dt.get_col_spec(dialect=None)   # -> {"type": "number"}
+    int_dt.get_col_spec()       # -> {"type": "number"}
 
     # define a string SQL datatype
     str_dt = String(is_title=True)
 
     # get bind and result processors    
-    bind = int_dt.bind_processor(dialect=None)
-    result = int_dt.result_processor(dialect=None, coltype=None)
+    bind = int_dt.bind_processor()
+    result = int_dt.result_processor()
 
     # covert Python datatype <--> Notion datatype
     bind("A nice, woderful day with you")                       # --> [{"plain_text": "A nice, woderful day with you"}]
     result([{"plain_text": "A nice, woderful day with you"}])   # --> "A nice, woderful day with you"
 
     # get columns specification (Notion type representation)
-    str_dt.get_col_spec(dialect=None)   # -> {"type": "title"}
+    str_dt.get_col_spec()   # -> {"type": "title"}
 
 .. versionadded:: 0.7.0
 
 """
 
 from __future__ import annotations
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 import pdb
-from typing import Any, Callable, List, Literal, Optional, Protocol, Type, TypeAlias, Union
+from types import MappingProxyType
+from typing import Any, Callable, List, Literal, NoReturn, Optional, Protocol, TypeAlias, Union, TYPE_CHECKING
 import uuid
 
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+from normlite.sql.elements import Operator, BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, StringComparator
+
 
 class TypeEngine(Protocol):
     """Base class for all Notion/SQL datatypes.
-    
+
+    .. versionchanged:: 0.8.0
+        :class:`TypeEngine` now defines a new processor API for processing filter values.
+        Notion requires this additional processor API as filter values used in queries
+        are different from page values.
+
     .. versionadded:: 0.7.0
     """
 
-    def bind_processor(self, dialect=None) -> Optional[Callable[[Any], Any]]:
+    comparator_factory: Comparator
+    supported_ops: dict[Operator, str]
+
+    def bind_processor(self) -> Optional[Callable[[Any], Any]]:
         """Python → SQL/Notion (prepare before sending)."""
         return None
 
-    def result_processor(self, dialect, coltype) -> Optional[Callable[[Any], Any]]:
+    def result_processor(self) -> Optional[Callable[[Any], Any]]:
         """SQL/Notion → Python (process values after fetching)."""
         return None
+    
+    def filter_value_processor(self) -> Optional[Callable[[Any], Any]]:
+        return None 
 
-    def get_col_spec(self, dialect) -> str:
+    def get_col_spec(self) -> str:
         """Return a string for the SQL-like type name."""
         raise NotImplementedError
     
     def __repr__(self):
         return self.__class__.__name__
+    
+    def _raise_if_val_not_dict(self, value: dict) -> NoReturn:
+        if not isinstance(value, dict):
+                raise ValueError(
+                    f'{self.get_col_spec()} value must be a dict. '
+                    f'Value type is: {value.__class__.__name__}'
+                )
     
 _NumericType: TypeAlias = Union[int, Decimal]
 """Type alias for numeric datatypes. It is not part of the public API."""
@@ -116,6 +137,18 @@ class Number(TypeEngine):
     .. versionadded:: 0.7.0
     """
 
+    comparator_factory = NumberComparator
+    supported_ops = MappingProxyType({
+        Operator.EQ: "equals",
+        Operator.NE: "does_not_equal",
+        Operator.LT: "less_than",
+        Operator.GT: "greater_than",
+        Operator.LE: "less_than_or_equal_to",
+        Operator.GE: "greater_than_or_equal_to",
+        Operator.IS_EMPTY: "is_empty",
+        Operator.IS_NOT_EMPTY: "is_not_empty"
+    })
+
     def __init__(self, format: str):
         """
         format options (per Notion API):
@@ -126,22 +159,31 @@ class Number(TypeEngine):
         """
         self.format = format
 
-    def get_col_spec(self, dialect):
-        return {"number": {"format": self.format}}
+    def get_col_spec(self):
+        return 'number'
 
-    def bind_processor(self, dialect=None):
-        def process(value: Optional[_NumericType]) -> Optional[dict]:
+    def bind_processor(self):
+        def process(value: Optional[Union[_NumericType, str]]) -> Optional[dict]:
             if value is None:
                 return None
-            return {"number": value}
+            return {self.get_col_spec(): value}
         return process
 
-    def result_processor(self, dialect, coltype=None):
+    def result_processor(self):
         def process(value: Optional[dict]) -> Optional[_NumericType]:
             if value is None:
                 return None
-            number = value['number']
-            return Decimal(number) if self.format != "number" else int(number)
+            
+            self._raise_if_val_not_dict(value)
+            num_value = value.get('number')
+            if isinstance(num_value, Decimal):
+                num_value = float(num_value)            
+            if not isinstance(num_value, (float, int,)):
+                raise ValueError(
+                    'Number value can be either float or int. '
+                    f'Value type is: {num_value.__class__.__name__}'
+                )
+            return Decimal(num_value) if isinstance(num_value, float) else int(num_value)
         return process
 
     def __repr__(self) -> str:
@@ -158,6 +200,8 @@ class Integer(Number):
     
     .. versionadded:: 0.7.0
     """
+
+    comparator_factory = NumberComparator
 
     def __init__(self):
         super().__init__('number')
@@ -185,42 +229,60 @@ class String(TypeEngine):
     Usage:
         >>> # create a title property
         >>> title_txt = String(is_title=True)
-        >>> title_text.get_col_spec(None)
+        >>> title_text.get_col_spec()
         {"title": {}}
 
         >>> # create a rich text property
         >>> rich_text = String()
-        >>> rich_text.get_col_spec(None)
+        >>> rich_text.get_col_spec()
         {"rich_text": {}}
 
     .. versionadded:: 0.7.0
     """
+
+    comparator_factory = StringComparator
+    supported_ops = MappingProxyType({
+        Operator.EQ: "equals",
+        Operator.NE: "does_not_equal",
+        Operator.IN: "contains", 
+        Operator.NOT_IN: "does_not_contain",
+        Operator.ENDSWITH: "ends_with",
+        Operator.STARTSWITH: "starts_with",
+        Operator.IS_EMPTY: "is_empty",
+        Operator.IS_NOT_EMPTY: "is_not_empty"
+    })
+ 
     def __init__(self, is_title: bool = False):
         self.is_title = is_title
         """``True`` if it is a "title", ``False`` if it is a "richt_text"."""
 
-    def bind_processor(self, dialect=None):
+    def bind_processor(self):
         def process(value: Optional[str]) -> Optional[List[dict]]:
             if value is None:
                 return None
-            block = {}
-            block['text'] = {'content': str(value)}
-            text_type = list(self.get_col_spec(None))[-1]
-            return {text_type: [block]}
+            return {self.get_col_spec(): [{'text': {'content': str(value)}}]}
         return process
 
-    def result_processor(self, dialect, coltype=None):
+    def result_processor(self):
         def process(value: Optional[dict]) -> Optional[str]:
             if value is None:
                 return None
-             # Notion rich_text is a list of text objects → extract 'text'
-            text_type = list(self.get_col_spec(None))[-1]
-            text_value = value.get(text_type) 
+            
+            self._raise_if_val_not_dict(value)
+            text_value = value.get(self.get_col_spec())
+            
+            if not isinstance(text_value, list):
+                raise ValueError(
+                    f'{self.get_col_spec()} value must be a list. '
+                    f'Value type is: {value.__class__.__name__}'
+                )
+            
+            # Notion rich_text is a list of text objects → extract 'text'
             return "".join([block.get("text").get("content") for block in text_value])
         return process
 
-    def get_col_spec(self, dialect):
-        return {"title": {}} if self.is_title else {"rich_text": {}}
+    def get_col_spec(self):
+        return "title" if self.is_title else "rich_text"
     
     def __repr__(self) -> str:
         kwarg = []
@@ -236,32 +298,72 @@ class Boolean(TypeEngine):
     
     .. versionadded:: 0.7.0
     """
-    def get_col_spec(self, dialect=None):
-        return {"checkbox": {}}
+    comparator_factory = BooleanComparator
+    supported_ops = MappingProxyType({
+        Operator.EQ: "equals",
+        Operator.NE: "does_not_equal",
+    })
 
-    def bind_processor(self, dialect):
+    def get_col_spec(self):
+        return "checkbox"
+
+    def bind_processor(self):
         def process(value: Optional[bool]) -> Optional[dict]:
             if value is None:
                 return None
-            return {"checkbox": bool(value)}
+            if isinstance(value, str):
+                # bind parameter: :is_active or :param_01
+                return {self.get_col_spec(): value}
+            return {self.get_col_spec(): bool(value)}
         return process
 
-    def result_processor(self, dialect, coltype=None):
-        def process(value: Optional[bool]) -> Optional[bool]:
+    def result_processor(self):
+        def process(value: Optional[Union[bool, dict]]) -> Optional[bool]:
             if value is None:
                 return None
-            return value
+            
+            if isinstance(value, dict):
+                bool_value = value.get(self.get_col_spec())
+                if bool_value is None:
+                    raise TypeError('Boolean value must have "checkbox" object')
+                return bool_value
+            
+            if isinstance(value, bool):
+                return value
+
+            raise ValueError(
+                f"""
+                    Boolean value must be either a bool or a dictionary "checkbox" object.
+                    Type of value argument: {value.__class__.__name__}
+                """
+            )
         return process
     
 class Date(TypeEngine):
     """Convenient type engine class for "date" objects.
     
+    .. versionadded:: 0.8.0
+        Operators supported by this type engine.
+
     .. versionadded:: 0.7.0
     """
-    def bind_processor(self, dialect):
+    comparator_factory = DateComparator
+    supported_ops = MappingProxyType({
+        Operator.EQ: "equals",
+        Operator.NE: "does_not_equal",
+        Operator.AFTER: "after",
+        Operator.BEFORE: "before",
+        Operator.IS_EMPTY: "is_empty",
+        Operator.IS_NOT_EMPTY: "is_not_empty"
+    })
+
+    def bind_processor(self):
         def process(value: Optional[_DateTimeRangeType]) -> Optional[dict]:
             if value is None:
                 return None
+            
+            if isinstance(value, str) and value.startswith(':'):
+                return {self.get_col_spec(): value}
             
             if isinstance(value, tuple):
                 start, end = value
@@ -274,47 +376,71 @@ class Date(TypeEngine):
                 if not end and not isinstance(end, datetime):
                     raise ValueError(f'End date must be a valid datetime, received: {end}')
 
-                return {"date": {
-                    "start": start.isoformat(),
-                    "end": end.isoformat() if end else None,
-                }}
+                return {
+                    self.get_col_spec(): {
+                        "start": start.isoformat(),
+                        "end": end.isoformat() if end else None
+                    }
+                }
             
-            if isinstance(value, datetime):
-                return {"date": {"start": value.isoformat(), "end": None}}
+            # IMPORTANT: Both data types must be checked as both are valid
+            if isinstance(value, (date, datetime,)):
+                return { 
+                    self.get_col_spec(): {
+                        "start": value.isoformat(), 
+                        "end": None
+                    }
+                }
             
-            raise TypeError("Date must be datetime or (start, end) tuple")
         return process
 
-    def result_processor(self, dialect, coltype=None):
+    def result_processor(self):
         def process(value: Optional[dict]) -> Optional[Union[tuple, datetime]]:
             if value is None:
                 return None
             
-            date_value = value.get("date")
-            if isinstance(value, dict):
-                start = datetime.fromisoformat(date_value["start"]) if date_value.get("start") else None
-                end = datetime.fromisoformat(date_value["end"]) if date_value.get("end") else None
-                restored = (start, end)
+            self._raise_if_val_not_dict(value)
+            date_value = value.get('date')
+
+            start = datetime.fromisoformat(date_value["start"]) if date_value.get("start") else None
+            end = datetime.fromisoformat(date_value["end"]) if date_value.get("end") else None
+            restored = (start, end)
+        
+            if restored == (None, None):
+                return None
             
-                if restored == (None, None):
-                    return None
-                
-                if restored[1] is None:
-                    return restored[0]
-                
-                return restored
+            if restored[1] is None:
+                return restored[0]
             
+            return restored
+        return process
+    
+    def filter_value_processor(self):
+        def process(value: Union[datetime, date, str]) -> Optional[str]:
+            if value is None:
+                return None
+            
+            if not isinstance(value, (datetime, date, str,)):
+                raise ValueError(
+                    f'{self.get_col_spec()} value must be either a date or a str. '
+                    f'Value type is: {value.__class__.__name__}.'
+                )
+
+            if isinstance(value, str):
+                value = datetime.fromisoformat(value)
+
+            return value.isoformat()
         return process
 
-    def get_col_spec(self, dialect):
-        return {"date": {}}
+    def get_col_spec(self):
+        return "date"
 
 class UUID(TypeEngine):
     """Base type engine class for UUID ids.
     
     .. versionadded:: 0.7.0
     """
-    def bind_processor(self, dialect):
+    def bind_processor(self):
         def process(value: Optional[Union[str, uuid.UUID]]) -> Optional[str]:
             if value is None:
                 return None
@@ -323,14 +449,14 @@ class UUID(TypeEngine):
             return str(uuid.UUID(value))      # parse from string
         return process
 
-    def result_processor(self, dialect, coltype=None):
+    def result_processor(self):
         def process(value: Optional[str]) -> Optional[str]:
             if value is None:
                 return None
             return str(uuid.UUID(value))      # parse from string
         return process
 
-    def get_col_spec(self, dialect):
+    def get_col_spec(self):
         return "UUID"
 
 class PropertyId(TypeEngine):
@@ -341,31 +467,31 @@ class PropertyId(TypeEngine):
         See issue `#136 <https://github.com/giant0791/normlite/issues/136>`.
 
     """
-    def bind_processor(self, dialect):
+    def bind_processor(self):
         def process(value: Optional[str]) -> Optional[str]:
             if value is None:
                 return None
             return value   # JSON-safe
         return process
 
-    def result_processor(self, dialect, coltype=None):
+    def result_processor(self):
         def process(value: Optional[str]) -> Optional[str]:
             if value is None:
                 return None
             return value      
         return process
 
-    def get_col_spec(self, dialect):
+    def get_col_spec(self):
         return "id"
-
-
 
 class ObjectId(UUID):
     """Special UUID type representing Notion's "id" property.
     
     .. versionadded:: 0.7.0
     """
-    def get_col_spec(self, dialect):
+    comparator_factory = ObjectIdComparator
+
+    def get_col_spec(self):
         return "id"
 
 class ArchivalFlag(Boolean):
@@ -374,18 +500,18 @@ class ArchivalFlag(Boolean):
     .. versionadded:: 0.7.0
     """
 
-    def get_col_spec(self, dialect):
+    def get_col_spec(self):
         # In Notion JSON, this is always stored under property 'archived'
         return "archived"
 
-    def bind_processor(self, dialect):
+    def bind_processor(self):
         def process(value: Optional[bool]) -> Optional[bool]:
             if value is None:
                 return None
             return bool(value)
         return process
 
-    def result_processor(self, dialect, coltype=None):
+    def result_processor(self):
         def process(value: Optional[bool]) -> Optional[bool]:
             if value is None:
                 return None

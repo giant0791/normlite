@@ -17,18 +17,40 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from abc import ABC
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from functools import wraps
 import json
 import pdb
 from typing import Any, ClassVar, Optional, Protocol, TYPE_CHECKING, Sequence
+import copy
 
 from normlite.exceptions import UnsupportedCompilationError
 from normlite.engine.context import ExecutionContext
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import Table
+    from normlite.sql.schema import Table, Column
     from normlite.sql.ddl import CreateTable, CreateColumn, HasTable, ReflectTable
-    from normlite.sql.dml import Insert
-    from normlite.cursor import CursorResult
+    from normlite.sql.dml import Insert, Select
+    from normlite.sql.elements import ColumnElement, UnaryExpression, BinaryExpression, BindParameter, BooleanClauseList
+    from normlite.engine.cursor import CursorResult
+    from normlite.engine.interfaces import _CoreAnyExecuteParams
+    from normlite.engine.base import Connection
+
+class Generative:
+    """Mixin providing SQLAlchemy-style generative behavior."""
+
+    def _generate(self):
+        """Return a shallow copy of this statement."""
+        return copy.copy(self)
+
+def generative(fn):
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        new = self._generate()
+        fn(new, *args, **kwargs)
+        return new
+    return wrapper
 
 class Visitable(ABC):
     """Base class for any AST node that can be "visited" by a compiler.
@@ -73,8 +95,11 @@ class Visitable(ABC):
             )
 
         return visit_fn(self, **kwargs)
+    
+    def __repr__(self) -> str:
+        return self.__class__.__name__
 
-class ClauseElement(Visitable):
+class ClauseElement(Generative, Visitable):
     """Base class for SQL elements that can be compiled by the compiler.
 
     This class orchestrates for all subclasses the compilation process by implementing the :meth:`compile`.
@@ -101,17 +126,14 @@ class ClauseElement(Visitable):
             Compiled: The compiled object rusult of the compilation.
         """
         compiled_dict = compiler.process(self, **kwargs)
-        result_columns = compiled_dict.pop('result_columns', None)
-        is_ddl = compiled_dict.pop('is_ddl', False)
-        if is_ddl:
-            return DDLCompiled(self, compiled_dict, result_columns)
+        if compiler._compiler_state.is_ddl:
+            return DDLCompiled(self, compiled_dict, compiler)
         else:
-            return Compiled(self, compiled_dict, result_columns)
+            return Compiled(self, compiled_dict, compiler)
 
     def get_table(self) -> Table:
         """Return a collection of columns this clause element refers to."""
         raise NotImplementedError
-    
 
 class Executable(ClauseElement):
     """Provide the interface for all executable SQL statements.
@@ -122,10 +144,33 @@ class Executable(ClauseElement):
 
     It provides a post execution hook with the :meth:`_post_exec` that is intended to be optionally implemented in 
     the subclasses.
+
+    ..versionchanged: 0.8.0
+        It introduces global context for compilation with `is_*` attributes.
     
     .. versionadded:: 0.7.0
-        This bas class fully supports the connection-driven execution flow of SQL statements.
+        This base class fully supports the connection-driven execution flow of SQL statements.
     """
+
+    supports_execution: bool = True
+    """Structural flag denoting the main characteristic for an executable of supporting execution.
+    
+    ..versionadded:: 0.8.0
+    """
+
+    is_ddl: bool = False
+    """``True`` if the executable subclass is a DDL statement.
+    
+    ..versionadded:: 0.8.0
+    """
+
+    def _execute_on_connection(
+            self, 
+            connection: Connection, 
+            params: Optional[_CoreAnyExecuteParams], 
+            execution_options: Optional[dict] = None
+    ) -> CursorResult:
+        raise NotImplementedError
 
     def execute(self, context: ExecutionContext, parameters: Optional[dict] = None) -> CursorResult:
         """Run this executable within the context setup by the connection.
@@ -143,7 +188,7 @@ class Executable(ClauseElement):
         # Suppor the same SqlAlchemy convention that parameters override the values() clause.
         cursor = context._dbapi_cursor
         compiled = context._compiled
-        cursor.execute(compiled.as_dict()['operation'], compiled.params)
+        cursor.execute(compiled.as_dict()['operation'], compiled.as_dict()['parameters'])
         result = context._setup_cursor_result()
         self._post_exec(result, context)
         return result
@@ -159,6 +204,41 @@ class Executable(ClauseElement):
         """
         ...
 
+class _CompileState(Enum):
+    NOT_STARTED           = auto()
+    COMPILING_VALUES      = auto()
+    COMPILING_WHERE       = auto()
+    COMPILING_DBAPI_PARAM = auto()
+
+
+@dataclass
+class CompilerState:
+    # statement being compiled
+    stmt: ClauseElement = None
+
+    # statement kind flags
+    is_ddl: bool = False
+    is_dml: bool = False
+    is_select: bool = False
+    is_insert: bool = False
+    is_update: bool = False
+    is_delete: bool = False
+
+    # location flags
+    in_where: bool = False
+
+    # bind handling
+    execution_binds: dict[str, tuple[BindParameter, str]] = field(
+        default_factory=dict
+    )
+    """Bind parameters to be evaluated at execution time."""
+
+    # result metadata
+    result_columns: Optional[list[Column]] = None
+
+    # compiler phase
+    compile_state: _CompileState = _CompileState.NOT_STARTED
+ 
 class Compiled:
     """The result of compiling :class:`ClauseElement` subclasses.
 
@@ -178,17 +258,25 @@ class Compiled:
         This class attribute is used by :class:`normlite.cursor.CursorResult` to properly process the cursor description and the result set.
     """
 
-    def __init__(self, element: ClauseElement, compiled: dict, result_columns: Optional[Sequence[str]] = None):
+    def __init__(self, element: ClauseElement, compiled: dict, compiler: SQLCompiler):
         self._element = element
         """The compiled clause element."""
 
         self._compiled = compiled
         """The dictionary containing the compilation result."""
         
-        self._result_columns = result_columns
+        # IMPORTANT: The _compiler_state.execution_binds contains the mapping that associates
+        # a bind param key to a tuple[BindParameter, str], where str is the usage="value" | "filter"
+        # This is used by the ExecutionContext to choose the right bind processor (bind_processor | filter_processor)
+        self._execution_binds = compiler._compiler_state.execution_binds
+        """The bind parameters for this compiled object."""
+
+        self._result_columns = compiler._compiler_state.result_columns
         """Optional sequence of strings specifying the column names to be considered 
         in the rows produced by the :class:`normlite.cursor.CursorResult` methods.
         """
+
+        self._compiler_state = compiler._compiler_state
 
     @property
     def string(self) -> str:
@@ -198,7 +286,7 @@ class Compiled:
     @property
     def params(self) -> dict:
         """Provide the bind parameters for this compiled object."""
-        return self._compiled['parameters']
+        return self._execution_binds
     
     def as_dict(self) -> dict:
         """Return this compiled object in the original dictionary form."""
@@ -212,7 +300,7 @@ class Compiled:
         return self.string
     
     def __repr__(self):
-        return f"Compiled {self.element.__class__.__name__}"
+        return f"Compiled {self._element.__class__.__name__}"
     
 class DDLCompiled(Compiled):
     is_ddl: ClassVar[bool] = True
@@ -229,6 +317,9 @@ class SQLCompiler(Protocol):
     .. versionadded:: 0.7.0
         This version supports compilation of ``CREATE TABLE`` and ``INSERT`` statements.   
     """
+
+    _compiler_state: CompilerState
+
     def process(self, element: ClauseElement, **kwargs: Any) -> dict:
         """Entry point for the compilation process.
 
@@ -264,4 +355,19 @@ class SQLCompiler(Protocol):
 
     def visit_insert(self, insert: Insert) -> dict:
         """Compile an insert statement (DML ``INSERT``)."""
+        ...
+
+    def visit_select(self, select: Select) -> dict:
+        ...
+
+    def visit_column_element(self, column: ColumnElement) -> dict:
+        ...
+
+    def visit_unary_expression(self, expression: UnaryExpression) -> dict:
+        ...
+ 
+    def visit_binary_expression(self, expression: BinaryExpression) -> dict:
+        ...
+
+    def visit_boolean_clause_list(self, expression: BooleanClauseList) -> dict:
         ...

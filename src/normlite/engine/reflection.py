@@ -93,7 +93,7 @@ class ReflectedTableInfo:
             value=database_obj['id'],
         ))
 
-        result_process = String(is_title=True).result_processor(None)
+        result_process = String(is_title=True).result_processor()
         database_name = result_process({'title': database_obj['title']})
         cols.append(ReflectedColumnInfo(
             name=SpecialColumns.NO_TITLE,

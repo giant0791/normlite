@@ -34,11 +34,11 @@ class Row:
 
     
     def _process_dml_row(self, row_data: tuple) -> None:
-        for col_name, rec in self._metadata._colmap.items():
+        for rec in self._metadata._colmap.values():
             _, col_index, col_type = rec
 
             type_factory = type_mapper[col_type]
-            result_proc = type_factory.result_processor(dialect=None, coltype=None)
+            result_proc = type_factory.result_processor()
             value = row_data[col_index]
             self._values[col_index] = result_proc(value)
     
@@ -46,7 +46,7 @@ class Row:
         col_name, col_type, col_id, col_value = row_data
         is_special_col = col_name in SpecialColumns.values()
         type_factory = type_mapper[col_type]
-        result_proc = type_factory.result_processor(dialect=None, coltype=None)
+        result_proc = type_factory.result_processor()
         self._values[0] = col_name
         self._values[1] = type_factory
         self._values[2] = col_id

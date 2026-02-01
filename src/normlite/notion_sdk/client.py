@@ -29,10 +29,9 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 import json
-import operator
 from pathlib import Path
 import pdb
-from typing import Any, List, NoReturn, Optional, Self, Sequence, Set, Type
+from typing import Any, List, NoReturn, Optional, Self, Set, Type
 from types import TracebackType
 from abc import ABC, abstractmethod
 import uuid
@@ -41,6 +40,10 @@ import random
 import string
 import urllib.parse
 import warnings
+
+from normlite.notion_sdk.getters import get_object_type, get_title
+from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
+from normlite.utils import normlite_deprecated
 
 class NotionError(Exception):
     """Exception raised for all errors related to the Notion REST API."""
@@ -77,7 +80,14 @@ class AbstractNotionClient(ABC):
             for name in AbstractNotionClient.__abstractmethods__
         }
 
-    def __call__(self, endpoint: str, request: str, payload: dict) -> dict:
+    def __call__(
+            self, 
+            endpoint: str, 
+            request: str,
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
         """Enable function call style for REST Notion API client objects.
 
         Example::
@@ -106,7 +116,9 @@ class AbstractNotionClient(ABC):
         Args:
             endpoint (str): The REST API endpoint, example: ``databases``. 
             request (str): The REST API request, example: ``create``.
-            payload (dict): The JSON object as payload.
+            path_params (dict): Optional REST API path parameters, example: ``{"page_id": "b55c9c91-384d-452b-81db-d1ef79372b75"}
+            query_params (dict): The REST API query parameters, example: ``{"filter_properties": ["title", "status"]}
+            payload (dict): The JSON object as payload (also called body of the request).
 
         Raises:
             NotionError: Unknown or unsupported operation. 
@@ -121,7 +133,7 @@ class AbstractNotionClient(ABC):
                 f"Allowed: {sorted(self.__class__.allowed_operations)}"
             )
         method = getattr(self, method_name)
-        return method(payload)
+        return method(path_params, query_params=query_params, payload=payload)
 
     @property
     def ischema_page_id(self) -> Optional[str]:
@@ -134,7 +146,12 @@ class AbstractNotionClient(ABC):
         return self._ischema_page_id 
 
     @abstractmethod
-    def pages_create(self, payload: dict) -> dict:
+    def pages_create(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
         """Create a page object.
 
         This method creates a new page that is a child of an existing page or database.
@@ -149,7 +166,12 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def pages_retrieve(self, payload: dict) -> dict:
+    def pages_retrieve(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+       ) -> dict:
         """Retrieve a page object.
 
         This method is used as follows::
@@ -176,7 +198,12 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    def pages_update(self, payload: dict) -> dict:
+    def pages_update(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
         """Update a page object.
         
         Use this API to modify attributes of a Notion page object, such as properties, title, etc.
@@ -225,7 +252,12 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    def databases_create(self, payload: dict) -> dict:
+    def databases_create(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
         """Create a database as a subpage in the specified parent page, with the specified properties schema.
 
         Args:
@@ -237,7 +269,12 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    def databases_retrieve(self, payload: dict) -> dict:
+    def databases_retrieve(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
         """Retrieve a database object for the provided ID
 
         Args:
@@ -250,10 +287,18 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    def databases_query(self, payload: dict) -> List[dict]:
+    def databases_query(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> List[dict]:
         """Get a list pages contained in the database.
 
         Args:
+            path_params (dict): A dictionary containing a "database_id" key for the database to
+                query.
+            query_params (dict): A dictionary containing "filter" object to select.
             payload (dict): A dictionary that must contain a "database_id" key for the database to
                 query and "filter" object to select.
 
@@ -261,7 +306,7 @@ class AbstractNotionClient(ABC):
             List[dict]: The list containing the page pbjects or ``[]``, if no pages have been found.
         """
         raise NotImplementedError
-    
+
 class InMemoryNotionClient(AbstractNotionClient):
     """Provide a simple but complete in-memory Notion client.
     
@@ -269,6 +314,12 @@ class InMemoryNotionClient(AbstractNotionClient):
     This class is best suited for testing purposes as it avoids the HTTP communication.
     It has been designed to mimic as close as possible the behavior of Notion, including error messages.
 
+    .. versionchanged:: 0.8.0
+        Major refactor to provide more robust Notion-like behavior to the API methods 
+        and adds object validation Notion objects.
+        This version is prepared for the next step of refactor to support store persitence
+        with the :class:`FileBasedNotionClient`.
+    
     .. versionchanged:: 0.7.0 
         In this version, the :attr:`_store` is a Python :type:`dict` to provide random access.
         The object indentifier is used as key and the object itself is the value.
@@ -280,282 +331,344 @@ class InMemoryNotionClient(AbstractNotionClient):
         Clients do not have knowledge of these datastructures.
 
     """
-
-    _ROOT_PAGE_ID_ =        'ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ'
+    _ROOT_PAGE_ID_ = 'ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ'
     """Fake root page identifier."""
 
     _ROOT_PAGE_PARENT_ID_ = 'YYYYYYYY-0000-1111-WWWWWWWWWWWWWWWWW'
     """Fake root page parent identifier."""
 
-    _ROOT_PAGE_TITLE_ =     'ROOT_PAGE'
+    _ROOT_PAGE_TITLE_ = 'ROOT_PAGE'
     """Fake root page title."""
 
     def __init__(
-            self, 
-            ws_id: Optional[str] = None,
-            ischema_page_id: Optional[str] = None,
-            tables_db_id: Optional[str] = None
+        self,
+        ws_id: Optional[str] = None,
+        ischema_page_id: Optional[str] = None,
+        tables_db_id: Optional[str] = None,
     ):
         super().__init__()
-        if ws_id:
-            self._ws_id = ws_id
-        else:
-            self._ws_id = '00000000-0000-0000-0000-000000000000'
+        self._ws_id = ws_id or '00000000-0000-0000-0000-000000000000'
+        self._ischema_page_id = ischema_page_id or '66666666-6666-6666-6666-666666666666'
+        self._tables_db_id = tables_db_id or 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+        self._store: dict[str, dict] = {}
 
-        if ischema_page_id:
-            self._ischema_page_id = ischema_page_id
-        else:
-            self._ischema_page_id = '66666666-6666-6666-6666-666666666666'
+    # ------------------------------------------------------------------
+    # Store invariants
+    # ------------------------------------------------------------------
 
-        if self._tables_db_id:
-            self._tables_db_id = tables_db_id
-        else: 
-            self._tables_db_id = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+    def _ensure_root(self) -> None:
+        """Create the root page at init time.
+        
+        .. versionchanged:: 0.8.0
+            This method is no longer part of the client's initialization.
+            Notion clients must enforce the invariant that the store is empty
+            after creation.
+            Users of this class have the responsibility to call this utility method,
+            if required (see :meth:`normlite.engine.base.Engine._bootstrap` for more 
+            details).
 
-        self._store: dict[str, Any] = {}
-        """The dictionary simulating the Notion store. 
-        It's an instance attribute to avoid unwanted side effects and 
-        provide more behavioral predictability.
-
-        .. versionchanged:: 0.7.0
-            - Add root page by default in the constructor.
-            - Fix issue with asymmetric file based Notion client (https://github.com/giant0791/normlite/issues/45).
+            
         """
-        self._store = {
-            InMemoryNotionClient._ROOT_PAGE_ID_: self._new_object(
-                'page', 
+        if self._ROOT_PAGE_ID_ not in self._store:
+            self._store[self._ROOT_PAGE_ID_] = self._new_object(
+                "page",
                 {
-                    'parent': {
-                        'type': 'page_id',
-                        'page_id': InMemoryNotionClient._ROOT_PAGE_PARENT_ID_,
+                    "parent": {
+                        "type": "page_id",
+                        "page_id": self._ROOT_PAGE_PARENT_ID_,
                     },
-                    'properties': {
-                        'Title': {'title': [{'text': {'content': InMemoryNotionClient._ROOT_PAGE_TITLE_}}]}                   
-                    }
-                }
+                    "properties": {
+                        "Title": {
+                            "type": "title",
+                            "id": "title",
+                            "title": [
+                                {"text": {"content": self._ROOT_PAGE_TITLE_}}
+                            ]
+                        }
+                    },
+                },
+                id=self._ROOT_PAGE_ID_,
             )
+
+    def _get_by_id(self, id: str) -> dict:
+        """Simple accessor to the store by object id."""
+        return self._store.get(id, {})
+    
+    def _get_by_title(self, text: str, object_: str) -> dict:
+        """Return all objects with "title" text in the store. """
+
+        query_results = []
+        query_result_object = {
+            'object': 'list',
+            'results': query_results,
+            'next_cursor': None,
+            'has_more': False,
+            'type': 'page',
+            'page': {}
         }
 
-    def _create_store(self, store_content: List[dict] = []) -> None:
-        """Provide helper to create the simulated Notion store.
-
-        .. deprecated:: 0.7.0
-            Do **not** use this helper method, it will break the internal store.
-            There is currently no replacement. 
-            Here a short code snippet to correctly pre-fill the store
-            for test purposes.
-
-            .. code-block:: python
-
-                def for_page_queries(client: InMemoryNotionClient, page_payloads: list[dict]) -> InMemoryNotionClient:
-                    ids = [
-                        '680dee41-b447-451d-9d36-c6eaff13fb45',
-                        '680dee41-b447-451d-9d36-c6eaff13fb46',
-                        '680dee41-b447-451d-9d36-c6eaff13fb47'
-                    ]
-                    for id_, payload in enumerate(page_payloads):
-                        _ = client._add('page', payload, ids[id_])
-
-                    return client
-
-        Args:
-            store_content (List[dict], optional): The initial content for the Notion store. Defaults to ``[]``.
-
-        """
-        warnings.warn(
-            '`_create_store()` is deprecated and will be removed in a future version. '
-            'To add pages for testing purposes, use a fixture instead.' 
-        )
-        if store_content:
-            for obj in store_content:
-                oid = obj['id']
-                self._store[oid] = obj
-        else:
-            self._store = {}
-
-    def _get(self, id: str) -> dict:
-        warnings.warn(
-            '`_get()` is deprecated and will be removed in a future version. '
-            'Use `_get_by_id()` instead' 
-        )
-        return self._get_by_id(id)
-    
-    def _get_by_id(self, id: str) -> dict:
         if self._store_len() == 0:
-            return {}
-    
-        try:
-            return self._store[id]
-        except KeyError:                
-            return {} 
-   
-    def _get_by_title(self, title: str, type: str) -> dict:
-        """Return the first occurrence in the store of page or database with the passed title."""
-        # TODO: rewrite using filter()
-        if self._store_len() > 0:
-            for o in self._store.values():
-                if o['object'] == type and type == 'database':
-                    object_title = o.get('title')
-                    if object_title and object_title[0]['text']['content'] == title:
-                        return o
-                elif o['object'] == type and type == 'page':
-                    properties = o.get('properties')
-                    for pv in properties.values():
-                        prop_title = pv.get('title')
-                        if prop_title and prop_title[0]['text']['content'] == title:
-                            return o
-        return {}
-    
-    def _new_object(self, type_: str, payload: dict, id: Optional[str] = None) -> dict:
-        new_page_or_db = dict()
-        new_page_or_db['object'] = type_
-
-        # use the provided id for behavioral predictability if available 
-        new_page_or_db['id'] = id if id else str(uuid.uuid4())
-        current_date = datetime.now()
-        new_page_or_db['created_id'] = current_date.isoformat()
-        new_page_or_db['archived'] = False
-        new_page_or_db['in_trash'] = False
-        new_page_or_db.update(payload)
-    
-        return new_page_or_db
-
-    def _add_database(self, new_object: dict) -> dict:
-        parent_page_id = new_object.get('parent').get('page_id', None)
-        if parent_page_id is None:
-            raise NotionError(
-                'Body failed validation: body.parent.page_id should be defined, instead was undefined.'
-            )
-
-        if not self._get_by_id(parent_page_id):
-            raise NotionError(
-                f'Could not find page with ID: {parent_page_id} '
-                'Make sure the relevant pages and databases are shared with your integration.'
-            )
-
-        new_object['is_inline'] = False
-        property_keys = [key for key in new_object.get('properties').keys()]
-        ret_new_db = copy.deepcopy(new_object)
-        ret_new_db.pop('properties')
-        ret_new_db['properties'] = {name: {} for name in property_keys}
-        properties = new_object['properties']
-        for prop_name, prop_obj in properties.items():
-            prop_type = list(prop_obj.keys())
-            properties[prop_name]['type'] = prop_type[0]
-            # database objects contain the keys 'type' and 'id' instead
-            # ids are generated for databases
-            properties[prop_name]['id'] = 'title' if prop_type[0] == 'title' else self._generate_property_id()
-            ret_new_db['properties'][prop_name] = properties[prop_name]
-
-        return ret_new_db
+            return query_result_object
         
-    def _add_page(self, new_object: dict) -> dict:
-        # TODO: refactor to check parent ids availability and existence first
-        ret_new_pg = copy.deepcopy(new_object)
-        ret_new_pg.pop('properties')
-        property_keys = [key for key in new_object.get('properties').keys()]
-        ret_new_pg['properties'] = {name: {} for name in property_keys}
-        parent = new_object.get('parent')
-        properties = new_object['properties']
-        if parent.get('type') == 'database_id':
-            # parent is a database, copy database property ids into page property ids
-            database_id = parent.get('database_id', None)
-            if database_id is None:
-                raise NotionError(
-                    'Body failed validation: body.parent.database_id should be defined, instead was undefined.'
-                )
+        for obj in self._store.values():
+            if get_object_type(obj) != object_:
+                continue
+
+            title = get_title(obj)
+            if title and title == text:
+                query_results.append(obj)
             
-            schema = self._get_by_id(parent.get('database_id'))
-            if not schema:
-                # no database found for this page object
-                raise NotionError(
-                    f'Could not find database with ID: {parent.get('database_id')} '
-                    'Make sure the relevant pages and databases are shared with your integration.'
-                )
-                
-            for prop_name, prop_obj in properties.items():
-                # Bug fix: the page properties contain the following keys: "id", "type" and the value of "type" as key to represent the value
-                # Example:
-                # "Last ordered": {
-                #   "id": "Jsfb",
-                #   "type": "date",
-                #   "date": {
-                #       "start": "2022-02-22",
-                #       "end": null,
-                #       "time_zone": null
-                #   }
-                # }
+        return query_result_object
 
-                # construct new page object for the store
-                prop_id = schema['properties'][prop_name]['id']
-                prop_type = schema['properties'][prop_name]['type']
-                prop_obj['id'] =  prop_id
-                prop_obj['type'] = prop_type
+    # ------------------------------------------------------------------
+    # Object construction
+    # ------------------------------------------------------------------
 
-                # constrcut the page object to be returned
-                ret_new_pg['properties'][prop_name]['id'] = prop_id
-        else:
-            # parent is a page, generate new property ids
-            # TODO: add test for availability of page under page_id
-            # IMPORTANT: If you do this, you break pre-filling of fresh clients for testing purposes.
-            # Consider always adding a root page to mimic the internal integrations case.
-            # See https://developers.notion.com/reference/post-page#choosing-a-parent
-            for prop_name, prop_obj in properties.items():
-                prop_type = list(prop_obj.keys())
-                
-                # new pages with parent = page have only the 'title' type
-                prop_obj['id'] = 'title' if prop_type[0] == 'title' else self._generate_property_id()
-                ret_new_pg['properties'][prop_name]['id'] = prop_obj['id']
+    def _new_object(self, type_: str, payload: dict, id: Optional[str] = None) -> dict:
+        """Create a new Notion object."""
 
-        return ret_new_pg
-    
-    def _raise_if_validation_fails(self, type_: str, payload: dict) -> NoReturn:
-        # check well-formedness of payload
-        # Note: "properties" object existence is validated previously when binding parameters 
-        parent = payload.get('parent', None)
+        now = datetime.now().isoformat()
+        obj = {
+            "object": type_,
+            "id": id or str(uuid.uuid4()),
+            "created_time": now,
+            "archived": False,
+            "in_trash": False,
+        }
+        obj.update(copy.deepcopy(payload))
+        return obj
+
+    # ------------------------------------------------------------------
+    # Validation helpers
+    # ------------------------------------------------------------------
+
+    def _validate_payload_base(self, type_: str, payload: dict) -> None:
+        if not payload:
+            raise NotionError("Body failed validation: body empty or None (null).")
+
+        parent = payload.get("parent")
         if not parent:
-            # objects being added need to have the parent they belog to
-            raise NotionError('Body failed validation: body.parent should be defined, instead was undefined')  
-        
-        if type_ not in ['page', 'database']:
             raise NotionError(
-                f'Body failed validation: body.parent.type should be either '
-                f'"page" or "database", instead "{type_}" was defined')
+                "Body failed validation: body.parent should be defined, instead was undefined."
+            )
 
-        if type_ == 'database' and not payload.get('title'):
+        parent_type = parent.get("type")
+        if parent_type not in ("page_id", "database_id"):
             raise NotionError(
-                f'Body failed validation: body.parent.title should be defined '
-                f'for database object, instead was undefined')
-        
-        if not payload.get('properties', None):
-            raise NotionError('Body failed validation: body.properties should be defined, instead was undefined')  
-        
-    def _add(self, type_: str, payload: dict, id: Optional[str] = None) -> dict: 
-        """Add Notion objects to the store.
-        
-        This utility method handles 3 use cases:
-            - add a database
-            - add a page to an existing database
-            - add a page to an existing page
+                f'Body failed validation: body.parent.type should be "page_id" or '
+                f'"database_id", instead "{parent_type}" was defined.'
+            )
 
+        if type_ == "database" and not payload.get("title"):
+            raise NotionError(
+                "Body failed validation: body.title should be defined for database object."
+            )
 
-        .. versionchanged: 0.7.0
-            This method now ensures payload validation and orchestrates the object creation and
-            storing in the internal data structure.
+        if "properties" not in payload:
+            raise NotionError(
+                "Body failed validation: body.properties should be defined, instead was undefined."
+            )
+
+    def _resolve_parent(self, payload: dict) -> tuple[str, dict]:
+        parent = payload["parent"]
+        if parent["type"] == "page_id":
+            pid = parent.get("page_id")
+            obj = self._get_by_id(pid)
+            if not obj or obj["object"] != "page":
+                raise NotionError(
+                    f"Could not find page with ID: {pid}. "
+                    "Make sure the relevant pages and databases are shared with your integration."
+                )
+            return "page", obj
+
+        if parent["type"] == "database_id":
+            did = parent.get("database_id")
+            obj = self._get_by_id(did)
+            if not obj or obj["object"] != "database":
+                raise NotionError(
+                    f"Could not find database with ID: {did}. "
+                    "Make sure the relevant pages and databases are shared with your integration."
+                )
+            return "database", obj
+
+        raise AssertionError("Unreachable")
+
+    # ------------------------------------------------------------------
+    # Page finalization rules
+    # ------------------------------------------------------------------
+
+    def _finalize_page_under_page(self, page: dict) -> None:
+        props = page["properties"]
+        if len(props) != 1:
+            raise NotionError(
+                'New page is a child of a page. "title" is the only valid property.'
+            )
+
+        name, prop = next(iter(props.items()))
+        if "title" not in prop or len(prop) != 1:
+            raise NotionError(
+                'New page is a child of a page. "title" is the only valid property.'
+            )
+
+        prop["type"] = "title"
+        prop["id"] = "title"
+
+    def _finalize_page_under_database(self, page: dict, database: dict) -> None:
+        schema_props = database["properties"]
+        page_props = page["properties"]
+
+        if set(page_props.keys()) != set(schema_props.keys()):
+            raise NotionError(
+                f"Page properties must exactly match database schema: "
+                f"{sorted(schema_props.keys())}"
+            )
+
+        for name, schema_prop in schema_props.items():
+            schema_type = schema_prop["type"]
+            schema_id = schema_prop["id"]
+
+            page_prop = page_props[name]
+            if schema_type not in page_prop:
+                raise NotionError(
+                    f"Property '{name}' must be of type '{schema_type}'."
+                )
+
+            page_props[name] = {
+                "id": schema_id,
+                "type": schema_type,
+                schema_type: page_prop[schema_type],
+            }
+
+    # ------------------------------------------------------------------
+    # Database finalization
+    # ------------------------------------------------------------------
+
+    def _finalize_database(self, db: dict) -> None:
+        parent_type, _ = self._resolve_parent(db)
+        if parent_type != "page":
+            raise NotionError("Databases can only be created under pages.")
+
+        for name, prop in db["properties"].items():
+            prop_type = next(iter(prop.keys()))
+            prop["type"] = prop_type
+            prop["id"] = "title" if prop_type == "title" else self._generate_property_id()
+
+        db["is_inline"] = False
+
+    # ------------------------------------------------------------------
+    # Normalization helpers
+    # ------------------------------------------------------------------
+
+    def _normalize_rich_text_item(self, rt: dict) -> dict:
         """
-        self._raise_if_validation_fails(type_, payload)
-        new_object = self._new_object(type_, payload, id)
-        if type_ == 'page':
-            ret_object = self._add_page(new_object)
-        elif type_ == 'database':
-            ret_object = self._add_database(new_object)
-        elif type_ == 'data_source':
-            raise NotionError('"data_source" type not supported yet')
+        Normalize a single rich-text item to Notion canonical form.
+        """
+        if "text" in rt:
+            content = rt["text"].get("content")
+            if not isinstance(content, str):
+                raise NotionError("Invalid rich_text item: missing text.content")
+
+            return {
+                "type": "text",
+                "text": {"content": content},
+                "plain_text": content,
+                "annotations": rt.get(
+                    "annotations",
+                    {
+                        "bold": False,
+                        "italic": False,
+                        "strikethrough": False,
+                        "underline": False,
+                        "code": False,
+                        "color": "default",
+                    },
+                ),
+            }
+
+        if "equation" in rt:
+            expr = rt["equation"].get("expression")
+            if not isinstance(expr, str):
+                raise NotionError("Invalid equation rich_text item")
+
+            return {
+                "type": "equation",
+                "equation": {"expression": expr},
+                "plain_text": expr,
+                "annotations": rt.get("annotations", {}),
+            }
+
+        raise NotionError(f"Unsupported rich_text item: {rt}")
+
+    def _normalize_rich_text(self, value: list[dict]) -> list[dict]:
+        if not isinstance(value, list):
+            raise NotionError("rich_text must be a list")
+
+        return [self._normalize_rich_text_item(rt) for rt in value]
+
+    def _normalize_property(self, prop: dict) -> dict:
+        prop_type = prop.get("type")
+        if not prop_type:
+            raise NotionError("Property missing 'type'")
+
+        if prop_type == "title":
+            if "title" not in prop:
+                raise NotionError("Title property missing 'title' field")
+            prop["title"] = self._normalize_rich_text(prop["title"])
+
+        elif prop_type == "rich_text":
+            if "rich_text" not in prop:
+                raise NotionError("rich_text property missing 'rich_text' field")
+            prop["rich_text"] = self._normalize_rich_text(prop["rich_text"])
+
+        return prop
+
+    def _normalize_properties(self, obj: dict) -> None:
+        props = obj.get("properties")
+        if not isinstance(props, dict):
+            raise NotionError("Object missing properties")
+
+        for name, prop in props.items():
+            props[name] = self._normalize_property(prop)
+
+    def _normalize_database_title(self, db: dict) -> None:
+        title = db.get("title")
+        if not isinstance(title, list):
+            raise NotionError("Database title must be a rich_text list")
+
+        db["title"] = self._normalize_rich_text(title)
+
+    # ------------------------------------------------------------------
+    # Unified add entrypoint
+    # ------------------------------------------------------------------
+
+    def _add(self, type_: str, payload: dict, id: Optional[str] = None) -> dict:
+        self._validate_payload_base(type_, payload)
+        obj = self._new_object(type_, payload, id)
+
+        if type_ == "page":
+            parent_type, parent_obj = self._resolve_parent(obj)
+            if parent_type == "page":
+                self._finalize_page_under_page(obj)
+
+            else:
+                self._finalize_page_under_database(obj, parent_obj)
+
+            self._normalize_properties(obj)
+                
+
+        elif type_ == "database":
+            self._finalize_database(obj)
+            self._normalize_database_title(obj)
+
         else:
             raise NotionError(f'"{type_}" not supported or unknown')
 
-        self._store[new_object['id']] = new_object
-        return ret_object
+        self._store[obj["id"]] = obj
+        return copy.deepcopy(obj)
+    
+    # ------------------------------------------------------------------
+    # Utility methods
+    # ------------------------------------------------------------------
 
     def _generate_property_id(self) -> str:
         """
@@ -581,78 +694,79 @@ class InMemoryNotionClient(AbstractNotionClient):
     def _store_len(self) -> int:
         return len(self._store)
     
-    def pages_create(self, payload: dict) -> dict:
-        return self._add('page', payload)
-    
-    def pages_retrieve(self, payload: dict) -> dict:
-        page_id = payload.get('page_id', None)
+    def _filter_properties(
+            self, 
+            original_obj: dict, 
+            filter_list: Optional[list[str]] = []
+        ) -> dict:
+        props = original_obj.get('properties', {})
+        filtered_props = {
+            k: v for k, v in props.items()
+            if not filter_list or k in filter_list
+        }
 
-        if page_id is None:
+        return {
+            **original_obj,
+            'properties': filtered_props
+        }
+
+    # ------------------------------------------------------------------
+    # Public API methods
+    # ------------------------------------------------------------------
+
+    def pages_create(self, path_params=None, query_params=None, payload=None) -> dict:
+        return self._add("page", payload)
+
+    def pages_retrieve(self, path_params=None, query_params=None, payload=None) -> dict:
+        page_id = path_params.get("page_id")
+        obj = self._get_by_id(page_id)
+        if not obj:
             raise NotionError(
-                'Invalid request URL.'
+                f"Could not find page with ID: {page_id}. "
+                "Make sure the relevant pages and databases are shared with your integration."
+            )
+        return copy.deepcopy(obj)
+
+    def pages_update(self, path_params=None, query_params=None, payload=None) -> dict:
+        page_id = path_params.get("page_id")
+        obj = self._get_by_id(page_id)
+        if not obj or obj["object"] != "page":
+            raise NotionError(f"Could not find page with ID: {page_id}.")
+
+        if "archived" in payload:
+            obj["archived"] = payload["archived"]
+        elif "in_trash" in payload:
+            obj["in_trash"] = payload["in_trash"]
+        elif "properties" in payload:
+            for k, v in payload["properties"].items():
+                obj["properties"][k] = v
+        else:
+            raise NotionError(
+                "Body failed validation: body.archived or body.in_trash or "
+                "body.properties should be defined."
             )
 
-        retrieved_object = self._get_by_id(payload['page_id'])
+        return copy.deepcopy(obj)
 
-        if not retrieved_object:
+    def databases_create(self, path_params=None, query_params=None, payload=None) -> dict:
+        return self._add("database", payload)
+
+    def databases_retrieve(self, path_params=None, query_params=None, payload=None) -> dict:
+        db_id = path_params.get("database_id")
+        obj = self._get_by_id(db_id)
+        if not obj:
             raise NotionError(
-                    f'Could not find page with ID: {page_id} '
-                    'Make sure the relevant pages and databases are shared with your integration.'
+                f"Could not find database with ID: {db_id}. "
+                "Make sure the relevant pages and databases are shared with your integration."
             )
+        return copy.deepcopy(obj)
 
-        return retrieved_object
-    
-    def pages_update(self, payload)-> dict:
-        if self._store_len() > 0:
-            page_id = payload.get('page_id', None)
-
-            if page_id is None:
-                raise NotionError(
-                    'Invalid request URL.'
-                )
-
-            page_to_update = self._get_by_id(page_id)
-            if page_to_update and page_to_update['object'] == 'page':
-                if 'archived' in payload.keys():
-                    page_to_update['archived'] = payload['archived']
-                    return page_to_update
-                elif 'in_trash' in payload.keys():
-                    page_to_update['in_trash'] = payload['in_trash']
-                elif 'properties' in payload.keys():
-                    for prop, value in payload['properties'].items():
-                        page_to_update['properties'][prop] = value
-                else:
-                    raise NotionError(
-                        'Body failed validation: body.archived or body.in_trash or '
-                        'body.properties should be defined, instead was undefined.'
-                    )
-            else:
-                raise NotionError(
-                    f'Could not find page with id: {payload.get('page_id')}. '
-                    'Make sure the relevant pages and databases are shared with your integration.'
-                )
-
-
-    def databases_create(self, payload: dict) -> dict:
-        return self._add('database', payload)
-    
-    def databases_retrieve(self, payload: dict) -> dict:
-        database_id = payload.get('database_id', None)
-        if database_id is None:
-            raise NotionError(
-                'Invalid request URL.'
-            )
-
-        retrieved_object = self._get_by_id(payload['database_id'])
-        if not retrieved_object:
-            raise NotionError(
-                    f'Could not find database with ID: {database_id} '
-                    'Make sure the relevant pages and databases are shared with your integration.'
-            )
-
-        return retrieved_object
-    
-    def databases_query(self, payload: dict) -> dict:
+    def databases_query(
+            self,
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None,
+            payload: Optional[dict] = None
+    ) -> dict:
         query_results = []
         query_result_object = {
             'object': 'list',
@@ -663,22 +777,115 @@ class InMemoryNotionClient(AbstractNotionClient):
             'page': {}
         }
 
-        if self._store_len() > 0:
-            # perform search only if store contains data        
-            db_id = payload['database_id']
-            for obj in self._store.values():
-                if obj['object'] == 'page' and obj['parent']['type'] == 'database_id':
-                    # select only pages whose parent is a database
-                    if obj['parent']['database_id'] == db_id:
-                        # select only pages belonging to the db specified in the payload
-                        filter = _Filter(obj, payload)
-                        if filter.eval():
-                            # select only those pages for which the filter evaluates to True 
-                            query_results.append(obj)
+        if not self._store_len():
+            return query_result_object
 
-        return query_result_object      
+        database_id = path_params.get('database_id') if path_params else None
+        if database_id is None:
+            raise NotionError('Invalid request URL.')
+
+        has_filter = bool(payload and payload.get('filter'))
+        sorts = payload.get("sorts") if payload else None
+
+        filter_properties = []
+        if query_params:
+            filter_properties = query_params.get('filter_properties') or []
+
+        # --------------------
+        # Filtering phase
+        # --------------------
+        pages = []
+
+        for obj in self._store.values():
+            if obj.get("object") != "page":
+                continue
+
+            parent = obj.get("parent", {})
+            if parent.get("type") != "database_id":
+                continue
+
+            if parent.get("database_id") != database_id:
+                continue
+
+            if not has_filter:
+                pages.append(obj)
+                continue
+
+            predicate = _Filter(obj, payload)
+            if predicate.eval():
+                pages.append(obj)
+
+        # --------------------
+        # Sorting phase
+        # --------------------
+        if sorts:
+            for sort in reversed(sorts):
+                prop = sort.get("property")
+                direction = sort.get("direction", "ascending")
+
+                if direction not in ("ascending", "descending"):
+                    raise ValueError(f"Invalid sort direction '{direction}'")
+
+                reverse = direction == "descending"
+
+                def sort_key(page):
+                    value = _extract_sort_value(page, prop)
+                    is_empty = value in (None, EMPTY_TEXT, EMPTY_NUMBER)
+                    return (is_empty, value)
+
+                pages.sort(key=sort_key, reverse=reverse)
+
+        # --------------------
+        # Projection phase
+        # --------------------
+        for page in pages:
+            if filter_properties:
+                query_results.append(
+                    self._filter_properties(page, filter_properties)
+                )
+            else:
+                query_results.append(page)
+
+        return query_result_object
+
+    def find_child_page(self, parent_page_id: str, name: str) -> Optional[dict]:
+        for obj in self._store.values():
+            if obj["object"] != "page":
+                continue
+
+            parent = obj.get("parent", {})
+            if parent.get("page_id") != parent_page_id:
+                continue
+
+            title = (
+                obj.get("properties", {})
+                .get("Name", {})
+                .get("title", [])
+            )
+
+            if title and title[0]["text"]["content"] == name:
+                return obj
+
+        return None
+
+    def find_child_database(self, parent_page_id: str, name: str) -> Optional[dict]:
+        for obj in self._store.values():
+            if obj["object"] != "database":
+                continue
+
+            parent = obj.get("parent", {})
+            if parent.get("page_id") != parent_page_id:
+                continue
+
+            title = obj.get("title", [])
+            if title and title[0]["text"]["content"] == name:
+                return obj
+
+        return None
 
 class FileBasedNotionClient(InMemoryNotionClient):
+    STORE_VERSION = 1
+
     """Enhance the in-memory client with file based persistence.
 
     This class extends the base :class:`InMemoryNotionClient` by providing the capability
@@ -692,11 +899,29 @@ class FileBasedNotionClient(InMemoryNotionClient):
             c.pages_create(payload2)
             c.pages_create(payload3)
     """
-    def __init__(self, file_path: str):
+    def __init__(
+        self, 
+        path: str,
+        *,
+        read_only: bool = False,
+        auto_load: bool = True,
+        auto_flush: bool = True,
+    ):
         super().__init__()
 
-        self.file_path = file_path
+        self._path = Path(path)
         """The absolute path to the file storing the data contained in the file-base Notion client."""
+
+        self._read_only = read_only
+        """Readonly flag to avoid overwriting the file contents."""
+
+        self._auto_load = auto_load
+        """Auto load the store if ``True``."""
+
+        self._auto_flush = auto_flush
+        """Automatic flush """
+        if self._auto_load:
+            self.load()
 
     def load(self) -> List[dict]:
         """Load the store content from the underlying file.
@@ -704,9 +929,45 @@ class FileBasedNotionClient(InMemoryNotionClient):
         Returns:
             List[dict]: The JSON object as list of dictionaries containing the store.
         """
-        with open(self.file_path, 'r') as file:
-            return json.load(file)
+        if not self._path.exists():
+            self._store.clear()
+            return
+
+        with self._path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        version = data.get("version")
+        if version != self.STORE_VERSION:
+            raise NotionError(
+                f"Unsupported store version: {version} "
+                f"(expected {self.STORE_VERSION})"
+            )
+
+        objects = data.get("objects")
+        if not isinstance(objects, dict):
+            raise NotionError("Corrupted store: 'objects' missing or invalid")
+
+        # IMPORTANT: store must contain canonical objects
+        self._store = copy.deepcopy(objects)
     
+    def flush(self) -> None:
+        if self._read_only:
+            return
+
+        payload = {
+            "version": self.STORE_VERSION,
+            "objects": self._store,
+        }
+
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        with self._path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, sort_keys=True)
+
+    def clear(self) -> None:
+        self._store.clear()
+        if self._path.exists() and not self._read_only:
+            self._path.unlink()
+
     def __enter__(self) -> Self:
         """Initialize the Notion store in memory.
 
@@ -716,27 +977,10 @@ class FileBasedNotionClient(InMemoryNotionClient):
         Returns:
             Self: This instance as required by the context manager protocol.
         """
-        if Path(self.file_path).exists():
-            # The file containing the Notion store exists, read it into the _store class attribute
-                store = self.load()
-                self._create_store(store['store'])  # pass the list of objects as store content 
-                return self
-            
-        else:
-            # No file exists, initialize the _store class attribute
-            self._create_store()
-            return self
+        if self._auto_load:
+            self.load()
+        return self
         
-    def dump(self, store_content: List[dict]) -> None:
-        """Dump the store content onto the underlying file.
-
-        Args:
-            store_content (List[dict]): The current store content present in memory.
-        """
-
-        with open(self.file_path, 'w') as file:
-            json.dump(store_content, file, indent=2)
-
     def __exit__(
         self,
         exctype: Optional[Type[BaseException]] = None,
@@ -751,86 +995,273 @@ class FileBasedNotionClient(InMemoryNotionClient):
             exctb (Optional[TracebackType]): The traceback object. Defaults to ``None``.
 
         Returns:
-            Optional[bool]: ``None`` as it is customary for context managers.
+            Optional[bool]: ``False`` as it is customary for context managers.
         """
 
-        self.dump(FileBasedNotionClient._store)
+        if self._auto_flush:
+            self.flush()
+        return False  # never swallow exceptions
 
 #--------------------------------------------------
 # Private classes for implementing database queries
 #--------------------------------------------------
+def _parse_notion_date(value: Optional[str]) -> Optional[datetime]:
+    """Helper for implementing after and before operators on dates."""
+    if value is None:
+        return None
 
-class _Condition:
-    _op_map: dict = {
-        'equals': operator.eq,
-        'greater_than': operator.gt,
-        'less_than': operator.lt,
-        'contains': operator.contains,
-        'does_not_contain': lambda a, b: b not in a,
-        'or': operator.or_,
-        'and': operator.and_,
-        'not': operator.not_
+    if not isinstance(value, str):
+        raise TypeError(f"Expected date string, got {type(value)}")
+
+    try:
+        # Python 3.11+ handles ISO 8601 offsets cleanly
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError(f"Invalid Notion date string: {value!r}")
+
+class _Expression(ABC):
+    @abstractmethod
+    def eval(self) -> bool:
+        pass
+
+class _EmptyType:
+    """Centralized sentinel class for signaling empty properties."""
+    __slots__ = ()
+
+    def __repr__(self):
+        return "<EMPTY>"
+
+EMPTY_DATE = _EmptyType()
+EMPTY_TEXT = _EmptyType()
+EMPTY_NUMBER = _EmptyType()
+EMPTY_CHECKBOX = _EmptyType()
+
+class _Condition(_Expression):
+    _allowed_ops = {
+        "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
+        "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
+        "number":    {"equals", "greater_than", "less_than"},
+        "date":      {"after", "before", "equals", "does_not_equal", "is_empty", "is_not_empty"},
+        "checkbox":  {"equals", "does_not_equal"},
     }
 
+    _op_map = {
+        # date
+        "date.is_empty":                lambda a, _: a is None,
+        "date.is_not_empty":            lambda a, _: a is not None,
+        "date.equals":                  lambda a, b: a == b,
+        "date.does_not_equal":          lambda a, b: a != b,
+        "date.after": lambda a, b: (
+            a["start"] is not None
+            and b["start"] is not None
+            and a["start"] > b["start"]
+        ),
+        "date.before": lambda a, b: (
+            a["start"] is not None
+            and b["start"] is not None
+            and a["start"] < b["start"]
+        ),
+
+        # rich_text
+        "rich_text.equals":             lambda a, b: a == b if a is not EMPTY_TEXT else False,
+        "rich_text.is_empty":           lambda a, _: a is EMPTY_TEXT,
+        "rich_text.is_not_empty":       lambda a, _: a is not EMPTY_TEXT,
+        "rich_text.contains":           lambda a, b: False if a is EMPTY_TEXT else b in a,
+        "rich_text.does_not_contain":   lambda a, b: True if a is EMPTY_TEXT else b not in a,
+        "rich_text.starts_with":        lambda a, b: False if a is EMPTY_TEXT else a.startswith(b),
+        "rich_text.ends_with":          lambda a, b: False if a is EMPTY_TEXT else a.endswith(b),
+
+        # title
+        "title.equals":                 lambda a, b: a == b if a is not EMPTY_TEXT else False,
+        "title.is_empty":               lambda a, _: a is EMPTY_TEXT,
+        "title.is_not_empty":           lambda a, _: a is not EMPTY_TEXT, 
+        "title.contains":               lambda a, b: False if a is EMPTY_TEXT else b in a,
+        "title.does_not_contain":       lambda a, b: True if a is EMPTY_TEXT else b not in a,
+        "title.starts_with":            lambda a, b: False if a is EMPTY_TEXT else a.startswith(b),
+        "title.ends_with":              lambda a, b: False if a is EMPTY_TEXT else a.endswith(b),
+
+        # number
+        "number.equals":                lambda a, b: a == b,
+        "number.greater_than":          lambda a, b: a > b,
+        "number.less_than":             lambda a, b: a < b,
+
+        # checkbox
+        "checkbox.equals":              lambda a, b: a is b,
+    }
+
+
     def __init__(self, page: dict, condition: dict):
-        prop_name = condition['property']
-        self.property_obj = page['properties'][prop_name]
-        self.type_name, self.type_filter = self._extract_filter(condition)
+        self.page = page
+        self.condition = condition
 
-    def _extract_filter(self, cond: dict) -> tuple[str, dict]:
-        """Return (type_name, filter_dict) from a Notion condition."""
-        return next((k, v) for k, v in cond.items() if k != "property")
+        self.prop_name = self._extract_property()
+        self.property_obj = self._extract_property_obj()
+        self.type_name, self.type_filter = self._extract_filter()
+        self.actual_type = self._extract_actual_type()
 
-    def eval(self) -> bool:
-        op, val = next(iter(self.type_filter.items()))
+        self._validate_type()
+        self.op, self.value = self._extract_operator()
+        self._validate_operator()
+
+    def _extract_property(self) -> str:
         try:
-            func = _Condition._op_map[op]
-            if self.type_name in ['title', 'rich_text']:
-                operand = self.property_obj[self.type_name][0]['text']['content']
-            else:
-                operand = self.property_obj[self.type_name]
-            result = func(operand, val)
-            return result
-        except KeyError as ke:
-            raise Exception(f'Operator: {ke.args[0]} not supported or unknown') 
+            return self.condition["property"]
+        except KeyError:
+            raise ValueError("Filter condition missing 'property' key")
 
-class _CompositeCondition(_Condition):
-    def __init__(self, logical_op: str, conditions: Sequence[_Condition]):
-        self.logical_op = logical_op
-        self.conditions = conditions
+    def _extract_property_obj(self) -> dict:
+        try:
+            return self.page["properties"][self.prop_name]
+        except KeyError:
+            raise ValueError(f"Property '{self.prop_name}' not found on page")
+
+    def _extract_filter(self) -> tuple[str, dict]:
+        filters = [(k, v) for k, v in self.condition.items() if k != "property"]
+        if len(filters) != 1:
+            raise ValueError(f"Invalid filter structure for property '{self.prop_name}'")
+        return filters[0]
+
+    def _extract_actual_type(self) -> str:
+        try:
+            return self.property_obj['type']
+        except Exception:
+            raise ValueError(f"Malformed property object for '{self.prop_name}'")
+
+    def _validate_type(self):
+        if self.type_name != self.actual_type:
+            raise ValueError(
+                f"Invalid filter: property '{self.prop_name}' is of type '{self.actual_type}', "
+                f"not '{self.type_name}'"
+            )
+
+    def _extract_operator(self):
+        if len(self.type_filter) != 1:
+            raise ValueError(f"Invalid operator specification for '{self.prop_name}'")
+        return next(iter(self.type_filter.items()))
+
+    def _validate_operator(self):
+        allowed = self._allowed_ops[self.type_name]
+        if self.op not in allowed:
+            raise ValueError(
+                f"Operator '{self.op}' not allowed for type '{self.type_name}'. "
+                f"Allowed: {sorted(allowed)}"
+            )
 
     def eval(self) -> bool:
-        # IMPORTANT: You have to first eval all the conditions in an iterable!
-        iterable_cond = [cond.eval() for cond in self.conditions]
-        if self.logical_op == 'and':
-            result = all(iterable_cond)
-        elif self.logical_op == 'or':
-            result = any(iterable_cond)
-        else:
-            raise Exception(f'Logical operator {self.logical_op} not supported or unknown')
-        
-        return result
+        opname = f'{self.type_name}.{self.op}'
+        func = self._op_map[opname]
 
-class _Filter(_Condition):
-    """Initial implementation, it **does not supported nested composite conditions**."""
+        if self.type_name in ("title", "rich_text"):
+            texts = self.property_obj[self.type_name]
+            operand = (
+                texts[0]["text"]["content"]
+                if texts
+                else EMPTY_TEXT
+            )
+
+        elif self.type_name == 'date':
+            operand = normalize_page_date(self.property_obj.get("date"))
+
+            # unary operators
+            if self.op in ("is_empty", "is_not_empty"):
+                return func(operand, None)
+
+            # binary operators
+            self.value = normalize_filter_date(self.value)
+
+            if operand is None or self.value is None:
+                return False
+
+        else:
+            operand = self.property_obj[self.type_name]
+
+        return func(operand, self.value)
+
+class _LogicalCondition(_Expression):
+    def __init__(self, op: str, expressions: list[_Expression]):
+        self.op = op
+        self.expressions = expressions
+
+        if self.op == "not" and len(expressions) != 1:
+            raise ValueError("'not' operator requires exactly one condition")
+
+    def eval(self) -> bool:
+        if self.op == "and":
+            return all(expr.eval() for expr in self.expressions)
+        elif self.op == "or":
+            return any(expr.eval() for expr in self.expressions)
+        elif self.op == "not":
+            return not self.expressions[0].eval()
+        else:
+            raise ValueError(f"Unknown logical operator '{self.op}'")
+
+class _Filter:
     def __init__(self, page: dict, filter: dict):
         self.page = page
         self.filter = filter
-        self.compiled: _Condition = None
-        
-    def _compile(self) -> None:
-        filter_obj: dict = self.filter['filter']
-        is_composite = filter_obj.get('and') or filter_obj.get('or')
-        if is_composite:
-            conditions = []
-            logical_op, conds = next(iter(filter_obj.items()))
-            conditions = [_Condition(self.page, cond) for cond in conds]
-            self.compiled = _CompositeCondition(logical_op, conditions)
-        else:
-            self.compiled = _Condition(self.page, filter_obj)
+        self.compiled: _Expression | None = None
+
+    def _compile_expression(self, node: dict) -> _Expression:
+        # Logical nodes
+        if "and" in node:
+            return _LogicalCondition(
+                "and",
+                [self._compile_expression(child) for child in node["and"]],
+            )
+
+        if "or" in node:
+            return _LogicalCondition(
+                "or",
+                [self._compile_expression(child) for child in node["or"]],
+            )
+
+        if "not" in node:
+            return _LogicalCondition(
+                "not",
+                [self._compile_expression(node["not"])],
+            )
+
+        # Leaf node
+        return _Condition(self.page, node)
+
+    def _compile(self):
+        try:
+            filter_obj = self.filter["filter"]
+        except KeyError:
+            raise ValueError("Filter missing 'filter' key")
+
+        self.compiled = self._compile_expression(filter_obj)
 
     def eval(self) -> bool:
         if not self.compiled:
             self._compile()
-
         return self.compiled.eval()
+
+def _extract_sort_value(page: dict, prop_name: str):
+    try:
+        prop = page["properties"][prop_name]
+    except KeyError:
+        raise ValueError(f"Sort property '{prop_name}' not found on page")
+
+    prop_type = prop["type"]
+
+    if prop_type in ("title", "rich_text"):
+        texts = prop[prop_type]
+        return (
+            texts[0]["text"]["content"]
+            if texts
+            else EMPTY_TEXT
+        )
+
+    if prop_type == "number":
+        return prop["number"]
+
+    if prop_type == "checkbox":
+        return prop["checkbox"]
+
+    if prop_type == "date":
+        date = prop.get("date")
+        normalized = normalize_page_date(date)
+        return normalized["start"] if normalized else None
+
+    raise ValueError(f"Sorting not supported for property type '{prop_type}'")

@@ -85,3 +85,10 @@ class CompileError(NormliteError):
 
     .. versionadded:: 0.8.0
     """
+
+class ObjectNotExecutableError(ArgumentError):
+    """Raised when an object is passed to .execute() that can't be
+    executed as SQL.
+
+    .. versionadded:: 0.8.0
+    """

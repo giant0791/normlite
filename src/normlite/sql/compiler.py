@@ -16,15 +16,22 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
+from contextlib import contextmanager
+import copy
 import pdb
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from normlite._constants import SpecialColumns
-from normlite.sql.base import SQLCompiler
+from normlite.exceptions import CompileError
+from normlite.sql.base import _CompileState, CompilerState, SQLCompiler
+from normlite.sql.dml import OrderByClause
+from normlite.sql.elements import _BindRole, BooleanClauseList, Operator, OrderByExpression, ColumnElement
+from normlite.sql.elements import BindParameter
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateColumn, CreateTable, HasTable, ReflectTable
-    from normlite.sql.dml import Insert
+    from normlite.sql.dml import Insert, Select
+    from normlite.sql.elements import UnaryExpression, BinaryExpression, BindParameter
 
 class NotionCompiler(SQLCompiler):
     """Notion compiler for SQL statements.
@@ -198,6 +205,11 @@ class NotionCompiler(SQLCompiler):
                 'result_columns': ['_no_id']
             }
     """
+
+    def __init__(self):
+        self._compiler_state = CompilerState()
+        self._bind_counter = 0
+
     def visit_create_table(self, ddl_stmt: CreateTable) -> dict:
         """Compile a ``CREATE TABLE`` statement.
         
@@ -286,6 +298,7 @@ class NotionCompiler(SQLCompiler):
             'table_catalog': hastable._table_catalog
         }
 
+
         # IMPORTANT: You need the table_id column which stores the found database's id
         result_columns = ['table_id']
         return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}
@@ -321,28 +334,299 @@ class NotionCompiler(SQLCompiler):
         Returns:
             dict: The dictionary containing the compiled object.
         """
-        no_insert_obj = {}
-        no_insert_obj['parent'] = {
-           'type': 'database_id',
-           'database_id': ':database_id'
-        }
-        
-        properties = {}
-        for col in insert._table.c:
-            if col.name.startswith('_no_'):
-                continue
-            bind_proc = col.type_.bind_processor()
-            # bind the named parameter not the value yet
-            properties[col.name] = bind_proc(f':{col.name}')        
+        self._compiler_state.is_insert = True
+        self._compiler_state.stmt = insert
+        payload = {}
+        db_id_key = None
 
-        no_insert_obj['properties'] = properties
-        operation = dict(endpoint='pages', request='create', template=no_insert_obj)
+        if insert._values is None:
+            # create a mapping for all user columns with dummy values
+            placeholders = {
+                col.name: 'placeholder_value'
+                for col in insert.table.get_user_defined_colums()
+            }
 
-        # parameters also contains the parent id, the database id the row being inserted belongs
-        parameters = dict(database_id=insert._table._database_id)
-        parameters.update(dict(**insert._values) if insert._values else dict())
+            insert = insert.values(**placeholders)
+
+        with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
+            db_id_key = self._add_bindparam(
+                BindParameter(
+                    key='database_id', 
+                    value=insert._table.get_oid(), 
+                )
+            )
+
+            payload['parent'] = {
+                'type': 'database_id',
+                'database_id': f':{db_id_key}'
+            }
+
+        with self._compiling(new_state=_CompileState.COMPILING_VALUES):
+            payload['properties'] = self._compile_insert_update_values(insert._values)
+
+        operation = dict(endpoint='pages', request='create')
 
         # IMPORTANT: concatenate the values tuple containing the special columns WITH the returning tuple.
         # This ensures that the values for the special columns are always available even if the returning tuple is ().
-        result_columns = SpecialColumns.values() + insert._returning
-        return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}    
+        self._compiler_state.result_columns = insert._returning
+        return {'operation': operation, 'payload': payload}  
+
+    def visit_order_by_clause(self, clause: OrderByClause) -> dict:
+        if not clause.clauses:
+            return {}
+
+        sorts = []
+        for expr in clause.clauses:
+            compiled = expr._compiler_dispatch(self)
+            sorts.append(compiled)
+
+        return sorts
+    
+    def visit_order_by_expression(self, expr: OrderByExpression) -> dict:
+        column = expr.column
+
+        if not isinstance(column, ColumnElement):
+            raise CompileError(
+                f"""
+                    order_by() only supports column elements,
+                    supplied: {column.__class__.__name__}
+                """
+            )
+        
+        return {
+            'property': column.name,
+            'direction': expr.direction
+        }
+
+    def visit_select(self, select: Select) -> dict:
+        self._compiler_state.is_select = select.is_select
+        self._compiler_state.stmt = select
+
+        operation = dict(endpoint='databases', request='query')
+        path_params = {}
+        query_params = {}
+        payload = {
+            'page_size': 100        # Notion imposed max page size
+        }
+        database_id = select.table.get_oid()
+        if database_id is None:
+            raise CompileError(f'Table: {select.table.name} has not been previously reflected.')
+        
+        with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
+            db_id_key = self._add_bindparam(
+                BindParameter(
+                    key='database_id',
+                    value=database_id
+                )
+            )
+            path_params['database_id'] = f':{db_id_key}'
+     
+        if select._whereclause.has_expression():
+            with self._compiling(new_state=_CompileState.COMPILING_WHERE):
+                # emit the JSON code for the filter object of the query
+                # in the right context
+                filter_obj = select._whereclause.expression._compiler_dispatch(self)
+                payload['filter'] = filter_obj
+
+        projection = self._compiler_state.stmt._projection
+        self._compiler_state.result_columns = [
+                col.name 
+                for col in select.table.c 
+                if col.name in SpecialColumns.values()
+        ]
+
+        if projection:
+            # use select projections for the result columns    
+            self._compiler_state.result_columns.extend(projection)
+            query_params['filter_properties'] = projection
+        
+        else:
+            # the select statement provides no projections
+            # add all user defined columns
+            user_cols = [col.name for col in select.table.get_user_defined_colums()]
+            self._compiler_state.result_columns.extend(user_cols)
+
+        if select._order_by.has_expression():
+            sorts_obj = select._order_by._compiler_dispatch(self)
+            payload['sorts'] = sorts_obj
+
+        compiled_dict = {
+            'operation': operation, 
+            'path_params': path_params, 
+            'payload': payload
+        }
+
+        if query_params:           
+            compiled_dict['query_params'] = query_params
+
+        return compiled_dict
+
+    def visit_binary_expression(self, expression: BinaryExpression) -> dict:
+        return {
+            "property": expression.column.name,
+            **self._compile_type_filter(
+                expression.column,
+                expression.operator,
+                expression.value
+            )
+        }
+    
+    def visit_unary_expression(self, expression: UnaryExpression) -> dict:
+        if expression.operator != "not":
+            raise NotImplementedError(
+                f"Unsupported unary operator: {expression.operator}"
+            )
+
+        inner = expression.element._compiler_dispatch(self)
+
+        return {
+            "not": inner
+        }
+    
+    def visit_boolean_clause_list(self, expression: BooleanClauseList) -> dict:
+        clauses = [
+            clause._compiler_dispatch(self)
+            for clause in expression.clauses
+        ]
+        return {
+            expression.operator: clauses
+        }
+
+    def _next_bind_key(self) -> str:
+        key = f"param_{self._bind_counter}"
+        self._bind_counter += 1
+        return key
+
+    def _add_bindparam(
+            self, 
+            bindparam: BindParameter, 
+            column_name: Optional[str] = None,
+        ) -> str:
+
+        if bindparam.role != _BindRole.NO_BINDROLE:
+            raise CompileError("BindParameter role already assigned")
+
+        state = self._compiler_state.compile_state
+
+        if state == _CompileState.COMPILING_WHERE:
+            # SELECT / WHERE: autogenerated key
+            if column_name is not None:
+                raise CompileError('Bind parameters in a where clause shall not have a column name.')
+            
+            key = self._next_bind_key()
+            bindparam.key = key
+            bindparam.role = _BindRole.COLUMN_FILTER
+        
+        elif state == _CompileState.COMPILING_VALUES:
+           # INSERT / UPDATE: key must be column name
+            if column_name is None:
+                raise CompileError(
+                    "Bind parameters in insert/update require a column name"
+                )
+            key = column_name
+            bindparam.key = key
+            stmt_table = getattr(self._compiler_state.stmt, '_table', None)
+            if stmt_table is None:
+                stmt = self._compiler_state.stmt
+                raise CompileError(
+                    f"""
+                        Expected an insert or update statement, 
+                        received: {repr(stmt)}
+                    """
+                )
+
+            try:
+                column = stmt_table.c[column_name]
+                bindparam.type_ = column.type_
+                bindparam.role = _BindRole.COLUMN_VALUE
+            except KeyError as ke:
+                raise CompileError(
+                    f'Column name: {ke.args[0]} not found in table: {stmt_table.name}'
+                )
+
+        elif state == _CompileState.COMPILING_DBAPI_PARAM:
+            # DBAPI parameter: use the already available key
+            if bindparam.key is None:
+                raise CompileError('Bind parameter supplied for DBAPI has a None key.')
+
+            key = bindparam.key
+            bindparam.role = _BindRole.DBAPI_PARAM
+            
+        else:
+            stmt = self._compiler_state.stmt
+            raise CompileError(
+                f"""
+                    Invalid compiler state: {state}, 
+                    while compiling statement: {repr(stmt)}.
+                """
+            )
+
+        self._compiler_state.execution_binds[key] = bindparam
+        return key
+
+    def _compile_type_filter(
+            self, 
+            column: ColumnElement, 
+            operator: Operator, 
+            bindparam: BindParameter
+    ) -> dict:
+        type_ = column.type_
+        if type_ is not bindparam.type_:
+            raise CompileError(
+                f"""
+                    Type mismatch between column element: {column.name} 
+                    and bind parameter: {bindparam.key}:
+                    column element type: {type_.__class__.__name__}
+                    bind parameter type: {bindparam.type_.__class__.__name__}
+                    in binary expression: {operator}
+                """
+            )
+        notion_type = type_.get_col_spec()
+        notion_op = type_.supported_ops[operator]
+
+        # allocate placeholder
+        key = self._add_bindparam(bindparam)
+
+        # IMPORTANT: No processing here.
+        # Compiler must stay syntactic, binding (and processing) is done at execution time
+        return {
+            notion_type: {
+                notion_op: f':{key}'
+            }
+        }
+    
+    def _compile_insert_update_values(self, values: dict) -> dict:
+        properties = {}
+        stmt_table = self._compiler_state.stmt._table
+        user_cols = stmt_table.get_user_defined_colums()
+        if len(user_cols) != len(values):
+            raise CompileError(
+                'Not enough values supplied for all user defined columns '
+                f'in INSERT statment: {len(user_cols)} != {len(values)}')
+
+        # reorder the keys in values according to the order in user_cols
+        ordered_values = {}
+        try:
+            ordered_values = {
+                col.name: values[col.name]
+                for col in user_cols
+            }
+        except KeyError as ke:
+            raise CompileError(
+                f'No value for column "{ke.args[0]}" found in values {values}'
+            ) from ke
+
+        for col, bindparam in zip(user_cols, ordered_values.values()):
+            param_key = self._add_bindparam(bindparam, col.name)
+            properties[col.name] = f':{param_key}'
+
+        return properties
+    
+    @contextmanager
+    def _compiling(self, new_state: _CompileState):
+        prev = self._compiler_state.compile_state
+        self._compiler_state.compile_state = new_state
+        try:
+            yield
+        finally:
+            self._compiler_state.compile_state = prev

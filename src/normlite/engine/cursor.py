@@ -20,6 +20,7 @@ from __future__ import annotations
 import pdb
 from typing import Iterator, Optional, Sequence
 
+from normlite.engine.context import ExecutionContext
 from normlite.exceptions import MultipleResultsFound, NoResultFound, ResourceClosedError
 from normlite.engine.resultmetadata import _NO_CURSOR_RESULT_METADATA, CursorResultMetaData
 from normlite.engine.row import Row
@@ -32,6 +33,8 @@ class CursorResult:
     This class is an adapter to the DBAPI cursor (see :class:`normlite.notiondbapi.dbapi2.Cursor`) 
     representing state from the DBAPI cursor. It provides a high level API to
     access returned database rows as :class:`Row` objects. 
+    CursorResult is a **consuming, read-only façade** over a DBAPI cursor.
+    It does not mutate result data, but **does manage cursor exhaustion and closure**.
 
     Note:
         If a closed DBAPI cursor is passed to the init method, this cursor result automatically
@@ -56,13 +59,12 @@ class CursorResult:
     """
     def __init__(
             self, 
-            dbapi_cursor: Cursor,
-            compiled: Compiled
+            context: ExecutionContext,
     ) -> None:
-        self._cursor = dbapi_cursor
+        self._cursor = context.cursor
         """The underlying DBAPI cursor."""
 
-        self._compiled = compiled
+        self._compiled = context.compiled
         """The execution context that produced this cursor result.
         
         .. versionadded: 0.8.0
@@ -75,7 +77,7 @@ class CursorResult:
             self._metadata = CursorResultMetaData(
                 self._cursor.description, 
                 self._compiled.is_ddl,
-                self._compiled._result_columns)
+                self._compiled.result_columns())
 
         else:
             # the cursor passed has not executed any operation yet
