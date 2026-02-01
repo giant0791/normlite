@@ -17,7 +17,6 @@ from normlite.sql.type_api import Boolean, Date, Integer, String
 def mocked_db_id() -> str:
     return str(uuid.uuid4())
 
-
 @pytest.fixture
 def metadata() -> MetaData:
     return MetaData()
@@ -178,14 +177,20 @@ def test_not_all_mappings():
 #---------------------------------------------------
 # Resolve parameters tests
 #---------------------------------------------------
-def test_resolve_params_for_insert(students: Table, insert_values: dict):
+def test_resolve_params_for_insert(engine: Engine, students: Table, insert_values: dict):
     insert_stmt = insert(students).values(
         **insert_values
     )
 
     compiled = insert_stmt.compile(NotionCompiler())
     distilled_params = [{"id": 6789012}]
-    ctx = ExecutionContext(None, compiled, distilled_params)
+    ctx = ExecutionContext(
+        engine, 
+        engine.connect(), 
+        engine.raw_connection().cursor(), 
+        compiled, 
+        distilled_params
+    )
     ctx.pre_exec()
 
     assert ctx.execution_style == ExecutionStyle.SINGLE
@@ -193,10 +198,15 @@ def test_resolve_params_for_insert(students: Table, insert_values: dict):
     assert payload['parent']['database_id'] == students.get_oid()
     assert payload['properties']['id']['number'] == 6789012
 
-def test_resolve_params_for_select(students: Table):
+def test_resolve_params_for_select(engine: Engine, students: Table):
     select_stmt = select(students.c.id, students.c.is_active).where(students.c.name == 'Galileo Galilei')
     compiled = select_stmt.compile(NotionCompiler())
-    ctx = ExecutionContext(None, compiled)
+    ctx = ExecutionContext(
+        engine, 
+        engine.connect(), 
+        engine.raw_connection().cursor(), 
+        compiled, 
+    )
     ctx.pre_exec()
 
     assert ctx.execution_style == ExecutionStyle.SINGLE
@@ -222,6 +232,8 @@ def test_execute_dml_context_returning(engine: Engine, students: Table, insert_v
     compiled = insert_stmt.compile(engine._sql_compiler)
     cursor = engine.raw_connection().cursor()
     ctx = ExecutionContext(
+        engine,
+        engine.connect(),
         cursor=cursor,
         compiled=compiled,
         distilled_params=distilled_params
@@ -257,6 +269,8 @@ def test_execute_dml_context_projection(engine: Engine, students: Table):
     compiled = select_stmt.compile(engine._sql_compiler)
     cursor = engine.raw_connection().cursor()
     ctx = ExecutionContext(
+        engine,
+        engine.connect(),
         cursor=cursor,
         compiled=compiled,
     )
@@ -278,8 +292,64 @@ def test_execute_dml_context_projection(engine: Engine, students: Table):
     assert 'start_on' not in row_1_mapping
     assert rows[1]['is_active'] == False
 
-def test_execute_return_bulk_context(engine: Engine):
-    pass
 
-def test_execute_parameter_bulk_context(engine: Engine):
-    pass
+#---------------------------------------------
+# Execution pipeline tests
+#---------------------------------------------
+def test_connection_exec_dml_context_returning(engine: Engine, students: Table, insert_values: dict):
+    # create database and mock reflection
+    database_id = create_students_db(engine)
+    students.set_oid(database_id)
+    insert_stmt = insert(students).returning(students.c.name, students.c.id)
+
+    with engine.connect() as connection:
+        execution_options = {
+            "isolation_level": "AUTOCOMMIT"
+        }
+        result = connection.execute(
+            insert_stmt, 
+            insert_values, 
+            execution_options=execution_options
+        )
+
+    row = result.one()
+    mapping = row.mapping()
+
+    assert students.c.name.name in mapping
+    assert students.c.id.name in mapping
+    assert not students.c.is_active.name in mapping
+
+def test_connection_exec_dml_context_projection(engine: Engine, students: Table):
+    # create database and mock reflection
+    database_id = create_students_db(engine)
+    students.set_oid(database_id)
+
+    # add rows
+    inserted_ids = add_students_rows(engine, students)
+
+    # construct select with projection
+    select_stmt = (
+        select(students.c.is_active)
+        .where(students.c.start_on.after(date(1580,1,1)))
+    )
+
+    with engine.connect() as connection:
+        execution_options = {
+            "isolation_level": "refetch"
+        }
+        result = connection.execute(
+            select_stmt, 
+            execution_options=execution_options
+        )
+
+    rows = result.all()
+    row_0_mapping = rows[0].mapping()
+    row_1_mapping = rows[1].mapping()
+    
+    assert len(rows) == 2
+    assert students.c.is_active.name in row_0_mapping
+    assert 'name' not in row_0_mapping
+    assert rows[0]['is_active'] == False
+    assert 'is_active' in row_1_mapping
+    assert 'start_on' not in row_1_mapping
+    assert rows[1]['is_active'] == False

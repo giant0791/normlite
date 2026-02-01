@@ -67,27 +67,28 @@ Here a quick example of how to use :class:`Engine` and :class:`Connection`.
 from __future__ import annotations
 from pathlib import Path
 import pdb
-from typing import Any, Optional, Sequence, TypeAlias, TYPE_CHECKING
+from typing import Any, Mapping, Optional, Sequence, TypeAlias, TYPE_CHECKING, overload
 from dataclasses import dataclass
 from typing import Optional, Literal, Union
 from urllib.parse import urlparse, parse_qs, unquote
 import uuid
 
 from normlite.engine.cursor import CursorResult
-from normlite.engine.context import ExecutionContext
-from normlite.engine.interfaces import _distill_params
+from normlite.engine.context import ExecutionContext, ExecutionStyle
+from normlite.engine.interfaces import ReturningStrategy, _distill_params, IsolationLevel
 from normlite.exceptions import ArgumentError, ObjectNotExecutableError
 from normlite.future.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.sql.base import Compiled
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.ddl import HasTable, ReflectTable
-from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, IsolationLevel, Cursor as DBAPICursor
+from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor
+from normlite.utils import frozendict
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table, HasIdentifier
     from normlite.sql.base import Executable
-    from normlite.engine.interfaces import _CoreAnyExecuteParams
+    from normlite.engine.interfaces import _CoreAnyExecuteParams, IsolationLevel, CompiledCacheType, ExecutionOptions
 
 class Connection:
     """Provide high level API to a connection to Notion databases.
@@ -104,19 +105,64 @@ class Connection:
     
     """
 
+    _execution_options: ExecutionOptions
+
     def __init__(self, engine: Engine):
         self._engine = engine
         """The engine used to procure the underlying DBAPI connection."""
+
+        # TODO: initialize the connection's execution options with the engine's one
+        # self._execute_options = frozendict(**engine._execution_options)
+        self._execution_options = frozendict()
         
     @property
     def connection(self) -> DBAPIConnection:
         """Provide the underlying DBAPI connection managed by this connection object."""
         return self._engine.raw_connection()
 
+    @overload
+    def execution_options(
+        self,
+        *,
+        compiled_cache: Optional[CompiledCacheType] = ...,
+        logging_token: str = ...,
+        isolation_level: IsolationLevel = ..., # type: ignore
+        returning_strategy: ReturningStrategy = "echo",
+        preserve_rowcount: bool = False,            
+        **opts: Any
+    ) -> Connection:
+        ...
+
+    @overload
+    def execution_options(self, **opts: Any) -> Connection:
+        ...
+
+    def execution_options(self, **opts: Any) -> Connection:
+        """Update the execution options **in-place** returning the same connection's instance.
+        
+        .. versionadded:: 0.8.0
+        """
+
+        self._execution_options = self._execution_options | frozendict(opts)
+        return self
+
+    def get_execution_options(self) -> ExecutionOptions:
+        """Return the execution options that will take effect during execution.
+        
+        .. versionadded:: 0.8.0
+
+        .. seealso::
+        
+            :meth:`Engine.execution_execution_options`
+        """
+        return self._execution_options
+
     def execute(
             self, 
             stmt: Executable, 
-            parameters: Optional[_CoreAnyExecuteParams] = None
+            parameters: Optional[_CoreAnyExecuteParams] = None,
+            *,
+            execution_options: Mapping[str, Any] = None
     ) -> CursorResult:
         """Execute an SQL statement.
 
@@ -151,17 +197,62 @@ class Connection:
 
         """
         
-        # normalize parameters to sequence of mappings
-        distilled_params = _distill_params(parameters)
-
         # delegate to statement execution trigger
         try:
-            exec_method = stmt._execute_on_connection(self, distilled_params)
+            exec_method = stmt._execute_on_connection(
+                self, 
+                parameters, 
+                execution_options=execution_options
+            )
         except AttributeError as ae:
+            pdb.set_trace()
             raise ObjectNotExecutableError(stmt) from ae 
         
         return exec_method
+    
+    def _execute_context(
+            self,
+            elem: Executable,
+            parameters: Optional[_CoreAnyExecuteParams] = None,
+            *,
+            execution_options: Mapping[str, Any]
+    ) -> CursorResult:
 
+        # 2. compile the statement
+        compiler = self._engine._sql_compiler
+        compiled = elem.compile(compiler)
+
+        # 3. distill parameters
+        distilled_params = _distill_params(parameters)  
+
+        ctx = ExecutionContext(
+            self._engine,
+            self,
+            self._engine.raw_connection().cursor(),
+            compiled,
+            distilled_params,
+            execution_options=execution_options
+        )
+
+        ctx.pre_exec()
+        if ctx.execution_style == ExecutionStyle.SINGLE:
+            return self._execute_single(ctx)
+        
+        raise NotImplementedError('SINGLE execution style supported only.')
+
+    def _execute_single(self, context: ExecutionContext) -> CursorResult:
+        self._engine.do_execute(
+            context.cursor, 
+            context.operation, 
+            context.parameters
+        )
+        context.post_exec()
+        return context.setup_cursor_result()
+
+    def _resolve_execution_options(self, stmt_execution_options: ExecutionOptions) -> ExecutionOptions:
+        """Resolve the connection's execution options with the statement's ones."""
+        pass
+    
     def commit(self) -> None:
         """Commit the transaction currently in progress.
         
@@ -269,6 +360,8 @@ def _parse_uri(uri: str) -> NotionURI:
 
 def create_engine(
         uri: str,
+        *,
+        execution_options: Optional[ExecutionOptions] = None,
         **kwargs: Any
 ) -> Engine:
     """Create a new engine proxy object to connect and interact to the Notion integration denoted by the supplied URI.
@@ -294,7 +387,7 @@ def create_engine(
     Returns:
         Engine: The engine proxy object.
     """
-    return Engine(_parse_uri(uri), **kwargs)
+    return Engine(_parse_uri(uri), execution_options=execution_options, **kwargs)
 
 class Engine:
     """Provide a convenient proxy object of database connectivity to Notion integrations.
@@ -316,7 +409,16 @@ class Engine:
             that includes discovery and avoids overwriting.
             The root page is created for simulated clients only.
     """
-    def __init__(self, uri: NotionURI, **kwargs: Any) -> None:
+
+    _execution_options: ExecutionOptions
+    """Engine's execution options."""
+
+    def __init__(
+            self, uri: 
+            NotionURI, 
+            *,
+            execution_options: Optional[ExecutionOptions] = None,
+            **kwargs: Any) -> None:
         if isinstance(uri, NotionAuthURI):
             raise NotImplementedError(
                 "Auth-based integrations are not supported yet."
@@ -324,6 +426,8 @@ class Engine:
 
         self._uri = uri
         """The Notion URI denoting the integration to connect to."""
+
+        self._execution_options = frozendict(execution_options or {})
 
         # -------------------------
         # Engine identity / config
@@ -367,7 +471,7 @@ class Engine:
         self._init_client: bool = kwargs.get("init_client", True)
         """Whether the client shall be initialized with the ``normlite`` datastructures. Defaults to ``True``."""
 
-        self._isolation_level: IsolationLevel = "AUTOCOMMIT"
+        self._isolation_level: IsolationLevel = "AUTOCOMMIT" # type: ignore
         """Isolation level for transactions. Defaults to ``AUTOCOMMIT``."""
 
         self._create_client(uri)
@@ -383,6 +487,43 @@ class Engine:
         
         .. versionadded:: 0.7.0
         """
+
+    @overload
+    def execution_options(
+        self,
+        *,
+        compiled_cache: Optional[CompiledCacheType] = ...,
+        logging_token: str = ...,
+        isolation_level: IsolationLevel = ..., # type: ignore
+        returning_strategy: ReturningStrategy = "echo",
+        preserve_rowcount: bool = False,            
+        **opts: Any
+    ) -> Engine:
+        ...
+
+    @overload
+    def execution_options(self, **opts: Any) -> Engine:
+        ...
+
+    def execution_options(self, **opts: Any) -> Engine:
+        """Update the execution options **in-place** returning the same engine's instance.
+        
+        .. versionadded:: 0.8.0
+        """
+
+        self._execution_options = self._execution_options | frozendict(opts)
+        return self
+
+    def get_execution_options(self) -> ExecutionOptions:
+        """Return the execution options that will take effect during execution.
+        
+        .. versionadded:: 0.8.0
+
+        .. seealso::
+
+            :meth:`Engine.execution_execution_options`
+        """
+        return self._execution_options
 
     # -------------------------------------------------
     # Client creation + bootstrap

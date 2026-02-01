@@ -24,16 +24,33 @@ from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable, ClauseElement, generative
 from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElement
+from normlite.utils import frozendict
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
+    from normlite.engine.interfaces import _CoreAnyExecuteParams
+    from normlite.engine.cursor import CursorResult
+    from normlite.engine.base import Connection
 
 class ExecutableClauseElement(Executable):
     is_ddl = False
 
-    def _execute_on_connection(self, connection, params, execution_options):
-        return connection._execute_clauseelement(
-            self, params, execution_options
+    def _execute_on_connection(
+            self, 
+            connection: Connection, 
+            params: Optional[_CoreAnyExecuteParams],
+            *, 
+            execution_options: Optional[dict] = None
+    ) -> CursorResult:
+
+        stmt_opts = self._execution_options or {}
+        call_opts = execution_options or {}
+        merged_execution_options = stmt_opts | call_opts
+
+        return connection._execute_context(
+            self, 
+            params, 
+            execution_options=merged_execution_options
         )
 
 class ValuesBase(ExecutableClauseElement):

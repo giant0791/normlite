@@ -16,8 +16,32 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Mapping, Optional, Sequence, Union
+from __future__ import annotations
+from typing import TYPE_CHECKING, Any, Literal, Mapping, Optional, Sequence, TypedDict, Union
 
+if TYPE_CHECKING:
+    from normlite.sql.base import Compiled
+
+    CompiledCacheType = Mapping[Any, Compiled]
+
+IsolationLevel = Literal[
+    "SERIALIZABLE",
+    "REPEATABLE READ",
+    "READ COMMITTED",
+    "READ UNCOMMITTED",
+    "AUTOCOMMIT", 
+]
+""""AUTOCOMMIT" is currently the only supported isolation level."""
+
+ReturningStrategy = Literal["echo", "refetch"]
+
+
+
+class ExecutionOptions(TypedDict, total=False):
+    compiled_cache: Optional[CompiledCacheType]
+    logging_token: str
+    isolation_level: IsolationLevel
+    preserve_rowcount: bool
 
 _CoreSingleExecuteParams = Mapping[str, Any]
 _CoreMultiExecuteParams = Sequence[_CoreSingleExecuteParams]
