@@ -34,7 +34,7 @@ class Row:
 
     
     def _process_dml_row(self, row_data: tuple) -> None:
-        for col_name, rec in self._metadata._colmap.items():
+        for rec in self._metadata._colmap.values():
             _, col_index, col_type = rec
 
             type_factory = type_mapper[col_type]
