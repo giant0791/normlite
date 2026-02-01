@@ -289,9 +289,12 @@ class OrderByClause(HasExpression, ClauseElement):
     def has_expression(self) -> bool:
         return self.clauses
 
-class Select(Executable):
+class Select(ExecutableClauseElement):
     __visit_name__ = 'select'
     is_select = True
+
+    _projection: Sequence[str]
+    """The column names to be projected in this select statement."""
 
     def __init__(self, *entities: Union[Table, Column]):
         from normlite.sql.schema import Column, Table
@@ -311,10 +314,10 @@ class Select(Executable):
             # a Table object has been provided
             table = entities[0]
             self.table = table
-            self._projection = None  # project all columns
+            self._projection = []  # project all columns
             return
 
-        # A list of columns has bein provided
+        # A list of columns has been provided
         tables = set()
         columns: list[Column] = []
 
@@ -340,7 +343,7 @@ class Select(Executable):
                 raise ArgumentError(
                     f'Column: {col.name} does not belong to table: {self.table.name}'
                 )
-        self._projection = list(columns)
+        self._projection = [col.name for col in columns]
 
     @generative
     def where(self, expr: ColumnElement) -> Self:

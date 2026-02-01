@@ -339,6 +339,15 @@ class NotionCompiler(SQLCompiler):
         payload = {}
         db_id_key = None
 
+        if insert._values is None:
+            # create a mapping for all user columns with dummy values
+            placeholders = {
+                col.name: 'placeholder_value'
+                for col in insert.table.get_user_defined_colums()
+            }
+
+            insert = insert.values(**placeholders)
+
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
@@ -359,7 +368,7 @@ class NotionCompiler(SQLCompiler):
 
         # IMPORTANT: concatenate the values tuple containing the special columns WITH the returning tuple.
         # This ensures that the values for the special columns are always available even if the returning tuple is ().
-        self._compiler_state.result_columns = SpecialColumns.values() + insert._returning
+        self._compiler_state.result_columns = insert._returning
         return {'operation': operation, 'payload': payload}  
 
     def visit_order_by_clause(self, clause: OrderByClause) -> dict:
@@ -420,21 +429,22 @@ class NotionCompiler(SQLCompiler):
                 payload['filter'] = filter_obj
 
         projection = self._compiler_state.stmt._projection
+        self._compiler_state.result_columns = [
+                col.name 
+                for col in select.table.c 
+                if col.name in SpecialColumns.values()
+        ]
+
+        if projection:
+            # use select projections for the result columns    
+            self._compiler_state.result_columns.extend(projection)
+            query_params['filter_properties'] = projection
         
-        if projection is None:
-            # the entire table was passed in the statement constructor:
-            # all columns shall be returned in the result
-            # sys columns are always part of the result columns and are added
-            # by the execution context
-            self._compiler_state.result_columns = list(select.table.get_user_defined_colums())
         else:
-            # only a subset of columns was passed in the statement constructor:
-            # the specified columns shall be returned in the result
-            # sys columns are always part of the result columns and are added
-            # by the execution context
-            column_names = list(col.name for col in projection)
-            self._compiler_state.result_columns = list(col for col in projection)
-            query_params['filter_properties'] = column_names
+            # the select statement provides no projections
+            # add all user defined columns
+            user_cols = [col.name for col in select.table.get_user_defined_colums()]
+            self._compiler_state.result_columns.extend(user_cols)
 
         if select._order_by.has_expression():
             sorts_obj = select._order_by._compiler_dispatch(self)
@@ -446,7 +456,7 @@ class NotionCompiler(SQLCompiler):
             'payload': payload
         }
 
-        if  query_params:           
+        if query_params:           
             compiled_dict['query_params'] = query_params
 
         return compiled_dict

@@ -276,6 +276,8 @@ class Compiled:
         in the rows produced by the :class:`normlite.cursor.CursorResult` methods.
         """
 
+        self._compiler_state = compiler._compiler_state
+
     @property
     def string(self) -> str:
         """Provide a linted string of this compiled object."""
