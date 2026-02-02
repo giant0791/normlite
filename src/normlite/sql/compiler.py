@@ -243,8 +243,7 @@ class NotionCompiler(SQLCompiler):
                 'page_id': f':{parent_id_key}'
             }
         
-        with self._compiling(new_state=_CompileState.COMPILING_DB_TITLE):
-            # emit code for title object
+           # emit code for title object
             title_key = self._add_bindparam(
                 BindParameter(
                     key='table_name',
@@ -254,7 +253,7 @@ class NotionCompiler(SQLCompiler):
 
             payload['title'] = [{
                 'text': {
-                    'content': ':table_name'
+                    'content': f':{title_key}'
                 }
             }]
 
@@ -573,15 +572,6 @@ class NotionCompiler(SQLCompiler):
 
             key = bindparam.key
             bindparam.role = _BindRole.DBAPI_PARAM
-
-        elif state == _CompileState.COMPILING_DB_TITLE:
-            # database "title" object
-            if bindparam.key is None:
-                raise CompileError('Bind parameter supplied for database "title" has a None key.')
-            
-            key = bindparam.key
-            bindparam.role = _BindRole.DB_TITLE_VALUE
-            bindparam.type_ = String(is_title=True)
             
         else:
             stmt = self._compiler_state.stmt

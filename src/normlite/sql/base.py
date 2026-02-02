@@ -238,19 +238,10 @@ class Executable(ClauseElement):
         raise NotImplementedError
 
 class _CompileState(Enum):
-    NOT_STARTED           = auto()
-    COMPILING_VALUES      = auto()
-    COMPILING_WHERE       = auto()
-    COMPILING_DBAPI_PARAM = auto()
-    COMPILING_DB_TITLE    = auto()
-    """Compile the database "title" property.
-    
-    .. versionadded:: 0.8.0
-
-    .. seealso::
-
-        :class:`normlite.sql.ddl.CreateTable`
-    """  
+    NOT_STARTED            = auto()
+    COMPILING_VALUES       = auto()
+    COMPILING_WHERE        = auto()
+    COMPILING_DBAPI_PARAM  = auto()
 
 @dataclass
 class CompilerState:

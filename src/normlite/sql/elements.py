@@ -353,7 +353,6 @@ class _BindRole(Enum):
     COLUMN_VALUE   = auto()
     COLUMN_FILTER  = auto()
     DBAPI_PARAM    = auto()
-    DB_TITLE_VALUE = auto()
 
 class BindParameter(ColumnElement):
     def __init__(

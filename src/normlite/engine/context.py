@@ -396,7 +396,7 @@ class ExecutionContext:
 
         if bindparam.role == _BindRole.COLUMN_FILTER:
             processor = type_.filter_value_processor()
-        elif bindparam.role in (_BindRole.COLUMN_VALUE, _BindRole.DB_TITLE_VALUE, ):
+        elif bindparam.role == _BindRole.COLUMN_VALUE:
             processor = type_.bind_processor()
         elif bindparam.role == _BindRole.DBAPI_PARAM:
             processor = None

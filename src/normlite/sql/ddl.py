@@ -30,7 +30,10 @@ from normlite.sql.schema import HasIdentifier
 from normlite.sql.type_api import type_mapper
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import Table, Column
+    from normlite.sql.schema import Table
+    from normlite.engine.interfaces import _CoreAnyExecuteParams
+    from normlite.engine.cursor import CursorResult
+    from normlite.engine.base import Connection
 
 
 @dataclass
@@ -68,7 +71,7 @@ class _ColumnMetadata:
         Factory = type_mapper[self.type_code]
         return Factory(self.args)   # args set only types only
 
-class DDLStatement(Executable):
+class ExecutableDDLStatement(Executable):
     """Base class for all DDL executable statements.
     
     .. versionadded:: 0.8.0
@@ -76,7 +79,24 @@ class DDLStatement(Executable):
     """
     is_ddl = True
 
-class CreateTable(Executable):
+    def _execute_on_connection(
+            self, 
+            connection: Connection, 
+            params: Optional[_CoreAnyExecuteParams],
+            *, 
+            execution_options: Optional[dict] = None
+    ) -> CursorResult:
+
+        stmt_opts = self._execution_options or {}
+        call_opts = execution_options or {}
+        merged_execution_options = stmt_opts | call_opts
+
+        return connection._execute_context(
+            self, 
+            execution_options=merged_execution_options
+        )
+
+class CreateTable(ExecutableDDLStatement):
     """Represent a ``CREATE TABLE`` statement."""
     __visit_name__ = 'create_table'
 
@@ -93,7 +113,7 @@ class CreateTable(Executable):
         for col in self.table.columns:
             col.set_oid(row[col.name])
 
-class HasTable(HasIdentifier, Executable):
+class HasTable(HasIdentifier, ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to check for table exsistence.
 
     :class:`HasTable` stores the object id of the table being checked, if this exists.
@@ -147,7 +167,7 @@ class HasTable(HasIdentifier, Executable):
             # multiple tables with the same name were found
             raise NormliteError(f'Internal error. Found multiple occurrences of {self.table_name}')                
 
-class ReflectTable(DDLStatement):
+class ReflectTable(ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to reflect a Notion database into a Python :class:`normlite.sql.schema.Table` object.
     
     :class:`ReflectTable` expects that the database id is known (from a previous execution of :class:`HasTable`).

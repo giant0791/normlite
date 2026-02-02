@@ -7,8 +7,9 @@ from normlite._constants import SpecialColumns
 from normlite.engine.base import Engine, create_engine
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import _distill_params
-from normlite.notion_sdk.getters import get_object_id
+from normlite.notion_sdk.getters import get_object_id, rich_text_to_plain_text
 from normlite.sql.compiler import NotionCompiler
+from normlite.sql.ddl import CreateTable
 from normlite.sql.dml import insert, select
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, String
@@ -215,6 +216,24 @@ def test_resolve_params_for_select(engine: Engine, students: Table):
     assert 'id' in ctx.query_params['filter_properties']
     name_col_val = ctx.payload[0]['filter']['title']['equals']
     assert name_col_val == 'Galileo Galilei'
+
+def test_resolve_params_for_create_table(students: Table, engine: Engine):
+    students._db_parent_id = engine._user_tables_page_id
+    stmt = CreateTable(students)
+    compiled = stmt.compile(engine._sql_compiler)
+    ctx = ExecutionContext(
+        engine, 
+        engine.connect(), 
+        engine.raw_connection().cursor(), 
+        compiled, 
+    )
+    ctx.pre_exec()
+
+    assert ctx.execution_style == ExecutionStyle.SINGLE
+
+    payload = ctx.payload[0]
+    assert payload['parent']['page_id'] == engine._user_tables_page_id
+    assert rich_text_to_plain_text(payload['title']) == 'students'
 
 #---------------------------------------------------
 # Execute context tests

@@ -1,14 +1,8 @@
-import pdb
-import uuid
 import pytest
 
 from normlite.engine.base import Engine, create_engine
-from normlite.exceptions import CompileError
-from normlite.notion_sdk.getters import get_property, get_property_type, get_title_property_value
-from normlite.sql.base import _CompileState
-from normlite.sql.compiler import NotionCompiler
+from normlite.notion_sdk.getters import get_property
 from normlite.sql.ddl import CreateTable
-from normlite.sql.dml import ValuesBase, insert
 from normlite.sql.elements import _BindRole, BindParameter
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, String
@@ -59,8 +53,8 @@ def test_compile_create_table_title_as_table_name(students: Table, engine: Engin
     assert 'table_name' in compiled.params
 
     title_param: BindParameter = compiled.params['table_name']
-    assert isinstance(title_param.type_, String)
-    assert title_param.role == _BindRole.DB_TITLE_VALUE
+    assert title_param.type_ is None
+    assert title_param.role == _BindRole.DBAPI_PARAM
     assert title_param.effective_value == 'students'
 
 def test_compile_create_table_operation(students: Table, engine: Engine):
