@@ -242,7 +242,15 @@ class _CompileState(Enum):
     COMPILING_VALUES      = auto()
     COMPILING_WHERE       = auto()
     COMPILING_DBAPI_PARAM = auto()
+    COMPILING_DB_TITLE    = auto()
+    """Compile the database "title" property.
+    
+    .. versionadded:: 0.8.0
 
+    .. seealso::
+
+        :class:`normlite.sql.ddl.CreateTable`
+    """  
 
 @dataclass
 class CompilerState:
@@ -261,13 +269,13 @@ class CompilerState:
     in_where: bool = False
 
     # bind handling
-    execution_binds: dict[str, tuple[BindParameter, str]] = field(
+    execution_binds: dict[str, BindParameter] = field(
         default_factory=dict
     )
     """Bind parameters to be evaluated at execution time."""
 
     # result metadata
-    result_columns: Optional[list[Column]] = None
+    result_columns: Optional[list[str]] = None
 
     # compiler phase
     compile_state: _CompileState = _CompileState.NOT_STARTED

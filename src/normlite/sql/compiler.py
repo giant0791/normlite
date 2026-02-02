@@ -27,6 +27,8 @@ from normlite.sql.base import _CompileState, CompilerState, SQLCompiler
 from normlite.sql.dml import OrderByClause
 from normlite.sql.elements import _BindRole, BooleanClauseList, Operator, OrderByExpression, ColumnElement
 from normlite.sql.elements import BindParameter
+from normlite.sql.schema import Column, ReadOnlyColumnCollection
+from normlite.sql.type_api import String
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateColumn, CreateTable, HasTable, ReflectTable
@@ -224,38 +226,58 @@ class NotionCompiler(SQLCompiler):
         Returns:
             dict: The compiled object as dictionary.
         """
-        # emit code for parent object
-        no_db_obj = {}
-        no_db_obj['parent'] = {
-            'type': 'page_id', 
-            'page_id': ':page_id'
-        }
+        payload = {}
+        stmt_table = ddl_stmt.get_table()
 
-        # emit code for title object
-        no_db_obj['title'] = {
-            'text': {
-                'content': ':table_name'
+        with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
+            # emit code for parent object
+            parent_id_key = self._add_bindparam(
+                BindParameter(
+                    key='database_id', 
+                    value=stmt_table._db_parent_id, 
+                )
+            )
+
+            payload['parent'] = {
+                'type': 'database_id',
+                'page_id': f':{parent_id_key}'
             }
-        }
+        
+        with self._compiling(new_state=_CompileState.COMPILING_DB_TITLE):
+            # emit code for title object
+            title_key = self._add_bindparam(
+                BindParameter(
+                    key='table_name',
+                    value=stmt_table.name
+                )
+            )
+
+            payload['title'] = [{
+                'text': {
+                    'content': ':table_name'
+                }
+            }]
 
         # emit code for properties object
-        no_prop_obj = {}
-        for col in ddl_stmt.columns:
-            no_prop_obj.update(self.visit_create_column(col))
+        payload['properties'] = self._compile_table_columns(
+            stmt_table.get_user_defined_colums()
+        )
         
-        no_db_obj['properties'] = no_prop_obj
-        operation = dict(endpoint='databases', request='create', template=no_db_obj)
-        parameters = dict(page_id=ddl_stmt.table._db_parent_id, table_name=ddl_stmt.table.name)
-        result_columns = [colname for colname in ddl_stmt.table.c.keys() if colname in SpecialColumns.values()]
-        result_columns = []
-        
-        return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}
+        self._compiler_state.result_columns = [
+            col.name
+            for col in stmt_table.c
+        ]
+
+        operation = dict(endpoint='databases', request='create')
+        return {'operation': operation, 'payload': payload}  
     
-    def visit_create_column(self, ddl_stmt: CreateColumn) -> dict:
-        column = ddl_stmt.column
-        no_prop_obj = {}
-        no_prop_obj[column.name] = column.type_.get_col_spec(None)
-        return no_prop_obj
+    def _compile_table_columns(self, user_cols: ReadOnlyColumnCollection) -> dict:
+        properties = {
+            col.name: col.type_.get_notion_spec()
+            for col in user_cols
+        }
+
+        return properties
     
     def visit_has_table(self, hastable: HasTable) -> dict:
         """Compile the pseudo DDL statement to check for table existence.
@@ -368,7 +390,7 @@ class NotionCompiler(SQLCompiler):
 
         # IMPORTANT: concatenate the values tuple containing the special columns WITH the returning tuple.
         # This ensures that the values for the special columns are always available even if the returning tuple is ().
-        self._compiler_state.result_columns = insert._returning
+        self._compiler_state.result_columns = list(insert._returning)
         return {'operation': operation, 'payload': payload}  
 
     def visit_order_by_clause(self, clause: OrderByClause) -> dict:
@@ -551,6 +573,15 @@ class NotionCompiler(SQLCompiler):
 
             key = bindparam.key
             bindparam.role = _BindRole.DBAPI_PARAM
+
+        elif state == _CompileState.COMPILING_DB_TITLE:
+            # database "title" object
+            if bindparam.key is None:
+                raise CompileError('Bind parameter supplied for database "title" has a None key.')
+            
+            key = bindparam.key
+            bindparam.role = _BindRole.DB_TITLE_VALUE
+            bindparam.type_ = String(is_title=True)
             
         else:
             stmt = self._compiler_state.stmt

@@ -83,11 +83,6 @@ class CreateTable(Executable):
     def __init__(self, table: Table):
         super().__init__()
         self.table = table
-        self.columns = [
-            CreateColumn(col) 
-            for col in self.table.c 
-            if not col.name.startswith('_no_')      # skip Notion-specific columns
-        ]
     
     def get_table(self) -> Table:
         return self.table
@@ -97,14 +92,6 @@ class CreateTable(Executable):
         self.table.set_oid(row[SpecialColumns.NO_ID])
         for col in self.table.columns:
             col.set_oid(row[col.name])
-
-
-class CreateColumn(ClauseElement):
-    __visit_name__ = 'create_column'
-
-    def __init__(self, column: Column):
-        super().__init__()
-        self.column = column
 
 class HasTable(HasIdentifier, Executable):
     """Represent a convenient pseudo DDL statement to check for table exsistence.

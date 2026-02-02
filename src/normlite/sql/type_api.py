@@ -110,6 +110,31 @@ class TypeEngine(Protocol):
         """Return a string for the SQL-like type name."""
         raise NotImplementedError
     
+    def get_notion_spec(self) -> dict:
+        """Return a dictionary used for creating database properties in the JSON payload.
+        
+        The default implementation returns a dictionary as follows:
+
+        .. code:: python
+
+            {
+                self.get_col_spec(): {}
+            }
+
+        Subclasses can add additional element.
+
+        .. seealso::
+
+            :meth:`Number.get_notion_spec`
+
+        .. versionadded:: 0.8.
+
+        """
+
+        return {
+            self.get_col_spec(): {}
+        }
+
     def __repr__(self):
         return self.__class__.__name__
     
@@ -161,6 +186,13 @@ class Number(TypeEngine):
 
     def get_col_spec(self):
         return 'number'
+    
+    def get_notion_spec(self):
+        return {
+            self.get_col_spec(): {
+                'format': self.format
+            }
+        }
 
     def bind_processor(self):
         def process(value: Optional[Union[_NumericType, str]]) -> Optional[dict]:
