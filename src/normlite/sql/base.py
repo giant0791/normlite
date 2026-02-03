@@ -30,13 +30,14 @@ from normlite.exceptions import ArgumentError, UnsupportedCompilationError
 from normlite.utils import frozendict
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import Table, Column
-    from normlite.sql.ddl import CreateTable, CreateColumn, HasTable, ReflectTable
+    from normlite.sql.schema import Table
+    from normlite.sql.ddl import CreateTable, HasTable, ReflectTable
     from normlite.sql.dml import Insert, Select
     from normlite.sql.elements import ColumnElement, UnaryExpression, BinaryExpression, BindParameter, BooleanClauseList
     from normlite.engine.cursor import CursorResult
     from normlite.engine.interfaces import _CoreAnyExecuteParams, ExecutionOptions, ReturningStrategy
     from normlite.engine.base import Connection
+    from normlite.engine.context import ExecutionContext
 
 class Generative:
     """Mixin providing SQLAlchemy-style generative behavior."""
@@ -235,6 +236,26 @@ class Executable(ClauseElement):
             *, 
             execution_options: Optional[ExecutionOptions] = None
     ) -> CursorResult:
+        raise NotImplementedError
+    
+    def _setup_execution(self, context: ExecutionContext) -> None:
+        """Per-statement internal hook to setup execution.
+        
+        Subclasses shall use this hook method to prepare the execution and
+        store execution-related data in execution context.
+
+        .. versionadded:: 0.8.0
+        """
+        raise NotImplementedError
+    
+    def _finalize_execution(self, context: ExecutionContext) -> None:
+        """Per-statement internal hook to finalize execution.
+        
+        Subclasses shall use this hook method to finalize results and
+        store execution-related data in execution context.
+
+        .. versionadded:: 0.8.0
+        """
         raise NotImplementedError
 
 class _CompileState(Enum):

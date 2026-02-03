@@ -7,6 +7,7 @@ from normlite._constants import SpecialColumns
 from normlite.engine.base import Engine, create_engine
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import _distill_params
+from normlite.engine.reflection import ReflectedTableInfo
 from normlite.notion_sdk.getters import get_object_id, rich_text_to_plain_text
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.ddl import CreateTable
@@ -311,6 +312,107 @@ def test_execute_dml_context_projection(engine: Engine, students: Table):
     assert 'start_on' not in row_1_mapping
     assert rows[1]['is_active'] == False
 
+def is_valid_uuid4(uuid_string: str) -> bool:
+    try:
+        # The version=4 argument checks if the format matches v4 specifically
+        val = uuid.UUID(uuid_string, version=4)
+    except (ValueError, AttributeError, TypeError):
+        # ValueError: badly formed hex string
+        # AttributeError/TypeError: input isn't a string-like object
+        return False
+    
+    return True
+
+def test_execute_ddl_context_create_table_returning_id_and_title(engine: Engine, students: Table):
+    students._db_parent_id = engine._user_tables_page_id
+    stmt = CreateTable(students)
+    compiled = stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+    )
+
+    # Connection._execute_context(context) -> CursorResult:
+    ctx.pre_exec()
+    engine.do_execute(cursor, ctx.operation, ctx.parameters)
+    ctx.post_exec()
+    result = ctx.setup_cursor_result()
+    rows = result.all()
+    reflected_table_info = ReflectedTableInfo.from_rows(rows)
+    
+    assert reflected_table_info.name == 'students'
+    assert is_valid_uuid4(reflected_table_info.id)
+
+def est_execute_ddl_context_create_table_returning_property_ids(engine: Engine, students: Table):
+    students._db_parent_id = engine._user_tables_page_id
+    stmt = CreateTable(students)
+    compiled = stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+    )
+
+    # Connection._execute_context(context) -> CursorResult:
+    ctx.pre_exec()
+    engine.do_execute(cursor, ctx.operation, ctx.parameters)
+    ctx.post_exec()
+    result = ctx.setup_cursor_result()
+    rows = result.all()
+    reflected_table_info = ReflectedTableInfo.from_rows(rows)
+    name_col, id_col, is_active_col, start_on_col, grade_col = reflected_table_info.get_user_columns()
+
+    assert name_col.type == 'title'
+    assert id_col.type == 'number'
+    assert is_active_col.type == 'checkbox'
+    assert start_on_col.type == 'date'
+    assert grade_col.type == 'rich_text'
+
+def test_connection_exec_pipeline_simulated(engine: Engine, students: Table):
+    students._db_parent_id = engine._user_tables_page_id
+    stmt = CreateTable(students)
+
+    # Connection._execute_context(context) -> CursorResult:
+    compiled = stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    distilled_params = _distill_params()
+    context = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+        distilled_params=distilled_params,
+    )
+    
+    elem = context.invoked_stmt
+
+    context.pre_exec()                  # normalize params, options, payload
+    elem._setup_execution(context)      # statement prepares execution
+    engine.do_execute(                  # side effects happen (HTTP)
+        cursor, 
+        context.operation, 
+        context.parameters
+    )
+
+    context.post_exec()                 # The execution is mechanically complete before semantic interpretation begins
+    elem._finalize_execution(context)   # semantic reconstruction / reflection
+    
+    result = context.setup_cursor_result()
+
+    assert not result.returns_rows
+    assert is_valid_uuid4(students.get_oid())
+
+    name_col, id_col, is_active_col, start_on_col, grade_col = students.get_user_defined_colums()
+    assert name_col._id 
+    assert id_col._id
+    assert is_active_col._id
+    assert start_on_col._id
+    assert grade_col._id
 
 #---------------------------------------------
 # Execution pipeline tests
@@ -372,3 +474,23 @@ def test_connection_exec_dml_context_projection(engine: Engine, students: Table)
     assert 'is_active' in row_1_mapping
     assert 'start_on' not in row_1_mapping
     assert rows[1]['is_active'] == False
+
+def test_connection_exec_ddl_context_create_table(engine: Engine, students: Table):
+    students._db_parent_id = engine._user_tables_page_id
+    stmt = CreateTable(students)
+
+    with engine.connect() as connection:
+        execution_options = {
+            "isolation_level": "AUTO COMMIT"
+        }
+
+        result = connection.execute(
+            stmt, 
+            execution_options=execution_options
+        )
+    
+    assert not result.returns_rows
+    assert is_valid_uuid4(students.get_oid())
+    assert all(
+        [c._id is not None for c in students.get_user_defined_colums()]
+    )

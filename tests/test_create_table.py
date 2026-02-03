@@ -2,6 +2,7 @@ import pytest
 
 from normlite.engine.base import Engine, create_engine
 from normlite.notion_sdk.getters import get_property
+from normlite.sql.base import DDLCompiled
 from normlite.sql.ddl import CreateTable
 from normlite.sql.elements import _BindRole, BindParameter
 from normlite.sql.schema import Column, MetaData, Table
@@ -33,14 +34,22 @@ def engine() -> Engine:
         _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
     )
 
+def test_compile_create_table_is_ddl(students: Table, engine: Engine):
+    students._db_parent_id = engine._user_tables_page_id
+    stmt = CreateTable(students)
+    compiled = stmt.compile(engine._sql_compiler)
+
+    assert compiled.is_ddl
+    assert isinstance(compiled, DDLCompiled)
+
 def test_compile_create_table_parent_id(students: Table, engine: Engine):
     students._db_parent_id = engine._user_tables_page_id
     stmt = CreateTable(students)
     compiled = stmt.compile(engine._sql_compiler)
 
-    assert 'database_id' in compiled.params
+    assert 'page_id' in compiled.params
 
-    db_id_param: BindParameter = compiled.params['database_id']
+    db_id_param: BindParameter = compiled.params['page_id']
     assert db_id_param.type_ is None
     assert db_id_param.role == _BindRole.DBAPI_PARAM
     assert db_id_param.effective_value == students._db_parent_id

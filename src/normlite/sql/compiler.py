@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Optional
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError
+from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.base import _CompileState, CompilerState, SQLCompiler
 from normlite.sql.dml import OrderByClause
 from normlite.sql.elements import _BindRole, BooleanClauseList, Operator, OrderByExpression, ColumnElement
@@ -226,6 +227,8 @@ class NotionCompiler(SQLCompiler):
         Returns:
             dict: The compiled object as dictionary.
         """
+        self._compiler_state.is_ddl = True
+        self._compiler_state.stmt = ddl_stmt
         payload = {}
         stmt_table = ddl_stmt.get_table()
 
@@ -233,13 +236,13 @@ class NotionCompiler(SQLCompiler):
             # emit code for parent object
             parent_id_key = self._add_bindparam(
                 BindParameter(
-                    key='database_id', 
+                    key='page_id', 
                     value=stmt_table._db_parent_id, 
                 )
             )
 
             payload['parent'] = {
-                'type': 'database_id',
+                'type': 'page_id',
                 'page_id': f':{parent_id_key}'
             }
         
@@ -268,15 +271,15 @@ class NotionCompiler(SQLCompiler):
         ]
 
         operation = dict(endpoint='databases', request='create')
+        # columns to be returned are meta columns!!!
+        self._compiler_state.result_columns = [
+            DBAPITypeCode.META_COL_NAME, 
+            DBAPITypeCode.META_COL_TYPE, 
+            DBAPITypeCode.META_COL_ID, 
+            DBAPITypeCode.META_COL_VALUE
+        ]
+        
         return {'operation': operation, 'payload': payload}  
-    
-    def _compile_table_columns(self, user_cols: ReadOnlyColumnCollection) -> dict:
-        properties = {
-            col.name: col.type_.get_notion_spec()
-            for col in user_cols
-        }
-
-        return properties
     
     def visit_has_table(self, hastable: HasTable) -> dict:
         """Compile the pseudo DDL statement to check for table existence.
@@ -640,6 +643,14 @@ class NotionCompiler(SQLCompiler):
         for col, bindparam in zip(user_cols, ordered_values.values()):
             param_key = self._add_bindparam(bindparam, col.name)
             properties[col.name] = f':{param_key}'
+
+        return properties
+    
+    def _compile_table_columns(self, user_cols: ReadOnlyColumnCollection) -> dict:
+        properties = {
+            col.name: col.type_.get_notion_spec()
+            for col in user_cols
+        }
 
         return properties
     

@@ -107,12 +107,38 @@ class CreateTable(ExecutableDDLStatement):
     def get_table(self) -> Table:
         return self.table
     
-    def _post_exec(self, result: CursorResult, context: ExecutionContext):
-        row = result.one()
-        self.table.set_oid(row[SpecialColumns.NO_ID])
-        for col in self.table.columns:
-            col.set_oid(row[col.name])
+    def _setup_execution(self, context: ExecutionContext) -> None:
+        # nothing to be setup
+        pass
 
+    def _finalize_execution(self, context: ExecutionContext) -> None:
+        # IMPORTANT: This consumes the result stored in the execution context.
+        # DDL reflection is not part of execution — it is interpretation of results.
+        # So reflection consumes the results by interpreting and leaves the
+        # result empty in the context.
+        result = context.setup_cursor_result()
+        rows = result.all()        
+        reflected_table_info = ReflectedTableInfo.from_rows(rows)
+
+        table = self.table
+        
+        # assign the table id
+        table.set_oid(reflected_table_info.id)
+
+        # assign user column ids
+        for colmeta in reflected_table_info.get_user_columns():
+            table.c[colmeta.name]._id = colmeta.id
+
+        # assign sys column values
+        for colmeta in reflected_table_info.get_sys_columns():
+            if colmeta.name in (SpecialColumns.NO_ID, SpecialColumns.NO_TITLE):
+                # skip the object id and title, they currently are not modelled as columns
+                # but attributes
+                continue
+
+            table.c[colmeta.name].value = colmeta.value
+        
+    
 class HasTable(HasIdentifier, ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to check for table exsistence.
 
