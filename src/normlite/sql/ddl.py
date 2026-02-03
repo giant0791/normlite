@@ -30,7 +30,10 @@ from normlite.sql.schema import HasIdentifier
 from normlite.sql.type_api import type_mapper
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import Table, Column
+    from normlite.sql.schema import Table
+    from normlite.engine.interfaces import _CoreAnyExecuteParams
+    from normlite.engine.cursor import CursorResult
+    from normlite.engine.base import Connection
 
 
 @dataclass
@@ -68,7 +71,7 @@ class _ColumnMetadata:
         Factory = type_mapper[self.type_code]
         return Factory(self.args)   # args set only types only
 
-class DDLStatement(Executable):
+class ExecutableDDLStatement(Executable):
     """Base class for all DDL executable statements.
     
     .. versionadded:: 0.8.0
@@ -76,37 +79,67 @@ class DDLStatement(Executable):
     """
     is_ddl = True
 
-class CreateTable(Executable):
+    def _execute_on_connection(
+            self, 
+            connection: Connection, 
+            params: Optional[_CoreAnyExecuteParams],
+            *, 
+            execution_options: Optional[dict] = None
+    ) -> CursorResult:
+
+        stmt_opts = self._execution_options or {}
+        call_opts = execution_options or {}
+        merged_execution_options = stmt_opts | call_opts
+
+        return connection._execute_context(
+            self, 
+            execution_options=merged_execution_options
+        )
+
+class CreateTable(ExecutableDDLStatement):
     """Represent a ``CREATE TABLE`` statement."""
     __visit_name__ = 'create_table'
 
     def __init__(self, table: Table):
         super().__init__()
         self.table = table
-        self.columns = [
-            CreateColumn(col) 
-            for col in self.table.c 
-            if not col.name.startswith('_no_')      # skip Notion-specific columns
-        ]
     
     def get_table(self) -> Table:
         return self.table
     
-    def _post_exec(self, result: CursorResult, context: ExecutionContext):
-        row = result.one()
-        self.table.set_oid(row[SpecialColumns.NO_ID])
-        for col in self.table.columns:
-            col.set_oid(row[col.name])
+    def _setup_execution(self, context: ExecutionContext) -> None:
+        # nothing to be setup
+        pass
 
+    def _finalize_execution(self, context: ExecutionContext) -> None:
+        # IMPORTANT: This consumes the result stored in the execution context.
+        # DDL reflection is not part of execution — it is interpretation of results.
+        # So reflection consumes the results by interpreting and leaves the
+        # result empty in the context.
+        result = context.setup_cursor_result()
+        rows = result.all()        
+        reflected_table_info = ReflectedTableInfo.from_rows(rows)
 
-class CreateColumn(ClauseElement):
-    __visit_name__ = 'create_column'
+        table = self.table
+        
+        # assign the table id
+        table.set_oid(reflected_table_info.id)
 
-    def __init__(self, column: Column):
-        super().__init__()
-        self.column = column
+        # assign user column ids
+        for colmeta in reflected_table_info.get_user_columns():
+            table.c[colmeta.name]._id = colmeta.id
 
-class HasTable(HasIdentifier, Executable):
+        # assign sys column values
+        for colmeta in reflected_table_info.get_sys_columns():
+            if colmeta.name in (SpecialColumns.NO_ID, SpecialColumns.NO_TITLE):
+                # skip the object id and title, they currently are not modelled as columns
+                # but attributes
+                continue
+
+            table.c[colmeta.name].value = colmeta.value
+        
+    
+class HasTable(HasIdentifier, ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to check for table exsistence.
 
     :class:`HasTable` stores the object id of the table being checked, if this exists.
@@ -160,7 +193,7 @@ class HasTable(HasIdentifier, Executable):
             # multiple tables with the same name were found
             raise NormliteError(f'Internal error. Found multiple occurrences of {self.table_name}')                
 
-class ReflectTable(DDLStatement):
+class ReflectTable(ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to reflect a Notion database into a Python :class:`normlite.sql.schema.Table` object.
     
     :class:`ReflectTable` expects that the database id is known (from a previous execution of :class:`HasTable`).

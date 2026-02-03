@@ -24,13 +24,13 @@ from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable, ClauseElement, generative
 from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElement
-from normlite.utils import frozendict
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
     from normlite.engine.interfaces import _CoreAnyExecuteParams
     from normlite.engine.cursor import CursorResult
     from normlite.engine.base import Connection
+    from normlite.engine.context import ExecutionContext
 
 class ExecutableClauseElement(Executable):
     is_ddl = False
@@ -220,6 +220,13 @@ class Insert(ValuesBase):
         
         return MappingProxyType(kv_pairs)
 
+    def _setup_execution(self, context: ExecutionContext) -> None:
+        # nothing to be setup
+        pass
+
+    def _finalize_execution(self, context: ExecutionContext) -> None:
+        # nothing to be finalized
+        pass
 
     def __repr__(self):
         kwarg = []
@@ -380,6 +387,13 @@ class Select(ExecutableClauseElement):
         self._order_by = self._order_by.add(*clauses)
         return self
 
+    def _setup_execution(self, context: ExecutionContext) -> None:
+        # nothing to be setup
+        pass
+
+    def _finalize_execution(self, context: ExecutionContext) -> None:
+        # nothing to be finalized
+        pass
 
 def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)

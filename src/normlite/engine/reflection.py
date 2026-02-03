@@ -2,7 +2,6 @@ from __future__ import annotations
 import pdb
 from typing import Any, NamedTuple, Optional, Sequence
 from normlite._constants import SpecialColumns
-from normlite.exceptions import ArgumentError
 from normlite.engine.row import Row
 from normlite.sql.type_api import Boolean, ObjectId, String, TypeEngine, type_mapper
 
@@ -20,29 +19,29 @@ class ReflectedTableInfo:
         }
 
         self._columns = columns
-        try:
-            self._name = columns[self._colmap[SpecialColumns.NO_TITLE]].value
-            self._id = columns[self._colmap[SpecialColumns.NO_ID]].value
-            self._archived = columns[self._colmap[SpecialColumns.NO_ARCHIVED]].value
-            self._in_trash = columns[self._colmap[SpecialColumns.NO_IN_TRASH]].value
-        except TypeError as te:
-            raise ArgumentError(
-                'Columns argument does not contain properly reflected columns info: '
-                f'{te}'
-            ) from te
 
     @property
     def name(self) -> str:
-        return self._name
+        return self._columns[self._colmap[SpecialColumns.NO_TITLE]].value
     
     @property
     def id(self) -> str:
-        return self._id
+        return self._columns[self._colmap[SpecialColumns.NO_ID]].value
     
     @property
     def archived(self) -> Optional[True]:
-        return self._archived
+        return self._columns[self._colmap[SpecialColumns.NO_ARCHIVED]].value
     
+    @property
+    def in_trash(self) -> Optional[True]:
+        return self._columns[self._colmap[SpecialColumns.NO_IN_TRASH]].value
+    
+    def get_user_columns(self) -> Sequence[ReflectedColumnInfo]:
+        return [rc for rc in self._columns if rc.name not in SpecialColumns.values()]
+    
+    def get_sys_columns(self) -> Sequence[ReflectedColumnInfo]:
+        return [rc for rc in self._columns if rc.name in SpecialColumns.values()]
+        
     def get_columns(self) -> Sequence[ReflectedColumnInfo]:
         return self._columns
     

@@ -349,10 +349,10 @@ class _NoArg(Enum):
         return f"_NoArg.{self.name}"
 
 class _BindRole(Enum):
-    NO_BINDROLE   = auto()
-    COLUMN_VALUE  = auto()
-    COLUMN_FILTER = auto()
-    DBAPI_PARAM   = auto()
+    NO_BINDROLE    = auto()
+    COLUMN_VALUE   = auto()
+    COLUMN_FILTER  = auto()
+    DBAPI_PARAM    = auto()
 
 class BindParameter(ColumnElement):
     def __init__(

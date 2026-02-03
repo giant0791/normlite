@@ -73,11 +73,12 @@ from typing import Optional, Literal, Union
 from urllib.parse import urlparse, parse_qs, unquote
 import uuid
 
+from normlite._constants import SpecialColumns
 from normlite.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import ReturningStrategy, _distill_params, IsolationLevel
-from normlite.exceptions import ArgumentError, ObjectNotExecutableError
-from normlite.future.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo
+from normlite.exceptions import ArgumentError, NormliteError, ObjectNotExecutableError
+from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.sql.base import Compiled
 from normlite.sql.compiler import NotionCompiler
@@ -205,7 +206,6 @@ class Connection:
                 execution_options=execution_options
             )
         except AttributeError as ae:
-            pdb.set_trace()
             raise ObjectNotExecutableError(stmt) from ae 
         
         return exec_method
@@ -218,13 +218,14 @@ class Connection:
             execution_options: Mapping[str, Any]
     ) -> CursorResult:
 
-        # 2. compile the statement
+        # 1. compile the statement
         compiler = self._engine._sql_compiler
         compiled = elem.compile(compiler)
 
-        # 3. distill parameters
+        # 2. distill parameters
         distilled_params = _distill_params(parameters)  
 
+        # 3. create the execution context
         ctx = ExecutionContext(
             self._engine,
             self,
@@ -234,6 +235,7 @@ class Connection:
             execution_options=execution_options
         )
 
+        # 4. normalize params, options, payload
         ctx.pre_exec()
         if ctx.execution_style == ExecutionStyle.SINGLE:
             return self._execute_single(ctx)
@@ -241,12 +243,26 @@ class Connection:
         raise NotImplementedError('SINGLE execution style supported only.')
 
     def _execute_single(self, context: ExecutionContext) -> CursorResult:
+        elem = context.invoked_stmt
+
+        # 5. statement prepares execution
+        elem._setup_execution(context)      
+        
+        # 6. side effects happen (HTTP)
         self._engine.do_execute(
             context.cursor, 
             context.operation, 
             context.parameters
         )
+
+        # 7. the execution is mechanically complete before semantic interpretation begins
+        #    make lastrowid, rowcount, etc. available to the result
         context.post_exec()
+
+        # 8. result interpretation
+        #    semantic reconstruction / reflection for DDL statements
+        elem._finalize_execution(context)   
+
         return context.setup_cursor_result()
 
     def _resolve_execution_options(self, stmt_execution_options: ExecutionOptions) -> ExecutionOptions:
@@ -670,8 +686,61 @@ class Engine:
         )
 
     # -------------------------------------------------
-    # Table reflection helpers used by the inspector
+    # Table creation / reflection helpers 
     # -------------------------------------------------
+
+    def _get_or_create_tables_row(self, table_name: str, table_catalog: str, table_id: str) -> str:
+        """Helper to get or create a new row in the tables system table."""
+        existing = self._client.databases_query(
+            {
+                "database_id": self._tables_id,
+                "filter": {
+                    "property": "table_name",
+                    "title": {"equals": table_name},
+                },
+            }
+        )
+
+        results = existing.get("results")
+        
+        if len(results) > 1:
+            raise NormliteError(
+                f"""
+                Found {len(results)} tables with name: {table_name}.
+                Expected was 1 only.
+                """
+            )
+
+        if len(results) == 1:
+            row = results[0]
+            return row['id']
+
+        row_id = self._client._add(
+            "page",
+            {
+                "parent": {
+                    "type": "database_id",
+                    "database_id": self._tables_id,
+                },
+                "properties": {
+                    "table_name": {
+                        "title": [{"text": {"content": table_name}}]
+                    },
+                    "table_schema": {
+                        "rich_text": [{"text": {"content": ""}}]
+                    },
+                    "table_catalog": {
+                        "rich_text": [{"text": {"content": table_catalog}}]
+                    },
+                    "table_id": {
+                        "rich_text": [{"text": {"content": table_id}}]
+                    },
+                },
+            },
+        )
+
+        return row_id
+
 
     def _check_if_exists(self, table_name: str) -> HasTable:
         """Helper method to check for existence of a table."""
