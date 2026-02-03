@@ -71,20 +71,18 @@ from typing import Any, Mapping, Optional, Sequence, TypeAlias, TYPE_CHECKING, o
 from dataclasses import dataclass
 from typing import Optional, Literal, Union
 from urllib.parse import urlparse, parse_qs, unquote
-import uuid
 
-from normlite._constants import SpecialColumns
 from normlite.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import ReturningStrategy, _distill_params, IsolationLevel
 from normlite.exceptions import ArgumentError, NormliteError, ObjectNotExecutableError
 from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo
 from normlite.notion_sdk.client import InMemoryNotionClient
-from normlite.sql.base import Compiled
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.ddl import HasTable, ReflectTable
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor
 from normlite.utils import frozendict
+from normlite.notion_sdk.getters import get_property, get_rich_text_property_value, get_title_property_value
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table, HasIdentifier
@@ -405,6 +403,53 @@ def create_engine(
     """
     return Engine(_parse_uri(uri), execution_options=execution_options, **kwargs)
 
+@dataclass(frozen=True)
+class SystemTablesEntry:
+    name: str
+    catalog: str
+    schema: str
+    table_id: str
+    is_dropped: bool
+
+    @classmethod
+    def from_dict(cls, page_obj: dict) -> SystemTablesEntry:       
+        name = get_title_property_value(
+            get_property(
+                page_obj, 
+                'table_name'
+            )            
+        )
+
+        catalog = get_rich_text_property_value(
+            get_property(
+                page_obj, 
+                'table_catalog'
+            )
+        )
+
+        schema = get_rich_text_property_value(
+            get_property(
+                page_obj, 
+                'table_schema'
+            )
+        )
+
+        table_id = get_rich_text_property_value(
+            get_property(
+                page_obj, 
+                'table_id'
+            )
+        )
+
+        is_dropped = page_obj['in_trash']
+
+        return cls(
+            name=name,
+            catalog=catalog,
+            schema=schema,
+            table_id=table_id,
+            is_dropped=is_dropped
+        ) 
 class Engine:
     """Provide a convenient proxy object of database connectivity to Notion integrations.
 
@@ -596,7 +641,7 @@ class Engine:
         )
 
        # 3. ensure tables self-row exists
-        self._ensure_tables_self_row()
+        self._ensure_sys_tables_self_row()
 
         # 4. user tables page
         self._user_tables_page_id = self._get_or_create_page(
@@ -647,77 +692,89 @@ class Engine:
 
         return db['id']
 
-    def _ensure_tables_self_row(self) -> None:
-        existing = self._client.databases_query(
-            {
-                "database_id": self._tables_id,
-                "filter": {
-                    "property": "table_name",
-                    "title": {"equals": "tables"},
-                },
-            }
+    def _ensure_sys_tables_self_row(self) -> None:
+        self._ensure_sys_tables_row(
+            name='tables',
+            schema='information_schema',
+            catalog=self._user_database_name,
+            table_id=self._tables_id 
         )
 
-        if existing.get("results"):
-            return
-
-        self._client._add(
-            "page",
-            {
-                "parent": {
-                    "type": "database_id",
-                    "database_id": self._tables_id,
-                },
-                "properties": {
-                    "table_name": {
-                        "title": [{"text": {"content": "tables"}}]
-                    },
-                    "table_schema": {
-                        "rich_text": [{"text": {"content": "information_schema"}}]
-                    },
-                    "table_catalog": {
-                        "rich_text": [{"text": {"content": "normlite"}}]
-                    },
-                    "table_id": {
-                        "rich_text": [{"text": {"content": self._tables_id}}]
-                    },
-                },
-            },
+    def _ensure_sys_tables_row(
+            self,
+            name: str,
+            schema: Optional[str] = 'not_used',
+            *,
+            catalog: str,
+            table_id: str
+    ) -> None:
+        self._get_or_create_sys_tables_row(
+            name,
+            schema,
+            table_catalog=catalog,
+            table_id=table_id
         )
 
     # -------------------------------------------------
     # Table creation / reflection helpers 
     # -------------------------------------------------
 
-    def _get_or_create_tables_row(self, table_name: str, table_catalog: str, table_id: str) -> str:
-        """Helper to get or create a new row in the tables system table."""
-        existing = self._client.databases_query(
-            {
+    def _find_sys_tables_row(
+        self,
+        table_name: str,
+        *,
+        table_catalog: Optional[str] = None,
+    ) -> Optional[SystemTablesEntry]:
+        """Return the tables row (Notion page object) for a table or None if it does not exist."""
+
+        catalog = table_catalog or self._user_database_name
+
+        response = self._client.databases_query(
+            path_params={
                 "database_id": self._tables_id,
+            },
+
+            payload={
                 "filter": {
-                    "property": "table_name",
-                    "title": {"equals": table_name},
+                    "and": [
+                        {
+                            "property": "table_name",
+                            "title": {"equals": table_name},
+                        },
+                        {
+                            "property": "table_catalog",
+                            "rich_text": {"equals": catalog},
+                        },
+                    ]
                 },
             }
         )
 
-        results = existing.get("results")
-        
+        results = response.get("results", [])
+
         if len(results) > 1:
             raise NormliteError(
-                f"""
-                Found {len(results)} tables with name: {table_name}.
-                Expected was 1 only.
-                """
+                f"Multiple tables named '{table_name}' found in catalog '{catalog}'"
             )
 
-        if len(results) == 1:
-            row = results[0]
-            return row['id']
+        return SystemTablesEntry.from_dict(results[0]) if results else None
 
-        row_id = self._client._add(
-            "page",
-            {
+    def _get_or_create_sys_tables_row(
+            self, 
+            table_name: str, 
+            table_schema: Optional[str] = 'not_used',
+            *,
+            table_catalog: str, 
+            table_id: str
+    ) -> SystemTablesEntry:
+        """Helper to get or create a new row in the tables system table."""
+        existing = self._find_sys_tables_row(table_name, table_catalog=table_catalog)
+
+        if existing is not None:
+            return existing
+
+        page_obj = self._client.pages_create(
+            payload={
                 "parent": {
                     "type": "database_id",
                     "database_id": self._tables_id,
@@ -727,7 +784,7 @@ class Engine:
                         "title": [{"text": {"content": table_name}}]
                     },
                     "table_schema": {
-                        "rich_text": [{"text": {"content": ""}}]
+                        "rich_text": [{"text": {"content": table_schema}}]
                     },
                     "table_catalog": {
                         "rich_text": [{"text": {"content": table_catalog}}]
@@ -739,7 +796,7 @@ class Engine:
             },
         )
 
-        return row_id
+        return SystemTablesEntry.from_dict(page_obj)
 
 
     def _check_if_exists(self, table_name: str) -> HasTable:
@@ -805,258 +862,7 @@ class Engine:
             parameters: dict,
     ) -> None:
         cursor.execute(operation, parameters)
- 
-
-
-class OldEngine:
-    """Provide a convenient proxy object of database connectivity to Notion integrations.
-
-    An :class:`Engine` object is instantiated by the factory :func:`create_engine()`.
-
-    Examples of possible future extensions:
-    
-        >>> # create a proxy object to a :memory: integration
-        >>> engine = create_engine('normlite::///:memory:')
-
-        >>> # create a proxy object to a Notion internal integration
-        >>> NOTION_TOKEN = 'secret-token'
-        >>> NOTION_VERSION = '2022-06-28' 
-        >>> engine = create_engine(f'normlite+auth://internal?token={NOTION_TOKEN}&version={NOTION_VERSION}')
-    """
-    def __init__(self, uri: NotionURI, **kwargs: Any) -> None:
-
-        if isinstance(uri, NotionAuthURI):
-            raise NotImplementedError(
-                f'Neither internal nor external integration URIs are supported yet (simulated only).'
-            )        
-
-        if kwargs is None:
-            raise ArgumentError('Expected keyword arguments, but none were provided.')
-
-        self._uri = uri
-        """The Notion URI denoting the integration to connect to."""
-
-        self._database = None
-        """The database name: For simulated URIs, ``memory`` if mode is memory, the file name without extension if mode is file."""
-
-        self._db_page_id = None
-        """The page id for the database this engine is connected to."""
-
-        self._ws_id = None
-        """The workspace id to which all the pages are added to."""
-
-        self._ischema_page_id = None
-        """Id for the information schema page."""
-
-        self._tables_id = None
-        """Id for the Notion database tables."""
-
-        self._client = None
-        """The Notion client this engine interacts with."""
-
-        self._init_client = True
-        """Whether the client shall be initialized with the ``normlite`` datastructures. Defaults to ``True``."""
-
-        if 'ws_id' in kwargs:
-            self._ws_id = kwargs['ws_id']
-
-        if 'init_client' in kwargs:
-            self._init_client = kwargs['init_client']
-
-        self._isolation_level: IsolationLevel = 'AUTOCOMMIT'
-        """Isolation level for transactions. Defaults to ``AUTOCOMMIT``."""
-        
-        self._process_args(**kwargs)
-        self._create_client(uri)
-
-        self._dbapi_connection = DBAPIConnection(self._client)
-            
-        if self._ws_id is None:
-            raise ArgumentError('Missing "ws_id" in passed keyword arguments.')
-        
-        self._sql_compiler = NotionCompiler()
-
-    def _process_args(self, **kwargs: Any) -> None:
-        if '_mock_ws_id' in kwargs:
-            self._ws_id = kwargs['_mock_ws_id']
-
-        if '_mock_ischema_page_id' in kwargs:
-            self._ischema_page_id = kwargs['_mock_ischema_page_id']
-
-        if '_mock_tables_id' in kwargs:
-            self._tables_id = kwargs['_mock_tables_id']
-
-        if '_mock_db_page_id' in kwargs:
-            self._db_page_id = kwargs['_mock_db_page_id']
-
-    def _create_client(self, uri: NotionSimulatedURI) -> None:
-        """Provide helper method to instantiate the correct client based on the URI provided."""
-
-        if uri.mode != 'memory':
-            raise NotImplementedError
-        
-        self._database = uri.mode if uri.mode == 'memory' else uri.file.split('.')[0]
-
-        # create client
-        self._client = InMemoryNotionClient()
-
-        # create information_schema page
-        # Create the page 'information_schema'
-        # Note: In the real Notion store, the 'parent' object is the workspace,
-        # so the information schema page cannot be programmatically created via the API.
-        # In the fake store the parent's page id is just random.
-        if self._ws_id is None:
-            self._ws_id = str(uuid.uuid4())
-
-        if self._init_client:
-            self._init_info_schema()
-            self._init_tables()
-            self._init_database()
-      
-    def inspect(self) -> Inspector:
-        """Return an inspector object.
-
-        Factory method to procure :class:`Inspector` objects.
-        
-        .. versionadded:: 0.7.0
-
-        """
-        return Inspector(self)
-    
-
-    def _init_info_schema(self) -> None:
-        # Currently it always create the information_schema page
-        # In the future, it shall first check if it exists
-        payload = {
-            'parent': {                     
-                'type': 'page_id',
-                'page_id': self._client._ROOT_PAGE_ID_
-            },
-            'properties': {
-                'Name': {'title': [{'text': {'content': 'information_schema'}}]}
-            }
-        }
-        self._client._add('page', payload, self._ischema_page_id)
-
-    def _init_tables(self) -> None:
-        # create the database 'tables'
-        payload = {
-            'parent': {
-                'type': 'page_id',
-                'page_id': self._ischema_page_id
-            },
-            "title": [
-                {
-                    "type": "text",
-                    "text": {
-                        "content": "tables",
-                        "link": None
-                    },
-                    "plain_text": "tables",
-                    "href": None
-                }
-            ],
-            'properties': {
-                'table_name': {'title': {}},
-                'table_schema': {'rich_text': {}},
-                'table_catalog': {'rich_text': {}},
-                'table_id': {'rich_text': {}}
-            }
-        }
-        self._client._add('database', payload, self._tables_id)
-
-        # add tables itself to tables
-        # Note: By construction, normlite always has a tables database (the table name tables) and 
-        # a tables page (the row in the tables database)
-        self._client._add('page', {
-            'parent': {
-                'type': 'database_id',
-                'database_id': self._tables_id
-            },
-            'properties': {
-                'table_name': {'title': [{'text': {'content': 'tables'}}]},
-                'table_schema': {'rich_text': [{'text': {'content': 'information'}}]},
-                'table_catalog': {'rich_text': [{'text': {'content': 'normlite'}}]},
-                'table_id': {'rich_text': [{'text': {'content': self._tables_id}}]}
-            }
-        })
-
-    def _init_database(self) -> None:
-        payload = {
-            'parent': {
-                'type': 'page_id',
-                'page_id': self._client._ROOT_PAGE_ID_
-
-            },
-            'properties': {
-                'Name': {'title': [{'text': {'content': self._database}}]}
-            }
-        }
-        self._client._add('page', payload, self._db_page_id)
-
-    def _add_table(self, table_name: str, catalog: str, table_id: str) -> None:
-        self._client._add('page', {
-            'parent': {
-                'type': 'database_id',
-                'database_id': self._tables_id
-            },
-            'properties': {
-                'table_name': {'title': [{'text': {'content': table_name}}]},
-                'table_schema': {'rich_text': [{'text': {'content': ''}}]},
-                'table_catalog': {'rich_text': [{'text': {'content': catalog}}]},
-                'table_id': {'rich_text': [{'text': {'content': table_id}}]}
-            }
-        })
-
-    def connect(self) -> Connection:
-        """Procure a new :class:`Connection` object."""
-        return Connection(self)
-
-    def raw_connection(self) -> DBAPIConnection:
-        """Provide the underlying DBAPI connection."""
-        return self._dbapi_connection
-    
-    def _check_if_exists(self, table_name: str) -> HasTable:
-        """Helper method to check for existence of a table."""
-        # execute the DDL statement
-        with self.connect() as connection:
-            hastable = HasTable(
-                table_name, 
-                self._tables_id, 
-                'normlite' if table_name == 'tables' else self._database
-            )
-
-            # result is not needed, the check result
-            # can be queried using the found() method 
-            _ = connection.execute(hastable)
-
-        return hastable
-        
-    def _reflect_table(self, table: Table) -> ReflectedTableInfo:
-            has_table = self._check_if_exists(table.name)
-            if has_table.found():
-                with self.connect() as connection:
-                    table.set_oid(has_table.get_oid())
-                    reflect_table = ReflectTable(table)
-                    _ = connection.execute(reflect_table)
-
-            else:
-                raise ArgumentError(f"No table found with name: {table.name}")
-            
-            return reflect_table._as_info()
-    
-    #----------------------------------------------------
-    # Execution context management methods
-    #----------------------------------------------------
-
-    def do_execute(
-            self,
-            cursor: DBAPICursor,
-            operation: dict,
-            parameters: dict,
-    ) -> None:
-        cursor.execute(operation, parameters)
-                       
+                        
 class Inspector:
     """Provide facilities for inspecting database objects.
 

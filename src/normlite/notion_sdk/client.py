@@ -298,12 +298,11 @@ class AbstractNotionClient(ABC):
         Args:
             path_params (dict): A dictionary containing a "database_id" key for the database to
                 query.
-            query_params (dict): A dictionary containing "filter" object to select.
-            payload (dict): A dictionary that must contain a "database_id" key for the database to
-                query and "filter" object to select.
+            query_params (dict): A dictionary containing "filter_properties" object to restrict properties returned.
+            payload (dict): A dictionary that must contain the "filter" and optionally "sorts" objects modeling the query.
 
         Returns:
-            List[dict]: The list containing the page pbjects or ``[]``, if no pages have been found.
+            List[dict]: The list containing the page objects or ``[]``, if no pages have been found.
         """
         raise NotImplementedError
 
