@@ -52,7 +52,7 @@ class ReflectedTableInfo:
             return [rc.name for rc in self._columns if rc.name not in SpecialColumns.values()]
         
     @classmethod
-    def from_rows(cls, cols_as_rows: Sequence[Row]) -> "ReflectedTableInfo":
+    def from_rows(cls, cols_as_rows: Sequence[Row]) -> ReflectedTableInfo:
         """
         Build a ReflectedTableInfo from a sequence of column-definition rows.
 
@@ -93,7 +93,7 @@ class ReflectedTableInfo:
         ))
 
         result_process = String(is_title=True).result_processor()
-        database_name = result_process({'title': database_obj['title']})
+        database_name = result_process(database_obj['title'])
         cols.append(ReflectedColumnInfo(
             name=SpecialColumns.NO_TITLE,
             type=String(is_title=True),
