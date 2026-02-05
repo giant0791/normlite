@@ -138,6 +138,13 @@ class CreateTable(ExecutableDDLStatement):
 
             table.c[colmeta.name].value = colmeta.value
         
+        # add this table to the sys "tables"
+        engine = context.engine
+        context.engine._get_or_create_sys_tables_row(
+            table.name,
+            table_catalog=engine._user_database_name,
+            table_id=table.get_oid()
+        )
     
 class HasTable(HasIdentifier, ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to check for table exsistence.

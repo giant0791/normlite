@@ -10,6 +10,7 @@ from normlite import (
 )
 from normlite._constants import SpecialColumns
 from normlite.engine.base import Engine, create_engine
+from normlite.notion_sdk.getters import get_object_id, get_object_type
 from normlite.sql.schema import MetaData
 from normlite.sql.type_api import Boolean
 
@@ -220,7 +221,7 @@ def test_metadata_reflect():
     assert SpecialColumns.NO_ID in columns
     assert SpecialColumns.NO_ARCHIVED in columns
 
-def test_create_table():
+def test_create_table_not_existing():
     engine = create_engine(
         'normlite:///:memory:',
         _mock_ws_id = '12345678-0000-0000-1111-123456789012',
@@ -240,8 +241,12 @@ def test_create_table():
         Column('started_on', Date())
     )
 
-    students.create(engine)
-    inspector = engine.inspect()
-    assert inspector.has_table(students.name)
+    students.create(engine, checkfirst=True)
+    entry = engine._find_sys_tables_row('students', table_catalog=engine._user_database_name)
+    assert entry is not None
+
+    database_obj = engine._client._get_by_id(entry.table_id)
+    assert  get_object_type(database_obj) == 'database'
+    assert get_object_id(database_obj) == students.get_oid()
 
 
