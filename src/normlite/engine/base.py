@@ -80,7 +80,7 @@ from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.ddl import HasTable, ReflectTable
-from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor
+from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, ProgrammingError
 from normlite.utils import frozendict
 from normlite.notion_sdk.getters import get_property, get_rich_text_property_value, get_title_property_value
 
@@ -765,12 +765,18 @@ class Engine:
             table_schema: Optional[str] = 'not_used',
             *,
             table_catalog: str, 
-            table_id: str
+            table_id: str,
+            if_exists: bool = False
     ) -> SystemTablesEntry:
         """Helper to get or create a new row in the tables system table."""
         existing = self._find_sys_tables_row(table_name, table_catalog=table_catalog)
 
-        if existing is not None:
+        if existing is not None and not existing.is_dropped:
+            if if_exists:
+                raise ProgrammingError(
+                    f"Table '{table_name}' already exists in catalog '{table_catalog}'"
+                )
+
             return existing
 
         page_obj = self._client.pages_create(

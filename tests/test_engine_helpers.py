@@ -3,6 +3,7 @@ import pdb
 import pytest
 
 from normlite.engine.base import Engine, SystemTablesEntry, create_engine
+from normlite.notiondbapi.dbapi2 import ProgrammingError
 
 
 @pytest.fixture
@@ -34,3 +35,19 @@ def test_sys_tables_contains_self_row(engine: Engine):
     assert sys_tables.catalog == 'memory'
     assert sys_tables.table_id == engine._tables_id
     assert not sys_tables.is_dropped
+
+def test_engine_ensures_new_table_does_not_exist_in_sys_tables(engine: Engine):
+    engine._get_or_create_sys_tables_row(
+        'students',
+        table_catalog=engine._user_database_name,
+        table_id=engine._tables_id,
+        if_exists=True
+    )
+
+    with pytest.raises(ProgrammingError, match='students'):
+        engine._get_or_create_sys_tables_row(
+            'students',
+            table_catalog=engine._user_database_name,
+            table_id=engine._tables_id,
+            if_exists=True
+        )

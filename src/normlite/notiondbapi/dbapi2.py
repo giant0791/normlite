@@ -76,6 +76,16 @@ class OperationalError(DatabaseError):
 
     """
 
+class ProgrammingError(DatabaseError):
+    """Exception raised for errors that are related to the database’s operation and not necessarily under 
+    the control of the programmer.
+
+    Example situations are an unexpected disconnect occurs, the data source name is not found, 
+    a transaction could not be processed, a memory allocation error occurred during processing, etc. 
+
+    .. versionadded:: 0.8.0
+
+    """
 class Cursor:
     """Provide database base cursor functionalty according to the DBAPI 2.0 specification (PEP 249).
     
