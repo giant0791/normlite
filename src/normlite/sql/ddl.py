@@ -67,14 +67,26 @@ class _ColumnMetadata:
         """Return a TypeEngine instance, using the global type mapper."""
         Factory = type_mapper[self.type_code]
         return Factory(self.args)   # args set only types only
+    
+class HasTableMixin:
+    """Mixin for objects that have a :class:`normlite.sql.schema.Table` object.
+    
+    .. versionadded:: 0.8.0
+    """
 
-class ExecutableDDLStatement(Executable):
+    def get_table(self) -> Table:
+        return self._table
+
+class ExecutableDDLStatement(HasTableMixin, Executable):
     """Base class for all DDL executable statements.
     
     .. versionadded:: 0.8.0
         This class is a convenient base class to set the :attr:`is_ddl` for all subclasses.
     """
     is_ddl = True
+
+    def __init__(self):
+        self._table = None
 
     def _execute_on_connection(
             self, 
@@ -94,16 +106,19 @@ class ExecutableDDLStatement(Executable):
         )
 
 class CreateTable(ExecutableDDLStatement):
-    """Represent a ``CREATE TABLE`` statement."""
+    """Represent a ``CREATE TABLE`` statement.
+    
+    .. versionchanged:: 0.8.0
+        This version runs on the new :class:`normlite.engine.base.Connection` execution pipeline.
+
+    .. versionadded:: 0.7.0    
+    """
     __visit_name__ = 'create_table'
 
     def __init__(self, table: Table):
         super().__init__()
-        self.table = table
-    
-    def get_table(self) -> Table:
-        return self.table
-    
+        self._table = table
+      
     def _setup_execution(self, context: ExecutionContext) -> None:
         # nothing to be setup
         pass
@@ -117,7 +132,7 @@ class CreateTable(ExecutableDDLStatement):
         rows = result.all()        
         reflected_table_info = ReflectedTableInfo.from_rows(rows)
 
-        table = self.table
+        table = self._table
         
         # assign the table id
         table.set_oid(reflected_table_info.id)
@@ -142,7 +157,23 @@ class CreateTable(ExecutableDDLStatement):
             table_catalog=engine._user_database_name,
             table_id=table.get_oid()
         )
-    
+
+class DropTable(ExecutableDDLStatement):
+    """Represent a ``DROP TABLE`` statement.
+
+    .. versionadded:: 0.8.0
+    """
+    __visit_name__ = 'drop_table'    
+
+    def __init__(self, table: Table):
+        super().__init__()
+        self._table = table
+
+    def _setup_execution(self, context: ExecutionContext) -> None:
+        # nothing to be setup
+        pass
+
+
 class ReflectTable(ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to reflect a Notion database into a Python :class:`normlite.sql.schema.Table` object.
     

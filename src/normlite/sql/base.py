@@ -31,7 +31,7 @@ from normlite.utils import frozendict
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table
-    from normlite.sql.ddl import CreateTable, HasTable, ReflectTable
+    from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
     from normlite.sql.dml import Insert, Select
     from normlite.sql.elements import ColumnElement, UnaryExpression, BinaryExpression, BindParameter, BooleanClauseList
     from normlite.engine.cursor import CursorResult
@@ -395,7 +395,7 @@ class SQLCompiler(Protocol):
         """Compile a table (DDL ``CREATE TABLE``)."""
         ...
 
-    def visit_has_table(self, hastable: HasTable) -> dict:
+    def visit_drop_table(self, ddl_stmt: DropTable) -> dict:
         """Compile the pseudo DDL statement for checking for table existence."""
         ...
 
