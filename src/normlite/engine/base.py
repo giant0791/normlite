@@ -896,7 +896,7 @@ class Inspector:
         requested table.
 
         .. versionchanged:: 0.8.0
-            This method uses the new class :class:`normlite.sql.ddl.HasTable` as executable construct.
+            This method uses the new :meth:`Engine._find_sys_tables_row` API.
 
         .. versionadded:: 0.7.0
             This method uses internal private helper to query the tables database and check existence.
@@ -910,8 +910,8 @@ class Inspector:
         Returns:
             bool: ``True`` if the table exists, ``False`` otherwise. 
         """
-        hastable = self._engine._check_if_exists(table_name)
-        return hastable.found()
+        table_entry = self._engine._find_sys_tables_row(table_name, table_catalog=self._engine._user_database_name)
+        return table_entry is not None and not table_entry.is_dropped
     
     def reflect_table(self, table: Table) -> ReflectedTableInfo:
         return self._engine._reflect_table(table)

@@ -58,10 +58,12 @@ You can inspect the table's primary key constraints by calling the :attr:`primar
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import pdb
+import re
 from typing import Any, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, Tuple, Union, overload, TYPE_CHECKING
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError
+from normlite.notiondbapi.dbapi2 import ProgrammingError
 from normlite.sql.elements import ColumnElement, Comparator, ColumnOperators
 from normlite.sql.type_api import ArchivalFlag, ObjectId, TypeEngine
 
@@ -171,6 +173,10 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
             ]
             + ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
         )
+    
+def _is_valid_identifier(name: str) -> bool:
+    _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+    return _VALID_NAME.match(name)
 
 class Table(HasIdentifier):
     """A database table.
@@ -257,6 +263,9 @@ class Table(HasIdentifier):
             autoload_with: Optional[Engine] = None, 
             **kwargs: Any
     ):
+        if not _is_valid_identifier(name):
+            raise ArgumentError(f"Invalid table name: {name!r}")
+
         self.name = name
         """Table name."""
 
@@ -375,22 +384,52 @@ class Table(HasIdentifier):
         insert_stmt._set_table(self)
         return insert_stmt
 
-    def create(self, bind: Engine) -> None:
+    def create(self, bind: Engine, checkfirst: bool = False) -> None:
         """Create a new table using the provided bind.
 
         This method generates a :class:`normlite.sql.ddl.CreateTable` DDL statement,
         and it executes it on the provided bind.
 
+        .. versionchanged: 0.8.0
+            In this version, the check first logic is supported.
+
         Args:
             bind (Engine): The bind to use to connect to the database (Notion).
+            checkfirst (bool): If ``False`` and the table exists, the DDL statement fails.
+                If ``True`` and this table exists, then do nothing.
+
+        Raises:
+            ProgrammingError: If the ``checkfirst == False`` and the table already exists.
 
         .. versionadded:: 0.7.0
             Initial version, experimental not working code.
         """
         from normlite.sql.ddl import CreateTable
+
+        if bind.inspect().has_table(self.name):
+            if checkfirst:
+                # do nothing, the table already exists
+                return
+            raise ProgrammingError(
+                f"Table: '{self.name} already exists in catalog: '{bind._user_database_name}'"
+            )
+        
+        # IMPORTANT: The user tables page id **must** be set prior to executing
+        # the CreateTable statement.
+        self._db_parent_id = bind._user_tables_page_id
         ddl_stmt = CreateTable(self)
-        bind.connect().execute(ddl_stmt)
-        bind._add_table(self.name, bind._database, self.get_oid())
+        with bind.connect() as connection:
+            execution_options = {
+                "isolation_level": "AUTO COMMIT"
+            }
+
+            _ = connection.execute(
+                ddl_stmt, 
+                execution_options=execution_options
+            )
+
+    def drop(self, bind: Engine, checkfirst: bool = False) -> None:
+        raise NotImplementedError('DROP TABLE not supported in this version.')
 
     def _ensure_implicit_columns(self):
         # Notion object ID: always primary key
