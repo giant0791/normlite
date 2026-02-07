@@ -175,6 +175,12 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
         )
     
 def _is_valid_identifier(name: str) -> bool:
+    if not isinstance(name, str):
+        return False
+    
+    if name is None:
+        return False
+
     _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
     return _VALID_NAME.match(name)
 
@@ -259,12 +265,32 @@ class Table(HasIdentifier):
             self, 
             name: str, 
             metadata: MetaData, 
-            *columns: Column,
+            *args: Column,
             autoload_with: Optional[Engine] = None, 
             **kwargs: Any
     ):
-        if not _is_valid_identifier(name):
-            raise ArgumentError(f"Invalid table name: {name!r}")
+        from normlite.engine.base import Engine
+        if isinstance(name, MetaData):
+            raise ArgumentError(
+                "Table() missing required argument 'name'; "
+                "did you mean Table('name', metadata, ...)?"
+            )
+
+        if not isinstance(name, str) or not _is_valid_identifier(name):
+            raise ArgumentError(
+                f"Table name must be a non-empty string: {name!r}"
+            )
+
+        if not isinstance(metadata, MetaData):
+            raise ArgumentError(
+                "Second positional argument to Table must be a MetaData instance"
+            )
+        
+        for col in args:
+            if not isinstance(col, Column):
+                raise ArgumentError(
+                    "All positional arguments after MetaData must be Column objects"
+                )
 
         self.name = name
         """Table name."""
@@ -303,15 +329,21 @@ class Table(HasIdentifier):
         This is the Notion page id containing all the tables which belong to the same database. 
         """
 
-        if autoload_with:
-            if columns:
+        if autoload_with is not None:
+            if not isinstance(autoload_with, Engine):
+                raise ArgumentError(
+                    "autoload_with must be an Engine instance"
+                )
+
+            if args:
                 raise ArgumentError('Columns cannot be specified when using "autoload_with" keyword argument')
-            
+
+
             self._autoload(autoload_with)
         
-        if columns:
+        if args:
             # add user-declared columns
-            for col in columns:
+            for col in args:
                 self.append_column(col)
 
             # Always add implicit Notion columns

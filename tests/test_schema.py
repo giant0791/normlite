@@ -166,6 +166,40 @@ def test_table_construct():
     assert isinstance(students.c['name'].type_, String)
     assert isinstance(students.c['since'].type_, Date)
 
+def test_table_valid_minimal():
+    metadata = MetaData()
+    t = Table("students", metadata)
+
+    assert t.name == "students"
+    assert t.metadata is metadata
+
+def test_table_missing_name():
+    metadata = MetaData()
+
+    with pytest.raises(ArgumentError, match="missing required argument 'name'"):
+        Table(metadata, Column("id", Integer()))
+
+def test_table_invalid_column_argument():
+    metadata = MetaData()
+
+    with pytest.raises(ArgumentError, match="Column objects"):
+        Table("students", metadata, Column("id", Integer()), "not-a-column")
+
+def test_table_invalid_autoload_with():
+    metadata = MetaData()
+
+    with pytest.raises(ArgumentError, match="autoload_with must be an Engine"):
+        Table("students", metadata, autoload_with="engine")
+
+def test_table_autoload_with_and_columns_mutually_exclusive(engine: Engine):
+    metadata = MetaData()
+
+    with pytest.raises(
+        ArgumentError,
+        match='Columns cannot be specified when using "autoload_with"'
+    ):
+        Table("students", metadata, Column("id", Integer()), autoload_with=engine)
+
 def test_table_primary_key():
     metadata = MetaData()
     students = Table(
