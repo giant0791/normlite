@@ -79,7 +79,7 @@ from normlite.exceptions import ArgumentError, NormliteError, ObjectNotExecutabl
 from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.sql.compiler import NotionCompiler
-from normlite.sql.ddl import HasTable, ReflectTable
+from normlite.sql.ddl import ReflectTable
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, ProgrammingError
 from normlite.utils import frozendict
 from normlite.notion_sdk.getters import get_property, get_rich_text_property_value, get_title_property_value
@@ -409,6 +409,7 @@ class SystemTablesEntry:
     catalog: str
     schema: str
     table_id: str
+    sys_rowid: str
     is_dropped: bool
 
     @classmethod
@@ -441,6 +442,7 @@ class SystemTablesEntry:
             )
         )
 
+        sys_rowid = page_obj['id']
         is_dropped = page_obj['in_trash']
 
         return cls(
@@ -448,6 +450,7 @@ class SystemTablesEntry:
             catalog=catalog,
             schema=schema,
             table_id=table_id,
+            sys_rowid=sys_rowid,
             is_dropped=is_dropped
         ) 
 class Engine:
@@ -804,37 +807,9 @@ class Engine:
 
         return SystemTablesEntry.from_dict(page_obj)
 
-
-    def _check_if_exists(self, table_name: str) -> HasTable:
-        """Helper method to check for existence of a table."""
-
-        # execute the DDL statement
-        with self.connect() as connection:
-            hastable = HasTable(
-                table_name, 
-                self._tables_id, 
-                'normlite' if table_name == 'tables' else self._database
-            )
-
-            # result is not needed, the check result
-            # can be queried using the found() method 
-            _ = connection.execute(hastable)
-
-        return hastable
-        
     def _reflect_table(self, table: Table) -> ReflectedTableInfo:
-            has_table = self._check_if_exists(table.name)
-            if has_table.found():
-                with self.connect() as connection:
-                    table.set_oid(has_table.get_oid())
-                    reflect_table = ReflectTable(table)
-                    _ = connection.execute(reflect_table)
-
-            else:
-                raise ArgumentError(f"No table found with name: {table.name}")
-            
-            return reflect_table._as_info()
-    
+        raise NotImplementedError
+        
     # -------------------------------------------------
     # Public API
     # -------------------------------------------------
@@ -890,13 +865,14 @@ class Inspector:
         return database_info.get_columns()
 
     def has_table(self, table_name: str) -> bool:
-        """Check whether the specified table name exists in the database being inspected.
+        """Return ``True`` if the specified table name exists in the database being inspected.
 
         This method queries the INFORMATION_SCHEMA.tables database to check existence of the
-        requested table.
+        requested table and returns ``True`` only if the found table has not been dropped. 
 
         .. versionchanged:: 0.8.0
-            This method uses the new :meth:`Engine._find_sys_tables_row` API.
+            This method uses the new :meth:`Engine._find_sys_tables_row` API and it adds the verification
+            whether the table is dropped.
 
         .. versionadded:: 0.7.0
             This method uses internal private helper to query the tables database and check existence.
