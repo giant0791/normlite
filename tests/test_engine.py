@@ -62,7 +62,7 @@ def create_students_db(engine: Engine) -> None:
     db = engine._client._add('database', {
         'parent': {
             'type': 'page_id',
-            'page_id': engine._db_page_id
+            'page_id': engine._user_tables_page_id
         },
         "title": [
             {
@@ -171,21 +171,38 @@ def test_tables_page_created(engine: Engine):
     table_catalog = get_property(tables, 'table_catalog')
     table_id = get_property(tables, 'table_id')
     assert  get_rich_text_property_value(table_schema) == 'information_schema'
-    assert  get_rich_text_property_value(table_catalog) == 'normlite'
+    assert  get_rich_text_property_value(table_catalog) == 'memory'
     assert  get_rich_text_property_value(table_id) == engine._tables_id
 
+def test_engine_connect(engine: Engine):
+    with engine.connect() as connection:
+        connection: Connection = engine.connect()
+        assert connection.connection
+
+        cursor: Cursor = connection.connection.cursor()
+        assert isinstance(cursor._client, InMemoryNotionClient)
+        assert cursor._client is engine._client
+
 #---------------------------------------------------
-# Reflection tests
+# Inspection tests
 #---------------------------------------------------
 
-@pytest.mark.skip('reflection requires refactor')
 def test_engine_inspect_has_table_sys(engine: Engine, inspector: Inspector):
     assert inspector.has_table('tables')
 
-@pytest.mark.skip('reflection requires refactor')
 def test_engine_inspect_has_table_user(engine: Engine, inspector: Inspector):
     create_students_db(engine)
     assert inspector.has_table('students')
+
+def test_engine_inspect_has_table_dropped_user_table(engine: Engine, inspector: Inspector):
+    create_students_db(engine)
+    
+    # mock students table gets dropped
+    entry = engine._find_sys_tables_row('students', table_catalog='memory')
+    sys_rowid = entry.sys_rowid
+    engine._client._store[sys_rowid]['in_trash'] = True
+
+    assert not inspector.has_table('students')
 
 @pytest.mark.skip('reflection requires refactor')
 def test_engine_inspector_reflect_sys_table(engine: Engine, inspector: Inspector):
@@ -220,26 +237,6 @@ def test_engine_inspector_reflect_user_table(engine: Engine, inspector: Inspecto
 
     assert 'is_active' in students.c
     assert isinstance(students.c.is_active.type_, Boolean)
-
-@pytest.mark.skip('connect requires refactor')
-def test_engine_connect():
-    engine = create_engine(
-        'normlite:///:memory:',
-        init_client=False,
-        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
-        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
-        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
-        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
-    )
-
-    connection: Connection = engine.connect()
-    assert connection.connection
-
-    cursor: Cursor = connection.connection.cursor()
-    assert isinstance(cursor._client, InMemoryNotionClient)
-    assert cursor._client is engine._client
-
-
         
 
 

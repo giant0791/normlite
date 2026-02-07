@@ -395,10 +395,6 @@ class SQLCompiler(Protocol):
         """Compile a table (DDL ``CREATE TABLE``)."""
         ...
 
-    def visit_create_column(self, column: CreateColumn) -> dict:
-        """Compile a column."""
-        ...
-
     def visit_has_table(self, hastable: HasTable) -> dict:
         """Compile the pseudo DDL statement for checking for table existence."""
         ...

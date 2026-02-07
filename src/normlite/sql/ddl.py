@@ -16,17 +16,15 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
-import pdb
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
 from normlite._constants import SpecialColumns
 from normlite.future.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext
-from normlite.exceptions import InvalidRequestError, MultipleResultsFound, NoResultFound, NormliteError
+from normlite.exceptions import InvalidRequestError
 from normlite.engine.reflection import ReflectedTableInfo
-from normlite.sql.base import ClauseElement, Executable
-from normlite.sql.schema import HasIdentifier
+from normlite.sql.base import Executable
 from normlite.sql.type_api import type_mapper
 
 if TYPE_CHECKING:
@@ -34,7 +32,6 @@ if TYPE_CHECKING:
     from normlite.engine.interfaces import _CoreAnyExecuteParams
     from normlite.engine.cursor import CursorResult
     from normlite.engine.base import Connection
-
 
 @dataclass
 class _ColumnMetadata:
@@ -146,60 +143,6 @@ class CreateTable(ExecutableDDLStatement):
             table_id=table.get_oid()
         )
     
-class HasTable(HasIdentifier, ExecutableDDLStatement):
-    """Represent a convenient pseudo DDL statement to check for table exsistence.
-
-    :class:`HasTable` stores the object id of the table being checked, if this exists.
-    This allows a subsequent execution of :class:`ReflectTable` to run as a simple database retrieve.
-    
-    .. versionadded:: 0.8.0
-        Initial version does not support if exists logic.
-    """
-    __visit_name__ = 'has_table'
-
-    def __init__(self, table_name: str, tables_id: str, table_catalog: str):
-        self.table_name = table_name
-        """The table name to search for."""
-
-        self._tables_id = tables_id
-        """The database id for the "tables" table."""    
-
-        self._table_catalog = table_catalog
-        """The database name (table_catalog)  this table belongs to."""
-
-        self._found = None
-        """``True`` if the looked for table was found."""
-
-        self._oid = None
-        """The object id of the looked for table."""
-
-    def found(self) -> bool:
-        """Return ``True`` if the table does exist."""
-
-        return self._found
-    
-    def get_oid(self) -> str:
-        return self._oid
-    
-    def set_oid(self, id_: str) -> None:
-        raise NotImplementedError
-    
-    def _post_exec(self, result: CursorResult, context: ExecutionContext) -> None:
-        try: 
-            row = result.one()
-            # IMPORTANT: Here the found database's id is stored in the table_id columns, 
-            # since the returned row belongs to the tables table.
-            self._oid = row['table_id']
-            self._found = True
-
-        except NoResultFound:
-            # table does not exist
-            self._found = False
-
-        except MultipleResultsFound:
-            # multiple tables with the same name were found
-            raise NormliteError(f'Internal error. Found multiple occurrences of {self.table_name}')                
-
 class ReflectTable(ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to reflect a Notion database into a Python :class:`normlite.sql.schema.Table` object.
     
