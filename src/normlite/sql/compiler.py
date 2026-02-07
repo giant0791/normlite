@@ -67,41 +67,39 @@ class NotionCompiler(SQLCompiler):
             # this is the stringified version of the compiled object
             {
                 "operation": {                                  # a dictionary specifying the Notion API 
-                    "endpoint": "databases",                    # endpoint and 
-                    "request": "create",                        # request
-                    "template": {                               # parameterized template
-                        "parent": {
-                            "type": "page_id",
-                            "page_id": "12345678-9090-0606-1111-123456789012"
-                        },
-                        "title": {                              # database name
-                            "text": {
-                            "content": "students"
+                    "endpoint": "databases",                    
+                    "request": "create",                        
+                },
+                "payload": {                                    # parameterized payload
+                    "parent": {
+                        "type": "page_id",
+                        "page_id": ":page_id"                   # bind param for parent page_id
+                    },
+                    "title": {                                  
+                        "text": {
+                        "content": ":table_name"                # bind param for table name 
+                        }
+                    },
+                    "properties": {                             # the table schema
+                        "id": {
+                            "number": {
+                                "format": "number"
                             }
                         },
-                        "properties": {                         # database schema
-                            "id": {
-                                "number": {
-                                    "format": "number"
-                                }
-                            },
-                            "name": {
-                                "title": {}
-                            },
-                            "grade": {
-                                "rich_text": {}
-                            },
-                            "is_active": {
-                                "checkbox": {}
-                            },
-                            "started_on": {
-                                "date": {}
-                            }
+                        "name": {
+                            "title": {}
+                        },
+                        "grade": {
+                            "rich_text": {}
+                        },
+                        "is_active": {
+                            "checkbox": {}
+                        },
+                        "started_on": {
+                            "date": {}
                         }
                     }
-                },
-                "parameters": {},                               # bind parameters, {} as tables do not have parameters
-                "result_columns": []                            # no result columns specified
+                }
             }
 
         .. rubric:: Example 2: Add a new page to a Notion database
@@ -216,10 +214,13 @@ class NotionCompiler(SQLCompiler):
     def visit_create_table(self, ddl_stmt: CreateTable) -> dict:
         """Compile a ``CREATE TABLE`` statement.
         
-        This visit method compiles the DDL :class:`normlite.sql.ddl.CreateTable` construct into the corresponding Notion payload.
+        This visit method compiles the DDL :class:`normlite.sql.ddl.CreateTable` construct into the 
+        corresponding Notion payload.
 
         .. versionchanged:: 0.8.0
-            This method now produces a fully parameterized template dictionary and provide the binds in the parameter dictionary.
+            This method now produces a fully parameterized template dictionary and 
+            provides the binds in the parameter dictionary.
+            It fixes also the returning columns to be set to the **meta columns**.
 
         Args:
             ddl_stmt (CreateTable): The DDL statement to be compiled.
@@ -280,53 +281,7 @@ class NotionCompiler(SQLCompiler):
         ]
         
         return {'operation': operation, 'payload': payload}  
-    
-    def visit_has_table(self, hastable: HasTable) -> dict:
-        """Compile the pseudo DDL statement to check for table existence.
-
-        This visit method compiles the DDL :class:`normlite.sql.ddl.HasTable` construct into a Notion database.query request.
-
-        .. versionadded:: 0.8.0
-            This method produces a fully parameterized template dictionary and provide the binds in the parameter dictionary.
-
-        Args:
-            hastable (HasTable): The table clause being searched for.
-
-        Returns:
-            dict: The dictionary containing the compiled object.
-        """
-        no_query_obj = {
-            'database_id': ':database_id',                    # "tables" database id
-            'filter': {
-                'and': [
-                    {
-                        'property': 'table_name',
-                        'title' : {
-                            'equals': ':table_name'
-                        }
-                    },
-                    {
-                        'property': 'table_catalog',
-                        'rich_text': {
-                            'equals': ':table_catalog'     # _catalog_name is the database name containing this table
-                        }
-                    }
-                ]
-            }
-        }
         
-        operation = dict(endpoint='databases', request='query', template=no_query_obj)
-        parameters = {
-            'database_id': hastable._tables_id,
-            'table_name': hastable.table_name,
-            'table_catalog': hastable._table_catalog
-        }
-
-
-        # IMPORTANT: You need the table_id column which stores the found database's id
-        result_columns = ['table_id']
-        return {'operation': operation, 'parameters': parameters, 'result_columns': result_columns}
-    
     def visit_reflect_table(self, reflect_table: ReflectTable) -> dict:
         operation = dict(endpoint='databases', request='retrieve', template={'database_id': ':database_id'})
         database_id = reflect_table.get_table().get_oid()
