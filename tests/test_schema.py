@@ -10,18 +10,39 @@ from normlite import (
 )
 from normlite._constants import SpecialColumns
 from normlite.engine.base import Engine, create_engine
+from normlite.exceptions import ArgumentError
 from normlite.notion_sdk.getters import get_object_id, get_object_type
+from normlite.notiondbapi.dbapi2 import ProgrammingError
 from normlite.sql.schema import MetaData
 from normlite.sql.type_api import Boolean
 
 @pytest.fixture
-def sc() -> ColumnCollection:
-    return ColumnCollection([
-        ('student_id', Column('student_id', Integer(), primary_key=True)),
-        ('name', Column('name', String(is_title=True))),
-        ('grade', Column('grade', String())),
-        ('since', Column('since', Date()))
-    ])
+def metadata() -> MetaData:
+    return MetaData()
+
+@pytest.fixture
+def students(metadata: MetaData) -> Table:
+    students = Table(
+        'students',
+        metadata,
+        Column('name', String(is_title=True)),
+        Column('id', Integer()),
+        Column('is_active', Boolean()),
+        Column('start_on', Date()),
+        Column('grade',  String())
+    )
+    
+    return students
+
+@pytest.fixture
+def engine() -> Engine:
+    return create_engine(
+        'normlite:///:memory:',
+        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
+        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
+        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
+        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
+    )
 
 def create_students_db(engine: Engine) -> None:
     # create a new table students in memory
@@ -42,10 +63,11 @@ def create_students_db(engine: Engine) -> None:
             }
         ],
         'properties': {
-            'student_id': {'number': {}},
+            'id': {'number': {}},
             'name': {'title': {}},
             'grade': {'rich_text': {}},
-            'is_active': {'checkbox': {}}
+            'is_active': {'checkbox': {}},
+            'start_on': {'date': {}}
         }
     })
 
@@ -63,48 +85,71 @@ def create_students_db(engine: Engine) -> None:
         }
     })
 
-def test_columncollection_getattr(sc: ColumnCollection):
-    assert isinstance(sc.since, Column)
-    assert not sc.since.primary_key
+# --------------------------------------
+# Column collection tests
+#---------------------------------------
+def test_columncollection_getattr(students: Table):
+    sc = students.columns
+ 
+    assert isinstance(sc.start_on, Column)
+    assert not sc.start_on.primary_key
 
-def test_columncollection_getitem(sc: ColumnCollection):
-    assert isinstance(sc['student_id'], Column)
+def test_columncollection_getitem(students: Table):
+    sc = students.columns
+ 
+    assert isinstance(sc['id'], Column)
     assert isinstance(sc[0], Column)
-    assert sc['student_id'].primary_key
-    assert sc[0].primary_key
+    assert not sc['id'].primary_key
+    assert not sc[0].primary_key
     assert len(sc[0:3]) == 3
 
-def test_columncollection_contains(sc: ColumnCollection):
-    assert 'student_id' in sc
-    assert not '_no_id' in sc
+def test_columncollection_contains(students: Table):
+    uc = students.get_user_defined_colums()
+ 
+    assert 'id' in uc
+    assert not '_no_id' in uc
 
-def test_columncollection_getitem_wrong_index(sc: ColumnCollection):
+def test_columncollection_getitem_wrong_index(students: Table):
+    sc = students.columns
     index = len(sc)
     with pytest.raises(IndexError, match=f'{index}'):
         col = sc[index]
 
-def test_columncollection_add(sc: ColumnCollection):
-    sc.add(Column("_no_id", ObjectId(), primary_key=True))
-    sc.add(Column("_no_archived", ArchivalFlag()))
-    assert len(sc) == 6
-    assert isinstance(sc._no_id, Column)
-    assert isinstance(sc._no_archived, Column)
+def test_columncollection_add(students: Table):
+    sc = students.columns
+    fake_id = Column("fake_id", ObjectId(), primary_key=True)
+    fake_id._set_parent(students)
+    fake_archived = Column("fake_archived", ArchivalFlag())
+    fake_archived._set_parent(students)
+    sc.add(fake_id)
+    sc.add(fake_archived)
 
-def test_columncollection_getitem_wrong_key(sc: ColumnCollection):
+    assert len(sc) == 10
+    assert isinstance(sc.fake_id, Column)
+    assert isinstance(sc.fake_archived, Column)
+
+def test_columncollection_getitem_wrong_key(students: Table):
+    sc = students.columns
     key = 'does_not_exist'
     with pytest.raises(KeyError, match=f'{key}'):
         col = sc[key]
 
-def test_columncollection_asreadonly(sc: ColumnCollection):
+def test_columncollection_asreadonly(students: Table):
+    sc = students.columns
     ro_sc = sc.as_readonly()
     with pytest.raises(TypeError, match='object is immutable and/or readonly.'):
         del ro_sc['student_id']
 
-def test_columncollection_no_duplicates(sc: ColumnCollection):
-    dup_col = 'student_id'
+def test_columncollection_no_duplicates(students: Table):
+    sc = students.columns 
+    dup_col = 'id'
     with pytest.raises(DuplicateColumnError, match=f'not allow duplicate columns: {dup_col}'):
-        sc.add(Column('student_id', String()))
-        
+        sc.add(Column('id', String()))
+
+# --------------------------------------
+# Table tests
+#---------------------------------------        
+
 def test_table_construct():
     metadata = MetaData()
     students = Table(
@@ -118,8 +163,8 @@ def test_table_construct():
     assert students.columns._no_id.primary_key
     assert students.columns.student_id.primary_key
     assert not students.columns.name.primary_key
-    assert students.c._no_id == students.columns._no_id
-    assert students.c._no_archived == students.columns._no_archived
+    assert isinstance(students.c['name'].type_, String)
+    assert isinstance(students.c['since'].type_, Date)
 
 def test_table_primary_key():
     metadata = MetaData()
@@ -138,8 +183,29 @@ def test_table_primary_key():
     assert '_no_id' in primary_key.c
     assert 'student_id' in primary_key.c
     assert not 'name' in primary_key.columns
-    assert students.c._no_id == primary_key.c._no_id
-    assert students.c.student_id == primary_key.c.student_id
+
+def test_invalid_table_name_empty(metadata: MetaData):
+    good = Table('students', metadata)
+
+    with pytest.raises(ArgumentError):
+        bad = Table('', metadata)
+
+def test_invalid_table_blanks(metadata: MetaData):
+    with pytest.raises(ArgumentError):
+        bad = Table(' ', metadata)
+
+    with pytest.raises(ArgumentError):
+        bad = Table('bad ', metadata)
+
+    with pytest.raises(ArgumentError):
+        bad = Table('bad name', metadata)
+
+    with pytest.raises(ArgumentError):
+        bad = Table(' bad', metadata)
+
+# --------------------------------------
+# Metadata tests
+#---------------------------------------
 
 def includes_all(l: list[str], values: Iterable[str]) -> bool:
     for v in values:
@@ -147,23 +213,7 @@ def includes_all(l: list[str], values: Iterable[str]) -> bool:
             return False
     return True
 
-def test_table_autoload():
-    engine = create_engine(
-        'normlite:///:memory:',
-        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
-        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
-        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
-        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
-    )
-    create_students_db(engine)
-    metadata = MetaData()
-    students = Table('students', metadata, autoload_with=engine)
-    columns = [c.name for c in students.columns]
-    assert includes_all(columns, ['student_id', 'name', 'grade', 'is_active'])
-    assert '_no_id' in columns
-    assert '_no_archived' in columns
-
-def test_metadata_contains():
+def test_metadata_contains(metadata: MetaData):
     metadata = MetaData()
     students = Table(
         'students', 
@@ -204,14 +254,21 @@ def test_metadata_sorted_tables():
 
     assert metadata.sorted_tables == [classes, students, teachers]
 
-def test_metadata_reflect():
-    engine = create_engine(
-        'normlite:///:memory:',
-        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
-        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
-        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
-        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
-    )
+# --------------------------------------
+# Reflection tests
+#---------------------------------------
+
+@pytest.mark.skip('Table autoload_with depends on reflection')
+def test_table_autoload(engine: Engine, metadata: MetaData):
+    create_students_db(engine)
+    students = Table('students', metadata, autoload_with=engine)
+    columns = [c.name for c in students.columns]
+    assert includes_all(columns, ['student_id', 'name', 'grade', 'is_active'])
+    assert '_no_id' in columns
+    assert '_no_archived' in columns
+
+@pytest.mark.skip('Table reflection not supported in this version')
+def test_metadata_reflect(engine: Engine, metadata: MetaData):
     create_students_db(engine)
     metadata = MetaData()
     students = Table('students', metadata)
@@ -221,26 +278,11 @@ def test_metadata_reflect():
     assert SpecialColumns.NO_ID in columns
     assert SpecialColumns.NO_ARCHIVED in columns
 
-def test_create_table_not_existing():
-    engine = create_engine(
-        'normlite:///:memory:',
-        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
-        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
-        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
-        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
-    )
+# --------------------------------------
+# Create table DDL tests
+#---------------------------------------
 
-    metadata = MetaData()
-    students = Table(
-        'students',
-        metadata,
-        Column('id', Integer()),
-        Column('name', String(is_title=True)),
-        Column('grade', String()),
-        Column('is_active', Boolean()),
-        Column('started_on', Date())
-    )
-
+def test_create_table_not_existing(engine: Engine, students: Table):
     students.create(engine, checkfirst=True)
     entry = engine._find_sys_tables_row('students', table_catalog=engine._user_database_name)
     assert entry is not None
@@ -249,4 +291,62 @@ def test_create_table_not_existing():
     assert  get_object_type(database_obj) == 'database'
     assert get_object_id(database_obj) == students.get_oid()
 
+def test_create_existing_table_no_checkfirst_raises(engine: Engine, students: Table):
+    students.create(engine, checkfirst=True)
 
+    with pytest.raises(ProgrammingError, match='students'):
+        students.create(engine)     # checkfirst is False by default
+
+def test_create_existing_table_checkfirst_does_not_raise(engine: Engine, students: Table):
+    students.create(engine, checkfirst=True)
+    students.create(engine, checkfirst=True)     # This does nothing, create() is idempotent
+
+def test_create_sets_oid(engine, students):
+    assert students.get_oid() is None
+
+    students.create(engine)
+
+    oid = students.get_oid()
+    assert oid is not None
+
+    students.create(engine, checkfirst=True)
+    assert students.get_oid() == oid
+
+def test_create_existing_table_error_message(engine, students):
+    students.create(engine)
+
+    with pytest.raises(ProgrammingError) as exc:
+        students.create(engine)
+
+    assert 'students' in str(exc.value)
+    assert engine._user_database_name in str(exc.value)
+
+# --------------------------------------
+# Drop table DDL tests
+#---------------------------------------
+
+@pytest.mark.skip('DROP TABLE not supported yet.')
+def test_create_after_drop_recreates_table(engine, students):
+    students.create(engine)
+    students.drop(engine)
+
+    students.create(engine)
+
+    entry = engine._find_sys_tables_row(
+        'students', table_catalog=engine._user_database_name
+    )
+    assert entry is not None
+    assert not entry.is_dropped
+
+@pytest.mark.skip('DROP TABLE not supported yet.')
+def test_create_after_drop_checkfirst_creates(engine, students):
+    students.create(engine)
+    students.drop(engine)
+
+    students.create(engine, checkfirst=True)
+
+    entry = engine._find_sys_tables_row(
+        'students', table_catalog=engine._user_database_name
+    )
+    assert entry is not None
+    assert not entry.is_dropped

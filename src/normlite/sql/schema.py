@@ -58,6 +58,7 @@ You can inspect the table's primary key constraints by calling the :attr:`primar
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import pdb
+import re
 from typing import Any, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, Tuple, Union, overload, TYPE_CHECKING
 
 from normlite._constants import SpecialColumns
@@ -172,6 +173,10 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
             ]
             + ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
         )
+    
+def _is_valid_identifier(name: str) -> bool:
+    _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+    return _VALID_NAME.match(name)
 
 class Table(HasIdentifier):
     """A database table.
@@ -258,6 +263,9 @@ class Table(HasIdentifier):
             autoload_with: Optional[Engine] = None, 
             **kwargs: Any
     ):
+        if not _is_valid_identifier(name):
+            raise ArgumentError(f"Invalid table name: {name!r}")
+
         self.name = name
         """Table name."""
 
@@ -419,6 +427,9 @@ class Table(HasIdentifier):
                 ddl_stmt, 
                 execution_options=execution_options
             )
+
+    def drop(self, bind: Engine, checkfirst: bool = False) -> None:
+        raise NotImplementedError('DROP TABLE not supported in this version.')
 
     def _ensure_implicit_columns(self):
         # Notion object ID: always primary key
