@@ -127,6 +127,7 @@ class ClauseElement(Generative, Visitable):
         Returns:
             Compiled: The compiled object rusult of the compilation.
         """
+        compiler._compiler_state = CompilerState()
         compiled_dict = compiler.process(self, **kwargs)
         if compiler._compiler_state.is_ddl:
             return DDLCompiled(self, compiled_dict, compiler)
@@ -321,7 +322,7 @@ class Compiled:
         # IMPORTANT: The _compiler_state.execution_binds contains the mapping that associates
         # a bind param key to a tuple[BindParameter, str], where str is the usage="value" | "filter"
         # This is used by the ExecutionContext to choose the right bind processor (bind_processor | filter_processor)
-        self._execution_binds = compiler._compiler_state.execution_binds
+        self._execution_binds = dict(compiler._compiler_state.execution_binds)
         """The bind parameters for this compiled object."""
 
         self._result_columns = compiler._compiler_state.result_columns

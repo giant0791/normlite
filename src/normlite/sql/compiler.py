@@ -28,8 +28,7 @@ from normlite.sql.base import _CompileState, CompilerState, SQLCompiler
 from normlite.sql.dml import OrderByClause
 from normlite.sql.elements import _BindRole, BooleanClauseList, Operator, OrderByExpression, ColumnElement
 from normlite.sql.elements import BindParameter
-from normlite.sql.schema import Column, ReadOnlyColumnCollection
-from normlite.sql.type_api import String
+from normlite.sql.schema import ReadOnlyColumnCollection
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
@@ -208,7 +207,7 @@ class NotionCompiler(SQLCompiler):
     """
 
     def __init__(self):
-        self._compiler_state = CompilerState()
+        self._compiler_state = None
         self._bind_counter = 0
 
     def visit_create_table(self, ddl_stmt: CreateTable) -> dict:

@@ -10,10 +10,10 @@ from normlite.engine.interfaces import _distill_params
 from normlite.engine.reflection import ReflectedTableInfo
 from normlite.notion_sdk.getters import get_object_id, rich_text_to_plain_text
 from normlite.sql.compiler import NotionCompiler
-from normlite.sql.ddl import CreateTable
+from normlite.sql.ddl import CreateTable, DropTable
 from normlite.sql.dml import insert, select
 from normlite.sql.schema import Column, MetaData, Table
-from normlite.sql.type_api import Boolean, Date, Integer, String
+from normlite.sql.type_api import Boolean, Date, Integer, Number, String
 
 @pytest.fixture
 def mocked_db_id() -> str:
@@ -346,7 +346,7 @@ def test_execute_ddl_context_create_table_returning_id_and_title(engine: Engine,
     assert reflected_table_info.name == 'students'
     assert is_valid_uuid4(reflected_table_info.id)
 
-def est_execute_ddl_context_create_table_returning_property_ids(engine: Engine, students: Table):
+def test_execute_ddl_context_create_table_returning_property_ids(engine: Engine, students: Table):
     students._db_parent_id = engine._user_tables_page_id
     stmt = CreateTable(students)
     compiled = stmt.compile(engine._sql_compiler)
@@ -367,11 +367,39 @@ def est_execute_ddl_context_create_table_returning_property_ids(engine: Engine, 
     reflected_table_info = ReflectedTableInfo.from_rows(rows)
     name_col, id_col, is_active_col, start_on_col, grade_col = reflected_table_info.get_user_columns()
 
-    assert name_col.type == 'title'
-    assert id_col.type == 'number'
-    assert is_active_col.type == 'checkbox'
-    assert start_on_col.type == 'date'
-    assert grade_col.type == 'rich_text'
+    assert isinstance(name_col.type, String)
+    assert name_col.type.is_title
+    assert isinstance(id_col.type, Number)
+    assert id_col.type.format == 'number'
+    assert isinstance(is_active_col.type, Boolean)
+    assert isinstance(start_on_col.type, Date)
+    assert isinstance(grade_col.type, String)
+    assert not grade_col.type.is_title 
+
+def test_execute_ddl_context_drop_table_returning_id_and_in_trash(engine: Engine, students: Table):
+    database_id = create_students_db(engine)
+    students.set_oid(database_id)
+    stmt = DropTable(students)
+    compiled = stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+    )
+
+    # Connection._execute_context(context) -> CursorResult:
+    ctx.pre_exec()
+    engine.do_execute(cursor, ctx.operation, ctx.parameters)
+    ctx.post_exec()
+    result = ctx.setup_cursor_result()
+    rows = result.all()
+    reflected_table_info = ReflectedTableInfo.from_rows(rows)
+
+    assert reflected_table_info.in_trash
+    assert reflected_table_info.name == 'students'
+    assert reflected_table_info.id == database_id
 
 def test_connection_exec_pipeline_simulated(engine: Engine, students: Table):
     students._db_parent_id = engine._user_tables_page_id
@@ -494,3 +522,30 @@ def test_connection_exec_ddl_context_create_table(engine: Engine, students: Tabl
     assert all(
         [c._id is not None for c in students.get_user_defined_colums()]
     )
+
+def test_connection_exec_ddl_context_drop_table(engine: Engine, students: Table):
+    students._db_parent_id = engine._user_tables_page_id
+    stmt_create = CreateTable(students)
+    stmt_drop = DropTable(students)
+
+    with engine.connect() as connection:
+        execution_options = {
+            "isolation_level": "AUTO COMMIT"
+        }
+
+        result = connection.execute(
+            stmt_create, 
+            execution_options=execution_options
+        )
+        #pdb.set_trace()
+        result = connection.execute(
+            stmt_drop, 
+            execution_options=execution_options
+        )
+
+    inspector = engine.inspect()
+
+    assert not inspector.has_table(students)
+    
+
+

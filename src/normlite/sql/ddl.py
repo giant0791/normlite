@@ -173,6 +173,10 @@ class DropTable(ExecutableDDLStatement):
         # nothing to be setup
         pass
 
+    def _finalize_execution(self, context: ExecutionContext) -> None:
+        # IMPORTANT: This consumes the result 
+        pass
+
 
 class ReflectTable(ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to reflect a Notion database into a Python :class:`normlite.sql.schema.Table` object.

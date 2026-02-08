@@ -453,6 +453,7 @@ class SystemTablesEntry:
             sys_rowid=sys_rowid,
             is_dropped=is_dropped
         ) 
+
 class Engine:
     """Provide a convenient proxy object of database connectivity to Notion integrations.
 
