@@ -137,7 +137,7 @@ class SystemTablesEntry:
     catalog: str
     schema: str
     table_id: str
-    sys_rowid: str
+    sys_tables_page_id: str
     is_dropped: bool
 
     @classmethod
@@ -170,7 +170,7 @@ class SystemTablesEntry:
             )
         )
 
-        sys_rowid = page_obj['id']
+        sys_tables_page_id = page_obj['id']
         is_dropped = page_obj['in_trash']
 
         return cls(
@@ -178,7 +178,7 @@ class SystemTablesEntry:
             catalog=catalog,
             schema=schema,
             table_id=table_id,
-            sys_rowid=sys_rowid,
+            sys_tables_page_id=sys_tables_page_id,
             is_dropped=is_dropped
         ) 
 

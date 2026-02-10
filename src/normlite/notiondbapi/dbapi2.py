@@ -487,18 +487,46 @@ class Cursor:
         object_ = {}
         try:
             object_ = self._client(
-                operation['endpoint'], 
-                operation['request'], 
+                operation['endpoint'],
+                operation['request'],
                 parameters.get('path_params'),
                 parameters.get('query_params'),
-                parameters.get('payload')
+                parameters.get('payload'),
             )
         except KeyError as ke:
-            raise InterfaceError(f"Missing required key in operation dict: {ke.args[0]}")
-        
-        except NotionError as ne:
+            # Programming error in the DBAPI usage
             raise InterfaceError(
-                f'NotionError("{self._client.__class__.__name__}"): {ne}'
+                f"Missing required key in operation dict: {ke.args[0]}"
+            ) from ke
+
+        except NotionError as ne:
+            # --- Database object does not exist -----------------------------
+            if ne.code == "object_not_found":
+                raise ProgrammingError(
+                    f'NotionError("{self._client.__class__.__name__}"): {ne}'
+                ) from ne
+
+            # --- Authentication / authorization -----------------------------
+            if ne.code in {"unauthorized", "forbidden"}:
+                raise OperationalError(
+                    f'Authentication/authorization failure: {ne}'
+                ) from ne
+
+            # --- Rate limiting / availability -------------------------------
+            if ne.code in {"rate_limited", "service_unavailable"}:
+                raise OperationalError(
+                    f'Backend temporarily unavailable: {ne}'
+                ) from ne
+
+            # --- Malformed request / client misuse --------------------------
+            if ne.code in {"invalid_request", "validation_error"}:
+                raise InterfaceError(
+                    f'Invalid request sent to backend: {ne}'
+                ) from ne
+
+            # --- Fallback: backend rejected operation -----------------------
+            raise DatabaseError(
+                f'Unhandled NotionError("{self._client.__class__.__name__}"): {ne}'
             ) from ne
         
         self._parse_result_set(object_)         # initialize result set with parsed rows, if any

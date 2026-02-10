@@ -22,7 +22,7 @@ from enum import Enum, auto
 from functools import wraps
 import json
 import pdb
-from typing import Any, ClassVar, Optional, Protocol, TYPE_CHECKING, Self, Sequence, overload
+from typing import Any, ClassVar, NoReturn, Optional, Protocol, TYPE_CHECKING, Self, Sequence, overload
 import copy
 
 from normlite.engine.interfaces import _distill_params
@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from normlite.engine.interfaces import _CoreAnyExecuteParams, ExecutionOptions, ReturningStrategy
     from normlite.engine.base import Connection
     from normlite.engine.context import ExecutionContext
+    from normlite.notiondbapi.dbapi2 import Error
 
 class Generative:
     """Mixin providing SQLAlchemy-style generative behavior."""
@@ -256,6 +257,22 @@ class Executable(ClauseElement):
         store execution-related data in execution context.
 
         .. versionadded:: 0.8.0
+        """
+        raise NotImplementedError
+    
+    def _handle_dbapi_error(
+        self, 
+        exc: Error, 
+        context: ExecutionContext
+    ) -> Optional[NoReturn]:
+        """Handle the DBAPI error that may occur during execution.
+
+        Args:
+            exc (Error): The error to be handled
+            context (ExecutionContext): The execution context in which this executables is running.
+
+        Returns:
+            Optional[NoReturn]: Nothin
         """
         raise NotImplementedError
 

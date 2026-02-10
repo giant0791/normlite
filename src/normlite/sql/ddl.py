@@ -17,15 +17,17 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+import pdb
+from typing import TYPE_CHECKING, Any, NoReturn, Optional
 
 from normlite._constants import SpecialColumns
 from normlite.future.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext
-from normlite.exceptions import InvalidRequestError
+from normlite.exceptions import InvalidRequestError, NoSuchTableError
 from normlite.engine.reflection import ReflectedTableInfo
 from normlite.sql.base import Executable
 from normlite.sql.type_api import type_mapper
+from normlite.notiondbapi.dbapi2 import Error, ProgrammingError
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table
@@ -158,7 +160,7 @@ class CreateTable(ExecutableDDLStatement):
             table_id=table.get_oid()
         )
 
-        table._sys_tables_page_id = entry.table_id
+        table._sys_tables_page_id = entry.sys_tables_page_id
 
 class DropTable(ExecutableDDLStatement):
     """Represent a ``DROP TABLE`` statement.
@@ -175,10 +177,18 @@ class DropTable(ExecutableDDLStatement):
         # nothing to be setup
         pass
 
-    def _finalize_execution(self, context: ExecutionContext) -> None:
-        # IMPORTANT: This consumes the result 
-        pass
 
+    def _handle_dbapi_error(
+        self, 
+        exc: Error, 
+        context
+    ) -> Optional[NoReturn]:
+        # DROP TABLE on a non-existing table
+        if isinstance(exc, ProgrammingError):
+            raise NoSuchTableError(self.table.name) from exc
+
+        # All other DBAPI errors propagate unchanged
+        raise
 
 class ReflectTable(ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to reflect a Notion database into a Python :class:`normlite.sql.schema.Table` object.

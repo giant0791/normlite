@@ -755,15 +755,21 @@ class Engine:
 
         return SystemTablesEntry.from_dict(page_obj)
     
-    def _delete_restore_table(self, table_id: str, delete: bool) -> SystemTablesEntry:
+    def _delete_restore_table(
+            self, 
+            page_id: str, 
+            delete: bool
+    ) -> Optional[SystemTablesEntry]:
         """Soft-delete/restore a table in system tables."""
-        page_obj = self._client.databases_update(
+        page_obj = self._client.pages_update(
+            path_params= {                
+                'page_id': page_id,
+            },
             payload={
-                'database_id': table_id,
                 'in_trash': delete
             }
         )
-        return SystemTablesEntry.from_dict(page_obj)
+        return SystemTablesEntry.from_dict(page_obj) if page_obj else None
 
     def _reflect_table(self, table: Table) -> ReflectedTableInfo:
         raise NotImplementedError

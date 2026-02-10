@@ -92,3 +92,9 @@ class ObjectNotExecutableError(ArgumentError):
 
     .. versionadded:: 0.8.0
     """
+
+class NoSuchTableError(NormliteError):
+    """Raised when a table could not be found in the database.
+
+    .. versionadded:: 0.8.0
+    """

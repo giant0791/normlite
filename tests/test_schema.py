@@ -1,6 +1,7 @@
 from __future__ import annotations
 import pdb
 from typing import Iterable
+from unittest.mock import Mock
 import pytest
 
 from normlite import (
@@ -13,6 +14,7 @@ from normlite.engine.base import Engine, create_engine
 from normlite.exceptions import ArgumentError
 from normlite.notion_sdk.getters import get_object_id, get_object_type
 from normlite.notiondbapi.dbapi2 import ProgrammingError
+from normlite.sql.ddl import DropTable
 from normlite.sql.schema import MetaData
 from normlite.sql.type_api import Boolean
 
@@ -255,7 +257,7 @@ def test_create_table_populates_sys_table_page_id(engine: Engine, students: Tabl
         table_catalog=engine._user_database_name
     )
 
-    assert row.table_id == students._sys_tables_page_id
+    assert row.sys_tables_page_id == students._sys_tables_page_id
 
 # --------------------------------------
 # Metadata tests
@@ -378,6 +380,39 @@ def test_create_existing_table_error_message(engine, students):
 # --------------------------------------
 # Drop table DDL tests
 #---------------------------------------
+
+def test_drop_table_uses_cached_sys_table_page_id(students: Table, engine: Engine):
+    students.create(bind=engine)
+    cached_page_id = students._sys_tables_page_id
+    assert cached_page_id is not None    
+
+    engine._find_sys_tables_row = Mock(
+        wraps=engine._find_sys_tables_row
+    )
+
+    stmt = DropTable(students)
+    with engine.connect() as connection:
+        connection.execute(stmt)
+
+    engine._find_sys_tables_row.assert_not_called()
+    assert students._sys_tables_page_id == cached_page_id
+
+def test_drop_table_falls_back_when_sys_table_page_id_missing(students: Table, engine: Engine):
+    students.create(bind=engine)
+
+    # simulate pre-step-1 Table or reflected Table
+    students._sys_tables_page_id = None    
+
+    engine._find_sys_tables_row = Mock(
+        wraps=engine._find_sys_tables_row
+    )
+
+    stmt = DropTable(students)
+    with engine.connect() as connection:
+        connection.execute(stmt)
+
+    engine._find_sys_tables_row.assert_called_once()
+    assert students._sys_tables_page_id is not None
 
 @pytest.mark.skip('DROP TABLE not supported yet.')
 def test_create_after_drop_recreates_table(engine, students):
