@@ -152,11 +152,13 @@ class CreateTable(ExecutableDDLStatement):
         
         # add this table to the sys "tables"
         engine = context.engine
-        context.engine._get_or_create_sys_tables_row(
+        entry = context.engine._get_or_create_sys_tables_row(
             table.name,
             table_catalog=engine._user_database_name,
             table_id=table.get_oid()
         )
+
+        table._sys_tables_page_id = entry.table_id
 
 class DropTable(ExecutableDDLStatement):
     """Represent a ``DROP TABLE`` statement.

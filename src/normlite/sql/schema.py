@@ -324,6 +324,12 @@ class Table(HasIdentifier):
         self._database_id = None
         """The Notion id corresponding to this table."""
 
+        self._sys_tables_page_id = None
+        """Cache the page corresponding to this table in system tables.
+        
+        .. versionadded:: 0.8.0
+        """
+
         self._db_parent_id = None
         """The parent page this database belongs to.
         This is the Notion page id containing all the tables which belong to the same database. 

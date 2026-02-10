@@ -76,13 +76,11 @@ from normlite.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import ReturningStrategy, _distill_params, IsolationLevel
 from normlite.exceptions import ArgumentError, NormliteError, ObjectNotExecutableError
-from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo
+from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo, SystemTablesEntry
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.sql.compiler import NotionCompiler
-from normlite.sql.ddl import ReflectTable
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, ProgrammingError
 from normlite.utils import frozendict
-from normlite.notion_sdk.getters import get_property, get_rich_text_property_value, get_title_property_value
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table, HasIdentifier
@@ -402,57 +400,6 @@ def create_engine(
         Engine: The engine proxy object.
     """
     return Engine(_parse_uri(uri), execution_options=execution_options, **kwargs)
-
-@dataclass(frozen=True)
-class SystemTablesEntry:
-    name: str
-    catalog: str
-    schema: str
-    table_id: str
-    sys_rowid: str
-    is_dropped: bool
-
-    @classmethod
-    def from_dict(cls, page_obj: dict) -> SystemTablesEntry:       
-        name = get_title_property_value(
-            get_property(
-                page_obj, 
-                'table_name'
-            )            
-        )
-
-        catalog = get_rich_text_property_value(
-            get_property(
-                page_obj, 
-                'table_catalog'
-            )
-        )
-
-        schema = get_rich_text_property_value(
-            get_property(
-                page_obj, 
-                'table_schema'
-            )
-        )
-
-        table_id = get_rich_text_property_value(
-            get_property(
-                page_obj, 
-                'table_id'
-            )
-        )
-
-        sys_rowid = page_obj['id']
-        is_dropped = page_obj['in_trash']
-
-        return cls(
-            name=name,
-            catalog=catalog,
-            schema=schema,
-            table_id=table_id,
-            sys_rowid=sys_rowid,
-            is_dropped=is_dropped
-        ) 
 
 class Engine:
     """Provide a convenient proxy object of database connectivity to Notion integrations.
@@ -806,6 +753,16 @@ class Engine:
             },
         )
 
+        return SystemTablesEntry.from_dict(page_obj)
+    
+    def _delete_restore_table(self, table_id: str, delete: bool) -> SystemTablesEntry:
+        """Soft-delete/restore a table in system tables."""
+        page_obj = self._client.databases_update(
+            payload={
+                'database_id': table_id,
+                'in_trash': delete
+            }
+        )
         return SystemTablesEntry.from_dict(page_obj)
 
     def _reflect_table(self, table: Table) -> ReflectedTableInfo:

@@ -1,8 +1,10 @@
 from __future__ import annotations
+from dataclasses import dataclass
 import pdb
 from typing import Any, NamedTuple, Optional, Sequence
 from normlite._constants import SpecialColumns
 from normlite.engine.row import Row
+from normlite.notion_sdk.getters import get_property, get_rich_text_property_value, get_title_property_value
 from normlite.sql.type_api import Boolean, ObjectId, String, TypeEngine, type_mapper
 
 class ReflectedColumnInfo(NamedTuple):
@@ -129,5 +131,55 @@ class ReflectedTableInfo:
         return cls(cols)
 
 
-    
+@dataclass(frozen=True)
+class SystemTablesEntry:
+    name: str
+    catalog: str
+    schema: str
+    table_id: str
+    sys_rowid: str
+    is_dropped: bool
+
+    @classmethod
+    def from_dict(cls, page_obj: dict) -> SystemTablesEntry:       
+        name = get_title_property_value(
+            get_property(
+                page_obj, 
+                'table_name'
+            )            
+        )
+
+        catalog = get_rich_text_property_value(
+            get_property(
+                page_obj, 
+                'table_catalog'
+            )
+        )
+
+        schema = get_rich_text_property_value(
+            get_property(
+                page_obj, 
+                'table_schema'
+            )
+        )
+
+        table_id = get_rich_text_property_value(
+            get_property(
+                page_obj, 
+                'table_id'
+            )
+        )
+
+        sys_rowid = page_obj['id']
+        is_dropped = page_obj['in_trash']
+
+        return cls(
+            name=name,
+            catalog=catalog,
+            schema=schema,
+            table_id=table_id,
+            sys_rowid=sys_rowid,
+            is_dropped=is_dropped
+        ) 
+
 

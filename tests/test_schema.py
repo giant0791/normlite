@@ -237,6 +237,26 @@ def test_invalid_table_blanks(metadata: MetaData):
     with pytest.raises(ArgumentError):
         bad = Table(' bad', metadata)
 
+def test_create_table_populates_sys_table_page_id(engine: Engine, students: Table):
+    # precondition
+    assert hasattr(students, "_sys_tables_page_id")
+    assert students._sys_tables_page_id is None
+
+    # act
+    students.create(bind=engine)
+
+    # postcondition
+    assert students._sys_tables_page_id is not None
+    assert isinstance(students._sys_tables_page_id, str)
+
+    # consitency assertion
+    row = engine._find_sys_tables_row(
+        "students",
+        table_catalog=engine._user_database_name
+    )
+
+    assert row.table_id == students._sys_tables_page_id
+
 # --------------------------------------
 # Metadata tests
 #---------------------------------------
