@@ -194,9 +194,7 @@ def test_table_invalid_autoload_with():
     with pytest.raises(ArgumentError, match="autoload_with must be an Engine"):
         Table("students", metadata, autoload_with="engine")
 
-def test_table_autoload_with_and_columns_mutually_exclusive(engine: Engine):
-    metadata = MetaData()
-
+def test_table_autoload_with_and_columns_mutually_exclusive(engine: Engine, metadata: MetaData):
     with pytest.raises(
         ArgumentError,
         match='Columns cannot be specified when using "autoload_with"'
@@ -244,6 +242,7 @@ def test_create_table_populates_sys_table_page_id(engine: Engine, students: Tabl
     # precondition
     assert hasattr(students, "_sys_tables_page_id")
     assert students._sys_tables_page_id is None
+    assert engine._catalog is not None
 
     # act
     students.create(bind=engine)
