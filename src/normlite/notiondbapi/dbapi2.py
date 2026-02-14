@@ -496,14 +496,14 @@ class Cursor:
         except KeyError as ke:
             # Programming error in the DBAPI usage
             raise InterfaceError(
-                f"Missing required key in operation dict: {ke.args[0]}"
+                f"Missing required key in operation or parameters: {ke.args[0]}"
             ) from ke
 
         except NotionError as ne:
             # --- Database object does not exist -----------------------------
             if ne.code == "object_not_found":
                 raise ProgrammingError(
-                    f'NotionError("{self._client.__class__.__name__}"): {ne}'
+                    f'NotionError("Object not found: {ne}'
                 ) from ne
 
             # --- Authentication / authorization -----------------------------

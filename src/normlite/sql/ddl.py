@@ -27,7 +27,7 @@ from normlite.exceptions import InvalidRequestError, NoSuchTableError
 from normlite.engine.reflection import ReflectedTableInfo
 from normlite.sql.base import Executable
 from normlite.sql.type_api import type_mapper
-from normlite.notiondbapi.dbapi2 import Error, ProgrammingError
+from normlite.notiondbapi.dbapi2 import Error, InternalError, ProgrammingError
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table
@@ -177,7 +177,6 @@ class DropTable(ExecutableDDLStatement):
         # nothing to be setup
         pass
 
-
     def _handle_dbapi_error(
         self, 
         exc: Error, 
@@ -185,10 +184,48 @@ class DropTable(ExecutableDDLStatement):
     ) -> Optional[NoReturn]:
         # DROP TABLE on a non-existing table
         if isinstance(exc, ProgrammingError):
-            raise NoSuchTableError(self.table.name) from exc
+            raise NoSuchTableError(self._table.name) from exc
 
         # All other DBAPI errors propagate unchanged
         raise
+
+    def _finalize_execution(self, context: ExecutionContext) -> None:
+        # IMPORTANT: This consumes the result
+        result = context.setup_cursor_result()
+        rows = result.all()
+        reflected_table_info = ReflectedTableInfo.from_rows(rows)
+
+        engine = context.engine
+
+        # Ensure we have a valid sys_tables_page_id
+        if self._table._sys_tables_page_id is None:
+            sys_tables_page = engine._require_sys_tables_row(
+                self._table.name,
+                table_catalog=engine._user_database_name,
+            )
+            self._table._sys_tables_page_id = sys_tables_page.sys_tables_page_id
+
+        # Attempt deletion (retry once if stale page_id)
+        try:
+            context.engine._delete_restore_table(
+                self._table._sys_tables_page_id,
+                delete=True,
+            )
+
+        except ProgrammingError:
+            # page_id likely stale → recover and retry once
+            sys_tables_page = engine._require_sys_tables_row(
+                self._table.name,
+                table_catalog=engine._user_database_name,
+            )
+
+            self._table._sys_tables_page_id = sys_tables_page.sys_tables_page_id
+
+            # retry; further failure propagates
+            context.engine._delete_restore_table(
+                self._table._sys_tables_page_id,
+                delete=True,
+            )
 
 class ReflectTable(ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to reflect a Notion database into a Python :class:`normlite.sql.schema.Table` object.

@@ -1,7 +1,7 @@
 from __future__ import annotations
 import pdb
 from typing import Iterable
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import pytest
 
 from normlite import (
@@ -12,8 +12,9 @@ from normlite import (
 from normlite._constants import SpecialColumns
 from normlite.engine.base import Engine, create_engine
 from normlite.exceptions import ArgumentError
+from normlite.notion_sdk.client import NotionError
 from normlite.notion_sdk.getters import get_object_id, get_object_type
-from normlite.notiondbapi.dbapi2 import ProgrammingError
+from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.sql.ddl import DropTable
 from normlite.sql.schema import MetaData
 from normlite.sql.type_api import Boolean
@@ -390,10 +391,7 @@ def test_drop_table_uses_cached_sys_table_page_id(students: Table, engine: Engin
         wraps=engine._find_sys_tables_row
     )
 
-    stmt = DropTable(students)
-    with engine.connect() as connection:
-        connection.execute(stmt)
-
+    students.drop(bind=engine)
     engine._find_sys_tables_row.assert_not_called()
     assert students._sys_tables_page_id == cached_page_id
 
@@ -407,12 +405,69 @@ def test_drop_table_falls_back_when_sys_table_page_id_missing(students: Table, e
         wraps=engine._find_sys_tables_row
     )
 
-    stmt = DropTable(students)
-    with engine.connect() as connection:
-        connection.execute(stmt)
-
+    students.drop(bind=engine)
     engine._find_sys_tables_row.assert_called_once()
     assert students._sys_tables_page_id is not None
+
+def test_drop_table_recovers_from_stale_sys_table_page_id(students: Table, engine: Engine):
+    # Create normally (cache is populated correctly)
+    students.create(bind=engine)
+
+    # Inject a stale/bogus page id
+    sys_tables_page_id = students._sys_tables_page_id
+    stale_page_id = "deadbeef-dead-beef-dead-beefdeadbeef"
+    students._sys_tables_page_id = stale_page_id
+
+    students.drop(bind=engine)
+
+    # Cache must now be corrected
+    assert students._sys_tables_page_id != stale_page_id
+    assert students._sys_tables_page_id is not None
+    assert students._sys_tables_page_id == sys_tables_page_id
+
+def test_drop_table_detects_catalog_corruption_more_than_one_table_entry(students: Table, engine: Engine):
+    # Create normally (cache is populated correctly)
+    client = engine._client
+    students.create(bind=engine)
+
+     # corrupt the catalog by adding a second page for the same table
+    page_obj = client.pages_create(
+        payload={
+            "parent": {
+                "type": "database_id",
+                "database_id": engine._tables_id,
+            },
+            "properties": {
+                "table_name": {
+                    "title": [{"text": {"content": students.name}}]
+                },
+                "table_schema": {
+                    "rich_text": [{"text": {"content": ""}}]
+                },
+                "table_catalog": {
+                    "rich_text": [{"text": {"content": engine._user_database_name}}]
+                },
+                "table_id": {
+                    "rich_text": [{"text": {"content": students._database_id}}]
+                },
+            },
+        },
+    )
+ 
+    students._sys_tables_page_id = None
+    with pytest.raises(InternalError, match="multiple tables named 'students' in catalog 'memory'"):
+        students.drop(bind=engine)
+
+def test_drop_table_detects_catalog_corruption_no_table_entry_found(students: Table, engine: Engine):
+    # Create normally (cache is populated correctly)
+    client = engine._client
+    students.create(bind=engine)
+
+    # corrupt the catalog by removing the page for the table just created
+    client._store.pop(students._sys_tables_page_id)
+
+    with pytest.raises(InternalError, match="no entry for table 'students' in catalog 'memory'"):
+        students.drop(bind=engine)
 
 @pytest.mark.skip('DROP TABLE not supported yet.')
 def test_create_after_drop_recreates_table(engine, students):

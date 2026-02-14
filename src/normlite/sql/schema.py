@@ -467,7 +467,11 @@ class Table(HasIdentifier):
             )
 
     def drop(self, bind: Engine, checkfirst: bool = False) -> None:
-        raise NotImplementedError('DROP TABLE not supported in this version.')
+        from normlite.sql.ddl import DropTable
+
+        stmt = DropTable(self)
+        with bind.connect() as connection:
+            connection.execute(stmt)
 
     def _ensure_implicit_columns(self):
         # Notion object ID: always primary key

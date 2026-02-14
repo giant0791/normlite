@@ -77,9 +77,9 @@ from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import ReturningStrategy, _distill_params, IsolationLevel
 from normlite.exceptions import ArgumentError, NormliteError, ObjectNotExecutableError
 from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo, SystemTablesEntry
-from normlite.notion_sdk.client import InMemoryNotionClient
+from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
 from normlite.sql.compiler import NotionCompiler
-from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, ProgrammingError
+from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, Error, InternalError, ProgrammingError
 from normlite.utils import frozendict
 
 if TYPE_CHECKING:
@@ -245,11 +245,14 @@ class Connection:
         elem._setup_execution(context)      
         
         # 6. side effects happen (HTTP)
-        self._engine.do_execute(
-            context.cursor, 
-            context.operation, 
-            context.parameters
-        )
+        try:
+            self._engine.do_execute(
+                context.cursor, 
+                context.operation, 
+                context.parameters
+            )
+        except Error as exc:
+            elem._handle_dbapi_error(exc, context)
 
         # 7. the execution is mechanically complete before semantic interpretation begins
         #    make lastrowid, rowcount, etc. available to the result
@@ -704,11 +707,34 @@ class Engine:
         results = response.get("results", [])
 
         if len(results) > 1:
-            raise NormliteError(
-                f"Multiple tables named '{table_name}' found in catalog '{catalog}'"
+        # catalog corruption invariant.
+            raise InternalError(
+                f"Catalog invariant violated: multiple tables named "
+                f"'{table_name}' in catalog '{table_catalog}'"
             )
 
         return SystemTablesEntry.from_dict(results[0]) if results else None
+
+    def _require_sys_tables_row(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str,
+    ) -> SystemTablesEntry:
+
+        entry = self._find_sys_tables_row(
+            table_name,
+            table_catalog=table_catalog,
+        )
+
+        if entry is None:
+            raise InternalError(
+                f"System catalog invariant violated: "
+                f"no entry for table '{table_name}' "
+                f"in catalog '{table_catalog}'"
+            )
+
+        return entry
 
     def _get_or_create_sys_tables_row(
             self, 
@@ -761,15 +787,26 @@ class Engine:
             delete: bool
     ) -> Optional[SystemTablesEntry]:
         """Soft-delete/restore a table in system tables."""
-        page_obj = self._client.pages_update(
-            path_params= {                
-                'page_id': page_id,
-            },
-            payload={
-                'in_trash': delete
-            }
-        )
-        return SystemTablesEntry.from_dict(page_obj) if page_obj else None
+        try: 
+            page_obj = self._client.pages_update(
+                path_params= {                
+                    'page_id': page_id,
+                },
+                payload={
+                    'in_trash': delete
+                }
+            )
+        except NotionError as exc:
+            # a NotionError at this point can only have one meaning:
+            # A programming error <=> page_id not found
+            if exc.code == 'object_not_found':
+                raise ProgrammingError(page_id)
+            
+            # All other DBAPI errors propagate unchanged
+            # This is a fallback and it is expected to never happen
+            raise
+
+        return SystemTablesEntry.from_dict(page_obj)
 
     def _reflect_table(self, table: Table) -> ReflectedTableInfo:
         raise NotImplementedError

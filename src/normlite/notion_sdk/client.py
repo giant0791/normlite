@@ -905,7 +905,11 @@ class InMemoryNotionClient(AbstractNotionClient):
             
         obj = self._get_by_id(page_id)
         if not obj or obj["object"] != "page":
-            raise NotionError(f"Could not find page with ID: {page_id}.")
+            raise NotionError(
+                f"Could not find page with ID: {page_id}.",
+                status_code=404,
+                code='object_not_found'
+            )
 
         if (
              "archived" not in payload and
