@@ -26,11 +26,12 @@ the current database.
 .. versionadded:: 0.8.0
 """
 
+import pdb
 from typing import TYPE_CHECKING, Optional
 
 from normlite.engine.reflection import SystemTablesEntry
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
-from normlite.notion_sdk.client import AbstractNotionClient
+from normlite.notion_sdk.client import AbstractNotionClient, NotionError
 
 class SystemCatalog:
     def __init__(
@@ -45,6 +46,34 @@ class SystemCatalog:
         self._root_page_id = root_page_id
         self._tables_id = None
         self._default_catalog = default_catalog
+
+    def bootstrap(self) -> None:
+        # 1. information_schema page
+        self._ischema_page_id = self._get_or_create_page(
+            parent_id=self._root_page_id,
+            name="information_schema",
+        )
+
+        # 2. tables database
+        self._tables_id = self._get_or_create_database(
+            parent_id=self._ischema_page_id,
+            name="tables",
+            properties={
+                "table_name": {"title": {}},
+                "table_schema": {"rich_text": {}},
+                "table_catalog": {"rich_text": {}},
+                "table_id": {"rich_text": {}},
+            },
+        )
+
+       # 3. ensure tables self-row exists
+        self._ensure_sys_tables_self_row()
+
+        # 4. user tables page
+        self._user_tables_page_id = self._get_or_create_page(
+            parent_id=self._root_page_id,
+            name=self._user_database_name,
+        )
 
     def find_sys_tables_row(
         self,
@@ -88,32 +117,122 @@ class SystemCatalog:
 
         return SystemTablesEntry.from_dict(results[0]) if results else None
 
-    def bootstrap(self) -> None:
-        # 1. information_schema page
-        self._ischema_page_id = self._get_or_create_page(
-            parent_id=self._root_page_id,
-            name="information_schema",
+    def ensure_sys_tables_row(
+            self,
+            table_name: str,
+            table_schema: Optional[str] = 'not_used',
+            *,
+            table_catalog: str,
+            table_id: str,
+            if_not_exists: bool = False
+    ) -> SystemTablesEntry:
+        return self.get_or_create_sys_tables_row(
+            table_name,
+            table_schema,
+            table_catalog=table_catalog,
+            table_id=table_id,
+            if_not_exists=if_not_exists
         )
 
-        # 2. tables database
-        self._tables_id = self._get_or_create_database(
-            parent_id=self._ischema_page_id,
-            name="tables",
-            properties={
-                "table_name": {"title": {}},
-                "table_schema": {"rich_text": {}},
-                "table_catalog": {"rich_text": {}},
-                "table_id": {"rich_text": {}},
+    def get_or_create_sys_tables_row(
+        self, 
+        table_name: str, 
+        table_schema: Optional[str] = 'not_used',
+        *,
+        table_catalog: str, 
+        table_id: str,
+        if_not_exists: bool = False
+    ) -> SystemTablesEntry:
+        existing = self.find_sys_tables_row(table_name, table_catalog=table_catalog)
+
+        if existing is not None and not existing.is_dropped:
+            if if_not_exists:
+                return existing
+
+            raise ProgrammingError(
+                f"Table '{table_name}' already exists in catalog '{table_catalog}'"
+            )
+
+        page_obj = self._client.pages_create(
+            payload={
+                "parent": {
+                    "type": "database_id",
+                    "database_id": self._tables_id,
+                },
+                "properties": {
+                    "table_name": {
+                        "title": [{"text": {"content": table_name}}]
+                    },
+                    "table_schema": {
+                        "rich_text": [{"text": {"content": table_schema}}]
+                    },
+                    "table_catalog": {
+                        "rich_text": [{"text": {"content": table_catalog}}]
+                    },
+                    "table_id": {
+                        "rich_text": [{"text": {"content": table_id}}]
+                    },
+                },
             },
         )
 
-       # 3. ensure tables self-row exists
-        self._ensure_sys_tables_self_row()
+        return SystemTablesEntry.from_dict(page_obj)
 
-        # 4. user tables page
-        self._user_tables_page_id = self._get_or_create_page(
-            parent_id=self._root_page_id,
-            name=self._user_database_name,
+    def mark_dropped(
+        self,
+        *,
+        table_name: str,
+        table_catalog: str,
+    ) -> None:
+ 
+        entry = self.find_sys_tables_row(
+            table_name,
+            table_catalog=table_catalog,
+        )
+
+        if entry is None:
+            raise ProgrammingError(
+                f"Table '{table_name}' does not exist"
+            )
+
+        try:
+            self._client.pages_update(
+                path_params={"page_id": entry.sys_tables_page_id},
+                payload={"in_trash": True},
+            )
+        except NotionError as exc:
+            if exc.code == "object_not_found":
+                raise ProgrammingError(entry.sys_tables_page_id)
+            raise
+
+    def repair_missing(
+        self,
+        *,
+        table_name: str,
+        table_catalog: str,
+        table_id: Optional[str] = None,
+    ) -> SystemTablesEntry:
+
+        entry = self.find_sys_tables_row(
+            table_name,
+            table_catalog=table_catalog,
+        )
+
+        if entry:
+            return entry
+
+        if table_id is None:
+            raise InternalError(
+                f"Cannot repair missing catalog entry for "
+                f"'{table_name}' without database_id"
+            )
+
+        # recreate missing metadata row
+        return self.ensure_sys_tables_row(
+            table_name=table_name,
+            table_catalog=table_catalog,
+            table_id=table_id,
+            if_not_exists=True,
         )
 
     # -------------------------------------------------
@@ -160,69 +279,65 @@ class SystemCatalog:
         return db['id']
 
     def _ensure_sys_tables_self_row(self) -> None:
-        self._ensure_sys_tables_row(
-            name='tables',
-            schema='information_schema',
-            catalog=self._user_database_name,
+        self.ensure_sys_tables_row(
+            table_name='tables',
+            table_schema='information_schema',
+            table_catalog=self._user_database_name,
             table_id=self._tables_id 
         )
 
-    def _ensure_sys_tables_row(
-            self,
-            name: str,
-            schema: Optional[str] = 'not_used',
-            *,
-            catalog: str,
-            table_id: str
-    ) -> None:
-        self.get_or_create_sys_tables_row(
-            name,
-            schema,
-            table_catalog=catalog,
-            table_id=table_id
-        )
-
-    def get_or_create_sys_tables_row(
-        self, 
-        table_name: str, 
-        table_schema: Optional[str] = 'not_used',
-        *,
-        table_catalog: str, 
-        table_id: str,
-        if_exists: bool = False
-    ) -> SystemTablesEntry:
-        existing = self.find_sys_tables_row(table_name, table_catalog=table_catalog)
-
-        if existing is not None and not existing.is_dropped:
-            if if_exists:
-                raise ProgrammingError(
-                    f"Table '{table_name}' already exists in catalog '{table_catalog}'"
-                )
-
-            return existing
-
-        page_obj = self._client.pages_create(
-            payload={
-                "parent": {
-                    "type": "database_id",
-                    "database_id": self._tables_id,
+    def _delete_restore_table(
+            self, 
+            page_id: str, 
+            delete: bool
+    ) -> Optional[SystemTablesEntry]:
+        """Soft-delete/restore a table in system tables."""
+        try: 
+            page_obj = self._client.pages_update(
+                path_params= {                
+                    'page_id': page_id,
                 },
-                "properties": {
-                    "table_name": {
-                        "title": [{"text": {"content": table_name}}]
-                    },
-                    "table_schema": {
-                        "rich_text": [{"text": {"content": table_schema}}]
-                    },
-                    "table_catalog": {
-                        "rich_text": [{"text": {"content": table_catalog}}]
-                    },
-                    "table_id": {
-                        "rich_text": [{"text": {"content": table_id}}]
-                    },
-                },
-            },
-        )
+                payload={
+                    'in_trash': delete
+                }
+            )
+        except NotionError as exc:
+            # a NotionError at this point can only have one meaning:
+            # A programming error <=> page_id not found
+            if exc.code == 'object_not_found':
+                raise ProgrammingError(page_id)
+            
+            # All other DBAPI errors propagate unchanged
+            # This is a fallback and it is expected to never happen
+            raise
 
         return SystemTablesEntry.from_dict(page_obj)
+
+    def _delete_restore_table(
+            self, 
+            page_id: str, 
+            delete: bool
+    ) -> Optional[SystemTablesEntry]:
+        """Soft-delete/restore a table in system tables."""
+        try: 
+            page_obj = self._client.pages_update(
+                path_params= {                
+                    'page_id': page_id,
+                },
+                payload={
+                    'in_trash': delete
+                }
+            )
+        except NotionError as exc:
+            # a NotionError at this point can only have one meaning:
+            # A programming error <=> page_id not found
+            if exc.code == 'object_not_found':
+                raise ProgrammingError(page_id)
+            
+            # All other DBAPI errors propagate unchanged
+            # This is a fallback and it is expected to never happen
+            raise
+
+        return SystemTablesEntry.from_dict(page_obj)
+
  

@@ -595,6 +595,60 @@ class Engine:
         # 2. bootstrap it
         self._catalog.bootstrap()
 
+    # -----------------------------
+    # Public façade methods
+    # -----------------------------
+
+    def find_table(
+        self,
+        table_name: str,
+        *,
+        table_catalog: Optional[str] = None,
+    ) -> Optional[SystemTablesEntry]:
+        return self._catalog.find_sys_tables_row(
+            table_name,
+            table_catalog=table_catalog or self._user_database_name,
+        )
+
+    def create_table_metadata(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str,
+        table_id: str,
+        if_not_exists: bool = False,
+    ) -> SystemTablesEntry:
+        return self._catalog.ensure_sys_tables_row(
+            table_name=table_name,
+            table_catalog=table_catalog,
+            table_id=table_id,
+            if_not_exists=if_not_exists,
+        )
+
+    def drop_table_metadata(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str,
+    ) -> None:
+        self._catalog.mark_dropped(
+            table_name=table_name,
+            table_catalog=table_catalog,
+        )
+
+    def repair_table_metadata(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str,
+        table_id: Optional[str] = None,
+    ) -> SystemTablesEntry:
+        return self._catalog.repair_missing(
+            table_name=table_name,
+            table_catalog=table_catalog,
+            table_id=table_id,
+        )
+
     # -------------------------------------------------
     # Table creation / reflection helpers 
     # -------------------------------------------------
@@ -647,33 +701,6 @@ class Engine:
             table_id=table_id
         )
     
-    def _delete_restore_table(
-            self, 
-            page_id: str, 
-            delete: bool
-    ) -> Optional[SystemTablesEntry]:
-        """Soft-delete/restore a table in system tables."""
-        try: 
-            page_obj = self._client.pages_update(
-                path_params= {                
-                    'page_id': page_id,
-                },
-                payload={
-                    'in_trash': delete
-                }
-            )
-        except NotionError as exc:
-            # a NotionError at this point can only have one meaning:
-            # A programming error <=> page_id not found
-            if exc.code == 'object_not_found':
-                raise ProgrammingError(page_id)
-            
-            # All other DBAPI errors propagate unchanged
-            # This is a fallback and it is expected to never happen
-            raise
-
-        return SystemTablesEntry.from_dict(page_obj)
-
     def _reflect_table(self, table: Table) -> ReflectedTableInfo:
         raise NotImplementedError
         
