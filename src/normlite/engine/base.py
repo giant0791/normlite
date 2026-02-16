@@ -599,12 +599,29 @@ class Engine:
     # Public façade methods
     # -----------------------------
 
-    def find_table(
+    def find_table_metadata(
         self,
         table_name: str,
         *,
         table_catalog: Optional[str] = None,
     ) -> Optional[SystemTablesEntry]:
+        """Find the given table name in the system tables catalog.
+
+        This method expects to find one and one only entry for the give table name.
+        It checks for catalog invariant violation: multiple tables with same name in the catalog.
+
+        .. versionadded:: 0.8.0
+
+        Args:
+            table_name (str): The table name being searched for
+            table_catalog (Optional[str], optional): The catalog name. Defaults to None.
+
+        Raises:
+            InternalError: If multiple tables with the same name exist in the catalog.
+
+        Returns:
+            Optional[SystemTablesEntry]: The system tables catalog entry, if found.
+        """
         return self._catalog.find_sys_tables_row(
             table_name,
             table_catalog=table_catalog or self._user_database_name,
@@ -618,23 +635,112 @@ class Engine:
         table_id: str,
         if_not_exists: bool = False,
     ) -> SystemTablesEntry:
+        """_summary_
+
+        Args:
+            table_name (str): _description_
+            table_catalog (str): _description_
+            table_id (str): _description_
+            if_not_exists (bool, optional): _description_. Defaults to False.
+
+        Raises:
+            ProgrammingError: If a table with the same name exists in the catalog.
+
+        Returns:
+            SystemTablesEntry: _description_
+        """
         return self._catalog.ensure_sys_tables_row(
             table_name=table_name,
             table_catalog=table_catalog,
             table_id=table_id,
             if_not_exists=if_not_exists,
         )
+    
+    def require_table_metadata(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str,
+    ) -> SystemTablesEntry:
+        """
+        Return the system catalog entry for a table or raise
+        InternalError if the catalog invariant is violated.
+        """
 
+        entry = self._catalog.find_sys_tables_row(
+            table_name,
+            table_catalog=table_catalog,
+        )
+
+        if entry is None:
+            raise InternalError(
+                f"System catalog invariant violated: "
+                f"no entry for table '{table_name}' "
+                f"in catalog '{table_catalog}'"
+            )
+
+        return entry
+    
+    def drop_table_metadata_by_page_id(
+        self,
+        page_id: str,
+    ) -> SystemTablesEntry:
+        """
+        Soft-delete a system catalog entry using its cached page_id.
+
+        Raises ProgrammingError if the page_id is stale.
+        """
+
+        return self._catalog.set_dropped_by_page_id(
+            page_id=page_id,
+            dropped=True,
+        )
+        
     def drop_table_metadata(
         self,
         table_name: str,
         *,
         table_catalog: str,
-    ) -> None:
-        self._catalog.mark_dropped(
+    ) -> SystemCatalog:
+        return self._catalog.set_dropped(
             table_name=table_name,
             table_catalog=table_catalog,
+            dropped=True
         )
+
+    def restore_table_metadata_by_page_id(
+        self,
+        page_id: str,
+    ) -> Optional[SystemTablesEntry]:
+        """Restore (un-drop) a system tables catalog entry using its page_id.
+
+        .. versionadded:: 0.8.0
+
+        Args:
+            page_id (str): Page id of the system tables catalog entry.
+
+        Raises: 
+            ProgrammingError: If the page_id is stale.
+
+        Returns:
+            Optional[SystemTablesEntry]: The updated system tables catalog entry.
+        """
+        return self._catalog.set_dropped_by_page_id(
+            page_id=page_id,
+            dropped=False,
+        )    
+
+    def restore_table_metadata(
+            self,
+            table_name: str,
+            *,
+            table_catalog: str,
+        ) -> SystemTablesEntry:
+            return self._catalog.set_dropped(
+                table_name=table_name,
+                table_catalog=table_catalog,
+                dropped=False,
+            )
 
     def repair_table_metadata(
         self,
@@ -649,58 +755,6 @@ class Engine:
             table_id=table_id,
         )
 
-    # -------------------------------------------------
-    # Table creation / reflection helpers 
-    # -------------------------------------------------
-
-    def _find_sys_tables_row(
-        self,
-        table_name: str,
-        *,
-        table_catalog: Optional[str] = None,
-    ) -> Optional[SystemTablesEntry]:
-        """Return the tables row (Notion page object) for a table or None if it does not exist."""
-        
-        return self._catalog.find_sys_tables_row(table_name, table_catalog=table_catalog)
-
-    def _require_sys_tables_row(
-        self,
-        table_name: str,
-        *,
-        table_catalog: str,
-    ) -> SystemTablesEntry:
-
-        entry = self._find_sys_tables_row(
-            table_name,
-            table_catalog=table_catalog,
-        )
-
-        if entry is None:
-            raise InternalError(
-                f"System catalog invariant violated: "
-                f"no entry for table '{table_name}' "
-                f"in catalog '{table_catalog}'"
-            )
-
-        return entry
-
-    def _get_or_create_sys_tables_row(
-            self, 
-            table_name: str, 
-            table_schema: Optional[str] = 'not_used',
-            *,
-            table_catalog: str, 
-            table_id: str,
-            if_exists: bool = False
-    ) -> SystemTablesEntry:
-        """Helper to get or create a new row in the tables system table."""
-        
-        return self._catalog.get_or_create_sys_tables_row(
-            table_name, 
-            table_catalog=table_catalog, 
-            table_id=table_id
-        )
-    
     def _reflect_table(self, table: Table) -> ReflectedTableInfo:
         raise NotImplementedError
         
@@ -780,7 +834,11 @@ class Inspector:
         Returns:
             bool: ``True`` if the table exists, ``False`` otherwise. 
         """
-        table_entry = self._engine._find_sys_tables_row(table_name, table_catalog=self._engine._user_database_name)
+        table_entry = self._engine.find_table_metadata(
+            table_name, 
+            table_catalog=self._engine._user_database_name
+        )
+
         return table_entry is not None and not table_entry.is_dropped
     
     def reflect_table(self, table: Table) -> ReflectedTableInfo:

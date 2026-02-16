@@ -252,7 +252,7 @@ def test_create_table_populates_sys_table_page_id(engine: Engine, students: Tabl
     assert isinstance(students._sys_tables_page_id, str)
 
     # consitency assertion
-    row = engine._find_sys_tables_row(
+    row = engine.find_table_metadata(
         "students",
         table_catalog=engine._user_database_name
     )
@@ -340,7 +340,7 @@ def test_metadata_reflect(engine: Engine, metadata: MetaData):
 
 def test_create_table_not_existing(engine: Engine, students: Table):
     students.create(engine, checkfirst=True)
-    entry = engine._find_sys_tables_row('students', table_catalog=engine._user_database_name)
+    entry = engine.find_table_metadata('students', table_catalog=engine._user_database_name)
     assert entry is not None
 
     database_obj = engine._client._get_by_id(entry.table_id)
@@ -386,12 +386,12 @@ def test_drop_table_uses_cached_sys_table_page_id(students: Table, engine: Engin
     cached_page_id = students._sys_tables_page_id
     assert cached_page_id is not None    
 
-    engine._find_sys_tables_row = Mock(
-        wraps=engine._find_sys_tables_row
+    engine.require_table_metadata = Mock(
+        wraps=engine.find_table_metadata
     )
 
     students.drop(bind=engine)
-    engine._find_sys_tables_row.assert_not_called()
+    engine.require_table_metadata.assert_not_called()
     assert students._sys_tables_page_id == cached_page_id
 
 def test_drop_table_falls_back_when_sys_table_page_id_missing(students: Table, engine: Engine):
@@ -400,12 +400,12 @@ def test_drop_table_falls_back_when_sys_table_page_id_missing(students: Table, e
     # simulate pre-step-1 Table or reflected Table
     students._sys_tables_page_id = None    
 
-    engine._find_sys_tables_row = Mock(
-        wraps=engine._find_sys_tables_row
+    engine.require_table_metadata = Mock(
+        wraps=engine.find_table_metadata
     )
 
     students.drop(bind=engine)
-    engine._find_sys_tables_row.assert_called_once()
+    engine.require_table_metadata.assert_called_once()
     assert students._sys_tables_page_id is not None
 
 def test_drop_table_recovers_from_stale_sys_table_page_id(students: Table, engine: Engine):
@@ -468,20 +468,20 @@ def test_drop_table_detects_catalog_corruption_no_table_entry_found(students: Ta
     with pytest.raises(InternalError, match="no entry for table 'students' in catalog 'memory'"):
         students.drop(bind=engine)
 
-@pytest.mark.skip('DROP TABLE not supported yet.')
-def test_create_after_drop_recreates_table(engine, students):
+@pytest.mark.skip('Table lifecycle states not supported yet.')
+def test_create_after_drop_recreates_table(engine: Engine, students: Table):
     students.create(engine)
     students.drop(engine)
 
     students.create(engine)
 
-    entry = engine._find_sys_tables_row(
+    entry = engine.find_table_metadata(
         'students', table_catalog=engine._user_database_name
     )
     assert entry is not None
     assert not entry.is_dropped
 
-@pytest.mark.skip('DROP TABLE not supported yet.')
+@pytest.mark.skip('Table lifecycle states not supported yet.')
 def test_create_after_drop_checkfirst_creates(engine, students):
     students.create(engine)
     students.drop(engine)

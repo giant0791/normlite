@@ -152,14 +152,15 @@ class CreateTable(ExecutableDDLStatement):
 
             table.c[colmeta.name].value = colmeta.value
         
-        # add this table to the sys "tables"
+        # add this table to the sys "tables" catalog
         engine = context.engine
-        entry = context.engine._get_or_create_sys_tables_row(
+        entry = context.engine.create_table_metadata(
             table.name,
             table_catalog=engine._user_database_name,
             table_id=table.get_oid()
         )
 
+        # update write-cache for this entry
         table._sys_tables_page_id = entry.sys_tables_page_id
 
 class DropTable(ExecutableDDLStatement):
@@ -180,7 +181,7 @@ class DropTable(ExecutableDDLStatement):
     def _handle_dbapi_error(
         self, 
         exc: Error, 
-        context
+        context: ExecutionContext
     ) -> Optional[NoReturn]:
         # DROP TABLE on a non-existing table
         if isinstance(exc, ProgrammingError):
@@ -199,7 +200,7 @@ class DropTable(ExecutableDDLStatement):
 
         # Ensure we have a valid sys_tables_page_id
         if self._table._sys_tables_page_id is None:
-            sys_tables_page = engine._require_sys_tables_row(
+            sys_tables_page = engine.require_table_metadata(
                 self._table.name,
                 table_catalog=engine._user_database_name,
             )
@@ -207,14 +208,13 @@ class DropTable(ExecutableDDLStatement):
 
         # Attempt deletion (retry once if stale page_id)
         try:
-            context.engine._delete_restore_table(
-                self._table._sys_tables_page_id,
-                delete=True,
+            context.engine.drop_table_metadata_by_page_id(
+                self._table._sys_tables_page_id
             )
 
         except ProgrammingError:
             # page_id likely stale → recover and retry once
-            sys_tables_page = engine._require_sys_tables_row(
+            sys_tables_page = engine.require_table_metadata(
                 self._table.name,
                 table_catalog=engine._user_database_name,
             )
@@ -222,9 +222,8 @@ class DropTable(ExecutableDDLStatement):
             self._table._sys_tables_page_id = sys_tables_page.sys_tables_page_id
 
             # retry; further failure propagates
-            context.engine._delete_restore_table(
-                self._table._sys_tables_page_id,
-                delete=True,
+            context.engine.drop_table_metadata_by_page_id(
+                self._table._sys_tables_page_id
             )
 
 class ReflectTable(ExecutableDDLStatement):

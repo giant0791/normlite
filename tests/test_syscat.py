@@ -156,7 +156,7 @@ def test_ensure_entry_if_not_exists_true_returns_existing(engine: Engine, syscat
 # mark_dropped
 # ============================================================
 
-def test_mark_dropped_soft_deletes(engine: Engine, syscat: SystemCatalog):
+def test_set_dropped_soft_deletes(engine: Engine, syscat: SystemCatalog):
     database_id = create_students_db(engine)
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
@@ -164,26 +164,28 @@ def test_mark_dropped_soft_deletes(engine: Engine, syscat: SystemCatalog):
         table_id=database_id,
     )
 
-    syscat.mark_dropped(
+    syscat.set_dropped(
         table_name="students",
         table_catalog="memory",
+        dropped=True
     )
 
     page = syscat._client._store[entry.sys_tables_page_id]
     assert page["in_trash"] is True
 
 
-def test_mark_dropped_raises_if_missing(syscat: SystemCatalog):
+def test_set_dropped_raises_if_missing(syscat: SystemCatalog):
     with pytest.raises(ProgrammingError) as exc:
-        syscat.mark_dropped(
+        syscat.set_dropped(
             table_name="students",
             table_catalog="memory",
+            dropped=True
         )
 
     assert "Table 'students' does not exist" in str(exc.value)
 
 
-def test_mark_dropped_raises_programming_error_on_stale_page_id(engine: Engine, syscat: SystemCatalog):
+def test_set_dropped_raises_programming_error_on_stale_page_id(engine: Engine, syscat: SystemCatalog):
     database_id = create_students_db(engine)
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
@@ -196,9 +198,10 @@ def test_mark_dropped_raises_programming_error_on_stale_page_id(engine: Engine, 
     del client._store[entry.sys_tables_page_id]
 
     with pytest.raises(ProgrammingError) as exc:
-        syscat.mark_dropped(
+        syscat.set_dropped(
             table_name="students",
             table_catalog="memory",
+            dropped=True
         )
 
     assert "Table 'students' does not exist" in str(exc.value)

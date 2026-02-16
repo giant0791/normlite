@@ -81,7 +81,18 @@ class SystemCatalog:
         *,
         table_catalog: Optional[str] = None,
     ) -> Optional[SystemTablesEntry]:
-        """Return the tables row (Notion page object) for a table or None if it does not exist."""
+        """Return the tables row (Notion page object) for a table or None if it does not exist.
+
+        Args:
+            table_name (str): _description_
+            table_catalog (Optional[str], optional): _description_. Defaults to None.
+
+        Raises:
+            InternalError: _description_
+
+        Returns:
+            Optional[SystemTablesEntry]: _description_
+        """
 
         catalog = table_catalog or self._default_catalog
 
@@ -142,7 +153,27 @@ class SystemCatalog:
         table_catalog: str, 
         table_id: str,
         if_not_exists: bool = False
-    ) -> SystemTablesEntry:
+    ) -> Optional[SystemTablesEntry]:
+        """Return the system tables catalog entry for the specified table name.
+
+        This method checks first for existance and creates a new entry if the given
+        table name was not found.
+
+        .. versionadded:: 0.8.0
+
+        Args:
+            table_name (str): _description_
+            table_catalog (str): _description_
+            table_id (str): _description_
+            table_schema (Optional[str], optional): _description_. Defaults to 'not_used'.
+            if_not_exists (bool, optional): _description_. Defaults to False.
+
+        Raises:
+            ProgrammingError: If a table with the same name exists in the catalog.
+
+        Returns:
+            Optional[SystemTablesEntry]: The system tables entry.
+        """
         existing = self.find_sys_tables_row(table_name, table_catalog=table_catalog)
 
         if existing is not None and not existing.is_dropped:
@@ -178,13 +209,54 @@ class SystemCatalog:
 
         return SystemTablesEntry.from_dict(page_obj)
 
-    def mark_dropped(
+    def set_dropped_by_page_id(
+        self,
+        *,
+        page_id: str,
+        dropped: bool,
+    ) -> SystemTablesEntry:
+
+        try:
+            page_obj = self._client.pages_update(
+                path_params={"page_id": page_id},
+                payload={"in_trash": dropped},
+            )
+
+        except NotionError as exc:
+            if exc.code == "object_not_found":
+                raise ProgrammingError(page_id)
+            raise
+
+        return SystemTablesEntry.from_dict(page_obj)
+
+
+    def set_dropped(
         self,
         *,
         table_name: str,
         table_catalog: str,
-    ) -> None:
- 
+        dropped: bool,
+    ) -> Optional[SystemTablesEntry]:
+        """Soft-delete or restore the page corresponding to the entry in the system tables catalog.
+
+        .. note::
+            This methods sets the "in_trash" property at page level (the Notion page object in the system
+            tables database). The Notion database object implementing the table itself is **not affected**
+            by this method.
+
+        .. versionadded:: 0.8.0
+
+        Args:
+            table_name (str): Name of the table to soft-delete or restore
+            table_catalog (str): Name of the catalog the table belongs
+            dropped (bool): Sof-delete if ``True``, restore if ``False``.
+
+        Raises:
+            ProgrammingError: If the given table name does not exists.
+
+        Returns:
+            Optional[SystemTablesEntry]: The updated system tables catalog entry.
+        """
         entry = self.find_sys_tables_row(
             table_name,
             table_catalog=table_catalog,
@@ -195,15 +267,10 @@ class SystemCatalog:
                 f"Table '{table_name}' does not exist"
             )
 
-        try:
-            self._client.pages_update(
-                path_params={"page_id": entry.sys_tables_page_id},
-                payload={"in_trash": True},
-            )
-        except NotionError as exc:
-            if exc.code == "object_not_found":
-                raise ProgrammingError(entry.sys_tables_page_id)
-            raise
+        return self.set_dropped_by_page_id(
+            page_id=entry.sys_tables_page_id,
+            dropped=dropped
+        )
 
     def repair_missing(
         self,
@@ -234,6 +301,43 @@ class SystemCatalog:
             table_id=table_id,
             if_not_exists=True,
         )
+    
+    def set_dropped_by_page_id(
+        self,
+        *,
+        page_id: str,
+        dropped: bool,
+    ) -> Optional[SystemTablesEntry]:
+        """Soft-delete or restore a table entry in the system catalog by supplying the page id.
+
+        .. note::
+            This methods sets the "in_trash" property at page level (the Notion page object in the system
+            tables database). The Notion database object implementing the table itself is **not affected**
+            by this method.
+
+        .. versionadded:: 0.8.0
+
+        Args:
+            page_id (str): System tables catalog page id of the table to soft-delete or restore.
+            dropped (bool): _description_
+
+        Raises:
+            ProgrammingError: _description_
+
+        Returns:
+            Optional[SystemTablesEntry]: _description_
+        """
+        try:
+            page_obj = self._client.pages_update(
+                path_params={"page_id": page_id},
+                payload={"in_trash": dropped},
+            )
+        except NotionError as exc:
+            if exc.code == "object_not_found":
+                raise ProgrammingError(page_id)
+            raise
+
+        return SystemTablesEntry.from_dict(page_obj)
 
     # -------------------------------------------------
     # Find-or-create helpers
