@@ -1,3 +1,4 @@
+import pdb
 import uuid
 import pytest
 
@@ -61,13 +62,13 @@ def make_title_page(parent_page_id, title="My Page"):
     }
 
 
-def make_database(parent_page_id):
+def make_database(parent_page_id: str, name: str = "Students"):
     return {
         "parent": {
             "type": "page_id",
             "page_id": parent_page_id,
         },
-        "title": [{"text": {"content": "Students"}}],
+        "title": [{"text": {"content": name}}],
         "properties": {
             "Name": {
                 "title": {}
@@ -1005,3 +1006,42 @@ def test_database_update_title_and_schema(client, database):
 
     assert result["title"][0]["text"]["content"] == "New Name"
     assert result["properties"]["Score"]["number"]["format"] == "percent"
+
+# ------------------------------------------------------------
+# search tests
+# ------------------------------------------------------------
+
+def test_search_no_filter_returns_all(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    db2 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    result = client.search()
+    expected = [obj for obj in client._store.values()]
+
+    assert result['results'] == expected
+
+def test_search_for_databases_no_title_returns_all(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    db2 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    result = client.search(
+        payload={
+            'filter': {
+                'property': 'object',
+                'value': 'database'
+            }
+        }
+    )
+
+    assert result['results'] == [db1, db2]
+ 

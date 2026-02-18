@@ -338,10 +338,10 @@ class AbstractNotionClient(ABC):
     
     @abstractmethod
     def databases_update(
-            self, 
-            path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None, 
-            payload: Optional[dict] = None
+        self, 
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None, 
+        payload: Optional[dict] = None
     ) -> dict:
         """Update the given database.
 
@@ -359,6 +359,31 @@ class AbstractNotionClient(ABC):
             dict: The updated database object.
         """
         raise NotImplementedError
+    
+    @abstractmethod
+    def search(
+        self,
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None, 
+        payload: Optional[dict] = None
+    ) -> dict:
+        """Search all pages and databases by title
+
+        Searches all parent or child pages and databases that have been shared with an integration.
+        Returns all pages or databases, excluding duplicated linked databases, that have 
+        titles that include the query param. If no query param is provided, then the response contains 
+        all pages or databases that have been shared with the integration.
+
+        Args:
+            path_params (Optional[dict], optional): Not used. Defaults to None.
+            query_params (Optional[dict], optional): Not used. Defaults to None.
+            payload (Optional[dict], optional): Dictionary specifying the text to be searched for with
+                the key "query" and the object type with the key "property".
+
+        Returns:
+            dict: Dictionary as result object containing the search results. The list key "result" is empty,
+                if no results were found.
+        """
 
 
 class InMemoryNotionClient(AbstractNotionClient):
@@ -946,7 +971,9 @@ class InMemoryNotionClient(AbstractNotionClient):
         if not obj:
             raise NotionError(
                 f"Could not find database with ID: {db_id}. "
-                "Make sure the relevant pages and databases are shared with your integration."
+                "Make sure the relevant pages and databases are shared with your integration.",
+                status_code=404,
+                code='object_not_found'
             )
         return copy.deepcopy(obj)
 
@@ -1091,6 +1118,62 @@ class InMemoryNotionClient(AbstractNotionClient):
             )
 
         return copy.deepcopy(database)
+    
+    def search(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None            
+    ) -> dict:
+        """Return all pages or databases whose title exactly matches the "query" text."""
+
+        query = payload.get('query') if payload is not None else None
+        filter = payload.get('filter') if payload is not None else None
+        filter_by = None
+        results = []
+        result_object = {
+            'object': 'list',
+            'results': results,
+            'next_cursor': None,
+            'has_more': False,
+            'type': 'page_or_database',
+            'page': {}
+        }        
+        if filter is not None:
+            if not isinstance(filter, dict):
+                raise NotionError(
+                    "Body failed validation: body.filter should be an object (not a string).",
+                    status_code=400,
+                    code="invalid_json"                    
+                )
+
+            filter_by = filter.get('value')
+            if filter_by is None:
+                raise NotionError(
+                    "Body failed validation: body.value should be defined.",
+                    status_code=400,
+                    code="invalid_json"                    
+                )
+            
+            if filter_by not in ("page", "database"):
+                raise NotionError(
+                    "Body failed validation: body.value should be either 'page' or 'database'.",
+                    status_code=400,
+                    code="invalid_json"                    
+                )
+
+        for obj in self._store.values():
+            if filter_by is not None:
+                if obj['object'] != filter_by:    
+                    continue
+            
+            if query is not None:
+                if query != get_title(obj):
+                    continue
+
+            results.append(obj)
+
+        return result_object
 
     def find_child_page(self, parent_page_id: str, name: str) -> Optional[dict]:
         for obj in self._store.values():
