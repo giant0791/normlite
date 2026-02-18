@@ -1031,7 +1031,7 @@ def test_search_for_databases_no_title_returns_all(client):
     )
 
     db2 = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v2')
     )
 
     result = client.search(
@@ -1045,3 +1045,144 @@ def test_search_for_databases_no_title_returns_all(client):
 
     assert result['results'] == [db1, db2]
  
+def test_search_for_page_or_database_query_returns_matching_only(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    pg1 = client.pages_create(
+        payload=make_title_page(client._ROOT_PAGE_ID_, title='students_v1')
+    )
+
+    result = client.search(
+        payload={
+            'query': 'students_v1'
+        }
+    )
+
+    assert result['results'] == [db1, pg1]
+
+def test_search_for_database_query_returns_matching_only(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    pg1 = client.pages_create(
+        payload=make_title_page(client._ROOT_PAGE_ID_, title='students_v1')
+    )
+
+    result = client.search(
+        payload={
+            'query': 'students_v1',
+            'filter': {
+                'property': 'object',
+                'value': 'database'
+            }
+        }
+    )
+
+    assert result['results'] == [db1]
+
+def test_search_for_page_query_returns_matching_only(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    pg1 = client.pages_create(
+        payload=make_title_page(client._ROOT_PAGE_ID_, title='students_v1')
+    )
+
+    result = client.search(
+        payload={
+            'query': 'students_v1',
+            'filter': {
+                'property': 'object',
+                'value': 'page'
+            }
+        }
+    )
+
+    assert result['results'] == [pg1]
+
+def test_search_returns_exact_match_only(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students')
+    )
+
+    db2 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    db3 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v2')
+    )
+
+    result = client.search(
+        payload={
+            'query': 'students',
+            'filter': {
+                'property': 'object',
+                'value': 'database'
+            }
+        }
+    )
+
+    assert result['results'] == [db1]
+  
+def test_search_filter_is_not_a_dict_raises(client):
+    with pytest.raises(NotionError) as exc:
+        result = client.search(
+            payload={
+                'filter': 'page'
+            }
+        )
+
+    assert exc.value.code == 'invalid_json'
+    assert exc.value.status_code == 400
+    assert 'body.filter should be an object (not a string).' in str(exc.value)
+
+def test_search_filter_property_missing_raises(client):
+    with pytest.raises(NotionError) as exc:
+        result = client.search(
+            payload={
+                'filter': {
+                    'value': 'page'
+                }
+            }
+        )
+
+    assert exc.value.code == 'invalid_json'
+    assert exc.value.status_code == 400
+    assert 'body.property should be defined.' in str(exc.value)
+
+def test_search_filter_value_missing_raises(client):
+    with pytest.raises(NotionError) as exc:
+        result = client.search(
+            payload={
+                'filter': {
+                    'property': 'object'
+                }
+            }
+        )
+
+    assert exc.value.code == 'invalid_json'
+    assert exc.value.status_code == 400
+    assert 'body.value should be defined.' in str(exc.value)
+
+def test_search_filter_value_not_a_page_or_database_raises(client):
+    with pytest.raises(NotionError) as exc:
+        result = client.search(
+            payload={
+                'filter': {
+                    'property': 'object',
+                    'value': 'data_source'
+
+                }
+            }
+        )
+
+    assert exc.value.code == 'invalid_json'
+    assert exc.value.status_code == 400
+    assert "body.value should be either 'page' or 'database'." in str(exc.value)
+
+  

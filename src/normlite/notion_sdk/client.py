@@ -1147,6 +1147,14 @@ class InMemoryNotionClient(AbstractNotionClient):
                     code="invalid_json"                    
                 )
 
+            filter_prop = filter.get('property')
+            if filter_prop is None:
+                raise NotionError(
+                    "Body failed validation: body.property should be defined.",
+                    status_code=400,
+                    code="invalid_json"                    
+                )
+            
             filter_by = filter.get('value')
             if filter_by is None:
                 raise NotionError(
