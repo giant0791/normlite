@@ -5,7 +5,7 @@ import pdb
 from typing import Any, NamedTuple, Optional, Sequence
 from normlite._constants import SpecialColumns
 from normlite.engine.row import Row
-from normlite.notion_sdk.getters import get_property, get_rich_text_property_value, get_title_property_value
+from normlite.notion_sdk.getters import get_property, get_rich_text_property_value, get_title, get_title_property_value
 from normlite.sql.type_api import Boolean, ObjectId, String, TypeEngine, type_mapper
 
 class ReflectedColumnInfo(NamedTuple):
@@ -95,8 +95,7 @@ class ReflectedTableInfo:
             value=database_obj['id'],
         ))
 
-        result_process = String(is_title=True).result_processor()
-        database_name = result_process(database_obj['title'])
+        database_name = get_title(database_obj)
         cols.append(ReflectedColumnInfo(
             name=SpecialColumns.NO_TITLE,
             type=String(is_title=True),
@@ -130,7 +129,6 @@ class ReflectedTableInfo:
             )
         
         return cls(cols)
-
 
 @dataclass(frozen=True)
 class SystemTablesEntry:
