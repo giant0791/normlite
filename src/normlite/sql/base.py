@@ -22,7 +22,7 @@ from enum import Enum, auto
 from functools import wraps
 import json
 import pdb
-from typing import Any, ClassVar, Optional, Protocol, TYPE_CHECKING, Self, Sequence, overload
+from typing import Any, ClassVar, NoReturn, Optional, Protocol, TYPE_CHECKING, Self, Sequence, overload
 import copy
 
 from normlite.engine.interfaces import _distill_params
@@ -31,13 +31,14 @@ from normlite.utils import frozendict
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table
-    from normlite.sql.ddl import CreateTable, HasTable, ReflectTable
+    from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
     from normlite.sql.dml import Insert, Select
     from normlite.sql.elements import ColumnElement, UnaryExpression, BinaryExpression, BindParameter, BooleanClauseList
     from normlite.engine.cursor import CursorResult
     from normlite.engine.interfaces import _CoreAnyExecuteParams, ExecutionOptions, ReturningStrategy
     from normlite.engine.base import Connection
     from normlite.engine.context import ExecutionContext
+    from normlite.notiondbapi.dbapi2 import Error
 
 class Generative:
     """Mixin providing SQLAlchemy-style generative behavior."""
@@ -127,6 +128,7 @@ class ClauseElement(Generative, Visitable):
         Returns:
             Compiled: The compiled object rusult of the compilation.
         """
+        compiler._compiler_state = CompilerState()
         compiled_dict = compiler.process(self, **kwargs)
         if compiler._compiler_state.is_ddl:
             return DDLCompiled(self, compiled_dict, compiler)
@@ -257,6 +259,22 @@ class Executable(ClauseElement):
         .. versionadded:: 0.8.0
         """
         raise NotImplementedError
+    
+    def _handle_dbapi_error(
+        self, 
+        exc: Error, 
+        context: ExecutionContext
+    ) -> Optional[NoReturn]:
+        """Handle the DBAPI error that may occur during execution.
+
+        Args:
+            exc (Error): The error to be handled
+            context (ExecutionContext): The execution context in which this executables is running.
+
+        Returns:
+            Optional[NoReturn]: Nothin
+        """
+        raise NotImplementedError
 
 class _CompileState(Enum):
     NOT_STARTED            = auto()
@@ -321,7 +339,7 @@ class Compiled:
         # IMPORTANT: The _compiler_state.execution_binds contains the mapping that associates
         # a bind param key to a tuple[BindParameter, str], where str is the usage="value" | "filter"
         # This is used by the ExecutionContext to choose the right bind processor (bind_processor | filter_processor)
-        self._execution_binds = compiler._compiler_state.execution_binds
+        self._execution_binds = dict(compiler._compiler_state.execution_binds)
         """The bind parameters for this compiled object."""
 
         self._result_columns = compiler._compiler_state.result_columns
@@ -395,7 +413,7 @@ class SQLCompiler(Protocol):
         """Compile a table (DDL ``CREATE TABLE``)."""
         ...
 
-    def visit_has_table(self, hastable: HasTable) -> dict:
+    def visit_drop_table(self, ddl_stmt: DropTable) -> dict:
         """Compile the pseudo DDL statement for checking for table existence."""
         ...
 

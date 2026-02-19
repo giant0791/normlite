@@ -1,3 +1,4 @@
+import pdb
 import uuid
 import pytest
 
@@ -8,6 +9,40 @@ from normlite.notion_sdk.getters import (
     get_title_rich_text,
     rich_text_to_plain_text,
 )
+
+@pytest.fixture
+def client() -> InMemoryNotionClient:
+    """Fixture that mimics the initialized state in engine."""
+    client = InMemoryNotionClient()
+    client._ensure_root()
+    return client
+
+
+@pytest.fixture
+def database():
+    """Fixture for _update_database_properties() helper method."""
+    return {
+        "id": "db1",
+        "object": "database",
+        "title": [{"text": {"content": "Original Database Name"}}],
+        "properties": {
+            "Name": {
+                "id": "title",
+                "type": "title",
+                "title": {},
+            },
+            "Score": {
+                "id": "J@cT",
+                "type": "number",
+                "number": {"format": "number"},
+            },
+            "Status": {
+                "id": "STAT",
+                "type": "status",
+                "status": {},
+            },
+        },
+    }
 
 # ---------------------------------------------------------
 # Helpers
@@ -27,13 +62,13 @@ def make_title_page(parent_page_id, title="My Page"):
     }
 
 
-def make_database(parent_page_id):
+def make_database(parent_page_id: str, name: str = "Students"):
     return {
         "parent": {
             "type": "page_id",
             "page_id": parent_page_id,
         },
-        "title": [{"text": {"content": "Students"}}],
+        "title": [{"text": {"content": name}}],
         "properties": {
             "Name": {
                 "title": {}
@@ -64,12 +99,25 @@ def make_db_page(database_id, name="Alice", age=20):
 def rt(*parts: str):
     return [{"text": {"content": p}} for p in parts]
 
+def create_database(client):
+    page = client.pages_create(
+        payload=make_title_page(
+            client._ROOT_PAGE_ID_,
+            title="root"
+        )
+    )
+    
+    db = client.databases_create(
+        payload=make_database(page['id'])
+    )
+
+    return db
+
 # ---------------------------------------------------------
 # Root page behavior
 # ---------------------------------------------------------
 
-def test_root_page_exists_by_default():
-    client = InMemoryNotionClient()
+def test_root_page_exists_by_default(client):
 
     root = client.pages_retrieve(
         path_params={"page_id": client._ROOT_PAGE_ID_}
@@ -83,9 +131,7 @@ def test_root_page_exists_by_default():
 # Page under page rules
 # ---------------------------------------------------------
 
-def test_create_page_under_page_with_valid_title():
-    client = InMemoryNotionClient()
-
+def test_create_page_under_page_with_valid_title(client):
     page = client.pages_create(
         payload=make_title_page(client._ROOT_PAGE_ID_, "Child")
     )
@@ -96,9 +142,7 @@ def test_create_page_under_page_with_valid_title():
     assert page["properties"]["Title"]["id"] == "title"
 
 
-def test_page_under_page_rejects_multiple_properties():
-    client = InMemoryNotionClient()
-
+def test_page_under_page_rejects_multiple_properties(client):
     payload = {
         "parent": {
             "type": "page_id",
@@ -114,9 +158,7 @@ def test_page_under_page_rejects_multiple_properties():
         client.pages_create(payload=payload)
 
 
-def test_page_under_page_rejects_non_title_property():
-    client = InMemoryNotionClient()
-
+def test_page_under_page_rejects_non_title_property(client):
     payload = {
         "parent": {
             "type": "page_id",
@@ -135,9 +177,7 @@ def test_page_under_page_rejects_non_title_property():
 # Database creation rules
 # ---------------------------------------------------------
 
-def test_create_database_under_page():
-    client = InMemoryNotionClient()
-
+def test_create_database_under_page(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -153,9 +193,7 @@ def test_create_database_under_page():
     assert isinstance(db["properties"]["Age"]["id"], str)
 
 
-def test_database_cannot_be_created_under_database():
-    client = InMemoryNotionClient()
-
+def test_database_cannot_be_created_under_database(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -170,14 +208,11 @@ def test_database_cannot_be_created_under_database():
     with pytest.raises(NotionError):
         client.databases_create(payload=payload)
 
-
 # ---------------------------------------------------------
 # Page under database rules (schema enforcement)
 # ---------------------------------------------------------
 
-def test_create_page_under_database_with_exact_schema():
-    client = InMemoryNotionClient()
-
+def test_create_page_under_database_with_exact_schema(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -196,9 +231,7 @@ def test_create_page_under_database_with_exact_schema():
     assert props["Age"]["id"] == db["properties"]["Age"]["id"]
 
 
-def test_page_under_database_rejects_missing_property():
-    client = InMemoryNotionClient()
-
+def test_page_under_database_rejects_missing_property(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -219,9 +252,7 @@ def test_page_under_database_rejects_missing_property():
         client.pages_create(payload=payload)
 
 
-def test_page_under_database_rejects_extra_property():
-    client = InMemoryNotionClient()
-
+def test_page_under_database_rejects_extra_property(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -248,9 +279,7 @@ def test_page_under_database_rejects_extra_property():
         client.pages_create(payload=payload)
 
 
-def test_page_under_database_rejects_type_mismatch():
-    client = InMemoryNotionClient()
-
+def test_page_under_database_rejects_type_mismatch(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -278,9 +307,7 @@ def test_page_under_database_rejects_type_mismatch():
 # Store invariants
 # ---------------------------------------------------------
 
-def test_store_and_returned_object_are_consistent():
-    client = InMemoryNotionClient()
-
+def test_store_and_returned_object_are_consistent(client):
     page = client.pages_create(
         payload=make_title_page(client._ROOT_PAGE_ID_, "Consistency")
     )
@@ -296,9 +323,7 @@ def test_store_and_returned_object_are_consistent():
 # Page update behavior
 # ---------------------------------------------------------
 
-def test_pages_update_archived_flag():
-    client = InMemoryNotionClient()
-
+def test_pages_update_archived_flag(client):
     page = client.pages_create(
         payload=make_title_page(client._ROOT_PAGE_ID_)
     )
@@ -314,9 +339,7 @@ def test_pages_update_archived_flag():
     assert stored["archived"] is True
 
 
-def test_pages_update_properties():
-    client = InMemoryNotionClient()
-
+def test_pages_update_properties(client):
     page = client.pages_create(
         payload=make_title_page(client._ROOT_PAGE_ID_)
     )
@@ -341,9 +364,7 @@ def test_pages_update_properties():
 # Database query API (databases_query)
 # ---------------------------------------------------------
 
-def test_databases_query_returns_pages_for_database():
-    client = InMemoryNotionClient()
-
+def test_databases_query_returns_pages_for_database(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -364,9 +385,7 @@ def test_databases_query_returns_pages_for_database():
     assert ids == {p1["id"], p2["id"]}
 
 
-def test_databases_query_does_not_return_pages_from_other_databases():
-    client = InMemoryNotionClient()
-
+def test_databases_query_does_not_return_pages_from_other_databases(client):
     db1 = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -386,9 +405,7 @@ def test_databases_query_does_not_return_pages_from_other_databases():
     assert result["results"][0]["parent"]["database_id"] == db1["id"]
 
 
-def test_databases_query_with_simple_filter_number_equals():
-    client = InMemoryNotionClient()
-
+def test_databases_query_with_simple_filter_number_equals(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -415,9 +432,7 @@ def test_databases_query_with_simple_filter_number_equals():
     )
 
 
-def test_databases_query_with_title_contains_filter():
-    client = InMemoryNotionClient()
-
+def test_databases_query_with_title_contains_filter(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -446,9 +461,7 @@ def test_databases_query_with_title_contains_filter():
     assert set(names) == {"Alice", "Alicia"}
 
 
-def test_databases_query_with_and_filter():
-    client = InMemoryNotionClient()
-
+def test_databases_query_with_and_filter(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -481,9 +494,7 @@ def test_databases_query_with_and_filter():
     assert page["properties"]["Age"]["number"] == 30
 
 
-def test_databases_query_with_or_filter():
-    client = InMemoryNotionClient()
-
+def test_databases_query_with_or_filter(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -518,9 +529,7 @@ def test_databases_query_with_or_filter():
     assert names == {"Alice", "Charlie"}
 
 
-def test_databases_query_with_filter_properties_projection():
-    client = InMemoryNotionClient()
-
+def test_databases_query_with_filter_properties_projection(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -539,9 +548,7 @@ def test_databases_query_with_filter_properties_projection():
     assert "Age" not in props
 
 
-def test_databases_query_returns_empty_list_when_no_match():
-    client = InMemoryNotionClient()
-
+def test_databases_query_returns_empty_list_when_no_match(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
@@ -562,9 +569,7 @@ def test_databases_query_returns_empty_list_when_no_match():
     assert result["has_more"] is False
 
 
-def test_databases_query_requires_database_id():
-    client = InMemoryNotionClient()
-
+def test_databases_query_requires_database_id(client):
     with pytest.raises(NotionError):
         client.databases_query(
             path_params={},
@@ -575,8 +580,7 @@ def test_databases_query_requires_database_id():
 # Sort by number (ascending / descending)
 # ----------------------------------------------------------
 
-def test_database_query_sort_by_number_ascending():
-    client = InMemoryNotionClient()
+def test_database_query_sort_by_number_ascending(client):
     db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
 
     client.pages_create(payload=make_db_page(db["id"], "A", 30))
@@ -598,12 +602,12 @@ def test_database_query_sort_by_number_ascending():
     ]
 
     assert ages == [10, 20, 30]
+
 # ----------------------------------------------------------
 # Sort by title (descending)
 # ----------------------------------------------------------
 
-def test_database_query_sort_by_title_descending():
-    client = InMemoryNotionClient()
+def test_database_query_sort_by_title_descending(client):
     db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
 
     client.pages_create(payload=make_db_page(db["id"], "Alice", 10))
@@ -630,8 +634,7 @@ def test_database_query_sort_by_title_descending():
 # Multiple sorts (stable ordering)
 # ----------------------------------------------------------
 
-def test_database_query_multiple_sorts():
-    client = InMemoryNotionClient()
+def test_database_query_multiple_sorts(client):
     db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
 
     client.pages_create(payload=make_db_page(db["id"], "Alice", 30))
@@ -659,8 +662,7 @@ def test_database_query_multiple_sorts():
 # Sorting after filtering
 # ----------------------------------------------------------
 
-def test_database_query_filter_and_sort():
-    client = InMemoryNotionClient()
+def test_database_query_filter_and_sort(client):
     db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
 
     client.pages_create(payload=make_db_page(db["id"], "Alice", 30))
@@ -700,8 +702,7 @@ def test_database_query_filter_and_sort():
 #     “Does the public API behave correctly given canonical input?”
 # ----------------------------------------------------------
 
-def test_page_under_page_title_is_normalized():
-    client = InMemoryNotionClient()
+def test_page_under_page_title_is_normalized(client):
     root = client.pages_create(
         payload= {
             'parent': {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
@@ -730,8 +731,7 @@ def test_page_under_page_title_is_normalized():
     assert title_rt[0]["text"]["content"] == "child"
     assert get_title(page) == "child"
 
-def test_page_under_page_rejects_extra_properties():
-    client = InMemoryNotionClient()
+def test_page_under_page_rejects_extra_properties(client):
     root = client.pages_create(
         payload= {
             'parent': {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
@@ -753,8 +753,7 @@ def test_page_under_page_rejects_extra_properties():
             }
         )
 
-def test_database_schema_is_finalized():
-    client = InMemoryNotionClient()
+def test_database_schema_is_finalized(client):
     db = client.databases_create(payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": rt("tables"),
@@ -773,8 +772,7 @@ def test_database_schema_is_finalized():
     assert props["schema"]["type"] == "rich_text"
     assert "id" in props["schema"]
 
-def test_database_title_is_normalized():
-    client = InMemoryNotionClient()
+def test_database_title_is_normalized(client):
     db = client.databases_create(
         payload= {
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
@@ -786,8 +784,7 @@ def test_database_title_is_normalized():
     assert get_object_type(db) == "database"
     assert get_title(db) == "tables"
 
-def test_page_under_database_properties_are_normalized():
-    client = InMemoryNotionClient()
+def test_page_under_database_properties_are_normalized(client):
     db = client.databases_create(
         payload={ 
             'parent': {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
@@ -818,7 +815,6 @@ def test_page_under_database_properties_are_normalized():
     assert props["schema"]["rich_text"][0]["text"]["content"] == "public"
 
 def test_page_schema_mismatch_raises(client):
-    client = InMemoryNotionClient()
     db = client.databases_create(
         payload={            
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
@@ -838,8 +834,7 @@ def test_page_schema_mismatch_raises(client):
             }
         )
 
-def test_get_title_raises_on_invalid_object():
-    client = InMemoryNotionClient()
+def test_get_title_raises_on_invalid_object(client):
     bad_obj = {"object": "page", "properties": {}}
 
     # normalization invariant broken → accessor must fail
@@ -847,8 +842,7 @@ def test_get_title_raises_on_invalid_object():
         norm_obj = client._normalize_property(bad_obj)
         get_title(norm_obj)
 
-def test_rich_text_normalization_uses_text_content():
-    client = InMemoryNotionClient()
+def test_rich_text_normalization_uses_text_content(client):
     rich = [
         {"text": {"content": "foo"}, "plain_text": "ignored"},
         {"text": {"content": "bar"}},
@@ -857,8 +851,7 @@ def test_rich_text_normalization_uses_text_content():
     normalized_rich = client._normalize_rich_text(rich)
     assert rich_text_to_plain_text(normalized_rich) == "foobar"
 
-def test_get_by_title_finds_page():
-    client = InMemoryNotionClient()
+def test_get_by_title_finds_page(client):
     root = client.pages_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
@@ -879,8 +872,7 @@ def test_get_by_title_finds_page():
     assert len(result["results"]) == 1
     assert result["results"][0]["id"] == page["id"]
 
-def test_store_contains_only_normalized_objects():
-    client = InMemoryNotionClient()
+def test_store_contains_only_normalized_objects(client):
     page = client.pages_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
@@ -899,3 +891,298 @@ def test_store_contains_only_normalized_objects():
     assert "text" in title_prop["title"][0]
     assert "content" in title_prop["title"][0]["text"]
 
+# ------------------------------------------------------------
+# databases update tests
+# ------------------------------------------------------------
+
+def test_delete_property_by_name(client, database):
+    client._update_database_properties(
+        database,
+        {"Score": None},
+    )
+    assert "Score" not in database["properties"]
+
+def test_delete_title_property_fails(client, database):
+    with pytest.raises(NotionError, match="Cannot delete title"):
+        client._update_database_properties(
+            database,
+            {"Name": None},
+        )
+
+def test_rename_property_by_id(client, database):
+    client._update_database_properties(
+        database,
+        {"J@cT": {"name": "Points"}},
+    )
+    assert "Points" in database["properties"]
+    assert database["properties"]["Points"]["id"] == "J@cT"
+
+def test_rename_status_property_fails(client, database):
+    with pytest.raises(NotionError, match="status"):
+        client._update_database_properties(
+            database,
+            {"Status": {"name": "New Status"}},
+        )
+
+def test_update_property_configuration(client, database):
+    client._update_database_properties(
+        database,
+        {"Score": {"number": {"format": "percent"}}},
+    )
+    assert database["properties"]["Score"]["number"]["format"] == "percent"
+
+def test_update_property_type(client, database):
+    client._update_database_properties(
+        database,
+        {"Score": {"rich_text": {}}},
+    )
+    assert database["properties"]["Score"]["rich_text"] == {}
+
+def test_change_title_property_fails(client, database):
+    with pytest.raises(NotionError, match="Cannot change type of title"):
+        client._update_database_properties(
+            database,
+            {"Name": {"rich_text": {}}},
+        )
+
+def test_update_status_property_fails(client, database):
+    with pytest.raises(NotionError, match="status"):
+        client._update_database_properties(
+            database,
+            {"Status": {"status": {"options": []}}},
+        )
+
+def test_database_update_title(client, database):
+    database_obj = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Original Database Name"}}],
+            "properties": database["properties"]
+        }
+    )
+    
+    result = client.databases_update(
+        path_params={"database_id": database_obj["id"]},
+        payload={
+            "title": [{"text": {"content": "Updated Database Name"}}]
+        },
+    )
+
+    assert result["title"][0]["text"]["content"] == "Updated Database Name"
+
+def test_database_update_title_invalid_type(client, database):
+    database_obj = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Original Database Name"}}],
+            "properties": database["properties"]
+        }
+    )
+    
+    with pytest.raises(NotionError, match="rich_text"):
+        client.databases_update(
+            path_params={"database_id": database_obj["id"]},
+            payload={"title": "Invalid"},
+        )
+
+def test_database_update_title_and_schema(client, database):
+    database_obj = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Original Database Name"}}],
+            "properties": database["properties"]
+        }
+    )
+    
+    result = client.databases_update(
+        path_params={"database_id": database_obj["id"]},
+        payload={
+            "title": [{"text": {"content": "New Name"}}],
+            "properties": {
+                "Score": {"number": {"format": "percent"}}
+            },
+        },
+    )
+
+    assert result["title"][0]["text"]["content"] == "New Name"
+    assert result["properties"]["Score"]["number"]["format"] == "percent"
+
+# ------------------------------------------------------------
+# search tests
+# ------------------------------------------------------------
+
+def test_search_no_filter_returns_all(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    db2 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    result = client.search()
+    expected = [obj for obj in client._store.values()]
+
+    assert result['results'] == expected
+
+def test_search_for_databases_no_title_returns_all(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    db2 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v2')
+    )
+
+    result = client.search(
+        payload={
+            'filter': {
+                'property': 'object',
+                'value': 'database'
+            }
+        }
+    )
+
+    assert result['results'] == [db1, db2]
+ 
+def test_search_for_page_or_database_query_returns_matching_only(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    pg1 = client.pages_create(
+        payload=make_title_page(client._ROOT_PAGE_ID_, title='students_v1')
+    )
+
+    result = client.search(
+        payload={
+            'query': 'students_v1'
+        }
+    )
+
+    assert result['results'] == [db1, pg1]
+
+def test_search_for_database_query_returns_matching_only(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    pg1 = client.pages_create(
+        payload=make_title_page(client._ROOT_PAGE_ID_, title='students_v1')
+    )
+
+    result = client.search(
+        payload={
+            'query': 'students_v1',
+            'filter': {
+                'property': 'object',
+                'value': 'database'
+            }
+        }
+    )
+
+    assert result['results'] == [db1]
+
+def test_search_for_page_query_returns_matching_only(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    pg1 = client.pages_create(
+        payload=make_title_page(client._ROOT_PAGE_ID_, title='students_v1')
+    )
+
+    result = client.search(
+        payload={
+            'query': 'students_v1',
+            'filter': {
+                'property': 'object',
+                'value': 'page'
+            }
+        }
+    )
+
+    assert result['results'] == [pg1]
+
+def test_search_returns_exact_match_only(client):
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students')
+    )
+
+    db2 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    db3 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v2')
+    )
+
+    result = client.search(
+        payload={
+            'query': 'students',
+            'filter': {
+                'property': 'object',
+                'value': 'database'
+            }
+        }
+    )
+
+    assert result['results'] == [db1]
+  
+def test_search_filter_is_not_a_dict_raises(client):
+    with pytest.raises(NotionError) as exc:
+        result = client.search(
+            payload={
+                'filter': 'page'
+            }
+        )
+
+    assert exc.value.code == 'invalid_json'
+    assert exc.value.status_code == 400
+    assert 'body.filter should be an object (not a string).' in str(exc.value)
+
+def test_search_filter_property_missing_raises(client):
+    with pytest.raises(NotionError) as exc:
+        result = client.search(
+            payload={
+                'filter': {
+                    'value': 'page'
+                }
+            }
+        )
+
+    assert exc.value.code == 'invalid_json'
+    assert exc.value.status_code == 400
+    assert 'body.property should be defined.' in str(exc.value)
+
+def test_search_filter_value_missing_raises(client):
+    with pytest.raises(NotionError) as exc:
+        result = client.search(
+            payload={
+                'filter': {
+                    'property': 'object'
+                }
+            }
+        )
+
+    assert exc.value.code == 'invalid_json'
+    assert exc.value.status_code == 400
+    assert 'body.value should be defined.' in str(exc.value)
+
+def test_search_filter_value_not_a_page_or_database_raises(client):
+    with pytest.raises(NotionError) as exc:
+        result = client.search(
+            payload={
+                'filter': {
+                    'property': 'object',
+                    'value': 'data_source'
+
+                }
+            }
+        )
+
+    assert exc.value.code == 'invalid_json'
+    assert exc.value.status_code == 400
+    assert "body.value should be either 'page' or 'database'." in str(exc.value)
+
+  

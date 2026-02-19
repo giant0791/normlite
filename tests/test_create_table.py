@@ -1,6 +1,7 @@
 import pytest
 
 from normlite.engine.base import Engine, create_engine
+from normlite.exceptions import CompileError
 from normlite.notion_sdk.getters import get_property
 from normlite.sql.base import DDLCompiled
 from normlite.sql.ddl import CreateTable
@@ -53,6 +54,12 @@ def test_compile_create_table_parent_id(students: Table, engine: Engine):
     assert db_id_param.type_ is None
     assert db_id_param.role == _BindRole.DBAPI_PARAM
     assert db_id_param.effective_value == students._db_parent_id
+
+def test_compile_create_table_no_database_id_raises(students: Table, engine: Engine):
+    stmt = CreateTable(students)
+
+    with pytest.raises(CompileError, match='neither created or reflected.'):
+        _ = stmt.compile(engine._sql_compiler)
 
 def test_compile_create_table_title_as_table_name(students: Table, engine: Engine):
     students._db_parent_id = engine._user_tables_page_id

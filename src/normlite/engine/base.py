@@ -75,19 +75,19 @@ from urllib.parse import urlparse, parse_qs, unquote
 from normlite.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import ReturningStrategy, _distill_params, IsolationLevel
-from normlite.exceptions import ArgumentError, NormliteError, ObjectNotExecutableError
-from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo
-from normlite.notion_sdk.client import InMemoryNotionClient
+from normlite.engine.systemcatalog import SystemCatalog
+from normlite.exceptions import ArgumentError, ObjectNotExecutableError
+from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo, SystemTablesEntry
+from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
 from normlite.sql.compiler import NotionCompiler
-from normlite.sql.ddl import ReflectTable
-from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, ProgrammingError
+from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, Error, InternalError, ProgrammingError
 from normlite.utils import frozendict
-from normlite.notion_sdk.getters import get_property, get_rich_text_property_value, get_title_property_value
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table, HasIdentifier
     from normlite.sql.base import Executable
     from normlite.engine.interfaces import _CoreAnyExecuteParams, IsolationLevel, CompiledCacheType, ExecutionOptions
+    from normlite.engine.reflection import TableState
 
 class Connection:
     """Provide high level API to a connection to Notion databases.
@@ -247,11 +247,14 @@ class Connection:
         elem._setup_execution(context)      
         
         # 6. side effects happen (HTTP)
-        self._engine.do_execute(
-            context.cursor, 
-            context.operation, 
-            context.parameters
-        )
+        try:
+            self._engine.do_execute(
+                context.cursor, 
+                context.operation, 
+                context.parameters
+            )
+        except Error as exc:
+            elem._handle_dbapi_error(exc, context)
 
         # 7. the execution is mechanically complete before semantic interpretation begins
         #    make lastrowid, rowcount, etc. available to the result
@@ -403,56 +406,6 @@ def create_engine(
     """
     return Engine(_parse_uri(uri), execution_options=execution_options, **kwargs)
 
-@dataclass(frozen=True)
-class SystemTablesEntry:
-    name: str
-    catalog: str
-    schema: str
-    table_id: str
-    sys_rowid: str
-    is_dropped: bool
-
-    @classmethod
-    def from_dict(cls, page_obj: dict) -> SystemTablesEntry:       
-        name = get_title_property_value(
-            get_property(
-                page_obj, 
-                'table_name'
-            )            
-        )
-
-        catalog = get_rich_text_property_value(
-            get_property(
-                page_obj, 
-                'table_catalog'
-            )
-        )
-
-        schema = get_rich_text_property_value(
-            get_property(
-                page_obj, 
-                'table_schema'
-            )
-        )
-
-        table_id = get_rich_text_property_value(
-            get_property(
-                page_obj, 
-                'table_id'
-            )
-        )
-
-        sys_rowid = page_obj['id']
-        is_dropped = page_obj['in_trash']
-
-        return cls(
-            name=name,
-            catalog=catalog,
-            schema=schema,
-            table_id=table_id,
-            sys_rowid=sys_rowid,
-            is_dropped=is_dropped
-        ) 
 class Engine:
     """Provide a convenient proxy object of database connectivity to Notion integrations.
 
@@ -520,25 +473,20 @@ class Engine:
         self._ischema_page_id: Optional[str] = None
         """Id for the information schema page."""
 
-        self._tables_id: Optional[str] = None
-        """Id for the Notion database tables."""
+        self._client = None
+        """The Notion client this engine interacts with."""
+ 
+        self._isolation_level: IsolationLevel = "AUTOCOMMIT" # type: ignore
+        """Isolation level for transactions. Defaults to ``AUTOCOMMIT``."""
 
-        self._user_tables_page_id: Optional[str] = None
-        """ Page id of the parent page of all databases created in the integration.
+        self._catalog = None
+        """The information schema system catalog.
         
         .. versionadded:: 0.8.0
         """
 
-        self._client = None
-        """The Notion client this engine interacts with."""
-
-        self._init_client: bool = kwargs.get("init_client", True)
-        """Whether the client shall be initialized with the ``normlite`` datastructures. Defaults to ``True``."""
-
-        self._isolation_level: IsolationLevel = "AUTOCOMMIT" # type: ignore
-        """Isolation level for transactions. Defaults to ``AUTOCOMMIT``."""
-
         self._create_client(uri)
+        self._bootstrap_catalog()
 
         self._dbapi_connection = DBAPIConnection(self._client)
         """The underlying DBAPI connetion.
@@ -588,6 +536,22 @@ class Engine:
             :meth:`Engine.execution_execution_options`
         """
         return self._execution_options
+    
+    @property
+    def _tables_id(self) -> str:
+        """Database id for the Notion database tables.
+        
+        .. versionadded:: 0.8.0
+        """
+        return self._catalog._tables_id
+    
+    @property
+    def _user_tables_page_id(self) -> str:
+        """ Page id of the parent page of all databases created in the integration.
+        
+        .. versionadded:: 0.8.0
+        """
+        return self._catalog._user_tables_page_id
 
     # -------------------------------------------------
     # Client creation + bootstrap
@@ -612,200 +576,243 @@ class Engine:
             if not self._root_page_id:
                 raise ArgumentError("root_page_id is required for file-based engines")
 
-        if self._init_client:
-            if uri.mode in ("memory", "file"):
-                # root page is required for simulated clients
-                self._client._ensure_root()
-
-            self._bootstrap()
+        if uri.mode in ("memory", "file"):
+            # root page is required for simulated clients
+            self._client._ensure_root()
 
     # -------------------------------------------------
     # Bootstrap logic (idempotent)
     # -------------------------------------------------
 
-    def _bootstrap(self) -> None:
-
-        # 1. information_schema page
-        self._ischema_page_id = self._get_or_create_page(
-            parent_id=self._root_page_id,
-            name="information_schema",
+    def _bootstrap_catalog(self) -> None:
+        # 1. create the system catalog
+        self._catalog = SystemCatalog(
+            self._client, 
+            self._user_database_name,
+            self._root_page_id,
+            self._user_database_name
         )
 
-        # 2. tables database
-        self._tables_id = self._get_or_create_database(
-            parent_id=self._ischema_page_id,
-            name="tables",
-            properties={
-                "table_name": {"title": {}},
-                "table_schema": {"rich_text": {}},
-                "table_catalog": {"rich_text": {}},
-                "table_id": {"rich_text": {}},
-            },
-        )
+        # 2. bootstrap it
+        self._catalog.bootstrap()
 
-       # 3. ensure tables self-row exists
-        self._ensure_sys_tables_self_row()
+    # -----------------------------
+    # Public façade methods
+    # -----------------------------
 
-        # 4. user tables page
-        self._user_tables_page_id = self._get_or_create_page(
-            parent_id=self._root_page_id,
-            name=self._user_database_name,
-        )
-
-    # -------------------------------------------------
-    # Find-or-create helpers
-    # -------------------------------------------------
-
-    def _get_or_create_page(self, parent_id: str, name: str) -> str:
- 
-        page = self._client.find_child_page(parent_id, name)
-        if page:
-            return page["id"]
-        
-        page = self._client._add(
-            "page",
-            {
-                "parent": {"type": "page_id", "page_id": parent_id},
-                "properties": {
-                    "Name": {"title": [{"text": {"content": name}}]}
-                },
-            },
-        )
-
-        return page['id']
-
-    def _get_or_create_database(
-        self,
-        parent_id: str,
-        name: str,
-        properties: dict,
-    ) -> str:
-        db = self._client.find_child_database(parent_id, name)
-        if db:
-            return db["id"]
-
-        db = self._client._add(
-            "database",
-            {
-                "parent": {"type": "page_id", "page_id": parent_id},
-                "title": [{"type": "text", "text": {"content": name}}],
-                "properties": properties,
-            },
-        )
-
-        return db['id']
-
-    def _ensure_sys_tables_self_row(self) -> None:
-        self._ensure_sys_tables_row(
-            name='tables',
-            schema='information_schema',
-            catalog=self._user_database_name,
-            table_id=self._tables_id 
-        )
-
-    def _ensure_sys_tables_row(
-            self,
-            name: str,
-            schema: Optional[str] = 'not_used',
-            *,
-            catalog: str,
-            table_id: str
-    ) -> None:
-        self._get_or_create_sys_tables_row(
-            name,
-            schema,
-            table_catalog=catalog,
-            table_id=table_id
-        )
-
-    # -------------------------------------------------
-    # Table creation / reflection helpers 
-    # -------------------------------------------------
-
-    def _find_sys_tables_row(
+    def find_table_metadata(
         self,
         table_name: str,
         *,
         table_catalog: Optional[str] = None,
     ) -> Optional[SystemTablesEntry]:
-        """Return the tables row (Notion page object) for a table or None if it does not exist."""
+        """Find the given table name in the system tables catalog.
 
-        catalog = table_catalog or self._user_database_name
+        This method expects to find one and one only entry for the give table name.
+        It checks for catalog invariant violation: multiple tables with same name in the catalog.
 
-        response = self._client.databases_query(
-            path_params={
-                "database_id": self._tables_id,
-            },
+        .. versionadded:: 0.8.0
 
-            payload={
-                "filter": {
-                    "and": [
-                        {
-                            "property": "table_name",
-                            "title": {"equals": table_name},
-                        },
-                        {
-                            "property": "table_catalog",
-                            "rich_text": {"equals": catalog},
-                        },
-                    ]
-                },
-            }
+        Args:
+            table_name (str): The table name being searched for
+            table_catalog (Optional[str], optional): The catalog name. Defaults to None.
+
+        Raises:
+            InternalError: If multiple tables with the same name exist in the catalog.
+
+        Returns:
+            Optional[SystemTablesEntry]: The system tables catalog entry, if found.
+        """
+        return self._catalog.find_sys_tables_row(
+            table_name,
+            table_catalog=table_catalog or self._user_database_name,
         )
 
-        results = response.get("results", [])
+    def create_table_metadata(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str,
+        table_id: str,
+        if_not_exists: bool = False,
+    ) -> SystemTablesEntry:
+        """_summary_
 
-        if len(results) > 1:
-            raise NormliteError(
-                f"Multiple tables named '{table_name}' found in catalog '{catalog}'"
+        Args:
+            table_name (str): _description_
+            table_catalog (str): _description_
+            table_id (str): _description_
+            if_not_exists (bool, optional): _description_. Defaults to False.
+
+        Raises:
+            ProgrammingError: If a table with the same name exists in the catalog.
+
+        Returns:
+            SystemTablesEntry: _description_
+        """
+        return self._catalog.ensure_sys_tables_row(
+            table_name=table_name,
+            table_catalog=table_catalog,
+            table_id=table_id,
+            if_not_exists=if_not_exists,
+        )
+    
+    def require_table_metadata(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str,
+    ) -> SystemTablesEntry:
+        """
+        Return the system catalog entry for a table or raise
+        InternalError if the catalog invariant is violated.
+        """
+
+        entry = self._catalog.find_sys_tables_row(
+            table_name,
+            table_catalog=table_catalog,
+        )
+
+        if entry is None:
+            raise InternalError(
+                f"System catalog invariant violated: "
+                f"no entry for table '{table_name}' "
+                f"in catalog '{table_catalog}'"
             )
 
-        return SystemTablesEntry.from_dict(results[0]) if results else None
-
-    def _get_or_create_sys_tables_row(
-            self, 
-            table_name: str, 
-            table_schema: Optional[str] = 'not_used',
-            *,
-            table_catalog: str, 
-            table_id: str,
-            if_exists: bool = False
+        return entry
+    
+    def drop_table_metadata_by_page_id(
+        self,
+        page_id: str,
     ) -> SystemTablesEntry:
-        """Helper to get or create a new row in the tables system table."""
-        existing = self._find_sys_tables_row(table_name, table_catalog=table_catalog)
+        """
+        Soft-delete a system catalog entry using its cached page_id.
 
-        if existing is not None and not existing.is_dropped:
-            if if_exists:
-                raise ProgrammingError(
-                    f"Table '{table_name}' already exists in catalog '{table_catalog}'"
-                )
+        Raises ProgrammingError if the page_id is stale.
+        """
 
-            return existing
-
-        page_obj = self._client.pages_create(
-            payload={
-                "parent": {
-                    "type": "database_id",
-                    "database_id": self._tables_id,
-                },
-                "properties": {
-                    "table_name": {
-                        "title": [{"text": {"content": table_name}}]
-                    },
-                    "table_schema": {
-                        "rich_text": [{"text": {"content": table_schema}}]
-                    },
-                    "table_catalog": {
-                        "rich_text": [{"text": {"content": table_catalog}}]
-                    },
-                    "table_id": {
-                        "rich_text": [{"text": {"content": table_id}}]
-                    },
-                },
-            },
+        return self._catalog.set_dropped_by_page_id(
+            page_id=page_id,
+            dropped=True,
+        )
+        
+    def drop_table_metadata(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str,
+    ) -> SystemCatalog:
+        return self._catalog.set_dropped(
+            table_name=table_name,
+            table_catalog=table_catalog,
+            dropped=True
         )
 
-        return SystemTablesEntry.from_dict(page_obj)
+    def restore_table_metadata_by_page_id(
+        self,
+        page_id: str,
+    ) -> Optional[SystemTablesEntry]:
+        """Restore (un-drop) a system tables catalog entry using its page_id.
+
+        .. versionadded:: 0.8.0
+
+        Args:
+            page_id (str): Page id of the system tables catalog entry.
+
+        Raises: 
+            ProgrammingError: If the page_id is stale.
+
+        Returns:
+            Optional[SystemTablesEntry]: The updated system tables catalog entry.
+        """
+        return self._catalog.set_dropped_by_page_id(
+            page_id=page_id,
+            dropped=False,
+        )    
+
+    def restore_table_metadata(
+            self,
+            table_name: str,
+            *,
+            table_catalog: str,
+        ) -> SystemTablesEntry:
+            return self._catalog.set_dropped(
+                table_name=table_name,
+                table_catalog=table_catalog,
+                dropped=False,
+            )
+
+    def repair_table_metadata(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str,
+        table_id: Optional[str] = None,
+    ) -> SystemTablesEntry:
+        return self._catalog.repair_missing(
+            table_name=table_name,
+            table_catalog=table_catalog,
+            table_id=table_id,
+        )
+
+    def get_table_state(
+        self,
+        table_name: str,
+        *,
+        table_catalog: Optional[str] = None,
+    ) -> TableState:
+        return self._catalog.get_table_state(
+            table_name,
+            table_catalog=table_catalog or self._user_database_name,
+        )
+    
+    def restore_table(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str
+    ) -> Optional[SystemTablesEntry]:
+        """Restore (un-drop) a table previously dropped.
+
+        This method takes care of undropping both the metadata (page in system catalog) as
+        well as the table itself (database).
+
+        .. versionadded:: 0.8.0
+
+        Args:
+            table_name (str): _description_
+            table_catalog (str): _description_
+
+        Raises
+            ProgrammingError: If the table does not exist.
+
+        Returns:
+            SystemTablesEntry: _description_
+        """
+
+        entry = self.restore_table_metadata(
+            table_name=table_name,
+            table_catalog=table_catalog
+        )
+
+        try:
+            self._client.databases_update(
+                path_params={
+                    'database_id': entry.table_id
+                },
+                payload={
+                    'in_trash': False
+                }
+            )
+        except NotionError as exc:
+            if exc.code == 'object_not_found':
+                raise ProgrammingError(
+                    f"Table '{table_name}' does not exist in catalog '{table_catalog}'."
+                )
+            raise
+
+        return entry
 
     def _reflect_table(self, table: Table) -> ReflectedTableInfo:
         raise NotImplementedError
@@ -886,7 +893,11 @@ class Inspector:
         Returns:
             bool: ``True`` if the table exists, ``False`` otherwise. 
         """
-        table_entry = self._engine._find_sys_tables_row(table_name, table_catalog=self._engine._user_database_name)
+        table_entry = self._engine.find_table_metadata(
+            table_name, 
+            table_catalog=self._engine._user_database_name
+        )
+
         return table_entry is not None and not table_entry.is_dropped
     
     def reflect_table(self, table: Table) -> ReflectedTableInfo:

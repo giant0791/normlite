@@ -17,15 +17,17 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+import pdb
+from typing import TYPE_CHECKING, Any, NoReturn, Optional
 
 from normlite._constants import SpecialColumns
 from normlite.future.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext
-from normlite.exceptions import InvalidRequestError
+from normlite.exceptions import InvalidRequestError, NoSuchTableError
 from normlite.engine.reflection import ReflectedTableInfo
 from normlite.sql.base import Executable
 from normlite.sql.type_api import type_mapper
+from normlite.notiondbapi.dbapi2 import Error, InternalError, ProgrammingError
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table
@@ -67,14 +69,26 @@ class _ColumnMetadata:
         """Return a TypeEngine instance, using the global type mapper."""
         Factory = type_mapper[self.type_code]
         return Factory(self.args)   # args set only types only
+    
+class HasTableMixin:
+    """Mixin for objects that have a :class:`normlite.sql.schema.Table` object.
+    
+    .. versionadded:: 0.8.0
+    """
 
-class ExecutableDDLStatement(Executable):
+    def get_table(self) -> Table:
+        return self._table
+
+class ExecutableDDLStatement(HasTableMixin, Executable):
     """Base class for all DDL executable statements.
     
     .. versionadded:: 0.8.0
         This class is a convenient base class to set the :attr:`is_ddl` for all subclasses.
     """
     is_ddl = True
+
+    def __init__(self):
+        self._table = None
 
     def _execute_on_connection(
             self, 
@@ -94,16 +108,19 @@ class ExecutableDDLStatement(Executable):
         )
 
 class CreateTable(ExecutableDDLStatement):
-    """Represent a ``CREATE TABLE`` statement."""
+    """Represent a ``CREATE TABLE`` statement.
+    
+    .. versionchanged:: 0.8.0
+        This version runs on the new :class:`normlite.engine.base.Connection` execution pipeline.
+
+    .. versionadded:: 0.7.0    
+    """
     __visit_name__ = 'create_table'
 
     def __init__(self, table: Table):
         super().__init__()
-        self.table = table
-    
-    def get_table(self) -> Table:
-        return self.table
-    
+        self._table = table
+      
     def _setup_execution(self, context: ExecutionContext) -> None:
         # nothing to be setup
         pass
@@ -117,7 +134,7 @@ class CreateTable(ExecutableDDLStatement):
         rows = result.all()        
         reflected_table_info = ReflectedTableInfo.from_rows(rows)
 
-        table = self.table
+        table = self._table
         
         # assign the table id
         table.set_oid(reflected_table_info.id)
@@ -135,14 +152,80 @@ class CreateTable(ExecutableDDLStatement):
 
             table.c[colmeta.name].value = colmeta.value
         
-        # add this table to the sys "tables"
+        # add this table to the sys "tables" catalog
         engine = context.engine
-        context.engine._get_or_create_sys_tables_row(
+        entry = context.engine.create_table_metadata(
             table.name,
             table_catalog=engine._user_database_name,
             table_id=table.get_oid()
         )
-    
+
+        # update write-cache for this entry
+        table._sys_tables_page_id = entry.sys_tables_page_id
+
+class DropTable(ExecutableDDLStatement):
+    """Represent a ``DROP TABLE`` statement.
+
+    .. versionadded:: 0.8.0
+    """
+    __visit_name__ = 'drop_table'    
+
+    def __init__(self, table: Table):
+        super().__init__()
+        self._table = table
+
+    def _setup_execution(self, context: ExecutionContext) -> None:
+        # nothing to be setup
+        pass
+
+    def _handle_dbapi_error(
+        self, 
+        exc: Error, 
+        context: ExecutionContext
+    ) -> Optional[NoReturn]:
+        # DROP TABLE on a non-existing table
+        if isinstance(exc, ProgrammingError):
+            raise NoSuchTableError(self._table.name) from exc
+
+        # All other DBAPI errors propagate unchanged
+        raise
+
+    def _finalize_execution(self, context: ExecutionContext) -> None:
+        # IMPORTANT: This consumes the result
+        result = context.setup_cursor_result()
+        rows = result.all()
+        reflected_table_info = ReflectedTableInfo.from_rows(rows)
+
+        engine = context.engine
+
+        # Ensure we have a valid sys_tables_page_id
+        if self._table._sys_tables_page_id is None:
+            sys_tables_page = engine.require_table_metadata(
+                self._table.name,
+                table_catalog=engine._user_database_name,
+            )
+            self._table._sys_tables_page_id = sys_tables_page.sys_tables_page_id
+
+        # Attempt deletion (retry once if stale page_id)
+        try:
+            context.engine.drop_table_metadata_by_page_id(
+                self._table._sys_tables_page_id
+            )
+
+        except ProgrammingError:
+            # page_id likely stale → recover and retry once
+            sys_tables_page = engine.require_table_metadata(
+                self._table.name,
+                table_catalog=engine._user_database_name,
+            )
+
+            self._table._sys_tables_page_id = sys_tables_page.sys_tables_page_id
+
+            # retry; further failure propagates
+            context.engine.drop_table_metadata_by_page_id(
+                self._table._sys_tables_page_id
+            )
+
 class ReflectTable(ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to reflect a Notion database into a Python :class:`normlite.sql.schema.Table` object.
     

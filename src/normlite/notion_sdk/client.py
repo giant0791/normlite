@@ -31,7 +31,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import pdb
-from typing import Any, List, NoReturn, Optional, Self, Set, Type
+from typing import List, Optional, Self, Set, Type
 from types import TracebackType
 from abc import ABC, abstractmethod
 import uuid
@@ -39,15 +39,45 @@ from datetime import datetime
 import random
 import string
 import urllib.parse
-import warnings
 
-from normlite.notion_sdk.getters import get_object_type, get_title
+from normlite.notion_sdk.getters import get_object_type, get_property_type, get_title
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
-from normlite.utils import normlite_deprecated
 
 class NotionError(Exception):
     """Exception raised for all errors related to the Notion REST API."""
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int = 400,
+        code: str = "validation_error",
+    ) -> None:
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+
+        # Preserve normal Exception behavior
+        super().__init__(message)
+
+    def to_response(self) -> dict:
+        """
+        Return a Notion-like error response payload.
+        Useful for HTTP adapters and tests.
+        """
+        return {
+            "object": "error",
+            "status": self.status_code,
+            "code": self.code,
+            "message": self.message,
+        }
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"status_code={self.status_code}, "
+            f"code={self.code!r}, "
+            f"message={self.message!r})"
+        )
 
 class AbstractNotionClient(ABC):
     """Base class for a Notion API client.
@@ -305,6 +335,56 @@ class AbstractNotionClient(ABC):
             List[dict]: The list containing the page objects or ``[]``, if no pages have been found.
         """
         raise NotImplementedError
+    
+    @abstractmethod
+    def databases_update(
+        self, 
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None, 
+        payload: Optional[dict] = None
+    ) -> dict:
+        """Update the given database.
+
+        This methods updates the database object — the properties, title, description, or whether it's in the trash — of a specified database.         
+
+        .. versionadded:: 0.8.0
+
+        Args:
+            path_params (dict): A dictionary containing a "database_id" key for the database to
+                query.
+            query_params (dict): A dictionary containing "filter_properties" object to restrict properties returned.
+            payload (dict): A dictionary that must contain the "filter" and optionally "sorts" objects modeling the query.
+
+        Returns:
+            dict: The updated database object.
+        """
+        raise NotImplementedError
+    
+    @abstractmethod
+    def search(
+        self,
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None, 
+        payload: Optional[dict] = None
+    ) -> dict:
+        """Search all pages and databases by title
+
+        Searches all parent or child pages and databases that have been shared with an integration.
+        Returns all pages or databases, excluding duplicated linked databases, that have 
+        titles that include the query param. If no query param is provided, then the response contains 
+        all pages or databases that have been shared with the integration.
+
+        Args:
+            path_params (Optional[dict], optional): Not used. Defaults to None.
+            query_params (Optional[dict], optional): Not used. Defaults to None.
+            payload (Optional[dict], optional): Dictionary specifying the text to be searched for with
+                the key "query" and the object type with the key "property".
+
+        Returns:
+            dict: Dictionary as result object containing the search results. The list key "result" is empty,
+                if no results were found.
+        """
+
 
 class InMemoryNotionClient(AbstractNotionClient):
     """Provide a simple but complete in-memory Notion client.
@@ -636,6 +716,122 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         db["title"] = self._normalize_rich_text(title)
 
+    def _update_database_properties(
+        self,
+        database: dict,
+        updates: dict,
+    ) -> None:
+        if not isinstance(updates, dict):
+            raise NotionError(
+                "Database properties must be an object.",
+                status_code=400,
+                code="validation_error",
+            )
+
+        schema = database["properties"]
+
+        def resolve_property(key: str) -> tuple[str, dict]:
+            # ID match
+            for name, prop in schema.items():
+                if prop["id"] == key:
+                    return name, prop
+            # Name match
+            if key in schema:
+                return key, schema[key]
+
+            raise NotionError(
+                f"Property '{key}' does not exist.",
+                status_code=400,
+                code="validation_error",
+            )
+
+        for ref, spec in updates.items():
+            name, prop = resolve_property(ref)
+            prop_type = prop["type"]
+
+            # ------------------------------------------------------------
+            # Property deletion
+            # ------------------------------------------------------------
+            if spec is None:
+                if prop_type == "title":
+                    raise NotionError(
+                        "Cannot delete title property.",
+                        status_code=400,
+                        code="validation_error",
+                    )
+                del schema[name]
+                continue
+
+            if not isinstance(spec, dict):
+                raise NotionError(
+                    f"Invalid property update for '{name}'.",
+                    status_code=400,
+                    code="validation_error",
+                )
+
+            # ------------------------------------------------------------
+            # Rename
+            # ------------------------------------------------------------
+            if "name" in spec:
+                if prop_type == "status":
+                    raise NotionError(
+                        "Cannot rename status property.",
+                        status_code=400,
+                        code="validation_error",
+                    )
+
+                new_name = spec["name"]
+                if new_name in schema and new_name != name:
+                    raise NotionError(
+                        f"Property '{new_name}' already exists.",
+                        status_code=400,
+                        code="validation_error",
+                    )
+
+                schema[new_name] = schema.pop(name)
+                name = new_name
+                prop = schema[name]
+
+            # ------------------------------------------------------------
+            # Type / configuration update
+            # ------------------------------------------------------------
+            if prop_type in spec:
+                # configuration update
+                new_conf = spec[prop_type]
+
+                if prop_type == "status":
+                    raise NotionError(
+                        "Cannot update status property schema.",
+                        status_code=400,
+                        code="validation_error",
+                    )
+
+                schema[name] = {
+                    "id": prop["id"],
+                    "type": prop_type,
+                    prop_type: new_conf,
+                }
+                continue
+
+            # type update
+            new_type = next(iter(spec), {})
+
+            if new_type:
+                if prop_type == "title" and new_type != "title":
+                    raise NotionError(
+                        "Cannot change type of title property.",
+                        status_code=400,
+                        code="validation_error",
+                    )
+
+            schema[name] = {
+                "id": prop["id"],
+                "type": new_type,
+                new_type: spec[new_type]
+            }
+                    
+
+
     # ------------------------------------------------------------------
     # Unified add entrypoint
     # ------------------------------------------------------------------
@@ -727,23 +923,38 @@ class InMemoryNotionClient(AbstractNotionClient):
         return copy.deepcopy(obj)
 
     def pages_update(self, path_params=None, query_params=None, payload=None) -> dict:
-        page_id = path_params.get("page_id")
+        page_id = path_params.get("page_id") if path_params else None
+
+        if page_id is None:
+            raise NotionError(f"Invalid request URL: page_id should be defined.")
+            
         obj = self._get_by_id(page_id)
         if not obj or obj["object"] != "page":
-            raise NotionError(f"Could not find page with ID: {page_id}.")
+            raise NotionError(
+                f"Could not find page with ID: {page_id}.",
+                status_code=404,
+                code='object_not_found'
+            )
 
-        if "archived" in payload:
-            obj["archived"] = payload["archived"]
-        elif "in_trash" in payload:
-            obj["in_trash"] = payload["in_trash"]
-        elif "properties" in payload:
-            for k, v in payload["properties"].items():
-                obj["properties"][k] = v
-        else:
+        if (
+             "archived" not in payload and
+             "in_trash" not in payload and
+             "properties" not in payload
+        ):
             raise NotionError(
                 "Body failed validation: body.archived or body.in_trash or "
                 "body.properties should be defined."
-            )
+            )          
+
+        if "archived" in payload:
+            obj["archived"] = payload["archived"]
+        
+        if "in_trash" in payload:
+            obj["in_trash"] = payload["in_trash"]
+        
+        if "properties" in payload:
+            for k, v in payload["properties"].items():
+                obj["properties"][k] = v
 
         return copy.deepcopy(obj)
 
@@ -751,12 +962,18 @@ class InMemoryNotionClient(AbstractNotionClient):
         return self._add("database", payload)
 
     def databases_retrieve(self, path_params=None, query_params=None, payload=None) -> dict:
-        db_id = path_params.get("database_id")
+        db_id = path_params.get("database_id") if path_params else None
+
+        if db_id is None:
+            raise NotionError(f"Invalid request URL: page_id should be defined.")
+
         obj = self._get_by_id(db_id)
         if not obj:
             raise NotionError(
                 f"Could not find database with ID: {db_id}. "
-                "Make sure the relevant pages and databases are shared with your integration."
+                "Make sure the relevant pages and databases are shared with your integration.",
+                status_code=404,
+                code='object_not_found'
             )
         return copy.deepcopy(obj)
 
@@ -781,7 +998,7 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         database_id = path_params.get('database_id') if path_params else None
         if database_id is None:
-            raise NotionError('Invalid request URL.')
+            raise NotionError('Invalid request URL: database_id should be defined.')
 
         has_filter = bool(payload and payload.get('filter'))
         sorts = payload.get("sorts") if payload else None
@@ -846,6 +1063,125 @@ class InMemoryNotionClient(AbstractNotionClient):
                 query_results.append(page)
 
         return query_result_object
+
+    def databases_update(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None
+    ) -> dict:
+
+        # resolve database id
+        database_id = path_params.get("database_id") if path_params else None
+        if not database_id:
+            raise NotionError(
+                "Invalid request URL: database_id should be defined.",
+                status_code=400,
+                code="validation_error",
+            )
+
+        database = self._get_by_id(database_id)
+        if not database or database.get("object") != "database":
+            raise NotionError(
+                f"Could not find database with ID: {database_id}. "
+                "Make sure the relevant pages and databases are shared with your integration.",
+                status_code=404,
+                code="object_not_found",
+            )
+
+        if not payload:
+            return copy.deepcopy(database)
+
+        # top-level flags
+        if "archived" in payload:
+            database["archived"] = bool(payload["archived"])
+
+        if "in_trash" in payload:
+            database["in_trash"] = bool(payload["in_trash"])
+
+        # database title update (top-level, not schema)
+        if "title" in payload:
+            title = payload["title"]
+            if not isinstance(title, list):
+                raise NotionError(
+                    "Database title must be a rich_text array.",
+                    status_code=400,
+                    code="validation_error",
+                )
+            database["title"] = copy.deepcopy(title)
+
+        # schema updates (DDL)
+        if "properties" in payload:
+            self._update_database_properties(
+                database,
+                payload["properties"],
+            )
+
+        return copy.deepcopy(database)
+    
+    def search(
+            self, 
+            path_params: Optional[dict] = None,
+            query_params: Optional[dict] = None, 
+            payload: Optional[dict] = None            
+    ) -> dict:
+        """Return all pages or databases whose title exactly matches the "query" text."""
+
+        query = payload.get('query') if payload is not None else None
+        filter = payload.get('filter') if payload is not None else None
+        filter_by = None
+        results = []
+        result_object = {
+            'object': 'list',
+            'results': results,
+            'next_cursor': None,
+            'has_more': False,
+            'type': 'page_or_database',
+            'page': {}
+        }        
+        if filter is not None:
+            if not isinstance(filter, dict):
+                raise NotionError(
+                    "Body failed validation: body.filter should be an object (not a string).",
+                    status_code=400,
+                    code="invalid_json"                    
+                )
+
+            filter_prop = filter.get('property')
+            if filter_prop is None:
+                raise NotionError(
+                    "Body failed validation: body.property should be defined.",
+                    status_code=400,
+                    code="invalid_json"                    
+                )
+            
+            filter_by = filter.get('value')
+            if filter_by is None:
+                raise NotionError(
+                    "Body failed validation: body.value should be defined.",
+                    status_code=400,
+                    code="invalid_json"                    
+                )
+            
+            if filter_by not in ("page", "database"):
+                raise NotionError(
+                    "Body failed validation: body.value should be either 'page' or 'database'.",
+                    status_code=400,
+                    code="invalid_json"                    
+                )
+
+        for obj in self._store.values():
+            if filter_by is not None:
+                if obj['object'] != filter_by:    
+                    continue
+            
+            if query is not None:
+                if query != get_title(obj):
+                    continue
+
+            results.append(obj)
+
+        return result_object
 
     def find_child_page(self, parent_page_id: str, name: str) -> Optional[dict]:
         for obj in self._store.values():

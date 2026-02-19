@@ -1,6 +1,7 @@
 from __future__ import annotations
 import pdb
 from typing import Iterable
+from unittest.mock import Mock, patch
 import pytest
 
 from normlite import (
@@ -10,9 +11,12 @@ from normlite import (
 )
 from normlite._constants import SpecialColumns
 from normlite.engine.base import Engine, create_engine
+from normlite.engine.reflection import TableState
 from normlite.exceptions import ArgumentError
+from normlite.notion_sdk.client import NotionError
 from normlite.notion_sdk.getters import get_object_id, get_object_type
-from normlite.notiondbapi.dbapi2 import ProgrammingError
+from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
+from normlite.sql.ddl import DropTable
 from normlite.sql.schema import MetaData
 from normlite.sql.type_api import Boolean
 
@@ -191,9 +195,7 @@ def test_table_invalid_autoload_with():
     with pytest.raises(ArgumentError, match="autoload_with must be an Engine"):
         Table("students", metadata, autoload_with="engine")
 
-def test_table_autoload_with_and_columns_mutually_exclusive(engine: Engine):
-    metadata = MetaData()
-
+def test_table_autoload_with_and_columns_mutually_exclusive(engine: Engine, metadata: MetaData):
     with pytest.raises(
         ArgumentError,
         match='Columns cannot be specified when using "autoload_with"'
@@ -236,6 +238,27 @@ def test_invalid_table_blanks(metadata: MetaData):
 
     with pytest.raises(ArgumentError):
         bad = Table(' bad', metadata)
+
+def test_create_table_populates_sys_table_page_id(engine: Engine, students: Table):
+    # precondition
+    assert hasattr(students, "_sys_tables_page_id")
+    assert students._sys_tables_page_id is None
+    assert engine._catalog is not None
+
+    # act
+    students.create(bind=engine)
+
+    # postcondition
+    assert students._sys_tables_page_id is not None
+    assert isinstance(students._sys_tables_page_id, str)
+
+    # consitency assertion
+    row = engine.find_table_metadata(
+        "students",
+        table_catalog=engine._user_database_name
+    )
+
+    assert row.sys_tables_page_id == students._sys_tables_page_id
 
 # --------------------------------------
 # Metadata tests
@@ -318,7 +341,7 @@ def test_metadata_reflect(engine: Engine, metadata: MetaData):
 
 def test_create_table_not_existing(engine: Engine, students: Table):
     students.create(engine, checkfirst=True)
-    entry = engine._find_sys_tables_row('students', table_catalog=engine._user_database_name)
+    entry = engine.find_table_metadata('students', table_catalog=engine._user_database_name)
     assert entry is not None
 
     database_obj = engine._client._get_by_id(entry.table_id)
@@ -326,13 +349,16 @@ def test_create_table_not_existing(engine: Engine, students: Table):
     assert get_object_id(database_obj) == students.get_oid()
 
 def test_create_existing_table_no_checkfirst_raises(engine: Engine, students: Table):
-    students.create(engine, checkfirst=True)
+    students.create(engine)
 
-    with pytest.raises(ProgrammingError, match='students'):
+    with pytest.raises(ProgrammingError) as exc:
         students.create(engine)     # checkfirst is False by default
 
+    assert 'students' in str(exc.value)
+    assert engine._user_database_name in str(exc.value)
+
 def test_create_existing_table_checkfirst_does_not_raise(engine: Engine, students: Table):
-    students.create(engine, checkfirst=True)
+    students.create(engine)
     students.create(engine, checkfirst=True)     # This does nothing, create() is idempotent
 
 def test_create_sets_oid(engine, students):
@@ -346,41 +372,206 @@ def test_create_sets_oid(engine, students):
     students.create(engine, checkfirst=True)
     assert students.get_oid() == oid
 
-def test_create_existing_table_error_message(engine, students):
-    students.create(engine)
-
-    with pytest.raises(ProgrammingError) as exc:
-        students.create(engine)
-
-    assert 'students' in str(exc.value)
-    assert engine._user_database_name in str(exc.value)
-
 # --------------------------------------
 # Drop table DDL tests
 #---------------------------------------
 
-@pytest.mark.skip('DROP TABLE not supported yet.')
-def test_create_after_drop_recreates_table(engine, students):
+def test_drop_table_uses_cached_sys_table_page_id(students: Table, engine: Engine):
+    students.create(bind=engine)
+    cached_page_id = students._sys_tables_page_id
+    assert cached_page_id is not None    
+
+    engine.require_table_metadata = Mock(
+        wraps=engine.find_table_metadata
+    )
+
+    students.drop(bind=engine)
+    engine.require_table_metadata.assert_not_called()
+    assert students._sys_tables_page_id == cached_page_id
+
+def test_drop_table_falls_back_when_sys_table_page_id_missing(students: Table, engine: Engine):
+    students.create(bind=engine)
+
+    # simulate pre-step-1 Table or reflected Table
+    students._sys_tables_page_id = None    
+
+    engine.require_table_metadata = Mock(
+        wraps=engine.find_table_metadata
+    )
+
+    students.drop(bind=engine)
+    engine.require_table_metadata.assert_called_once()
+    assert students._sys_tables_page_id is not None
+
+def test_drop_table_recovers_from_stale_sys_table_page_id(students: Table, engine: Engine):
+    # Create normally (cache is populated correctly)
+    students.create(bind=engine)
+
+    # Inject a stale/bogus page id
+    sys_tables_page_id = students._sys_tables_page_id
+    stale_page_id = "deadbeef-dead-beef-dead-beefdeadbeef"
+    students._sys_tables_page_id = stale_page_id
+
+    students.drop(bind=engine)
+
+    # Cache must now be corrected
+    assert students._sys_tables_page_id != stale_page_id
+    assert students._sys_tables_page_id is not None
+    assert students._sys_tables_page_id == sys_tables_page_id
+
+def test_drop_table_detects_catalog_corruption_more_than_one_table_entry(
+        students: Table, 
+        engine: Engine
+):
+    # Create normally (cache is populated correctly)
+    client = engine._client
+    students.create(bind=engine)
+
+     # corrupt the catalog by adding a second page for the same table
+    page_obj = client.pages_create(
+        payload={
+            "parent": {
+                "type": "database_id",
+                "database_id": engine._tables_id,
+            },
+            "properties": {
+                "table_name": {
+                    "title": [{"text": {"content": students.name}}]
+                },
+                "table_schema": {
+                    "rich_text": [{"text": {"content": ""}}]
+                },
+                "table_catalog": {
+                    "rich_text": [{"text": {"content": engine._user_database_name}}]
+                },
+                "table_id": {
+                    "rich_text": [{"text": {"content": students._database_id}}]
+                },
+            },
+        },
+    )
+ 
+    students._sys_tables_page_id = None
+    with pytest.raises(InternalError, match="multiple tables named 'students' in catalog 'memory'"):
+        students.drop(bind=engine)
+
+def test_drop_table_detects_catalog_corruption_no_table_entry_found(
+    students: Table, 
+    engine: Engine
+):
+    # Create normally (cache is populated correctly)
+    client = engine._client
+    students.create(bind=engine)
+
+    # corrupt the catalog by removing the page for the table just created
+    client._store.pop(students._sys_tables_page_id)
+
+    with pytest.raises(InternalError, match="'students' is orphaned"):
+        students.drop(bind=engine)
+
+def test_drop_non_existing_table_raises(engine: Engine, students: Table):
+    with pytest.raises(ProgrammingError) as exc:
+        students.drop(engine)
+
+    assert 'students' in str(exc.value)
+    assert 'neither created or reflected' in str(exc.value)
+
+def test_drop_already_dropped_table_raises(engine: Engine, students: Table):
     students.create(engine)
     students.drop(engine)
 
-    students.create(engine)
+    with pytest.raises(ProgrammingError) as exc:
+        students.drop(engine)
 
-    entry = engine._find_sys_tables_row(
-        'students', table_catalog=engine._user_database_name
-    )
-    assert entry is not None
-    assert not entry.is_dropped
+    assert 'already dropped' in str(exc.value)
+    assert 'students'in str(exc.value)
 
-@pytest.mark.skip('DROP TABLE not supported yet.')
-def test_create_after_drop_checkfirst_creates(engine, students):
+def test_drop_already_dropped_table_checkfirst_does_not_raise(engine: Engine, students: Table):
     students.create(engine)
     students.drop(engine)
 
-    students.create(engine, checkfirst=True)
-
-    entry = engine._find_sys_tables_row(
-        'students', table_catalog=engine._user_database_name
+    syscat = engine._catalog
+    state = syscat.get_table_state(
+        students.name,
+        table_catalog=engine._user_database_name,
     )
-    assert entry is not None
-    assert not entry.is_dropped
+
+    assert state is TableState.DROPPED
+
+def test_create_after_drop_restores_when_option_enabled(engine: Engine, students: Table):
+    students.create(engine)
+    students.drop(engine)
+
+    restore_engine = engine.execution_options(restore_dropped=True)
+    students.create(restore_engine)
+
+    state = restore_engine._catalog.get_table_state(
+        students.name,
+        table_catalog=restore_engine._user_database_name,
+    )
+
+    assert state is TableState.ACTIVE
+
+def test_create_after_drop_without_restore_raises(engine, students):
+    students.create(engine)
+    students.drop(engine)
+
+    with pytest.raises(ProgrammingError, match="restore_dropped=True"):
+        students.create(engine)
+        
+@pytest.mark.skip('Table repair not supported yet.')
+def test_create_when_orphaned_repairs_or_recreates(engine: Engine, students: Table):
+    students.create(engine)
+
+    entry = engine.find_table_metadata(
+        students.name,
+        table_catalog=engine._user_database_name,
+    )
+
+    # simulate physical deletion of database
+    engine._client._store.pop(entry.table_id)
+
+    state = engine._catalog.get_table_state(
+        students.name,
+        table_catalog=engine._user_database_name,
+    )
+
+    assert state is TableState.ORPHANED
+
+    students.create(engine)
+
+    new_state = engine._catalog.get_table_state(
+        students.name,
+        table_catalog=engine._user_database_name,
+    )
+
+    assert state is TableState.ACTIVE
+
+def test_create_when_orphaned_raises(engine: Engine, students: Table):
+    students.create(engine)
+
+    entry = engine.find_table_metadata(
+        students.name,
+        table_catalog=engine._user_database_name,
+    )
+
+    # simulate physical deletion of database
+    engine._client._store.pop(entry.table_id)
+
+    state = engine._catalog.get_table_state(
+        students.name,
+        table_catalog=engine._user_database_name,
+    )
+
+    assert state is TableState.ORPHANED
+
+    with pytest.raises(InternalError, match="'students' is orphaned."):
+        students.create(engine)
+
+def test_create_checkfirst_on_dropped_table_does_not_restore(engine: Engine, students: Table):
+    students.create(engine)
+    students.drop(engine)
+
+    with pytest.raises(ProgrammingError, match="'students' is dropped."):
+        students.create(engine)
+
