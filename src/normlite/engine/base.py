@@ -76,7 +76,7 @@ from normlite.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import ReturningStrategy, _distill_params, IsolationLevel
 from normlite.engine.systemcatalog import SystemCatalog
-from normlite.exceptions import ArgumentError, NormliteError, ObjectNotExecutableError
+from normlite.exceptions import ArgumentError, ObjectNotExecutableError
 from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo, SystemTablesEntry
 from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
 from normlite.sql.compiler import NotionCompiler
@@ -87,6 +87,7 @@ if TYPE_CHECKING:
     from normlite.sql.schema import Table, HasIdentifier
     from normlite.sql.base import Executable
     from normlite.engine.interfaces import _CoreAnyExecuteParams, IsolationLevel, CompiledCacheType, ExecutionOptions
+    from normlite.engine.reflection import TableState
 
 class Connection:
     """Provide high level API to a connection to Notion databases.
@@ -754,6 +755,64 @@ class Engine:
             table_catalog=table_catalog,
             table_id=table_id,
         )
+
+    def get_table_state(
+        self,
+        table_name: str,
+        *,
+        table_catalog: Optional[str] = None,
+    ) -> TableState:
+        return self._catalog.get_table_state(
+            table_name,
+            table_catalog=table_catalog or self._user_database_name,
+        )
+    
+    def restore_table(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str
+    ) -> Optional[SystemTablesEntry]:
+        """Restore (un-drop) a table previously dropped.
+
+        This method takes care of undropping both the metadata (page in system catalog) as
+        well as the table itself (database).
+
+        .. versionadded:: 0.8.0
+
+        Args:
+            table_name (str): _description_
+            table_catalog (str): _description_
+
+        Raises
+            ProgrammingError: If the table does not exist.
+
+        Returns:
+            SystemTablesEntry: _description_
+        """
+
+        entry = self.restore_table_metadata(
+            table_name=table_name,
+            table_catalog=table_catalog
+        )
+
+        try:
+            self._client.databases_update(
+                path_params={
+                    'database_id': entry.table_id
+                },
+                payload={
+                    'in_trash': False
+                }
+            )
+        except NotionError as exc:
+            if exc.code == 'object_not_found':
+                raise ProgrammingError(
+                    f"Table '{table_name}' does not exist in catalog '{table_catalog}'."
+                )
+            raise
+
+        return entry
 
     def _reflect_table(self, table: Table) -> ReflectedTableInfo:
         raise NotImplementedError

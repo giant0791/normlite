@@ -60,10 +60,12 @@ from abc import ABC, abstractmethod
 import pdb
 import re
 from typing import Any, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, Tuple, Union, overload, TYPE_CHECKING
+import warnings
 
 from normlite._constants import SpecialColumns
+from normlite.engine.reflection import TableState
 from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError
-from normlite.notiondbapi.dbapi2 import ProgrammingError
+from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.sql.elements import ColumnElement, Comparator, ColumnOperators
 from normlite.sql.type_api import ArchivalFlag, ObjectId, TypeEngine
 
@@ -444,14 +446,54 @@ class Table(HasIdentifier):
         """
         from normlite.sql.ddl import CreateTable
 
-        if bind.inspect().has_table(self.name):
+        catalog = bind._user_database_name
+        execution_options = bind.get_execution_options()
+        restore_dropped = execution_options.get("restore_dropped", False)
+
+        state = bind.get_table_state(
+            self.name,
+            table_catalog=catalog,
+        )
+
+        # ------------------------
+        # Lifecycle resolution
+        # ------------------------
+
+        if state is TableState.ACTIVE:
             if checkfirst:
-                # do nothing, the table already exists
                 return
             raise ProgrammingError(
-                f"Table: '{self.name} already exists in catalog: '{bind._user_database_name}'"
+                f"Table '{self.name}' already exists in catalog '{catalog}'"
             )
-        
+
+        if state is TableState.DROPPED:
+            if restore_dropped:
+                entry = bind.restore_table(
+                    self.name,
+                    table_catalog=catalog,
+                )
+
+                # update write-cache
+                self._sys_tables_page_id = entry.sys_tables_page_id
+                return
+
+            # explicit non-restore → raises
+            raise ProgrammingError(
+                f"Table '{self.name}' is dropped. "
+                f"Use execution_options(restore_dropped=True) to restore it."
+            )
+
+            # fall through to physical creation
+
+        if state is TableState.ORPHANED:
+            raise InternalError(
+                f"Table '{self.name}' is orphaned."
+            )
+
+        # ------------------------
+        # MISSING → physical CREATE
+        # ------------------------
+            
         # IMPORTANT: The user tables page id **must** be set prior to executing
         # the CreateTable statement.
         self._db_parent_id = bind._user_tables_page_id
@@ -468,6 +510,29 @@ class Table(HasIdentifier):
 
     def drop(self, bind: Engine, checkfirst: bool = False) -> None:
         from normlite.sql.ddl import DropTable
+
+        catalog = bind._user_database_name
+        state = bind.get_table_state(
+            self.name,
+            table_catalog=catalog,
+        )
+
+        # ------------------------
+        # Lifecycle resolution
+        # ------------------------
+
+        if state is TableState.DROPPED:
+            if checkfirst:
+                return
+            
+            raise ProgrammingError(
+                f"Table '{self.name}' already dropped in catalog '{catalog}'"
+            )
+
+        if state is TableState.ORPHANED:
+            raise InternalError(
+                f"Table '{self.name}' is orphaned."
+            )
 
         stmt = DropTable(self)
         with bind.connect() as connection:

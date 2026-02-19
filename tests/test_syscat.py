@@ -2,10 +2,11 @@ import pdb
 import pytest
 
 from normlite.engine.base import Engine, create_engine
+from normlite.engine.reflection import TableState
 from normlite.engine.systemcatalog import SystemCatalog
 from normlite.notiondbapi.dbapi2 import ProgrammingError, InternalError
 
-def create_students_db(engine: Engine) -> str:
+def create_students_db(engine: Engine, name: str = 'students') -> str:
     # create a new table students in memory
     db = engine._client._add('database', {
         'parent': {
@@ -16,10 +17,10 @@ def create_students_db(engine: Engine) -> str:
             {
                 "type": "text",
                 "text": {
-                    "content": "students",
+                    "content": name,
                     "link": None
                 },
-                "plain_text": "students",
+                "plain_text": name,
                 "href": None
             }
         ],
@@ -247,3 +248,183 @@ def test_repair_missing_without_database_id_raises(syscat):
         )
 
     assert "Cannot repair missing catalog entry for 'students'" in str(exc.value)
+
+# ===========================================================
+# table lifecycle states
+# ===========================================================
+
+def test_state_missing_when_no_sys_and_no_db(
+        engine: Engine, 
+        syscat: SystemCatalog
+    ):
+    state = syscat.get_table_state(
+        "students",
+        table_catalog=engine._user_database_name,
+    )
+
+    assert state is TableState.MISSING
+
+def test_state_orphaned_when_db_exists_but_no_sys(
+    engine: Engine,
+    syscat: SystemCatalog
+):
+    # create physical but no metadata
+    db_id = create_students_db(engine)
+
+    state = syscat.get_table_state(
+        "students",
+        table_catalog=engine._user_database_name
+    )
+    assert state is TableState.ORPHANED
+
+def test_state_orphaned_when_sys_exists_but_db_missing(
+    engine: Engine,
+    syscat: SystemCatalog
+):        
+    db_id = create_students_db(engine)
+
+    # simulate manual deletion of database
+    engine._client.databases_update(
+        path_params={'database_id': db_id},
+        payload={
+            'in_trash': True
+        }
+    )
+
+    state = syscat.get_table_state(
+        "students",
+        table_catalog=engine._user_database_name,
+    )
+
+    assert state is TableState.ORPHANED
+
+def test_state_active_when_both_not_trashed(
+    engine: Engine,
+    syscat: SystemCatalog
+):
+    database_id = create_students_db(engine)
+    entry = syscat.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id=database_id,
+    )
+
+    state = syscat.get_table_state(
+        "students",
+        table_catalog=engine._user_database_name,
+    )
+
+    assert state is TableState.ACTIVE
+
+
+def test_state_active_when_both_not_trashed(
+    engine: Engine,
+    syscat: SystemCatalog
+):
+    database_id = create_students_db(engine)
+    entry = syscat.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id=database_id,
+    )
+
+    state = syscat.get_table_state(
+        "students",
+        table_catalog=engine._user_database_name,
+    )
+
+    assert state is TableState.ACTIVE
+
+def test_state_dropped_when_both_trashed(
+    engine: Engine,
+    syscat: SystemCatalog
+):
+    db_id = create_students_db(engine)
+    entry = syscat.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id=db_id,
+    )
+
+    # simulate DROP TABLE
+    engine._client.databases_update(
+        path_params={'database_id': db_id},
+        payload={
+            'in_trash': True
+        }
+    )
+
+    syscat.set_dropped_by_page_id(
+        page_id=entry.sys_tables_page_id, 
+        dropped=True
+    )
+
+    assert syscat.get_table_state(
+        "students",
+        table_catalog=engine._user_database_name
+    ) is TableState.DROPPED
+
+def test_state_orphaned_when_db_trashed_but_sys_active(
+    engine: Engine,
+    syscat: SystemCatalog
+):
+    db_id = create_students_db(engine)
+    entry = syscat.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id=db_id,
+    )
+
+    # trash DB only
+    engine._client.databases_update(
+        path_params={'database_id': db_id},
+        payload={
+            'in_trash': True
+        }
+    )
+
+    assert syscat.get_table_state(
+        "students",
+        table_catalog=engine._user_database_name
+    ) is TableState.ORPHANED
+
+def test_state_orphaned_when_sys_trashed_but_db_active(
+    engine: Engine,
+    syscat: SystemCatalog
+):
+    db_id = create_students_db(engine)
+    entry = syscat.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id=db_id,
+    )
+
+    # trash metadata only
+    syscat.set_dropped_by_page_id(
+        page_id=entry.sys_tables_page_id,
+        dropped=True
+    )
+    
+    assert syscat.get_table_state(
+        "students",
+        table_catalog=engine._user_database_name
+    ) is TableState.ORPHANED
+
+def test_search_does_not_match_exactly_titles(
+    engine: Engine,
+    syscat: SystemCatalog
+):
+    db_id = create_students_db(engine, 'students_v1')
+    entry = syscat.ensure_sys_tables_row(
+        table_name="students_v1",
+        table_catalog="memory",
+        table_id=db_id,
+    )
+
+    state = syscat.get_table_state(
+        "students",
+        table_catalog=engine._user_database_name,
+    )
+
+    assert state is TableState.MISSING
+

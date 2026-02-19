@@ -29,7 +29,7 @@ the current database.
 import pdb
 from typing import TYPE_CHECKING, Optional
 
-from normlite.engine.reflection import SystemTablesEntry
+from normlite.engine.reflection import ReflectedTableInfo, SystemTablesEntry, TableState
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.notion_sdk.client import AbstractNotionClient, NotionError
 
@@ -417,31 +417,86 @@ class SystemCatalog:
 
         return SystemTablesEntry.from_dict(page_obj)
 
-    def _delete_restore_table(
-            self, 
-            page_id: str, 
-            delete: bool
-    ) -> Optional[SystemTablesEntry]:
-        """Soft-delete/restore a table in system tables."""
-        try: 
-            page_obj = self._client.pages_update(
-                path_params= {                
-                    'page_id': page_id,
-                },
-                payload={
-                    'in_trash': delete
+    def _find_database_by_name(
+            self,
+            table_name: str,
+    ) -> Optional[ReflectedTableInfo]:
+        
+        response = self._client.search(
+            payload={
+                "query": table_name,
+                "filter": {
+                    "property": "object",
+                    "value": "database"
+                }
+            }
+        )
+
+        results = response.get("results", [])
+
+        if len(results) > 1:
+        # catalog corruption invariant.
+            raise InternalError(
+                f"Catalog invariant violated: multiple tables named "
+                f"'{table_name}' found"
+            )
+
+        return ReflectedTableInfo.from_dict(results[0]) if results else None        
+
+    def get_table_state(
+        self,
+        table_name: str,
+        *,
+        table_catalog: str,
+    ) -> TableState:
+        """Derive the lifecycle state of a table from the system catalog.
+
+        ..  versionadded:: 0.8.0
+        """
+
+        entry = self.find_sys_tables_row(
+            table_name,
+            table_catalog=table_catalog,
+        )
+
+        # --------------------------------------------
+        # Case 1: No metadata entry
+        # --------------------------------------------
+        if entry is None:
+            # try to detect stray database object
+            db = self._find_database_by_name(table_name)
+
+            if db is not None:
+                return TableState.ORPHANED
+
+            return TableState.MISSING
+
+        # --------------------------------------------
+        # Case 2: Metadata exists
+        # --------------------------------------------
+        try:
+            db = self._client.databases_retrieve(
+                path_params={
+                    "database_id": entry.table_id
                 }
             )
         except NotionError as exc:
-            # a NotionError at this point can only have one meaning:
-            # A programming error <=> page_id not found
-            if exc.code == 'object_not_found':
-                raise ProgrammingError(page_id)
-            
-            # All other DBAPI errors propagate unchanged
-            # This is a fallback and it is expected to never happen
+            if exc.code == "object_not_found":
+                return TableState.ORPHANED
             raise
 
-        return SystemTablesEntry.from_dict(page_obj)
+        sys_in_trash = entry.is_dropped
+        db_in_trash = db.get("in_trash", False)
 
- 
+        # --------------------------------------------
+        # Case 3: Both exist → derive state
+        # --------------------------------------------
+
+        if not sys_in_trash and not db_in_trash:
+            return TableState.ACTIVE
+
+        if sys_in_trash and db_in_trash:    
+            return TableState.DROPPED
+
+        # mismatch
+        return TableState.ORPHANED
