@@ -329,9 +329,28 @@ class NotionCompiler(SQLCompiler):
             'payload': payload
         }  
         
-    def visit_reflect_table(self, reflect_table: ReflectTable) -> dict:
-        raise NotImplementedError
-    
+    def visit_reflect_table(self, ddl_stmt: ReflectTable) -> dict:
+        self._compiler_state.is_ddl = True
+        self._compiler_state.stmt = ddl_stmt
+        path_params = {}
+        stmt_table = ddl_stmt.get_table()
+        database_id = stmt_table.get_oid()
+
+        with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
+            db_id_key = self._add_bindparam(
+                BindParameter(
+                    key='database_id',
+                    value=database_id
+                )
+            )
+            path_params['database_id'] = f':{db_id_key}'
+
+        operation = dict(endpoint = 'databases', request='retrieve')
+        return {
+            'operation': operation, 
+            'path_params': path_params,
+        }
+
     def visit_insert(self, insert: Insert) -> dict:
         """Compile the ``INSERT`` DML statement.
 

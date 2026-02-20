@@ -175,8 +175,16 @@ class DropTable(ExecutableDDLStatement):
         self._table = table
 
     def _setup_execution(self, context: ExecutionContext) -> None:
-        # nothing to be setup
-        pass
+        table = self._table
+        table_oid = table.get_oid()
+        if table_oid is None:
+            # changed from CompileError to ProgrammingError:
+            # why ProgrammingError is better: the failure mode  
+            # 1. is a semantic lifecycle error
+            # 2. is **not** a low-level structural error
+            raise ProgrammingError(f'Table: {table.name} has been previously neither created or reflected.')
+        
+        
 
     def _handle_dbapi_error(
         self, 
@@ -242,21 +250,14 @@ class ReflectTable(ExecutableDDLStatement):
         self._reflected_table_info = None
         """The reflected info data structure holding the reflected columns."""
 
-    def execute(self, context: ExecutionContext, parameters: Optional[dict] = None) -> CursorResult:
-        cursor = context._dbapi_cursor
-        compiled = context._compiled
-        if not compiled.params:
-            raise InvalidRequestError(
-                'Pseudo-DDL statement "ReflectTable" cannot be used without previous '
-                'execution of "HasTable" (table oid is unknown).'
-            )
-        cursor.execute(compiled.as_dict()['operation'], compiled.params)
-        result = context._setup_cursor_result()
-        reflected_cols_as_rows = result.all()
-        self._reflected_table_info = ReflectedTableInfo.from_rows(reflected_cols_as_rows)
-        self._post_exec(result, context)
-        return result
+    def _setup_execution(self, context: ExecutionContext) -> None:
+        table = self._reflected_table
 
+        if not table.get_oid():
+            raise ProgrammingError(
+                f"Cannot reflect table '{table.name}' "
+                "because no database identity is known."
+            )
 
     def _post_exec(self, result: CursorResult, context: ExecutionContext) -> None:
         from normlite.sql.schema import Column        

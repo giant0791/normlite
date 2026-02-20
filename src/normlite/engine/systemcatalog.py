@@ -27,7 +27,7 @@ the current database.
 """
 
 import pdb
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from normlite.engine.reflection import ReflectedTableInfo, SystemTablesEntry, TableState
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError

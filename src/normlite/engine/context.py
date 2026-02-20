@@ -290,11 +290,6 @@ class ExecutionContext:
     def pre_exec(self) -> None:
         """Perform value binding and type adaptation before execution.
 
-        .. admonition:: TODO
-            This method shall be used in future versions to perform execution option resolution, 
-            i.e. overriding options that have been set at engine creation level with those provided at
-            connection creation or in the execute call.
-        
         .. versionchanged:: 0.8.0
             In this version, binding has been extended to support the override case (user-provided parameters in the execute call).
             Execution options resolution is not supported yet.
