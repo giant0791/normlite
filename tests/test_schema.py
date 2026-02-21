@@ -12,7 +12,7 @@ from normlite import (
 from normlite._constants import SpecialColumns
 from normlite.engine.base import Engine, create_engine
 from normlite.engine.reflection import TableState
-from normlite.exceptions import ArgumentError
+from normlite.exceptions import ArgumentError, CompileError, NoSuchTableError
 from normlite.notion_sdk.client import NotionError
 from normlite.notion_sdk.getters import get_object_id, get_object_type
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
@@ -53,7 +53,7 @@ def create_students_db(engine: Engine) -> None:
     db = engine._client._add('database', {
         'parent': {
             'type': 'page_id',
-            'page_id': engine._db_page_id
+            'page_id': engine._user_tables_page_id
         },
         "title": [
             {
@@ -312,30 +312,6 @@ def test_metadata_sorted_tables():
     assert metadata.sorted_tables == [classes, students, teachers]
 
 # --------------------------------------
-# Reflection tests
-#---------------------------------------
-
-@pytest.mark.skip('Table autoload_with depends on reflection')
-def test_table_autoload(engine: Engine, metadata: MetaData):
-    create_students_db(engine)
-    students = Table('students', metadata, autoload_with=engine)
-    columns = [c.name for c in students.columns]
-    assert includes_all(columns, ['student_id', 'name', 'grade', 'is_active'])
-    assert '_no_id' in columns
-    assert '_no_archived' in columns
-
-@pytest.mark.skip('Table reflection not supported in this version')
-def test_metadata_reflect(engine: Engine, metadata: MetaData):
-    create_students_db(engine)
-    metadata = MetaData()
-    students = Table('students', metadata)
-    metadata.reflect(engine)
-    columns = [c.name for c in students.columns]
-    assert includes_all(columns, ['student_id', 'name', 'grade', 'is_active'])
-    assert SpecialColumns.NO_ID in columns
-    assert SpecialColumns.NO_ARCHIVED in columns
-
-# --------------------------------------
 # Create table DDL tests
 #---------------------------------------
 
@@ -470,7 +446,7 @@ def test_drop_table_detects_catalog_corruption_no_table_entry_found(
         students.drop(bind=engine)
 
 def test_drop_non_existing_table_raises(engine: Engine, students: Table):
-    with pytest.raises(ProgrammingError) as exc:
+    with pytest.raises(CompileError) as exc:
         students.drop(engine)
 
     assert 'students' in str(exc.value)
@@ -574,4 +550,60 @@ def test_create_checkfirst_on_dropped_table_does_not_restore(engine: Engine, stu
 
     with pytest.raises(ProgrammingError, match="'students' is dropped."):
         students.create(engine)
+
+# --------------------------------------
+# Reflection tests
+#---------------------------------------
+
+def test_table_autoload_active(engine: Engine, metadata: MetaData):
+    create_students_db(engine)
+    students = Table('students', metadata, autoload_with=engine)
+    columns = [c.name for c in students.columns]
+    pk_cols = [c.name for c in students.primary_key.c]
+    assert includes_all(columns, ['id', 'name', 'grade', 'is_active'])
+    assert '_no_id' in columns
+    assert '_no_archived' in columns
+    assert len(pk_cols) == 1
+    assert SpecialColumns.NO_ID.value in pk_cols
+
+def test_table_autoload_missing_raises(engine: Engine, metadata: MetaData):
+    with pytest.raises(NoSuchTableError) as exc:
+        students = Table('students', metadata, autoload_with=engine)
+
+    assert 'students' in str(exc.value)
+    assert 'does not exist' in str(exc.value)
+    assert 'memory' in str(exc.value)
+
+def test_table_autoload_dropped_raises(engine: Engine, students: Table, metadata: MetaData):
+    students.create(engine)
+    students.drop(engine)
+
+    with pytest.raises(ProgrammingError, match="'students' is dropped"):
+        _ = Table('students', metadata, autoload_with=engine)
+
+def test_table_autoload_orphaned_raises(    
+    metadata: MetaData,
+    students: Table, 
+    engine: Engine
+):
+    # Create normally (cache is populated correctly)
+    client = engine._client
+    students.create(bind=engine)
+
+    # corrupt the catalog by removing the page for the table just created
+    client._store.pop(students._sys_tables_page_id)
+
+    with pytest.raises(InternalError, match="'students' is orphaned"):
+        _ = Table('students', metadata, autoload_with=engine)
+       
+@pytest.mark.skip('MetaData reflection not supported in this version')
+def test_metadata_reflect(engine: Engine, metadata: MetaData):
+    create_students_db(engine)
+    metadata = MetaData()
+    students = Table('students', metadata)
+    metadata.reflect(engine)
+    columns = [c.name for c in students.columns]
+    assert includes_all(columns, ['student_id', 'name', 'grade', 'is_active'])
+    assert SpecialColumns.NO_ID in columns
+    assert SpecialColumns.NO_ARCHIVED in columns
 

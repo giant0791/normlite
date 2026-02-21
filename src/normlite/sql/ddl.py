@@ -175,16 +175,7 @@ class DropTable(ExecutableDDLStatement):
         self._table = table
 
     def _setup_execution(self, context: ExecutionContext) -> None:
-        table = self._table
-        table_oid = table.get_oid()
-        if table_oid is None:
-            # changed from CompileError to ProgrammingError:
-            # why ProgrammingError is better: the failure mode  
-            # 1. is a semantic lifecycle error
-            # 2. is **not** a low-level structural error
-            raise ProgrammingError(f'Table: {table.name} has been previously neither created or reflected.')
-        
-        
+        pass        
 
     def _handle_dbapi_error(
         self, 
@@ -237,8 +228,6 @@ class DropTable(ExecutableDDLStatement):
 class ReflectTable(ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to reflect a Notion database into a Python :class:`normlite.sql.schema.Table` object.
     
-    :class:`ReflectTable` expects that the database id is known (from a previous execution of :class:`HasTable`).
-
     .. versionadded:: 0.8.0
     """
     __visit_name__ = 'reflect_table'
@@ -251,18 +240,19 @@ class ReflectTable(ExecutableDDLStatement):
         """The reflected info data structure holding the reflected columns."""
 
     def _setup_execution(self, context: ExecutionContext) -> None:
-        table = self._reflected_table
+        pass
 
-        if not table.get_oid():
-            raise ProgrammingError(
-                f"Cannot reflect table '{table.name}' "
-                "because no database identity is known."
-            )
-
-    def _post_exec(self, result: CursorResult, context: ExecutionContext) -> None:
+    def _finalize_execution(self, context: ExecutionContext) -> None:
         from normlite.sql.schema import Column        
         
-        self._reflected_table._db_parent_id = None
+        # IMPORTANT: This consumes the result stored in the execution context.
+        # DDL reflection is not part of execution — it is interpretation of results.
+        # So reflection consumes the results by interpreting and leaves the
+        # result empty in the context.
+        result = context.setup_cursor_result()
+        rows = result.all()        
+        self._reflected_table_info = ReflectedTableInfo.from_rows(rows)
+        self._reflected_table._db_parent_id = context.engine._user_tables_page_id
 
         # reflect columns
         for colmeta in self._reflected_table_info.get_columns():

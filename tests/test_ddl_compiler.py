@@ -4,7 +4,6 @@ import pytest
 from normlite.engine.base import Engine, create_engine
 from normlite.exceptions import CompileError
 from normlite.notion_sdk.getters import get_property
-from normlite.notiondbapi.dbapi2 import ProgrammingError
 from normlite.sql.base import DDLCompiled
 from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
 from normlite.sql.elements import _BindRole, BindParameter
@@ -64,7 +63,13 @@ def test_compile_create_table_parent_id(students: Table, engine: Engine):
 def test_compile_create_table_no_database_id_raises(students: Table, engine: Engine):
     stmt = CreateTable(students)
 
-    with pytest.raises(ProgrammingError, match='neither created or reflected.'):
+    with pytest.raises(CompileError, match='neither created or reflected.'):
+        _ = stmt.compile(engine._sql_compiler)
+
+def test_compile_create_table_no_parent_id_raises(students: Table, engine: Engine):
+    stmt = CreateTable(students)
+
+    with pytest.raises(CompileError, match='neither created or reflected.'):
         _ = stmt.compile(engine._sql_compiler)
 
 def test_compile_create_table_title_as_table_name(students: Table, engine: Engine):
@@ -106,6 +111,7 @@ def test_compile_create_table_columns_as_properties(students: Table, engine: Eng
 #---------------------------------------------
 
 def test_compile_drop_table_is_ddl(students: Table, engine: Engine):
+    students.set_oid('12345678-9090-0606-1111-123456789012')
     stmt = DropTable(students)
     compiled = stmt.compile(engine._sql_compiler)
 
@@ -113,6 +119,7 @@ def test_compile_drop_table_is_ddl(students: Table, engine: Engine):
     assert isinstance(compiled, DDLCompiled)
 
 def test_compile_drop_table_database_id(students: Table, engine: Engine):
+    students.set_oid('12345678-9090-0606-1111-123456789012')
     stmt = DropTable(students)
     compiled = stmt.compile(engine._sql_compiler)
     as_dict = compiled.as_dict()
@@ -126,11 +133,14 @@ def test_compile_drop_table_database_id(students: Table, engine: Engine):
     assert db_id_param.effective_value == students._database_id
     assert path_params['database_id'] == ':database_id'
 
-def test_compile_drop_table_no_database_id_does_not_raise(students: Table, engine: Engine):
+def test_compile_drop_table_no_database_id_raises(students: Table, engine: Engine):
     stmt = DropTable(students)
-    _ = stmt.compile(engine._sql_compiler)
+
+    with pytest.raises(CompileError, match='neither created or reflected.'):
+        _ = stmt.compile(engine._sql_compiler)
         
 def test_compile_drop_table_operation(students: Table, engine: Engine):
+    students.set_oid('12345678-9090-0606-1111-123456789012')
     stmt = DropTable(students)
     compiled = stmt.compile(engine._sql_compiler)
     as_dict = compiled.as_dict()
@@ -139,6 +149,7 @@ def test_compile_drop_table_operation(students: Table, engine: Engine):
     assert as_dict['operation']['request'] == 'update'
 
 def test_compile_drop_table_payload(students: Table, engine: Engine):
+    students.set_oid('12345678-9090-0606-1111-123456789012')
     stmt = DropTable(students)
     compiled = stmt.compile(engine._sql_compiler)
     as_dict = compiled.as_dict()

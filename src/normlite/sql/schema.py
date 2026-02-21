@@ -557,7 +557,30 @@ class Table(HasIdentifier):
         with bind.connect() as connection:
             connection.execute(stmt)
 
-    def reflect(self, bind: Engine) -> None:
+    def _ensure_implicit_columns(self):
+        # Notion object ID: always primary key
+        if SpecialColumns.NO_ID not in self._columns:
+            _no_id_col = Column(SpecialColumns.NO_ID, ObjectId(), primary_key=True)
+            _no_id_col._set_parent(self)
+            self._columns.add(_no_id_col)
+
+        # Archival flag: always present
+        if SpecialColumns.NO_ARCHIVED not in self._columns:
+            _no_archived_col = Column(SpecialColumns.NO_ARCHIVED, ArchivalFlag())
+            _no_archived_col._set_parent(self)
+            self._columns.add(_no_archived_col)
+
+        if SpecialColumns.NO_IN_TRASH not in self._columns:
+            _no_in_trash_col = Column(SpecialColumns.NO_IN_TRASH, ArchivalFlag())
+            _no_in_trash_col._set_parent(self)
+            self._columns.add(_no_in_trash_col)
+
+    def _create_pk_constraint(self) -> None:
+        table_pks = [c for c in self._columns if c.primary_key]
+        # IMPORTANT: Here you have to unpack the table_pks list
+        self._primary_key = PrimaryKeyConstraint(*table_pks)
+
+    def _autoload(self, bind: Engine) -> None:
         from normlite.sql.ddl import ReflectTable
 
         catalog = bind._user_database_name
@@ -605,32 +628,6 @@ class Table(HasIdentifier):
                 stmt, 
                 execution_options=execution_options
             )
-
-    def _ensure_implicit_columns(self):
-        # Notion object ID: always primary key
-        if SpecialColumns.NO_ID not in self._columns:
-            _no_id_col = Column(SpecialColumns.NO_ID, ObjectId(), primary_key=True)
-            _no_id_col._set_parent(self)
-            self._columns.add(_no_id_col)
-
-        # Archival flag: always present
-        if SpecialColumns.NO_ARCHIVED not in self._columns:
-            _no_archived_col = Column(SpecialColumns.NO_ARCHIVED, ArchivalFlag())
-            _no_archived_col._set_parent(self)
-            self._columns.add(_no_archived_col)
-
-        if SpecialColumns.NO_IN_TRASH not in self._columns:
-            _no_in_trash_col = Column(SpecialColumns.NO_IN_TRASH, ArchivalFlag())
-            _no_in_trash_col._set_parent(self)
-            self._columns.add(_no_in_trash_col)
-
-    def _create_pk_constraint(self) -> None:
-        table_pks = [c for c in self._columns if c.primary_key]
-        # IMPORTANT: Here you have to unpack the table_pks list
-        self._primary_key = PrimaryKeyConstraint(*table_pks)
-
-    def _autoload(self, engine: Engine) -> None:
-        engine._reflect_table(self)
 
     def _set_table_oid(self, oid: str) -> None:
         self._database_id = oid

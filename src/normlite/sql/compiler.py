@@ -23,9 +23,8 @@ from typing import TYPE_CHECKING, Optional
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError
-from normlite.notiondbapi.dbapi2 import ProgrammingError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
-from normlite.sql.base import _CompileState, CompilerState, SQLCompiler
+from normlite.sql.base import _CompileState, SQLCompiler
 from normlite.sql.dml import OrderByClause
 from normlite.sql.elements import _BindRole, BooleanClauseList, Operator, OrderByExpression, ColumnElement
 from normlite.sql.elements import BindParameter
@@ -234,11 +233,11 @@ class NotionCompiler(SQLCompiler):
         stmt_table = ddl_stmt.get_table()
         
         if stmt_table._db_parent_id is None:
-            # changed from CompileError to ProgrammingError:
-            # why ProgrammingError is better: the failure mode  
-            # 1. is a semantic lifecycle error
-            # 2. is **not** a low-level structural error
-            raise ProgrammingError(f'Table: {stmt_table.name} has been previously neither created or reflected.')
+            # changed back to CompileError:
+            # normlite compiler is a payload builder, not a "real" SQL compiler
+            # so it must enforce payload schema invariants such as
+            # database_id not being None 
+            raise CompileError(f'Table: {stmt_table.name} has been previously neither created or reflected.')
 
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             # emit code for parent object
@@ -298,11 +297,11 @@ class NotionCompiler(SQLCompiler):
         database_id = stmt_table.get_oid()
 
         if database_id is None:
-            # changed from CompileError to ProgrammingError:
-            # why ProgrammingError is better: the failure mode  
-            # 1. is a semantic lifecycle error
-            # 2. is **not** a low-level structural error
-            raise ProgrammingError(f'Table: {stmt_table.name} has been previously neither created or reflected.')
+            # changed back to CompileError:
+            # normlite compiler is a payload builder, not a "real" SQL compiler
+            # so it must enforce payload schema invariants such as
+            # database_id not being None 
+            raise CompileError(f'Table: {stmt_table.name} has been previously neither created or reflected.')
         
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
