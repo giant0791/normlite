@@ -77,7 +77,7 @@ from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import ReturningStrategy, _distill_params, IsolationLevel
 from normlite.engine.systemcatalog import SystemCatalog
 from normlite.exceptions import ArgumentError, ObjectNotExecutableError
-from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo, SystemTablesEntry
+from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo, SystemTablesEntry, TableState
 from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
 from normlite.sql.compiler import NotionCompiler
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, Error, InternalError, ProgrammingError
@@ -87,7 +87,6 @@ if TYPE_CHECKING:
     from normlite.sql.schema import Table, HasIdentifier
     from normlite.sql.base import Executable
     from normlite.engine.interfaces import _CoreAnyExecuteParams, IsolationLevel, CompiledCacheType, ExecutionOptions
-    from normlite.engine.reflection import TableState
 
 class Connection:
     """Provide high level API to a connection to Notion databases.
@@ -877,9 +876,12 @@ class Inspector:
         This method queries the INFORMATION_SCHEMA.tables database to check existence of the
         requested table and returns ``True`` only if the found table has not been dropped. 
 
+        .. note:
+            This method can be used to query **user defined tables** only.
+
         .. versionchanged:: 0.8.0
-            This method uses the new :meth:`Engine._find_sys_tables_row` API and it adds the verification
-            whether the table is dropped.
+            This method uses the new :meth:`Engine.get_table_state()` API to retrieve the 
+            table lifecycle state.
 
         .. versionadded:: 0.7.0
             This method uses internal private helper to query the tables database and check existence.
@@ -887,18 +889,14 @@ class Inspector:
         Args:
             table_name (str): The name of the table to search for.
 
-        Raises:
-            NormliteError: If more than one table with the same name is found in the same catalog (database).
-
         Returns:
-            bool: ``True`` if the table exists, ``False`` otherwise. 
+            bool: ``True`` if the table state is :attr:`normlite.engine.reflection.TableState.ACTIVE`, ``False`` otherwise. 
         """
-        table_entry = self._engine.find_table_metadata(
-            table_name, 
+        state = self._engine.get_table_state(
+            table_name=table_name,
             table_catalog=self._engine._user_database_name
         )
-
-        return table_entry is not None and not table_entry.is_dropped
+        return state is TableState.ACTIVE
     
     def reflect_table(self, table: Table) -> ReflectedTableInfo:
         return self._engine._reflect_table(table)
