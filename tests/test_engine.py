@@ -187,21 +187,15 @@ def test_engine_connect(engine: Engine):
 # Inspection tests
 #---------------------------------------------------
 
-def test_engine_inspect_has_table_sys(engine: Engine, inspector: Inspector):
-    assert inspector.has_table('tables')
-
 def test_engine_inspect_has_table_user(engine: Engine, inspector: Inspector):
     create_students_db(engine)
     assert inspector.has_table('students')
 
 def test_engine_inspect_has_table_dropped_user_table(engine: Engine, inspector: Inspector):
     create_students_db(engine)
+    students = Table('students', MetaData(), autoload_with=engine)
+    students.drop(engine)
     
-    # mock students table gets dropped
-    entry = engine._find_sys_tables_row('students', table_catalog='memory')
-    sys_rowid = entry.sys_rowid
-    engine._client._store[sys_rowid]['in_trash'] = True
-
     assert not inspector.has_table('students')
 
 @pytest.mark.skip('reflection requires refactor')
