@@ -175,8 +175,7 @@ class DropTable(ExecutableDDLStatement):
         self._table = table
 
     def _setup_execution(self, context: ExecutionContext) -> None:
-        # nothing to be setup
-        pass
+        pass        
 
     def _handle_dbapi_error(
         self, 
@@ -229,8 +228,6 @@ class DropTable(ExecutableDDLStatement):
 class ReflectTable(ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to reflect a Notion database into a Python :class:`normlite.sql.schema.Table` object.
     
-    :class:`ReflectTable` expects that the database id is known (from a previous execution of :class:`HasTable`).
-
     .. versionadded:: 0.8.0
     """
     __visit_name__ = 'reflect_table'
@@ -242,26 +239,20 @@ class ReflectTable(ExecutableDDLStatement):
         self._reflected_table_info = None
         """The reflected info data structure holding the reflected columns."""
 
-    def execute(self, context: ExecutionContext, parameters: Optional[dict] = None) -> CursorResult:
-        cursor = context._dbapi_cursor
-        compiled = context._compiled
-        if not compiled.params:
-            raise InvalidRequestError(
-                'Pseudo-DDL statement "ReflectTable" cannot be used without previous '
-                'execution of "HasTable" (table oid is unknown).'
-            )
-        cursor.execute(compiled.as_dict()['operation'], compiled.params)
-        result = context._setup_cursor_result()
-        reflected_cols_as_rows = result.all()
-        self._reflected_table_info = ReflectedTableInfo.from_rows(reflected_cols_as_rows)
-        self._post_exec(result, context)
-        return result
+    def _setup_execution(self, context: ExecutionContext) -> None:
+        pass
 
-
-    def _post_exec(self, result: CursorResult, context: ExecutionContext) -> None:
+    def _finalize_execution(self, context: ExecutionContext) -> None:
         from normlite.sql.schema import Column        
         
-        self._reflected_table._db_parent_id = None
+        # IMPORTANT: This consumes the result stored in the execution context.
+        # DDL reflection is not part of execution — it is interpretation of results.
+        # So reflection consumes the results by interpreting and leaves the
+        # result empty in the context.
+        result = context.setup_cursor_result()
+        rows = result.all()        
+        self._reflected_table_info = ReflectedTableInfo.from_rows(rows)
+        self._reflected_table._db_parent_id = context.engine._user_tables_page_id
 
         # reflect columns
         for colmeta in self._reflected_table_info.get_columns():

@@ -64,7 +64,7 @@ import warnings
 
 from normlite._constants import SpecialColumns
 from normlite.engine.reflection import TableState
-from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError
+from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError, NoSuchTableError
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.sql.elements import ColumnElement, Comparator, ColumnOperators
 from normlite.sql.type_api import ArchivalFlag, ObjectId, TypeEngine
@@ -427,11 +427,8 @@ class Table(HasIdentifier):
     def create(self, bind: Engine, checkfirst: bool = False) -> None:
         """Create a new table using the provided bind.
 
-        This method generates a :class:`normlite.sql.ddl.CreateTable` DDL statement,
-        and it executes it on the provided bind.
-
-        .. versionchanged: 0.8.0
-            In this version, the check first logic is supported.
+        This method is table state life-cycle aware and uses the :class:`normlite.sql.ddl.CreateTable` 
+        DDL statement to create the table.
 
         Args:
             bind (Engine): The bind to use to connect to the database (Notion).
@@ -439,7 +436,16 @@ class Table(HasIdentifier):
                 If ``True`` and this table exists, then do nothing.
 
         Raises:
-            ProgrammingError: If the ``checkfirst == False`` and the table already exists.
+            ProgrammingError: If the ``checkfirst == False`` and the table already exists or
+                if the table is dropped and the execution option ``restore_dropped`` is False.
+
+            InternalError: If the table is ORPHANED.
+
+        .. sealso::
+            :class:`normlite.engine.reflection.TableState`
+
+        .. versionchanged: 0.8.0
+            This version provides full state-driven behavior.
 
         .. versionadded:: 0.7.0
             Initial version, experimental not working code.
@@ -509,6 +515,19 @@ class Table(HasIdentifier):
             )
 
     def drop(self, bind: Engine, checkfirst: bool = False) -> None:
+        """Drop an existing table using the provided bind
+
+        This method is table state life-cycle aware and uses the :class:`normlite.sql.ddl.DropTable` 
+        DDL statement to create the table.
+
+                Args:
+            bind (Engine): _description_
+            checkfirst (bool, optional): _description_. Defaults to False.
+
+        Raises:
+            ProgrammingError: _description_
+            InternalError: _description_
+        """
         from normlite.sql.ddl import DropTable
 
         catalog = bind._user_database_name
@@ -561,8 +580,54 @@ class Table(HasIdentifier):
         # IMPORTANT: Here you have to unpack the table_pks list
         self._primary_key = PrimaryKeyConstraint(*table_pks)
 
-    def _autoload(self, engine: Engine) -> None:
-        engine._reflect_table(self)
+    def _autoload(self, bind: Engine) -> None:
+        from normlite.sql.ddl import ReflectTable
+
+        catalog = bind._user_database_name
+        state = bind.get_table_state(
+            self.name,
+            table_catalog=catalog,
+        )
+
+        # ------------------------
+        # Lifecycle resolution
+        # ------------------------
+
+        if state is TableState.MISSING:
+            raise NoSuchTableError(
+                f"Table '{self.name}' does not exist "
+                f"in catalog '{catalog}'."
+            )
+
+        if state is TableState.DROPPED:
+            raise ProgrammingError(
+                f"Table '{self.name}' is dropped "
+                f"and cannot be reflected."
+            )
+
+        if state is TableState.ORPHANED:
+            raise InternalError(
+                f"Table '{self.name}' is orphaned "
+                f"(metadata exists but database missing)."
+            )
+        
+        # ACTIVE only
+        entry = bind.require_table_metadata(
+            self.name,
+            table_catalog=bind._user_database_name,
+        )
+
+        self._database_id = entry.table_id    
+        stmt = ReflectTable(self)
+        with bind.connect() as connection:
+            execution_options = {
+                "isolation_level": "AUTO COMMIT"
+            }
+
+            _ = connection.execute(
+                stmt, 
+                execution_options=execution_options
+            )
 
     def _set_table_oid(self, oid: str) -> None:
         self._database_id = oid
