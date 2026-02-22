@@ -25,13 +25,156 @@ the current database.
 
 .. versionadded:: 0.8.0
 """
-
+from __future__ import annotations
 import pdb
+from dataclasses import dataclass
+from enum import Enum
 from typing import Optional
 
-from normlite.engine.reflection import ReflectedTableInfo, SystemTablesEntry, TableState
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.notion_sdk.client import AbstractNotionClient, NotionError
+from normlite.notion_sdk.getters import get_property, get_rich_text_property_value, get_title_property_value
+
+@dataclass(frozen=True)
+class SystemTablesEntry:
+    name: str
+    catalog: str
+    schema: str
+    table_id: str
+    sys_tables_page_id: str
+    is_dropped: bool
+
+    @classmethod
+    def from_dict(cls, page_obj: dict) -> SystemTablesEntry:       
+        name = get_title_property_value(
+            get_property(
+                page_obj, 
+                'table_name'
+            )            
+        )
+
+        catalog = get_rich_text_property_value(
+            get_property(
+                page_obj, 
+                'table_catalog'
+            )
+        )
+
+        schema = get_rich_text_property_value(
+            get_property(
+                page_obj, 
+                'table_schema'
+            )
+        )
+
+        table_id = get_rich_text_property_value(
+            get_property(
+                page_obj, 
+                'table_id'
+            )
+        )
+
+        sys_tables_page_id = page_obj['id']
+        is_dropped = page_obj['in_trash']
+
+        return cls(
+            name=name,
+            catalog=catalog,
+            schema=schema,
+            table_id=table_id,
+            sys_tables_page_id=sys_tables_page_id,
+            is_dropped=is_dropped
+        ) 
+
+
+class TableState(Enum):
+    """Lifecycle states for :class:`normlite.sql.schema.Table` objects.
+    
+    A *table* in normlite is represented by **two coupled backend objects**:
+
+        1. A **system catalog row** (sys tables)
+        2. A **Notion database object**
+
+    The lifecycle state is a **derived property** of these two objects.
+
+    .. versionadded:: 0.8.0
+    """
+
+    MISSING   = "missing"
+    """The table has never existed in this catalog.
+    
+    **Backend reality**
+
+        * no sys_tables row
+        * no known Notion database ID
+
+    **Invariants**
+
+    * :class:`normlite.engine.base.Inspector.has_table` → False
+    * RESTORE → raises :exc:`normlite.notiondbapi.dbapi2.ProgrammingError
+    * DROP → IF EXISTS only
+
+    **Typical causes**
+
+    * fresh catalog
+    * typo in table name
+    """
+    
+    ACTIVE    = "active"
+    """The table exists and is usable.
+    
+    **Backend reality**
+
+        * sys_tables row exists
+        * `_no_in_trash = False`
+        * Notion database exists and is not archived
+
+        **Invariants**
+
+        * SELECT / INSERT / ALTER allowed
+        * CREATE → error unless `checkfirst=True`
+        * DROP → transitions to DROPPED
+    """
+   
+    DROPPED   = "dropped"
+    """The table is logically dropped but recoverable.
+    
+    **Backend reality**
+
+        * sys_tables row exists
+        * `_no_in_trash = True`
+        * Notion database archived
+
+    **Invariants**
+
+        * :class:`normlite.engine.base.Inspector.has_table` → False
+        * SELECT / INSERT → error
+        * CREATE (checkfirst=True) → RESTORE
+        * RESTORE → ACTIVE
+        * DROP → idempotent
+
+    This is the **Notion-native soft-delete state**.
+    """
+    
+    ORPHANED  = "orphaned"
+    """Catalog and backend are inconsistent.
+
+    **Backend reality**
+    One of:
+
+        * sys_tables row exists but database is missing
+        * database exists but sys_tables row is missing
+        * trash flags disagree
+
+    **Invariants**
+
+        * User-facing operations should **fail fast**
+        * Inspector may warn
+        * Only repair / GC tools should touch this
+
+    This state should never be *produced intentionally* — only detected.
+    """
+
 
 class SystemCatalog:
     def __init__(
@@ -420,7 +563,7 @@ class SystemCatalog:
     def _find_database_by_name(
             self,
             table_name: str,
-    ) -> Optional[ReflectedTableInfo]:
+    ) -> Optional[dict]:
         
         response = self._client.search(
             payload={
@@ -441,7 +584,7 @@ class SystemCatalog:
                 f"'{table_name}' found"
             )
 
-        return ReflectedTableInfo.from_dict(results[0]) if results else None        
+        return results[0] if results else None        
 
     def get_table_state(
         self,

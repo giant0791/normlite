@@ -5,20 +5,17 @@ from unittest.mock import Mock, patch
 import pytest
 
 from normlite import (
-    DuplicateColumnError,
-    Column, ColumnCollection, PrimaryKeyConstraint, Table,
-    ArchivalFlag, Date, Integer, ObjectId, String
+    Engine, create_engine,
+    Column, PrimaryKeyConstraint, Table,
+    Date, Integer, String, Boolean,
+    ArgumentError, CompileError, NoSuchTableError, DuplicateColumnError
 )
 from normlite._constants import SpecialColumns
-from normlite.engine.base import Engine, create_engine
-from normlite.engine.reflection import TableState
-from normlite.exceptions import ArgumentError, CompileError, NoSuchTableError
-from normlite.notion_sdk.client import NotionError
+from normlite.engine.systemcatalog import TableState
 from normlite.notion_sdk.getters import get_object_id, get_object_type
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
-from normlite.sql.ddl import DropTable
 from normlite.sql.schema import MetaData
-from normlite.sql.type_api import Boolean
+from normlite.sql.type_api import ObjectId, ArchivalFlag
 
 @pytest.fixture
 def metadata() -> MetaData:

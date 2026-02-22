@@ -75,9 +75,9 @@ from urllib.parse import urlparse, parse_qs, unquote
 from normlite.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import ReturningStrategy, _distill_params, IsolationLevel
-from normlite.engine.systemcatalog import SystemCatalog
+from normlite.engine.systemcatalog import SystemCatalog, SystemTablesEntry, TableState
 from normlite.exceptions import ArgumentError, ObjectNotExecutableError
-from normlite.engine.reflection import ReflectedColumnInfo, ReflectedTableInfo, SystemTablesEntry, TableState
+from normlite.sql.reflection import ReflectedColumnInfo, ReflectedTableInfo
 from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
 from normlite.sql.compiler import NotionCompiler
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, Error, InternalError, ProgrammingError
@@ -813,9 +813,6 @@ class Engine:
 
         return entry
 
-    def _reflect_table(self, table: Table) -> ReflectedTableInfo:
-        raise NotImplementedError
-        
     # -------------------------------------------------
     # Public API
     # -------------------------------------------------
@@ -898,8 +895,8 @@ class Inspector:
         )
         return state is TableState.ACTIVE
     
-    def reflect_table(self, table: Table) -> ReflectedTableInfo:
-        return self._engine._reflect_table(table)
+    def reflect_table(self, table: Table) -> None:
+        table._autoload(bind=self._engine)
             
     def get_oid(self, has_id: HasIdentifier) -> str:
         """Return the Notion object id for the supplied table.

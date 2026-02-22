@@ -99,7 +99,12 @@ class Row:
         return f"Row({{ {', '.join(f'{k!r}: {self[k]!r}' for k in self._metadata.key_to_index)} }})"
 
     def __str__(self):
-        values =  ", ".join([f'{self[k]!r}' for k in self._metadata.key_to_index])
+        """Return the values for user defined columns only.
+        
+        .. versionchanged:: 0.8.0
+            This version returns the values for user defined columns only.
+        """
+        values =  ", ".join([f'{self[k]!r}' for k in self._metadata.key_to_index if k not in SpecialColumns.values()])
         return f'({values})'
 
 class RowMapping(Mapping[str, Any]):

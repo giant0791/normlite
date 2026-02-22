@@ -1422,6 +1422,7 @@ class _Condition(_Expression):
 
         # checkbox
         "checkbox.equals":              lambda a, b: a is b,
+        "checkbox.does_not_equal":      lambda a, b: a is not b,       
     }
 
 

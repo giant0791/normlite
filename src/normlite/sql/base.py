@@ -355,7 +355,7 @@ class Compiled:
         return json.dumps(self._compiled, indent=2)
     
     @property
-    def params(self) -> dict:
+    def params(self) -> dict[str, BindParameter]:
         """Provide the bind parameters for this compiled object."""
         return self._execution_binds
     

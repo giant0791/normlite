@@ -3,7 +3,7 @@ import pdb
 import uuid
 import pytest
 
-from normlite.sql.base import _CompileState
+from normlite.sql.base import _CompileState, CompilerState
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Select, select
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList
@@ -40,6 +40,7 @@ def select_stmt(students: Table) -> Select:
 #---------------------------------------------
 def test_str_col_expr(students: Table):
     nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
     exp = students.c.name == 'Galileo Galilei'
     compiled: dict = None
     with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
@@ -56,6 +57,7 @@ def test_str_col_expr(students: Table):
 
 def test_int_col_expr(students: Table):
     nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
     exp = students.c.id <= 123456
     compiled: dict = None
     with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
@@ -72,6 +74,7 @@ def test_int_col_expr(students: Table):
 
 def test_date_col_expr(students: Table):
     nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
     exp = students.c.start_on.after(date(1690,1,1))
     compiled: dict = None
     with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
@@ -88,6 +91,7 @@ def test_date_col_expr(students: Table):
 
 def test_bool_col_expr(students: Table):
     nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
     exp = students.c.is_active.is_(True)
     compiled: dict = None
     with nc._compiling(new_state=_CompileState.COMPILING_WHERE):

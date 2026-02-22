@@ -1,13 +1,12 @@
-from datetime import date, datetime
+from datetime import date
 import pdb
 import uuid
 import pytest
 
-from normlite._constants import SpecialColumns
 from normlite.engine.base import Engine, create_engine
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import _distill_params
-from normlite.engine.reflection import ReflectedTableInfo
+from normlite.sql.reflection import ReflectedTableInfo
 from normlite.notion_sdk.getters import get_object_id, rich_text_to_plain_text
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.ddl import CreateTable, DropTable
@@ -341,7 +340,8 @@ def test_execute_ddl_context_create_table_returning_id_and_title(engine: Engine,
     ctx.post_exec()
     result = ctx.setup_cursor_result()
     rows = result.all()
-    reflected_table_info = ReflectedTableInfo.from_rows(rows)
+    rows_as_tuples = [r.as_tuple() for r in rows]
+    reflected_table_info = ReflectedTableInfo.from_tuples(rows_as_tuples)
     
     assert reflected_table_info.name == 'students'
     assert is_valid_uuid4(reflected_table_info.id)
@@ -364,7 +364,8 @@ def test_execute_ddl_context_create_table_returning_property_ids(engine: Engine,
     ctx.post_exec()
     result = ctx.setup_cursor_result()
     rows = result.all()
-    reflected_table_info = ReflectedTableInfo.from_rows(rows)
+    rows_as_tuples = [r.as_tuple() for r in rows]
+    reflected_table_info = ReflectedTableInfo.from_tuples(rows_as_tuples)
     name_col, id_col, is_active_col, start_on_col, grade_col = reflected_table_info.get_user_columns()
 
     assert isinstance(name_col.type, String)
@@ -395,7 +396,8 @@ def test_execute_ddl_context_drop_table_returning_id_and_in_trash(engine: Engine
     ctx.post_exec()
     result = ctx.setup_cursor_result()
     rows = result.all()
-    reflected_table_info = ReflectedTableInfo.from_rows(rows)
+    rows_as_tuples = [r.as_tuple() for r in rows]
+    reflected_table_info = ReflectedTableInfo.from_tuples(rows_as_tuples)
 
     assert reflected_table_info.in_trash
     assert reflected_table_info.name == 'students'

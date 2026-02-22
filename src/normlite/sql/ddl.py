@@ -23,11 +23,11 @@ from typing import TYPE_CHECKING, Any, NoReturn, Optional
 from normlite._constants import SpecialColumns
 from normlite.future.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext
-from normlite.exceptions import InvalidRequestError, NoSuchTableError
-from normlite.engine.reflection import ReflectedTableInfo
+from normlite.exceptions import NoSuchTableError
+from normlite.sql.reflection import ReflectedTableInfo
 from normlite.sql.base import Executable
 from normlite.sql.type_api import type_mapper
-from normlite.notiondbapi.dbapi2 import Error, InternalError, ProgrammingError
+from normlite.notiondbapi.dbapi2 import Error, ProgrammingError
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table
@@ -131,8 +131,9 @@ class CreateTable(ExecutableDDLStatement):
         # So reflection consumes the results by interpreting and leaves the
         # result empty in the context.
         result = context.setup_cursor_result()
-        rows = result.all()        
-        reflected_table_info = ReflectedTableInfo.from_rows(rows)
+        rows = result.all()
+        data_as_tuples = [r.as_tuple() for r in rows]        
+        reflected_table_info = ReflectedTableInfo.from_tuples(data_as_tuples)
 
         table = self._table
         
@@ -192,9 +193,7 @@ class DropTable(ExecutableDDLStatement):
     def _finalize_execution(self, context: ExecutionContext) -> None:
         # IMPORTANT: This consumes the result
         result = context.setup_cursor_result()
-        rows = result.all()
-        reflected_table_info = ReflectedTableInfo.from_rows(rows)
-
+        _ = result.all()
         engine = context.engine
 
         # Ensure we have a valid sys_tables_page_id
@@ -251,7 +250,8 @@ class ReflectTable(ExecutableDDLStatement):
         # result empty in the context.
         result = context.setup_cursor_result()
         rows = result.all()        
-        self._reflected_table_info = ReflectedTableInfo.from_rows(rows)
+        data_as_tuples = [r.as_tuple() for r in rows]        
+        self._reflected_table_info = ReflectedTableInfo.from_tuples(data_as_tuples)
         self._reflected_table._db_parent_id = context.engine._user_tables_page_id
 
         # reflect columns
