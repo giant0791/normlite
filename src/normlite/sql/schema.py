@@ -60,13 +60,12 @@ from abc import ABC, abstractmethod
 import pdb
 import re
 from typing import Any, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, Tuple, Union, overload, TYPE_CHECKING
-import warnings
 
 from normlite._constants import SpecialColumns
-from normlite.engine.reflection import TableState
+from normlite.engine.systemcatalog import TableState
 from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError, NoSuchTableError
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
-from normlite.sql.elements import ColumnElement, Comparator, ColumnOperators
+from normlite.sql.elements import ColumnElement, ColumnOperators
 from normlite.sql.type_api import ArchivalFlag, ObjectId, TypeEngine
 
 if TYPE_CHECKING:
@@ -420,8 +419,7 @@ class Table(HasIdentifier):
         
         from normlite.sql.dml import Insert
 
-        insert_stmt = Insert()
-        insert_stmt._set_table(self)
+        insert_stmt = Insert(self)
         return insert_stmt
 
     def create(self, bind: Engine, checkfirst: bool = False) -> None:

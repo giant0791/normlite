@@ -2,7 +2,7 @@ import pdb
 import pytest
 
 from normlite.engine.base import Engine, create_engine
-from normlite.engine.reflection import TableState
+from normlite.engine.systemcatalog import TableState
 from normlite.engine.systemcatalog import SystemCatalog
 from normlite.notiondbapi.dbapi2 import ProgrammingError, InternalError
 

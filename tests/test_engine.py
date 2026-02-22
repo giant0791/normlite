@@ -198,7 +198,6 @@ def test_engine_inspect_has_table_dropped_user_table(engine: Engine, inspector: 
     
     assert not inspector.has_table('students')
 
-@pytest.mark.skip('reflection requires refactor')
 def test_engine_inspector_reflect_sys_table(engine: Engine, inspector: Inspector):
     metadata = MetaData()
     tables: Table = Table('tables', metadata)
@@ -211,7 +210,6 @@ def test_engine_inspector_reflect_sys_table(engine: Engine, inspector: Inspector
     assert 'table_catalog' in tables.c
     assert 'table_id' in tables.c
 
-@pytest.mark.skip('reflection requires refactor')
 def test_engine_inspector_reflect_user_table(engine: Engine, inspector: Inspector):
     create_students_db(engine)
     metadata = MetaData()

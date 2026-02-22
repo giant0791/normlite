@@ -4,9 +4,8 @@ import pytest
 
 from normlite._constants import SpecialColumns
 from normlite.engine.base import Engine, Inspector, create_engine
-from normlite.engine.context import ExecutionContext
 from normlite.engine.cursor import CursorResult
-from normlite.engine.reflection import ReflectedTableInfo
+from normlite.sql.reflection import ReflectedTableInfo
 from normlite.notiondbapi.dbapi2 import Cursor
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.base import DDLCompiled

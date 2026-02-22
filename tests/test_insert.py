@@ -3,7 +3,7 @@ import uuid
 import pytest
 
 from normlite.exceptions import CompileError
-from normlite.sql.base import _CompileState
+from normlite.sql.base import _CompileState, CompilerState
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import ValuesBase, insert
 from normlite.sql.elements import _BindRole, BindParameter
@@ -161,6 +161,7 @@ def test_bindparam_role_already_assigned_error():
 
 def test_bindparam_invalid_compile_state_error(students: Table):
     nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
     with pytest.raises(expected_exception=CompileError, match='Invalid compiler state: ') as exc_info:
         bp = BindParameter(key='fake')
         bp.role = _BindRole.NO_BINDROLE
@@ -170,6 +171,7 @@ def test_bindparam_invalid_compile_state_error(students: Table):
 
 def test_bindparam_require_column_name_error(students: Table):
     nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
     with pytest.raises(expected_exception=CompileError, match='insert/update require a column name') as exc_info:
         bp = BindParameter(key='fake')
         bp.role = _BindRole.NO_BINDROLE
@@ -179,6 +181,7 @@ def test_bindparam_require_column_name_error(students: Table):
 
 def test_bindparam_column_name_required_error(students: Table):
     nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
     with pytest.raises(expected_exception=CompileError, match='in a where clause shall not have a column name') as exc_info:
         bp = BindParameter(key='fake')
         bp.role = _BindRole.NO_BINDROLE
@@ -188,6 +191,7 @@ def test_bindparam_column_name_required_error(students: Table):
 
 def test_bindparam_column_name_not_found_error(students: Table):
     nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
     with pytest.raises(expected_exception=CompileError, match='Column name: another_fake') as exc_info:
         bp = BindParameter(key='fake')
         bp.role = _BindRole.NO_BINDROLE

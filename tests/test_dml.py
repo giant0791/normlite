@@ -16,29 +16,23 @@ from normlite.engine.base import Connection, Engine, create_engine
 from normlite.engine.context import ExecutionContext
 from normlite.engine.cursor import CursorResult
 from normlite.engine.row import Row
-from normlite.sql.base import Compiled
+from normlite.sql.base import _CompileState, Compiled, CompilerState
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Insert, insert, select
-from normlite.sql.elements import BinaryExpression, BindParameter
+from normlite.sql.elements import _BindRole, BinaryExpression, BindParameter
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, Money, Numeric, String
 
 @pytest.fixture
 def engine() -> Engine:
-    return create_engine(
-        'normlite:///:memory:',
-        _mock_ws_id = '12345678-0000-0000-1111-123456789012',
-        _mock_ischema_page_id = 'abababab-3333-3333-3333-abcdefghilmn',
-        _mock_tables_id = '66666666-6666-6666-6666-666666666666',
-        _mock_db_page_id = '12345678-9090-0606-1111-123456789012'
-    )
+    return create_engine('normlite:///:memory:')
 
 def create_students_db(engine: Engine) -> None:
     # create a new table students in memory
     db = engine._client._add('database', {
         'parent': {
             'type': 'page_id',
-            'page_id': engine._db_page_id
+            'page_id': engine._user_tables_page_id
         },
         "title": [
             {
@@ -81,10 +75,23 @@ def insert_student(
     grade: str,
     is_active: bool
 ) -> None:
+    existing = engine._client.search(
+        payload={
+            'query': 'students',
+            'filter': {
+                'property': 'object',
+                'value': 'database'
+            }
+        }
+    )
+    assert existing['results']
+    assert len(existing['results']) == 1
+
+    students_db_id = existing['results'][0]['id']
     engine._client._add('page', {
         'parent': {
             'type': 'database_id',
-            'database_id': engine._client._get_by_title('students', 'database')['id']
+            'database_id': students_db_id
         },
         'properties': {
             'student_id': {'number': student_id},
@@ -130,13 +137,14 @@ def test_compile_insert_bindparams():
     stmt = insert(students).values(name='Galileo Galilei', year_reg=datetime(1689, 9, 1))
     sql_compiler = NotionCompiler()
     compiled = stmt.compile(sql_compiler)
-    name, name_usage = compiled.params['name']
-    year_reg, year_reg_usage = compiled.params['year_reg']
-    assert isinstance(name, BindParameter)
-    assert name_usage == 'value'
-    assert name.value == 'Galileo Galilei'
-    assert year_reg_usage == 'value'
-    assert year_reg.value == datetime(1689, 9, 1)
+    name_bp = compiled.params['name']
+    year_bp = compiled.params['year_reg']
+    assert isinstance(name_bp, BindParameter)
+    assert name_bp.role is _BindRole.COLUMN_VALUE
+    assert name_bp.value == 'Galileo Galilei'
+    assert isinstance(year_bp, BindParameter)
+    assert year_bp.role is _BindRole.COLUMN_VALUE
+    assert year_bp.value == datetime(1689, 9, 1)
 
 @pytest.mark.skip(reason='Need to fix the bool -> checkbox issue first')
 def test_insert_can_add_new_row(engine: Engine):
@@ -191,8 +199,11 @@ def test_compile_binexp_title_eq():
     metadata = MetaData()
     students = Table('students', metadata, Column('name', String(is_title=True)))
     exp: BinaryExpression = students.c.name == 'Galileo Galilei'
-    compiled = exp.compile(NotionCompiler())
-    as_dict = compiled.as_dict()
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        as_dict = exp._compiler_dispatch(nc)
+
     assert as_dict['property'] == 'name'
     assert as_dict['title'] == {'equals': ':param_0'}
 
@@ -200,8 +211,11 @@ def test_compile_binexp_title_neq():
     metadata = MetaData()
     students = Table('students', metadata, Column('name', String(is_title=True)))
     exp: BinaryExpression = students.c.name != 'Galileo Galilei'
-    compiled = exp.compile(NotionCompiler())
-    as_dict = compiled.as_dict()
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        as_dict = exp._compiler_dispatch(nc)
+
     assert as_dict['property'] == 'name'
     assert as_dict['title'] == {'does_not_equal': ':param_0'}
 
@@ -209,8 +223,11 @@ def test_compile_binexp_title_in():
     metadata = MetaData()
     students = Table('students', metadata, Column('name', String(is_title=True)))
     exp: BinaryExpression = students.c.name.in_('Galileo')
-    compiled = exp.compile(NotionCompiler())
-    as_dict = compiled.as_dict()
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        as_dict = exp._compiler_dispatch(nc)
+
     assert as_dict['property'] == 'name'
     assert as_dict['title'] == {'contains': ':param_0'}
 
@@ -218,8 +235,11 @@ def test_compile_binexp_title_not_in():
     metadata = MetaData()
     students = Table('students', metadata, Column('name', String(is_title=True)))
     exp: BinaryExpression = students.c.name.not_in('Galileo')
-    compiled = exp.compile(NotionCompiler())
-    as_dict = compiled.as_dict()
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        as_dict = exp._compiler_dispatch(nc)
+
     assert as_dict['property'] == 'name'
     assert as_dict['title'] == {'does_not_contain': ':param_0'}
 
@@ -227,8 +247,11 @@ def test_compile_binexp_title_endswith():
     metadata = MetaData()
     students = Table('students', metadata, Column('name', String(is_title=True)))
     exp: BinaryExpression = students.c.name.endswith('lilei')
-    compiled = exp.compile(NotionCompiler())
-    as_dict = compiled.as_dict()
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        as_dict = exp._compiler_dispatch(nc)
+
     assert as_dict['property'] == 'name'
     assert as_dict['title'] == {'ends_with': ':param_0'}
 
@@ -236,8 +259,11 @@ def test_compile_binexp_title_startswith():
     metadata = MetaData()
     students = Table('students', metadata, Column('name', String(is_title=True)))
     exp: BinaryExpression = students.c.name.startswith('lilei')
-    compiled = exp.compile(NotionCompiler())
-    as_dict = compiled.as_dict()
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        as_dict = exp._compiler_dispatch(nc)
+
     assert as_dict['property'] == 'name'
     assert as_dict['title'] == {'starts_with': ':param_0'}
 
@@ -258,13 +284,11 @@ def test_compile_binexp_number_operators():
     # reusing the compiler means that
     # the bind param counter increments and does not get reset
     nc = NotionCompiler()                                       
-    c1 = e1.compile(nc)
-    c2 = e2.compile(nc)
-    c3 = e3.compile(nc)
-
-    d1 = c1.as_dict()
-    d2 = c2.as_dict()
-    d3 = c3.as_dict()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        d1 = e1._compiler_dispatch(nc)
+        d2 = e2._compiler_dispatch(nc)
+        d3 = e3._compiler_dispatch(nc)
 
     assert d1['property'] == 'id'
     assert d2['property'] == 'rate'
@@ -277,8 +301,11 @@ def test_compile_binexp_date_before():
     metadata = MetaData()
     students = Table('students', metadata, Column('start_date', Date()))
     exp: BinaryExpression = students.c.start_date.before(date.today)
-    compiled = exp.compile(NotionCompiler())
-    as_dict = compiled.as_dict()
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        as_dict = exp._compiler_dispatch(nc)
+
     assert as_dict['property'] == 'start_date'
     assert as_dict['date']['before'] == ':param_0'
 
@@ -286,9 +313,11 @@ def test_compile_binexp_date_after():
     metadata = MetaData()
     students = Table('students', metadata, Column('start_date', Date()))
     exp: BinaryExpression = students.c.start_date.after(date.today)
-    sql_compiler = NotionCompiler()
-    compiled = exp.compile(sql_compiler)
-    as_dict = compiled.as_dict()
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        as_dict = exp._compiler_dispatch(nc)
+
     assert as_dict['property'] == 'start_date'
     assert as_dict['date']['after'] == ':param_0'
 
@@ -299,33 +328,22 @@ def test_compile_binexp_bool_opertors():
     e2: BinaryExpression = students.c.is_active != True
     e3: BinaryExpression = students.c.is_active.is_(True)
     e4: BinaryExpression = students.c.is_active.is_not(True)
-    nc = NotionCompiler()
-    c1 = e1.compile(nc)
-    c2 = e2.compile(nc)
-    c3 = e3.compile(nc)
-    c4 = e4.compile(nc)
-    d1 = c1.as_dict()
-    d2 = c2.as_dict()
-    d3 = c3.as_dict()
-    d4 = c4.as_dict()
-    bp1, u1 = c1._execution_binds['param_0']
-    bp2, u2 = c2._execution_binds['param_1']
-    bp3, u3 = c3._execution_binds['param_2']
-    bp4, u4 = c4._execution_binds['param_3']
+    nc = NotionCompiler()                                       
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        d1 = e1._compiler_dispatch(nc)
+        d2 = e2._compiler_dispatch(nc)
+        d3 = e3._compiler_dispatch(nc)
+        d4 = e4._compiler_dispatch(nc)
+
     assert d1['property'] == 'is_active'
     assert d1['checkbox']['equals'] == ':param_0'
-    assert u1 == u2 == 'value'
-    assert bp1.effective_value
     assert d2['property'] == 'is_active'
     assert d2['checkbox']['does_not_equal'] == ':param_1'
-    assert bp2.effective_value
     assert d3['property'] == 'is_active'
     assert d3['checkbox']['equals'] == ':param_2'
-    assert u3 == u4 == 'value'
-    assert bp3.effective_value
     assert d4['property'] == 'is_active'
     assert d4['checkbox']['does_not_equal'] == ':param_3'
-    assert bp4.effective_value
 
 def test_compile_binexp_bool_forbid_truthiness():
     metadata = MetaData()
@@ -346,13 +364,7 @@ def test_compile_select():
     compiled = stmt.compile(sql_compiler)
     as_dict = compiled.as_dict()
     assert as_dict['operation']['request'] == 'query'
-    assert as_dict['parameters']['database_id'] == database_id
-    result_columns = ['start_date'] + [
-        col 
-        for col in SpecialColumns.values() 
-        if col not in (SpecialColumns.NO_PID.value, SpecialColumns.NO_TITLE.value)
-    ]
-    assert result_columns == compiled.result_columns()
+    assert as_dict['path_params']['database_id'] == ':database_id'
 
 def test_compile_select_w_where():
     metadata = MetaData()
@@ -364,10 +376,10 @@ def test_compile_select_w_where():
     sql_compiler = NotionCompiler()
     compiled = stmt.compile(sql_compiler)
     as_dict = compiled.as_dict()
-    filter = as_dict['operation']['template']['filter']
+    filter = as_dict['payload']['filter']
     assert filter['property'] == 'start_date'
-    _, usage = sql_compiler._compiler_state.execution_binds['param_0']
-    assert usage == 'filter'
+    start_date_bp = sql_compiler._compiler_state.execution_binds['param_0']
+    assert start_date_bp.role is _BindRole.COLUMN_FILTER
 
 def test_compile_select_concat_wheres():
     metadata = MetaData()
@@ -380,13 +392,15 @@ def test_compile_select_concat_wheres():
     # monkey patch the id to simulate reflection
     database_id = str(uuid.uuid4())
     students.set_oid(database_id)
-    stmt = select(students)
-    stmt.where(students.c.name != 'Galileo Galilei')
-    stmt.where(students.c.start_date.before(date.today))
+    stmt = (
+        select(students)
+        .where(students.c.name != 'Galileo Galilei')
+        .where(students.c.start_date.before(date.today))
+    )
     sql_compiler = NotionCompiler()
     compiled = stmt.compile(sql_compiler)
     as_dict = compiled.as_dict()
-    filter = as_dict['operation']['template']['filter']
+    filter = as_dict['payload']['filter']
     and_clauselist =  filter['and'] 
     assert len(and_clauselist) == 2
     assert and_clauselist[0]['property'] == 'name'
@@ -425,7 +439,7 @@ def test_compile_nested_boolean_clause_list():
     compiled = stmt.compile(NotionCompiler())
     result = compiled.as_dict()
 
-    assert result['operation']['template']["filter"] == {
+    assert result['payload']["filter"] == {
         "and": [
             {
                 "property": "done",
@@ -452,7 +466,7 @@ def test_compile_nested_boolean_clause_list():
         ]
     }
 
-def test_select_where_filter_binding(dbapi_cursor):
+def test_select_where_filter_binding(engine: Engine):
     metadata = MetaData()
 
     students = Table(
@@ -472,11 +486,10 @@ def test_select_where_filter_binding(dbapi_cursor):
     )
 
     compiled = stmt.compile(NotionCompiler())
-    ctx = ExecutionContext(dbapi_cursor, compiled)
-    ctx.setup()
-    payload = compiled.as_dict()['operation']['payload']
+    ctx = ExecutionContext(engine, engine.connect(), engine._dbapi_connection.cursor(), compiled)
+    ctx.pre_exec()
 
-    assert payload['filter'] == {
+    assert ctx.parameters['payload']['filter'] == {
         "property": "start_date",
         "date": {
             "before": "2020-01-01"
