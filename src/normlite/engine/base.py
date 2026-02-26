@@ -113,9 +113,8 @@ class Connection:
         self._engine = engine
         """The engine used to procure the underlying DBAPI connection."""
 
-        self._execute_options = frozendict(**engine._execution_options)
+        self._execution_options = frozendict(**engine._execution_options)
 
-        
     @property
     def connection(self) -> DBAPIConnection:
         """Provide the underlying DBAPI connection managed by this connection object."""
