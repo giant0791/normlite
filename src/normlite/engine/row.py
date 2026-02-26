@@ -85,6 +85,7 @@ class Row:
             )
 
     def as_tuple(self) -> tuple:
+        """Return the row values as tuple."""
         return tuple(self._values)
 
     def mapping(self) -> dict:

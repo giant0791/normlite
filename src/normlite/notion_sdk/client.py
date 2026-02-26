@@ -27,7 +27,6 @@ to store the Notion data as a JSON file on the file system.
 
 from __future__ import annotations
 import copy
-from dataclasses import dataclass
 import json
 from pathlib import Path
 import pdb
@@ -40,11 +39,21 @@ import random
 import string
 import urllib.parse
 
-from normlite.notion_sdk.getters import get_object_type, get_property_type, get_title
+from normlite.notion_sdk.getters import get_object_type, get_title
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
 
 class NotionError(Exception):
-    """Exception raised for all errors related to the Notion REST API."""
+    """Exception raised for all errors related to the Notion REST API.
+    
+    This class mimics the HTTP response object returned by the Notion API.
+    
+    .. seealso::
+
+        `Notion API status codes <https://developers.notion.com/reference/status-codes>`__
+
+        
+    .. versionchanged:: 0.8.0
+    """
     def __init__(
         self,
         message: str,
@@ -53,8 +62,28 @@ class NotionError(Exception):
         code: str = "validation_error",
     ) -> None:
         self.status_code = status_code
+        """HTTP status code
+        
+        .. seealso::
+
+            `Notion API error codes and messages <https://developers.notion.com/reference/status-codes#error-codes>`__ 
+        """
+
         self.code = code
+        """Notion error code. 
+        
+        .. seealso::
+
+            `Notion API error codes and messages <https://developers.notion.com/reference/status-codes#error-codes>`__ 
+        """
+
         self.message = message
+        """Notion error message.
+        
+        .. seealso::
+
+            `Notion API error codes and messages <https://developers.notion.com/reference/status-codes#error-codes>__ 
+        """
 
         # Preserve normal Exception behavior
         super().__init__(message)
@@ -191,7 +220,7 @@ class AbstractNotionClient(ABC):
             payload (dict): The JSON object containing the required payload as specified by the Notion API.
 
         Returns:
-            dict: The createdpage object with the property identifiers as the only key for each property object.
+            dict: The created page object with the property identifiers as the only key for each property object.
         """
         raise NotImplementedError
 
@@ -1219,8 +1248,6 @@ class InMemoryNotionClient(AbstractNotionClient):
         return None
 
 class FileBasedNotionClient(InMemoryNotionClient):
-    STORE_VERSION = 1
-
     """Enhance the in-memory client with file based persistence.
 
     This class extends the base :class:`InMemoryNotionClient` by providing the capability
@@ -1233,7 +1260,15 @@ class FileBasedNotionClient(InMemoryNotionClient):
             c.pages_create(payload1)   # payload* are previously created JSON Notion objects to be added
             c.pages_create(payload2)
             c.pages_create(payload3)
+    
+    .. versionadded:: 0.8.0
+
     """
+
+    STORE_VERSION = 1
+    """Represent the store version used for compatibility check when reading data stores saved on filesystem."""
+
+
     def __init__(
         self, 
         path: str,

@@ -198,28 +198,44 @@ class ExecutionContext:
     necessarily the same object as in a caching scenario the compiled form
     will have been extracted from the cache.
 
-    .. versionadded: 0.8.0
+    .. versionadded:: 0.8.0
     """
 
     distilled_params: _CoreMultiExecuteParams
     """The normalized bind parameters containing the values to be bound into :attr:`compiled_dict`.
     
-    .. versionadded: 0.8.0
+    .. versionadded:: 0.8.0
     """
 
     path_params: Optional[dict]
+    """The path params for the DBAPI operation.
+    
+    .. versionadded:: 0.8.0
+    """
+
     query_params: Optional[dict]
+    """The query params for the DBAPI operation.
+    
+    .. versionadded:: 0.8.0
+    """
+
     payload: Optional[list[dict]]
+    """The payload parameter for the DBAPI operation.
+    
+    ..versionadded:: 0.8.0
+    """
 
     execution_style: ExecutionStyle
-    """the style of DBAPI cursor method that will be used to execute a statement.
+    """The style of DBAPI cursor method that will be used to execute a statement.
 
     .. versionadded:: 0.8.0
-
     """
 
     execution_options: ExecutionOptions
-    """Execution options associated with the current statement execution."""
+    """Execution options associated with the current statement execution.
+    
+    .. versionadded:: 0.8.0
+    """
 
     _result: Optional[CursorResult]
     """The cursor result of the operation(s) executed in this context.
@@ -266,10 +282,27 @@ class ExecutionContext:
 
     @property
     def operation(self) -> dict:
+        """Return the DBAPI operation.
+        
+        .. versionadded:: 0.8.0
+        """
         return self.compiled_dict['operation']
     
     @property
     def parameters(self) -> dict:
+        """Return the DBAPI parameters for the related operation.
+
+        This attribute provides the DBAPI parameters as a dictionary with the following keys:
+
+        - "path_params": This stores the path parameters for the DBAPI operation.
+
+        - "query_params": This stores the query paramters for the DBAPI operation.
+
+        - "payload": This stores the payload for the DBAPI operation.
+        
+        .. versionadded:: 0.8.0
+        """
+
         dbapi_params = {}
         if self.path_params:
             dbapi_params['path_params'] = self.path_params
@@ -292,7 +325,7 @@ class ExecutionContext:
 
         .. versionchanged:: 0.8.0
             In this version, binding has been extended to support the override case (user-provided parameters in the execute call).
-            Execution options resolution is not supported yet.
+            Execution options resolution is also supported now.
         """ 
         # determine execution style
         self.execution_style = self._determine_execution_style()
@@ -333,6 +366,11 @@ class ExecutionContext:
             self.query_params = self.compiled_dict['query_params']
     
     def post_exec(self) -> None:
+        """Perform row counting preservation after execution.
+        
+        .. note::
+            This method does nothing in this version.
+        """
         ...
     
     def _resolve_parameters(self, overrides: _CoreMultiExecuteParams) -> Mapping[str, BindParameter]:

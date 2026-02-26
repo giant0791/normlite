@@ -92,7 +92,7 @@ class TableState(Enum):
     
     A *table* in normlite is represented by **two coupled backend objects**:
 
-        1. A **system catalog row** (sys tables)
+        1. A **system catalog page** (sys tables)
         2. A **Notion database object**
 
     The lifecycle state is a **derived property** of these two objects.
@@ -111,7 +111,7 @@ class TableState(Enum):
     **Invariants**
 
     * :class:`normlite.engine.base.Inspector.has_table` → False
-    * RESTORE → raises :exc:`normlite.notiondbapi.dbapi2.ProgrammingError
+    * RESTORE → raises :exc:`normlite.notiondbapi.dbapi2.ProgrammingError`
     * DROP → IF EXISTS only
 
     **Typical causes**
@@ -125,7 +125,7 @@ class TableState(Enum):
     
     **Backend reality**
 
-        * sys_tables row exists
+        * sys_tables page exists
         * `_no_in_trash = False`
         * Notion database exists and is not archived
 
@@ -162,8 +162,8 @@ class TableState(Enum):
     **Backend reality**
     One of:
 
-        * sys_tables row exists but database is missing
-        * database exists but sys_tables row is missing
+        * sys_tables page exists but database is missing
+        * database exists but sys_tables page is missing
         * trash flags disagree
 
     **Invariants**
@@ -177,6 +177,16 @@ class TableState(Enum):
 
 
 class SystemCatalog:
+    """Provide service API to manage the system tables data structure.
+    
+    .. seealso::
+
+        :doc:`Working with Databases <user-guide-working-with-databases>` for an overview on what data structures
+        ``normlite`` uses to manage table metadata in a Notion integration.
+    
+    .. versionadded:: 0.8.0
+    
+    """
     def __init__(
         self,
         client: AbstractNotionClient,

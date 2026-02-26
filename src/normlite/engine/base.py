@@ -77,7 +77,7 @@ from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import ReturningStrategy, _distill_params, IsolationLevel
 from normlite.engine.systemcatalog import SystemCatalog, SystemTablesEntry, TableState
 from normlite.exceptions import ArgumentError, ObjectNotExecutableError
-from normlite.sql.reflection import ReflectedColumnInfo, ReflectedTableInfo
+from normlite.sql.reflection import ReflectedColumnInfo
 from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
 from normlite.sql.compiler import NotionCompiler
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, Error, InternalError, ProgrammingError
@@ -92,9 +92,12 @@ class Connection:
     """Provide high level API to a connection to Notion databases.
 
     This class delegates the low level implementation of its methods to the DBAPI counterpart
-    :class:`dbapi2.Connection`.
+    :class:`normlite.notiondbapi.dbapi2.Connection`.
     The :class:`Connection` object is procured by calling the :meth:`Engine.connect()` method of
     the :class:`Engine` class, and provides services for execution of SQL statements.
+
+    .. versionchanged:: 0.8.0
+        This version introduces a fully refactored execution pipeline.
 
     .. versionadded:: 0.7.0
         This version implements the ``autocommit`` isolation level.
@@ -104,14 +107,14 @@ class Connection:
     """
 
     _execution_options: ExecutionOptions
+    """The execution options for this connection."""
 
     def __init__(self, engine: Engine):
         self._engine = engine
         """The engine used to procure the underlying DBAPI connection."""
 
-        # TODO: initialize the connection's execution options with the engine's one
-        # self._execute_options = frozendict(**engine._execution_options)
-        self._execution_options = frozendict()
+        self._execute_options = frozendict(**engine._execution_options)
+
         
     @property
     def connection(self) -> DBAPIConnection:
@@ -151,7 +154,8 @@ class Connection:
 
         .. seealso::
         
-            :meth:`Engine.execution_execution_options`
+            :py:meth:`Engine.execution_options`
+
         """
         return self._execution_options
 
@@ -164,32 +168,25 @@ class Connection:
     ) -> CursorResult:
         """Execute an SQL statement.
 
-        This method executes both DML and DDL statements in an enclosing (implicit) transaction.
-        When it is called for the first time, it sets up the enclosing transaction.
-        All subsequent calls to this method add the statements to the enclosing transaction.
-        Use either :meth:`commit()` to commit the changes permanently or :meth:`rollback()` to
-        rollback.
-
-        Note:
-            **Non-mutating** statements like ``SELECT`` returns their result immediately after the
-            :meth:`Connection.execute()` returns. All **mutating** statements like ``INSERT`` 
-            (see :class:`normlite.sql.dml.Insert`), ``UPDATE`` or ``DELETE`` return an 
-            **empty** result immediately.
-
+        Currently the isolation level autocommit is supported only. Hence, all calls to this method
+        return a result object. For DDL statements, ``result.returns_rows`` yields ``False``.
  
-       Important:
-            The cursor result object associated with the last :meth:`Connection.execute()` contains
-            a single result set of the last statement executed.
-
         Args:
             stmt (Executable): The statement to execute.
             parameters (Optional[d_CoreAnyExecuteParams]): An optional mapping or sequence of mappings containing the parameters to be
                 bound to the SQL statement.   
+            execution_options (Mapping[str, Any]): Optional per-statement execution options. Defaults to ``None``.
 
         Returns:
             CursorResult: The result of the statement execution as cursor result.
 
-        .. versionchanged: 0.8.0
+        Important:
+            The cursor result object associated with the last :meth:`Connection.execute()` contains
+            a single result set of the last statement executed.
+
+        .. versionchanged:: 0.8.0
+            This version provides a fully refactored implementation aligned with the new
+            pipeline design.
 
         .. versionadded:: 0.7.0
 
@@ -465,6 +462,8 @@ class Engine:
         """The database name.
         
         .. deprecated:: 0.8.0
+
+            This will be removed in the next version.
         """
 
         self._ws_id: Optional[str] = kwargs.get("ws_id")
@@ -532,7 +531,7 @@ class Engine:
 
         .. seealso::
 
-            :meth:`Engine.execution_execution_options`
+            :meth:`Engine.execution_options`
         """
         return self._execution_options
     
@@ -546,8 +545,8 @@ class Engine:
     
     @property
     def _user_tables_page_id(self) -> str:
-        """ Page id of the parent page of all databases created in the integration.
-        
+        """Page id of the parent page of all databases created in the integration.
+
         .. versionadded:: 0.8.0
         """
         return self._catalog._user_tables_page_id
@@ -635,19 +634,21 @@ class Engine:
         table_id: str,
         if_not_exists: bool = False,
     ) -> SystemTablesEntry:
-        """_summary_
+        """Add a new page to the system tables database.
 
         Args:
-            table_name (str): _description_
-            table_catalog (str): _description_
-            table_id (str): _description_
-            if_not_exists (bool, optional): _description_. Defaults to False.
+            table_name (str): Name of the table to be added.
+            table_catalog (str): Name of the catalog.
+            table_id (str): The database_id object for this table
+            if_not_exists (bool, optional): If ``True`` creates the table only if it does not exists. Defaults to False.
 
         Raises:
-            ProgrammingError: If a table with the same name exists in the catalog.
+            ProgrammingError: If a table with the same name exists in the catalog and ``if_not_exists == False``.
 
         Returns:
-            SystemTablesEntry: _description_
+            SystemTablesEntry: The table entry object.
+
+        .. versionadded:: 0.8.0
         """
         return self._catalog.ensure_sys_tables_row(
             table_name=table_name,
@@ -761,6 +762,24 @@ class Engine:
         *,
         table_catalog: Optional[str] = None,
     ) -> TableState:
+        """Return the lifecycle state for the given table.
+
+        This method always fetches the table state from the system tables catalog.
+
+        Args:
+            table_name (str): The table name
+            table_catalog (Optional[str], optional): The catalog name. Defaults to None.
+
+        Returns:
+            TableState: The current table state.
+
+        .. seealso::
+
+            :class:`normlite.engine.systemcatalog.TableState` for a comprehensive view on the table states and
+            state-transitions in the table lifecycle.
+
+        .. versionadded:: 0.8.0
+        """
         return self._catalog.get_table_state(
             table_name,
             table_catalog=table_catalog or self._user_database_name,
@@ -780,14 +799,14 @@ class Engine:
         .. versionadded:: 0.8.0
 
         Args:
-            table_name (str): _description_
-            table_catalog (str): _description_
+            table_name (str): Name of the table to be added.
+            table_catalog (str): Catalog name.
 
         Raises
             ProgrammingError: If the table does not exist.
 
         Returns:
-            SystemTablesEntry: _description_
+            SystemTablesEntry: The updated system tables catalog entry.
         """
 
         entry = self.restore_table_metadata(
@@ -845,6 +864,7 @@ class Engine:
             operation: dict,
             parameters: dict,
     ) -> None:
+        """Execute an operation on the supplied DBAPI cursor."""
         cursor.execute(operation, parameters)
                         
 class Inspector:

@@ -35,13 +35,52 @@ IsolationLevel = Literal[
 
 ReturningStrategy = Literal["echo", "refetch"]
 
-
-
 class ExecutionOptions(TypedDict, total=False):
+    """Options for configuring the execution pipeline.
+    
+    .. versionadded:: 0.8.0
+    
+    """
+
     compiled_cache: Optional[CompiledCacheType]
+    """Cache to re-use statement compilation object.
+    
+    .. warning:: 
+        
+        Not supported yet. This option will be used in a later version.
+    """
+    
     logging_token: str
+    """Token for finer granular logging.
+    
+    .. warning:: 
+        Not supported yet. This option will be used in a later version.
+    """
+    
     isolation_level: IsolationLevel
+    """Isolation level for transactions.
+    
+    .. Hint::
+
+        Currently, "AUTOCOMMIT" supported only.
+    """
+
     preserve_rowcount: bool
+    """When True, the ``cursor.rowcount`` attribute will be unconditionally memoized within the result and made available via the 
+    :attr:`normlite.engine.cursor.CursorResult.rowcount` attribute. 
+    
+    Normally, this attribute is only preserved for UPDATE and DELETE statements. 
+    Using this option, the DBAPIs rowcount value can be accessed for other kinds of statements such as INSERT and SELECT.
+
+    .. seealso::
+        
+        See :attr:`normlite.engine.CursorResult.rowcount` for notes regarding the behavior of this attribute.
+
+    .. warning:: 
+        
+        Not supported yet. This option will be used in a later version.
+    
+    """
 
 _CoreSingleExecuteParams = Mapping[str, Any]
 _CoreMultiExecuteParams = Sequence[_CoreSingleExecuteParams]
@@ -57,7 +96,7 @@ def _distill_params(
 ) -> _CoreMultiExecuteParams:
     """Normalize execution parameters into a sequence of parameter mappings.
 
-    Parameter distillation is a _normalization step_ that ensures that the
+    Parameter distillation is a _normalization_  _step_ that ensures that the
     execution pipeline sees exactly **one shape**.
     
     - None -> [{}]

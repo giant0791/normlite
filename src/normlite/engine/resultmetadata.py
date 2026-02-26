@@ -27,7 +27,7 @@ class _CursorColMapRecType(NamedTuple):
     This class provides a description record to enable value and type conversions between DBAPI 2.0 rows and 
     higher level class:`Row` objects.
 
-    .. version-removed:: 0.8.0
+    .. versionremoved:: 0.8.0
         The refactored :class:`_CursorColMapRecType` does not store the column ids anymore.
         These are delivered in the row data returned by the :class:`normlite.notiondbapi.dbapi2.Cursor` fetcher methods.
     
@@ -85,7 +85,7 @@ class CursorResultMetaData(_NoCursorResultMetadata):
         
         .. seealso::
             
-            :mod:`normlite.notiondbapi.compiler.py` module
+            :mod:`normlite.notiondbapi.compiler` module
                 Documentation explaining how retrieved Notion database objects are compiled.
 
     .. versionchanged:: 0.7.0 
@@ -163,9 +163,10 @@ class CursorResultMetaData(_NoCursorResultMetadata):
     
     @property
     def index_for_key(self) -> Mapping[int, str]:
-        """Provid the mapping beween the positional index of a column and its name."""
+        """Provide the mapping beween the positional index of a column and its name."""
         return self._index_for_key
     
     @property
     def is_ddl(self) -> bool:
+        """``True`` if the result comes from execution of a DDL statement."""
         return self._is_ddl

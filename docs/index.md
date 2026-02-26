@@ -6,8 +6,10 @@
 :hidden:
 
 get-started.md
-user-guide.md
-advanced-guide.md
+user-guide-working-with-databases.md
+user-guide-table-reflection.md
+advanced-guide-reflection.md
+advanced-guide-execution-pipeline.md
 autoapi/index
 ```
 

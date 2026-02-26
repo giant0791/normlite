@@ -33,6 +33,13 @@ if TYPE_CHECKING:
     from normlite.engine.context import ExecutionContext
 
 class ExecutableClauseElement(Executable):
+    """Specialized executable for DML statements
+    
+    This class is the base of all DML constructs.
+
+    .. versionadded:: 0.8.0
+    """
+    
     is_ddl = False
 
     def _execute_on_connection(
@@ -54,6 +61,13 @@ class ExecutableClauseElement(Executable):
         )
 
 class ValuesBase(ExecutableClauseElement):
+    """Base for all DML statements with the VALUES clause.
+
+    This class allows the generative pattern and provide values incrementally.
+
+    .. versionadded:: 0.8.0
+    """
+
     _values: Optional[MappingProxyType] = None
     """The immutable mapping holding the values."""
 
@@ -64,6 +78,9 @@ class ValuesBase(ExecutableClauseElement):
     @generative
     def values(self, *args: Union[dict, Sequence[Any]], **kwargs: Any) -> Self:
         """Provide the ``VALUES`` clause to specify the values to be inserted in the new row.
+
+        Each call to this method create a new :class:`ValuesBase` object that carries over the
+        values previously added.
 
         .. versionchanged:: 0.8.0
             The values provided are now coerced to :class:`normlite.sql.elements.BindParameter`
@@ -127,9 +144,6 @@ class ValuesBase(ExecutableClauseElement):
         self._values = MappingProxyType(existing)
 
 class Insert(ValuesBase):
-    is_insert = True
-    __visit_name__ = 'insert'
-
     """Provide the SQL ``INSERT`` node to create a new row in the specified table. 
 
     This class provide a generative implementation of the SQL ``INSERT`` node to be executed on a
@@ -171,6 +185,10 @@ class Insert(ValuesBase):
         Now, the new class provides all features of the SQL ``INSERT`` statement.
 
     """
+    
+    is_insert = True
+    __visit_name__ = 'insert'
+
     def __init__(self, table: Table):
         super().__init__(table)
 

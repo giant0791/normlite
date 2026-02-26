@@ -17,15 +17,15 @@ User-facing reflection API.
 Owns reflection orchestration via protected APIs such as `_reflect_table()`.
 
 ### Executable
-Represents a single database command (e.g. `HasTable`, `ReflectTable`).
+Represents a single database command (e.g. `CreateTable`, `ReflectTable`).
 
 ### ExecutionContext
 Represents exactly one execution: one compiled statement, one cursor, one parameter set.
 
 ## Pseudo-DDL Primitives
 
-- `HasTable`: checks for table existence
-- `ReflectTable`: reflects column metadata
+- `CreateTable`: checks for table existence, then creates the table.
+- `ReflectTable`: checks for table existence, then reflects column metadata
 
 Each primitive executes exactly one command.
 

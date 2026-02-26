@@ -149,8 +149,8 @@ class Executable(ClauseElement):
     It provides a post execution hook with the :meth:`_post_exec` that is intended to be optionally implemented in 
     the subclasses.
 
-    ..versionchanged: 0.8.0
-        It introduces global context for compilation with `is_*` attributes.
+    .. versionchanged:: 0.8.0
+        This version introduces global context for compilation with `is_*` attributes.
     
     .. versionadded:: 0.7.0
         This base class fully supports the connection-driven execution flow of SQL statements.
@@ -159,13 +159,13 @@ class Executable(ClauseElement):
     supports_execution: bool = True
     """Structural flag denoting the main characteristic for an executable of supporting execution.
     
-    ..versionadded:: 0.8.0
+    .. versionadded:: 0.8.0
     """
 
     is_ddl: bool = False
     """``True`` if the executable subclass is a DDL statement.
     
-    ..versionadded:: 0.8.0
+    .. versionadded:: 0.8.0
     """
 
     _execution_options: Optional[ExecutionOptions] = None
@@ -190,6 +190,9 @@ class Executable(ClauseElement):
 
     def execution_options(self, **opts: Any) -> Self:
         """Update the execution options **in-place** returning the same executable.
+
+        Raises
+            ArgumentError: If per-connection or per-engine options are being overridden at statement level. 
         
         .. versionadded:: 0.8.0
         """
@@ -222,11 +225,12 @@ class Executable(ClauseElement):
     def get_execution_options(self) -> ExecutionOptions:
         """Return the execution options that will take effect during execution of this executable.
         
-        .. versionadded:: 0.8.0
-
         .. seealso::
         
-            :meth:`Engine.execution_execution_options`
+            :meth:`normlite.engine.base.Engine.execution_options` for a general overview on how you can configure the 
+                behavior of statement execution.
+
+        .. versionadded:: 0.8.0
         """
         return self._execution_options
 
@@ -277,6 +281,10 @@ class Executable(ClauseElement):
         raise NotImplementedError
 
 class _CompileState(Enum):
+    """Helper class used internally during compilation.
+    
+    .. versionadded:: 0.8.0
+    """
     NOT_STARTED            = auto()
     COMPILING_VALUES       = auto()
     COMPILING_WHERE        = auto()
