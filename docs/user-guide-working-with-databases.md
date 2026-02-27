@@ -37,8 +37,9 @@ Next to INFORMATION_SCHEMA, `normlite` also sets up a **Database Root Page**.
 This is the home for all your tables — the place where your actual data lives.
 
 Whenever you run something like:
-```python
-engine.execute(text("CREATE TABLE tasks (title TEXT PRIMARY KEY)"))
+``` python
+tasks = Table("tasks", ...)
+connection.execute(CreateTable(tasks))
 ```
 normlite creates a Notion database under your root page.
 You can even view or edit that database in the Notion app, just like any normal Notion page.
@@ -46,7 +47,7 @@ You can even view or edit that database in the Notion app, just like any normal 
 ## Connecting Is Easy
 
 When everything is set up, connecting is as simple as:
-```python
+``` python
 engine = create_engine("normlite+auth:///internal?token=YOUR_NOTION_TOKEN&version=NOTION_VERSION")
 ```
 There is **no need to specify a database name**.
