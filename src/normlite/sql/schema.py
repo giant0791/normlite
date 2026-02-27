@@ -439,8 +439,8 @@ class Table(HasIdentifier):
 
             InternalError: If the table is ORPHANED.
 
-        .. sealso::
-            :class:`normlite.engine.reflection.TableState`
+        .. seealso::
+            :class:`normlite.sql.reflection.TableState` for better understanding table lifecycle and state resolution.
 
         .. versionchanged: 0.8.0
             This version provides full state-driven behavior.

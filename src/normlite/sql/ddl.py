@@ -21,7 +21,6 @@ import pdb
 from typing import TYPE_CHECKING, Any, NoReturn, Optional
 
 from normlite._constants import SpecialColumns
-from normlite.future.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext
 from normlite.exceptions import NoSuchTableError
 from normlite.sql.reflection import ReflectedTableInfo

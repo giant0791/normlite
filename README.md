@@ -19,35 +19,78 @@ This is *Notion for developers*, the way it should have been.
 Here’s a sneak peek of what using `normlite` feels like:
 
 ```python
-from normlite import create_engine, text
+from datetime import date
 
-NOTION_TOKEN = 'your-secret-token'
-NOTION_VERSION = '2022-06-28'
-
-# Create a Notion engine using internal integration
-engine = create_engine(
-    f'normlite+auth://internal?token={NOTION_TOKEN}&version={NOTION_VERSION}'
+from normlite import (
+    create_engine, 
+    insert, 
+    select,
+    Table, 
+    Column,
+    String, 
+    Integer, 
+    Boolean, 
+    Date, 
+    MetaData,
 )
 
-conn = engine.connect()
+# create bind to in-memory database
+engine = create_engine('normlite:///:memory:')
 
-# Create a Notion database
-conn.execute(text("CREATE TABLE students (id int, name title_varchar(255), grade varchar(1))"))
+# declare a table
+metadata = MetaData()
+students = Table(
+    'students',
+    metadata,
+    Column('id', Integer()),
+    Column('name', String(is_title=True)),
+    Column('grade', String()),
+    Column('is_active', Boolean()),
+    Column('started_on', Date()),
+)
 
-# Insert some students
-conn.execute(text(
-    "INSERT INTO students (id, name, grade) VALUES (:id, :name, :grade)"
-), [
-    {"id": 1, "name": "Isaac Newton", "grade": "B"},
-    {"id": 2, "name": "Galileo Galilei", "grade": "A"},
-])
+# create table and add some rows
+with engine.connect() as connection:
+    students.create(bind=engine)
+    
+    stmt = (
+        insert(students)
+        .values(
+            id=123456, 
+            name='Galileo Galilei', 
+            grade='A', 
+            is_active=False, 
+            started_on=date(1581, 9, 1)
+        )
+    )
 
-# Query the students
-rows = conn.execute("SELECT id, name, grade FROM students").fetchall()
-for row in rows:
-    print(row)
-# Row(1, 'Isaac Newton', 'B',)
-# Row(2, 'Galileo Galilei', 'A',)
+    connection.execute(stmt)
+    
+    stmt = students.insert()
+    connection.execute(
+        stmt, 
+        {
+            'id': 123457, 
+            'name': 'Isaac Newton', 
+            'grade': 'B', 
+            'is_active': False, 
+            'started_on': date(1661, 9, 1)
+        }
+    )
+
+    stmt = (
+        select(students)
+        .where(students.c.is_active.is_not(True))
+    )
+    result = connection.execute(stmt)
+    rows = result.all()
+
+    # print values for user defined columns only
+    for row in rows:
+        print(row) 
+        
+# (123456, 'Galileo Galilei', 'A', False, datetime.datetime(1581, 9, 1, 0, 0))
+# (123457, 'Isaac Newton', 'B', False, datetime.datetime(1661, 9, 1, 0, 0))
 ```
 
 # Why I Started This Project

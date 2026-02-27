@@ -93,3 +93,5 @@ html_theme_options = {
 # Patch CSS for responsive tables in docstrings
 # See RTD issue: https://github.com/readthedocs/sphinx_rtd_theme/issues/1505
 html_css_files = ["custom.css"]
+
+nitpicky = True
