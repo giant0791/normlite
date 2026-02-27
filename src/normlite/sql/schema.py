@@ -66,7 +66,7 @@ from normlite.engine.systemcatalog import TableState
 from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError, NoSuchTableError
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.sql.elements import ColumnElement, ColumnOperators
-from normlite.sql.type_api import ArchivalFlag, ObjectId, TypeEngine
+from normlite.sql.type_api import ArchivalFlag, ObjectId, String, TypeEngine
 
 if TYPE_CHECKING:
     from normlite.engine.base import Engine
@@ -360,6 +360,9 @@ class Table(HasIdentifier):
             self._create_pk_constraint()
             self.add_constraint(self._primary_key)
 
+        # ensure there is a Column of type String(is_title=True)
+        self._ensure_title_column()
+        
         # add this table to the associated metadata object
         self.metadata._add_table(self)
 
@@ -397,7 +400,6 @@ class Table(HasIdentifier):
                 non_special_columns.add(c)
         return non_special_columns.as_readonly()
 
-    
     def get_oid(self) -> str:
         return self._database_id
     
@@ -413,6 +415,16 @@ class Table(HasIdentifier):
         """Append a column to this table."""
         column._set_parent(self)
         self._columns.add(column)
+
+    def _ensure_title_column(self) -> None:
+        title_cols = 0
+        for c in self.get_user_defined_colums():
+            col_type = c.type_
+            if isinstance(col_type, String) and col_type.is_title:
+                title_cols += 1
+        
+        if title_cols != 1:
+            raise ArgumentError(f"Table '{self.name}' must have only one column of type String(is_title=True)")
 
     def insert(self) -> Insert:
         """Generate a new SQL insert statement for this table."""
