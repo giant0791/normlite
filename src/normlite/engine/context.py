@@ -243,6 +243,12 @@ class ExecutionContext:
     .. versionadded:: 0.8.0
     """
 
+    _rowcount: Optional[int] 
+    """The rowcount returned by an INSERT/UPDATE/DELETE/SELECT statement.
+    
+    .. versionadded: 0.9.0
+    """
+
     def __init__(
             self,
             engine: Engine,
@@ -265,6 +271,7 @@ class ExecutionContext:
         self.query_params = None
         self.payload = None
         self._result = None
+        self._rowcount = None
 
     def _determine_execution_style(self) -> ExecutionStyle:
         params = self.distilled_params
@@ -368,10 +375,14 @@ class ExecutionContext:
     def post_exec(self) -> None:
         """Perform row counting preservation after execution.
         
-        .. note::
-            This method does nothing in this version.
+        .. versionchanged:: 0.9.0
         """
-        ...
+        exec_opts = self.execution_options
+        if exec_opts.get('preserve_rowcount', False):
+            self._rowcount =  self.cursor.rowcount
+            return
+        
+        self._rowcount = -1
     
     def _resolve_parameters(self, overrides: _CoreMultiExecuteParams) -> Mapping[str, BindParameter]:
         """Resolve binding parameters using the values passed as normalized parameters in the constructor.
@@ -522,4 +533,13 @@ class ExecutionContext:
             self._result = CursorResult(self)
 
         return self._result
-        
+
+    def get_rowcount(self) -> Optional[int]:        
+        """Return the DBAPI ``cursor.rowcount`` value, or in some
+        cases an interpreted value.
+
+        See :attr:`normlite.engine.cursor.CursorResult.rowcount` for details on this.
+
+        .. versionadded:: 0.9.0
+        """
+        return self._rowcount

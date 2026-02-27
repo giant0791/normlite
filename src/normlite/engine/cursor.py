@@ -116,6 +116,29 @@ class CursorResult:
             bool: ``True`` if this cursor result returns zero or more rows.
         """
         return self._metadata.returns_row
+
+    @property
+    def rowcount(self) -> int:
+        """ Return the 'rowcount' for this result.
+
+        The primary purpose of 'rowcount' is to report the number of rows
+        matched by the WHERE criterion of an UPDATE or DELETE statement
+        executed once (i.e. for a single parameter set), which may then be
+        compared to the number of rows expected to be updated or deleted as a
+        means of asserting data integrity.
+
+        This attribute is transferred from the ``cursor.rowcount`` attribute
+        of the DBAPI before the cursor is closed. The Notion DBAPI supports row count.
+        In order to retrieve ``cursor.rowcount`` for these statements, set the
+        :attr:`normlite.engine.interfaces.ExecutionOptions.preserve_rowcount` execution option to ``True``, 
+        which will cause the :attr:`normlite.notiondbapi.dbapi2.Cursor.rowcount` value to be unconditionally memoized before 
+        any results are returned or the cursor is closed, regardless of statement type.
+
+        .. versionadded:: 0.9.0
+
+        """
+        rowcount = self.context.get_rowcount()
+        return -1 if rowcount is None else rowcount
     
     def __iter__(self) -> Iterator[Row]:
         """Provide an iterator for this cursor result.

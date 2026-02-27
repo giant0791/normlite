@@ -74,12 +74,7 @@ class ExecutionOptions(TypedDict, total=False):
 
     .. seealso::
         
-        See :attr:`normlite.engine.CursorResult.rowcount` for notes regarding the behavior of this attribute.
-
-    .. warning:: 
-        
-        Not supported yet. This option will be used in a later version.
-    
+        See :attr:`normlite.engine.cursor.CursorResult.rowcount` for notes regarding the behavior of this attribute.
     """
 
 _CoreSingleExecuteParams = Mapping[str, Any]
