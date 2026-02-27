@@ -169,7 +169,7 @@ def test_table_construct():
 
 def test_table_valid_minimal():
     metadata = MetaData()
-    t = Table("students", metadata)
+    t = Table("students", metadata, Column('title', String(is_title=True)))
 
     assert t.name == "students"
     assert t.metadata is metadata
@@ -199,6 +199,17 @@ def test_table_autoload_with_and_columns_mutually_exclusive(engine: Engine, meta
     ):
         Table("students", metadata, Column("id", Integer()), autoload_with=engine)
 
+def test_table_title_column_missing():
+    metadata = MetaData()
+
+    with pytest.raises(ArgumentError) as exc:
+        Table('students',
+              metadata,
+              Column('grade', String())
+        )
+
+    assert 'column of type String(is_title=True)' in str(exc.value)
+
 def test_table_primary_key():
     metadata = MetaData()
     students = Table(
@@ -218,7 +229,7 @@ def test_table_primary_key():
     assert not 'name' in primary_key.columns
 
 def test_invalid_table_name_empty(metadata: MetaData):
-    good = Table('students', metadata)
+    good = Table('students', metadata, Column('name', String(is_title=True)))
 
     with pytest.raises(ArgumentError):
         bad = Table('', metadata)
