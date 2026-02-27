@@ -1,3 +1,9 @@
+## 0.8.1 (2026-02-27)
+
+### Fix
+
+- **sql**: Fix Lack of consistency check for `Table` ([#70](https://github.com/giant0791/normlite/issues/70)).
+
 ## 0.8.0 (2026-02-27)
 
 ### Feat
