@@ -95,6 +95,22 @@ Documentation polishing should be finished before releasing.
 
 ### 3. Finalize Release (release.yml)
 
+> First and foremost, the git tag for the release **must** be created.
+
+For example, for release v0.8.0, create the tag as follows:
+
+``` bash
+git tag -a 0.8.0 -m "Release version 0.8.0"
+git push origin --tags
+```
+
+> Pushing the created tags to the remote branch is **essential**: cz needs the release tags.
+
+If cz cannot find a tag, it will interrupt the GitHub action with the error:
+
+> **No tag found to do an incremental changelog**
+
+
 Trigger `release.yml` manually on the release branch.
 
 This workflow performs:
