@@ -238,7 +238,17 @@ def test_resolve_params_for_create_table(students: Table, engine: Engine):
 #---------------------------------------------------
 # Execute context tests
 #---------------------------------------------------
-def test_execute_dml_context_returning(engine: Engine, students: Table, insert_values: dict):
+@pytest.mark.parametrize("preserve_rowcount,expected_rowcount", [
+        (True, 1),
+        (False, -1)
+])
+def test_execute_dml_context_returning(
+    preserve_rowcount,
+    expected_rowcount,
+    engine: Engine, 
+    students: Table, 
+    insert_values: dict
+):
     # create database and mock reflection
     database_id = create_students_db(engine)
     students.set_oid(database_id)
@@ -255,7 +265,8 @@ def test_execute_dml_context_returning(engine: Engine, students: Table, insert_v
         engine.connect(),
         cursor=cursor,
         compiled=compiled,
-        distilled_params=distilled_params
+        distilled_params=distilled_params,
+        execution_options={"preserve_rowcount": preserve_rowcount}
     )
 
     # Connection._execute_context(context) -> CursorResult:
@@ -266,11 +277,21 @@ def test_execute_dml_context_returning(engine: Engine, students: Table, insert_v
     row = result.one()
     mapping = row.mapping()
 
+    assert result.rowcount == expected_rowcount
     assert students.c.name.name in mapping
     assert students.c.id.name in mapping
     assert not students.c.is_active.name in mapping
 
-def test_execute_dml_context_projection(engine: Engine, students: Table):
+@pytest.mark.parametrize("preserve_rowcount,expected_rowcount", [
+        (True, 2),
+        (False, -1)
+])
+def test_execute_dml_context_projection(
+    preserve_rowcount,
+    expected_rowcount,
+    engine: Engine, 
+    students: Table
+):
     # create database and mock reflection
     database_id = create_students_db(engine)
     students.set_oid(database_id)
@@ -292,6 +313,7 @@ def test_execute_dml_context_projection(engine: Engine, students: Table):
         engine.connect(),
         cursor=cursor,
         compiled=compiled,
+        execution_options={"preserve_rowcount": preserve_rowcount}
     )
 
     # Connection._execute_context(context) -> CursorResult:
@@ -304,6 +326,7 @@ def test_execute_dml_context_projection(engine: Engine, students: Table):
     row_1_mapping = rows[1].mapping()
     
     assert len(rows) == 2
+    assert result.rowcount == expected_rowcount
     assert students.c.is_active.name in row_0_mapping
     assert 'name' not in row_0_mapping
     assert rows[0]['is_active'] == False
@@ -368,6 +391,7 @@ def test_execute_ddl_context_create_table_returning_property_ids(engine: Engine,
     reflected_table_info = ReflectedTableInfo.from_tuples(rows_as_tuples)
     name_col, id_col, is_active_col, start_on_col, grade_col = reflected_table_info.get_user_columns()
 
+    assert result.rowcount == -1
     assert isinstance(name_col.type, String)
     assert name_col.type.is_title
     assert isinstance(id_col.type, Number)
@@ -435,6 +459,7 @@ def test_connection_exec_pipeline_simulated(engine: Engine, students: Table):
     result = context.setup_cursor_result()
 
     assert not result.returns_rows
+    assert result.rowcount == -1
     assert is_valid_uuid4(students.get_oid())
 
     name_col, id_col, is_active_col, start_on_col, grade_col = students.get_user_defined_colums()
@@ -447,7 +472,17 @@ def test_connection_exec_pipeline_simulated(engine: Engine, students: Table):
 #---------------------------------------------
 # Execution pipeline tests
 #---------------------------------------------
-def test_connection_exec_dml_context_returning(engine: Engine, students: Table, insert_values: dict):
+@pytest.mark.parametrize("preserve_rowcount,expected_rowcount", [
+        (True, 1),
+        (False, -1)
+])
+def test_connection_exec_dml_context_returning(
+    preserve_rowcount,
+    expected_rowcount,
+    engine: Engine, 
+    students: Table, 
+    insert_values: dict
+):
     # create database and mock reflection
     database_id = create_students_db(engine)
     students.set_oid(database_id)
@@ -455,7 +490,8 @@ def test_connection_exec_dml_context_returning(engine: Engine, students: Table, 
 
     with engine.connect() as connection:
         execution_options = {
-            "isolation_level": "AUTOCOMMIT"
+            "isolation_level": "AUTOCOMMIT",
+            "preserve_rowcount": preserve_rowcount,
         }
         result = connection.execute(
             insert_stmt, 
@@ -466,11 +502,21 @@ def test_connection_exec_dml_context_returning(engine: Engine, students: Table, 
     row = result.one()
     mapping = row.mapping()
 
+    assert result.rowcount == expected_rowcount
     assert students.c.name.name in mapping
     assert students.c.id.name in mapping
     assert not students.c.is_active.name in mapping
 
-def test_connection_exec_dml_context_projection(engine: Engine, students: Table):
+@pytest.mark.parametrize("preserve_rowcount,expected_rowcount", [
+        (True, 2),
+        (False, -1)
+])
+def test_connection_exec_dml_context_projection(
+    preserve_rowcount,
+    expected_rowcount,
+    engine: Engine, 
+    students: Table, 
+):
     # create database and mock reflection
     database_id = create_students_db(engine)
     students.set_oid(database_id)
@@ -486,7 +532,8 @@ def test_connection_exec_dml_context_projection(engine: Engine, students: Table)
 
     with engine.connect() as connection:
         execution_options = {
-            "isolation_level": "refetch"
+            "isolation_level": "AUTO COMMIT",
+            "preserve_rowcount": preserve_rowcount,
         }
         result = connection.execute(
             select_stmt, 
@@ -498,6 +545,7 @@ def test_connection_exec_dml_context_projection(engine: Engine, students: Table)
     row_1_mapping = rows[1].mapping()
     
     assert len(rows) == 2
+    assert result.rowcount == expected_rowcount
     assert students.c.is_active.name in row_0_mapping
     assert 'name' not in row_0_mapping
     assert rows[0]['is_active'] == False
@@ -520,6 +568,7 @@ def test_connection_exec_ddl_context_create_table(engine: Engine, students: Tabl
         )
     
     assert not result.returns_rows
+    assert result.rowcount == -1
     assert is_valid_uuid4(students.get_oid())
     assert all(
         [c._id is not None for c in students.get_user_defined_colums()]
@@ -532,18 +581,21 @@ def test_connection_exec_ddl_context_drop_table(engine: Engine, students: Table)
 
     with engine.connect() as connection:
         execution_options = {
-            "isolation_level": "AUTO COMMIT"
+            "isolation_level": "AUTO COMMIT",
+            "preserve_rowcount": True,
         }
 
         result = connection.execute(
             stmt_create, 
             execution_options=execution_options
         )
-        #pdb.set_trace()
+        
         result = connection.execute(
             stmt_drop, 
             execution_options=execution_options
         )
+    
+    assert result.rowcount == -1
 
     inspector = engine.inspect()
 

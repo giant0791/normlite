@@ -10,6 +10,7 @@ user-guide-working-with-databases.md
 user-guide-table-reflection.md
 advanced-guide-reflection.md
 advanced-guide-execution-pipeline.md
+advanced-guide-rowcount-preservation.md
 autoapi/index
 ```
 
