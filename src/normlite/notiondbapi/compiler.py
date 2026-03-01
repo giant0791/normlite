@@ -147,12 +147,14 @@ class RowCompiler(NotionObjectCompiler):
     
     """
     def visit_page(self, page: NotionPage) -> Sequence[tuple]:
-        """Compiles a Notion page object into a sequence of 2-value tuples.
+        """Compiles a Notion page object into a sequence of tuples.
+
+        .. versionchanged:: 0.9.0
+            Fix `#171 <https://github.com/giant0791/normlite/issues/197>`.
         
         .. versionadded:: 0.8.0
             New redesigned visit method.
         """
-        visited_page = list()
         # (column_name, column_arg, column_value)
         special_columns = [
             page.id,
@@ -161,9 +163,9 @@ class RowCompiler(NotionObjectCompiler):
             page.created_time,
         ]
 
-        visited_page.extend(special_columns)
         properties = [p.compile(self) for p in page.properties]
-        visited_page.extend(properties)
+        for p in properties:
+            visited_page += (p,)
 
         return visited_page
 

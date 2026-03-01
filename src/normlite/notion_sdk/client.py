@@ -939,7 +939,15 @@ class InMemoryNotionClient(AbstractNotionClient):
     # ------------------------------------------------------------------
 
     def pages_create(self, path_params=None, query_params=None, payload=None) -> dict:
-        return self._add("page", payload)
+        created_page = self._add("page", payload)
+
+        # update properties to return property ids only as of Notion API version 2022-06-28
+        # https://developers.notion.com/reference/page
+        properties = created_page['properties']
+        updated_props = {k: {'id': v['id']} for k, v in properties.items()}
+        created_page['properties'] = updated_props
+        return created_page
+
 
     def pages_retrieve(self, path_params=None, query_params=None, payload=None) -> dict:
         page_id = path_params.get("page_id")

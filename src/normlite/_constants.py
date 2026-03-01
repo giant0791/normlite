@@ -48,6 +48,12 @@ class SpecialColumns(StrEnum):
     
     """
 
+    NO_CREATE_TIME = "_no_created_time"
+    """Date and time when this page was created. Formatted as an ISO 8601 date time string.
+    
+    .. versionadded:: 0.9.0
+    """
+
     NO_TITLE = "_no_title"
     """Notion "title" key for database objects."""
     

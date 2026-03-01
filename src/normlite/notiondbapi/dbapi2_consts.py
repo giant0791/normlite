@@ -28,7 +28,7 @@ class DBAPITypeCode(StrEnum):
     """Enum for type codes used in cursor descriptions.
     
     .. versionadded:: 0.8.0
-        With this enum the module :mod:`dbapi.py` is more PEP 249 compliant.
+        With this enum the module :mod:`dbapi2.py` is more PEP 249 compliant.
     """
     ID                 = 'object_id'
     PROPERTY_ID        = 'property_id'

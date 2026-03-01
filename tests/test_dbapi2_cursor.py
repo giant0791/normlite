@@ -78,6 +78,10 @@ def test_rowcount_result_set_empty(dbapi_cursor: Cursor):
     assert isinstance(rows, list)
     assert 0 == dbapi_cursor.rowcount
 
+def test_lastrowid_result_set_full(dbapi_cursor: Cursor):
+    make_result_set(dbapi_cursor)
+    assert str(uuid.UUID(int=dbapi_cursor.lastrowid)) == "680dee41-b447-451d-9d36-c6eaff13fb46"    
+
 def test_row_count_w_consecutive_fetchones(dbapi_cursor: Cursor):
     # Given: 
     #   I called any of the cursor .execute*() methods and the result set contains 2 rows
