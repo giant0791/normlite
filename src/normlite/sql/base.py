@@ -25,6 +25,7 @@ import pdb
 from typing import Any, ClassVar, NoReturn, Optional, Protocol, TYPE_CHECKING, Self, Sequence, overload
 import copy
 
+from normlite._constants import SpecialColumns
 from normlite.engine.interfaces import _distill_params
 from normlite.exceptions import ArgumentError, UnsupportedCompilationError
 from normlite.utils import frozendict
@@ -134,10 +135,6 @@ class ClauseElement(Generative, Visitable):
             return DDLCompiled(self, compiled_dict, compiler)
         else:
             return Compiled(self, compiled_dict, compiler)
-
-    def get_table(self) -> Table:
-        """Return a collection of columns this clause element refers to."""
-        raise NotImplementedError
 
 class Executable(ClauseElement):
     """Provide the interface for all executable SQL statements.
@@ -350,10 +347,16 @@ class Compiled:
         self._execution_binds = dict(compiler._compiler_state.execution_binds)
         """The bind parameters for this compiled object."""
 
-        self._result_columns = compiler._compiler_state.result_columns
+        is_dml = not self.is_ddl
+        self._result_columns = [
+            colname
+            for colname in SpecialColumns.values(is_dml)
+        ]
         """Optional sequence of strings specifying the column names to be considered 
         in the rows produced by the :class:`normlite.cursor.CursorResult` methods.
         """
+        if compiler._compiler_state.result_columns is not None:
+            self._result_columns.extend(compiler._compiler_state.result_columns)
 
         self._compiler_state = compiler._compiler_state
 

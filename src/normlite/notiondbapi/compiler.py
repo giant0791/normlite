@@ -158,6 +158,7 @@ class RowCompiler(NotionObjectCompiler):
             page.id,
             page.archived,
             page.in_trash,
+            page.created_time,
         ]
 
         visited_page.extend(special_columns)
@@ -172,6 +173,7 @@ class RowCompiler(NotionObjectCompiler):
             (SpecialColumns.NO_ID, DBAPITypeCode.ID, None, database.id,),
             (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.CHECKBOX, None, database.archived,),
             (SpecialColumns.NO_IN_TRASH, DBAPITypeCode.CHECKBOX, None, database.in_trash,),
+            (SpecialColumns.NO_CREATED_TIME, DBAPITypeCode.TIMESTAMP, None, database.created_time),
             (SpecialColumns.NO_TITLE, DBAPITypeCode.TITLE, None, database.title)
         ]
         visited_database.extend(special_columns)

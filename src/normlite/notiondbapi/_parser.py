@@ -118,18 +118,20 @@ def parse_page(payload: dict) -> NotionPage:
     id = payload["id"]
     archived = payload.get('archived')
     in_trash = payload.get('in_trash')
+    created_time = payload.get('created_time')
     properties = [
         parse_page_property(name, pdata) for name, pdata in payload.get("properties", {}).items()
     ]
-    return NotionPage(id=id, properties=properties, archived=archived, in_trash=in_trash)
+    return NotionPage(id=id, properties=properties, archived=archived, in_trash=in_trash, created_time=created_time)
     
 def parse_database(payload: dict) -> NotionDatabase:
     id = payload.get('id')
     title = payload.get('title')
     archived = payload.get('archived')
     in_trash = payload.get('in_trash')
+    created_time = payload.get('created_time')
     properties = [
         parse_database_property(name, pdata) for name, pdata in payload.get("properties", {}).items()
     ]
 
-    return NotionDatabase(id, '', {'title': title}, properties, archived, in_trash)
+    return NotionDatabase(id, '', {'title': title}, properties, archived, in_trash, created_time)

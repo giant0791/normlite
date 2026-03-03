@@ -32,7 +32,19 @@ if TYPE_CHECKING:
     from normlite.engine.base import Connection
     from normlite.engine.context import ExecutionContext
 
-class ExecutableClauseElement(Executable):
+
+class HasTable(Protocol):
+    """Mixin for DML statements"""
+
+    def get_table(self) -> Table:
+        try:
+            return self._table
+        except AttributeError:
+            raise ArgumentError(
+                f"Class '{self.__class__.__name__}' shall have a '_table' attribute."
+            )
+
+class ExecutableClauseElement(HasTable, Executable):
     """Specialized executable for DML statements
     
     This class is the base of all DML constructs.
@@ -41,6 +53,9 @@ class ExecutableClauseElement(Executable):
     """
     
     is_ddl = False
+
+    _table: Table
+    """The table this executable is referred to."""
 
     def _execute_on_connection(
             self, 
@@ -72,7 +87,7 @@ class ValuesBase(ExecutableClauseElement):
     """The immutable mapping holding the values."""
 
     def __init__(self, table: Table):
-        self.table = table
+        self._table = table
         self._values = None
 
     @generative
@@ -127,7 +142,7 @@ class ValuesBase(ExecutableClauseElement):
         # Convert raw values → BindParameter
         for key, value in new_values.items():
             # structural validation
-            if key not in self.table.columns:
+            if key not in self.get_table().columns:
                 raise ArgumentError(f"Wrong key supplied: {key}")
 
             if isinstance(value, BindParameter):
@@ -192,19 +207,10 @@ class Insert(ValuesBase):
     def __init__(self, table: Table):
         super().__init__(table)
 
-        self._table: Table = table
-        """The table object to insert a new row to."""
-
         self._returning = ()
         """The tuple holding the Notion specific columns."""
 
-        for spec_col in SpecialColumns._member_names_:
-            self._returning += (spec_col, )
-
-    def _set_table(self, table: Table) -> None:
-        self._table = table
-
-    def get_table(self) -> ReadOnlyColumnCollection:
+    def get_table_columns(self) -> ReadOnlyColumnCollection:
         return self._table.columns
     
     def returning(self, *cols: Column) -> Self:
@@ -249,7 +255,7 @@ class Insert(ValuesBase):
     def __repr__(self):
         kwarg = []
         if self._table:
-            kwarg.append('table')
+            kwarg.append('_table')
 
         if self._values:
             kwarg.append('values')
@@ -331,7 +337,7 @@ class OrderByClause(HasExpression, ClauseElement):
     def has_expression(self) -> bool:
         return self.clauses
 
-class Select(ExecutableClauseElement):
+class Select(ExecutableClauseElement, HasTable):
     __visit_name__ = 'select'
     is_select = True
 
@@ -355,7 +361,7 @@ class Select(ExecutableClauseElement):
         if len(entities) == 1 and isinstance(entities[0], Table):
             # a Table object has been provided
             table = entities[0]
-            self.table = table
+            self._table = table
             self._projection = []  # project all columns
             return
 
@@ -376,14 +382,14 @@ class Select(ExecutableClauseElement):
                 "All selected columns must belong to the same table"
             )
 
-        self.table: Table = tables.pop()
+        self._table: Table = tables.pop()
         # --- SAFEGUARD: column names must exist on the table ---
-        table_columns = self.table.get_user_defined_colums()
+        table_columns = self._table.get_user_defined_colums()
 
         for col in columns:
             if col.name not in table_columns:
                 raise ArgumentError(
-                    f'Column: {col.name} does not belong to table: {self.table.name}'
+                    f'Column: {col.name} does not belong to table: {self._table.name}'
                 )
         self._projection = [col.name for col in columns]
 

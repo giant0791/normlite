@@ -377,7 +377,7 @@ class NotionCompiler(SQLCompiler):
             # create a mapping for all user columns with dummy values
             placeholders = {
                 col.name: 'placeholder_value'
-                for col in insert.table.get_user_defined_colums()
+                for col in insert.get_table().get_user_defined_colums()
             }
 
             insert = insert.values(**placeholders)
@@ -442,9 +442,11 @@ class NotionCompiler(SQLCompiler):
         payload = {
             'page_size': 100        # Notion imposed max page size
         }
-        database_id = select.table.get_oid()
+        
+        table = select.get_table()
+        database_id = table.get_oid()
         if database_id is None:
-            raise CompileError(f'Table: {select.table.name} has not been previously reflected.')
+            raise CompileError(f'Table: {table.name} has not been previously reflected.')
         
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
@@ -463,21 +465,16 @@ class NotionCompiler(SQLCompiler):
                 payload['filter'] = filter_obj
 
         projection = self._compiler_state.stmt._projection
-        self._compiler_state.result_columns = [
-                col.name 
-                for col in select.table.c 
-                if col.name in SpecialColumns.values()
-        ]
 
         if projection:
             # use select projections for the result columns    
-            self._compiler_state.result_columns.extend(projection)
+            self._compiler_state.result_columns = list(projection)
             query_params['filter_properties'] = projection
         
         else:
             # the select statement provides no projections
             # add all user defined columns
-            user_cols = [col.name for col in select.table.get_user_defined_colums()]
+            user_cols = [col.name for col in table.get_user_defined_colums()]
             self._compiler_state.result_columns.extend(user_cols)
 
         if select._order_by.has_expression():

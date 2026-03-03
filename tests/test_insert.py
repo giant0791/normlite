@@ -2,11 +2,13 @@ from datetime import date
 import uuid
 import pytest
 
+from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError
 from normlite.sql.base import _CompileState, CompilerState
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import ValuesBase, insert
 from normlite.sql.elements import _BindRole, BindParameter
+from normlite.sql.resultschema import SchemaInfo
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, String
 
@@ -199,5 +201,32 @@ def test_bindparam_column_name_not_found_error(students: Table):
         nc._compiler_state.stmt = insert(students)
         nc._add_bindparam(bp, column_name='another_fake')
 
+#---------------------------------------------
+# SchemaInfo tests
+#---------------------------------------------
 
+def test_schema_info_created_from_table_all_cols(students: Table):
+    projected_cols = [c.name for c in students.columns]
+    schema = SchemaInfo.from_table(students, projected_cols)
 
+    assert len(schema.columns) == 9
+
+def test_schema_info_created_from_table_all_sys_cols(students: Table):
+    projected_cols = [c.name for c in students.columns if c.name in SpecialColumns.values()]
+    schema = SchemaInfo.from_table(students, projected_cols)
+    schema_col_names = [c.name for c in schema.columns]
+
+    assert "_no_id" in schema_col_names
+    assert "_no_archived" in schema_col_names
+    assert "_no_in_trash" in schema_col_names
+    assert "_no_created_time" in schema_col_names
+    assert len(schema.columns) == 4
+
+def test_schema_info_created_from_table_projected_cols(students: Table):
+    projected_cols = ["id", "name"]
+    schema = SchemaInfo.from_table(students, projected_cols)
+    schema_col_names = [c.name for c in schema.columns]
+
+    assert len(schema.columns) == 2
+    assert "id" in schema_col_names
+    assert "name" in schema_col_names

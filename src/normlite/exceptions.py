@@ -98,3 +98,9 @@ class NoSuchTableError(NormliteError):
 
     .. versionadded:: 0.8.0
     """
+
+class NoSuchColumnError(InvalidRequestError):
+    """A nonexistent column is requested from a row.
+    
+    .. versionadded:: 0.9.0
+    """

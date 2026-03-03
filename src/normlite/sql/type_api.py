@@ -77,8 +77,9 @@ from types import MappingProxyType
 from typing import Any, Callable, List, Literal, NoReturn, Optional, Protocol, TypeAlias, Union, TYPE_CHECKING
 import uuid
 
+from normlite.exceptions import InvalidRequestError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
-from normlite.sql.elements import Operator, BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, StringComparator
+from normlite.sql.elements import Operator, BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, StringComparator, TimeStampStringISO8601Comparator
 
 
 class TypeEngine(Protocol):
@@ -134,6 +135,28 @@ class TypeEngine(Protocol):
         return {
             self.get_col_spec(): {}
         }
+    
+    @property
+    def python_type(self) -> Any:
+        """Return the Python type object expected to be returned
+        by instances of this type.
+
+        Basically, for those types which enforce a return type,
+        or are known across the board to do such for all common
+        DBAPIs (like ``int`` for example), will return that type.
+
+        By default the generic ``object`` type is returned.
+
+        Returns:
+            Any: The Python type corresponding to this type engine instance.
+
+        .. versionadded:: 0.9.0
+        """
+        return object
+    
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        """ Return the DBAPI type code corresponding to this type engine instance."""
+        raise NotImplemented
 
     def __repr__(self):
         return self.__class__.__name__
@@ -238,6 +261,13 @@ class Integer(Number):
     def __init__(self):
         super().__init__('number')
 
+    @property
+    def python_type(self) -> Any:
+        return int
+    
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        return DBAPITypeCode.NUMBER
+
 class Numeric(Number):
     """Convenient type engine for Notion "number" objects with format ="number_with_commas".
     
@@ -247,6 +277,13 @@ class Numeric(Number):
     def __init__(self):
         super().__init__('number_with_commas')
 
+    @property
+    def python_type(self) -> Any:
+        return Decimal
+    
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        return DBAPITypeCode.NUMBER_WITH_COMMAS
+
 class Money(Number):
     """Convenient type engine for Notion "number" objects handling currencies.
     
@@ -254,6 +291,16 @@ class Money(Number):
     """
     def __init__(self, currency: Currency):
         super().__init__(currency)
+
+    @property
+    def python_type(self) -> Any:
+        return Decimal
+    
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        if self.format == "dollar":
+            return DBAPITypeCode.NUMBER_DOLLAR
+        
+        raise NotImplementedError(f"Number format '{self.format}' not supported in this version.")
 
 class String(TypeEngine):
     """Textual type for Notion title and rich text properties.
@@ -325,6 +372,13 @@ class String(TypeEngine):
             ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
         )
     
+    @property
+    def python_type(self) -> Any:
+        return str
+    
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        return DBAPITypeCode.TITLE if self.is_title else DBAPITypeCode.RICH_TEXT
+
 class Boolean(TypeEngine):
     """Covenient type engine class for "checkbox" objects.
     
@@ -371,6 +425,13 @@ class Boolean(TypeEngine):
             )
         return process
     
+    @property
+    def python_type(self) -> Any:
+        return bool
+    
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        return DBAPITypeCode.CHECKBOX
+
 class Date(TypeEngine):
     """Convenient type engine class for "date" objects.
     
@@ -427,24 +488,26 @@ class Date(TypeEngine):
         return process
 
     def result_processor(self):
-        def process(value: Optional[dict]) -> Optional[Union[tuple, datetime]]:
+        def process(value: Optional[dict]) -> Optional[tuple[Optional[datetime], Optional[datetime]]]:
             if value is None:
                 return None
-            
-            self._raise_if_val_not_dict(value)
-            date_value = value.get('date')
 
-            start = datetime.fromisoformat(date_value["start"]) if date_value.get("start") else None
-            end = datetime.fromisoformat(date_value["end"]) if date_value.get("end") else None
-            restored = (start, end)
-        
-            if restored == (None, None):
+            self._raise_if_val_not_dict(value)
+            date_value = value.get("date")
+
+            if not date_value:
                 return None
-            
-            if restored[1] is None:
-                return restored[0]
-            
-            return restored
+
+            start_raw = date_value.get("start")
+            end_raw = date_value.get("end")
+
+            start = datetime.fromisoformat(start_raw) if start_raw else None
+            end = datetime.fromisoformat(end_raw) if end_raw else None
+
+            if start is None and end is None:
+                return None
+
+            return (start, end)
         return process
     
     def filter_value_processor(self):
@@ -467,19 +530,26 @@ class Date(TypeEngine):
     def get_col_spec(self):
         return "date"
 
+    @property
+    def python_type(self) -> Any:
+        return tuple
+    
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        return DBAPITypeCode.DATE
+
 class UUID(TypeEngine):
     """Base type engine class for UUID ids.
+
+    .. versionchanged:: 0.9.0
+        :meth:`bind_processor` raises :exc:`normlite.exceptions.InvalidRequestError`:
+        Object ids are in Notion **read-only** properties.
     
     .. versionadded:: 0.7.0
     """
     def bind_processor(self):
-        def process(value: Optional[Union[str, uuid.UUID]]) -> Optional[str]:
-            if value is None:
-                return None
-            if isinstance(value, uuid.UUID):
-                return str(value)   # JSON-safe
-            return str(uuid.UUID(value))      # parse from string
-        return process
+        raise InvalidRequestError(
+            "Cannot bind values to system-managed object/property id columns."
+        )
 
     def result_processor(self):
         def process(value: Optional[str]) -> Optional[str]:
@@ -491,6 +561,10 @@ class UUID(TypeEngine):
     def get_col_spec(self):
         return "UUID"
 
+    @property
+    def python_type(self) -> Any:
+        return str
+    
 class PropertyId(TypeEngine):
     """Type engine class for property identifiers.
     
@@ -500,11 +574,9 @@ class PropertyId(TypeEngine):
 
     """
     def bind_processor(self):
-        def process(value: Optional[str]) -> Optional[str]:
-            if value is None:
-                return None
-            return value   # JSON-safe
-        return process
+        raise InvalidRequestError(
+            "Cannot bind values to system-managed preperty 'id' columns."
+        )
 
     def result_processor(self):
         def process(value: Optional[str]) -> Optional[str]:
@@ -514,7 +586,10 @@ class PropertyId(TypeEngine):
         return process
 
     def get_col_spec(self):
-        return "id"
+        raise NotImplementedError('Column spec is not supported for this type engine subclass.')
+  
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        return DBAPITypeCode.PROPERTY_ID
 
 class ObjectId(UUID):
     """Special UUID type representing Notion's "id" property.
@@ -524,18 +599,24 @@ class ObjectId(UUID):
     comparator_factory = ObjectIdComparator
 
     def get_col_spec(self):
-        return "id"
+        raise NotImplementedError('Column spec is not supported for this type engine subclass.')
+  
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        return DBAPITypeCode.ID
 
 class ArchivalFlag(Boolean):
-    """Special Boolean type representing Notion's "archived" property.
+    """Special Boolean type representing Notion "in_trash" and "archived" keys.
+
+    .. versionchanged:: 0.9.0
+        This version support provision of the DBAPI type code for full integration into result-set
+        schema information.
     
     .. versionadded:: 0.7.0
     """
 
     def get_col_spec(self):
-        # In Notion JSON, this is always stored under property 'archived'
-        return "archived"
-
+        raise NotImplementedError('Column spec is not supported for this type engine subclass.')
+    
     def bind_processor(self):
         def process(value: Optional[bool]) -> Optional[bool]:
             if value is None:
@@ -549,6 +630,57 @@ class ArchivalFlag(Boolean):
                 return None
             return bool(value)
         return process
+    
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        return DBAPITypeCode.ARCHIVAL_FLAG
+
+class TimeStampStringISO8601(TypeEngine):
+    """Special type representing Notion "created_time" and "last_edited_time" keys.
+    
+    .. versionadded:: 0.9.0
+    """
+
+    comparator_factory = TimeStampStringISO8601Comparator
+
+    def get_col_spec(self):
+        raise NotImplementedError('Column spec is not supported for this type engine subclass.')
+    
+    def _validate_iso8601(self, value: str) -> None:
+        """Validate ISO 8601 compatibility."""
+        try:
+            normalized = value.replace("Z", "+00:00")
+            datetime.fromisoformat(normalized)
+        except Exception as exc:
+            raise ValueError(
+                f"Value '{value}' is not a valid ISO 8601 timestamp."
+            ) from exc
+
+    def bind_processor(self):
+        raise InvalidRequestError(
+            "Cannot bind values to system-managed timestamp columns."
+        )
+
+    def result_processor(self):
+        def process(value: Optional[str]) -> Optional[str]:
+            if value is None:
+                return None
+
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"Expected ISO 8601 string from Notion, got {type(value).__name__}"
+                )
+
+            self._validate_iso8601(value)
+            return value
+        
+        return process
+
+    @property
+    def python_type(self) -> Any:
+        return str
+    
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        return DBAPITypeCode.TIMESTAMP
 
 type_mapper: dict[str, TypeEngine] = {
     DBAPITypeCode.ID: ObjectId(),
@@ -559,5 +691,7 @@ type_mapper: dict[str, TypeEngine] = {
     DBAPITypeCode.NUMBER: Integer(),
     DBAPITypeCode.NUMBER_WITH_COMMAS: Numeric(),
     DBAPITypeCode.NUMBER_DOLLAR: Money('dollar'),
-    DBAPITypeCode.DATE: Date()
+    DBAPITypeCode.DATE: Date(),
+    DBAPITypeCode.ARCHIVAL_FLAG: ArchivalFlag(),
+    DBAPITypeCode.TIMESTAMP: TimeStampStringISO8601(),
 }

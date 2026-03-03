@@ -281,6 +281,47 @@ def test_execute_dml_context_returning(
     assert students.c.name.name in mapping
     assert students.c.id.name in mapping
     assert not students.c.is_active.name in mapping
+    assert students.c._no_created_time.name in mapping
+
+def test_execute_dml_context_returning_correct_dbapi_description(
+    engine: Engine, 
+    students: Table, 
+    insert_values: dict
+):
+    # create database and mock reflection
+    database_id = create_students_db(engine)
+    students.set_oid(database_id)
+    insert_stmt = insert(students).returning(students.c.name, students.c.id)
+    # Connection.execute(insert_stmt, insert_values)
+    distilled_params = _distill_params(insert_values)
+
+    # stmt._execute_on_connection(connection, distilled_params, execution_options)
+    compiled = insert_stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+        distilled_params=distilled_params,
+    )
+
+    # Connection._execute_context(context) -> CursorResult:
+    #pdb.set_trace()
+    ctx.pre_exec()
+    engine.do_execute(cursor, ctx.operation, ctx.parameters)
+    ctx.post_exec()
+ 
+    # extract cursor.description
+    description = cursor.description
+    col_names = [name for name, _, _, _, _, _, _ in cursor.description]
+
+    assert len(description) == 6
+    assert '_no_id' in col_names
+    assert '_no_in_trash' in col_names
+    assert '_no_archived' in col_names
+    assert '_no_created_time' in col_names
+    assert '_no_parent_id' not in col_names
 
 @pytest.mark.parametrize("preserve_rowcount,expected_rowcount", [
         (True, 2),

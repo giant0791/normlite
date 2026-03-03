@@ -66,7 +66,7 @@ from normlite.engine.systemcatalog import TableState
 from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError, NoSuchTableError
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.sql.elements import ColumnElement, ColumnOperators
-from normlite.sql.type_api import ArchivalFlag, ObjectId, String, TypeEngine
+from normlite.sql.type_api import ArchivalFlag, ObjectId, String, TimeStampStringISO8601, TypeEngine
 
 if TYPE_CHECKING:
     from normlite.engine.base import Engine
@@ -584,6 +584,11 @@ class Table(HasIdentifier):
             _no_in_trash_col = Column(SpecialColumns.NO_IN_TRASH, ArchivalFlag())
             _no_in_trash_col._set_parent(self)
             self._columns.add(_no_in_trash_col)
+
+        if SpecialColumns.NO_CREATED_TIME not in self._columns:
+            _no_created_time_col = Column(SpecialColumns.NO_CREATED_TIME, TimeStampStringISO8601())
+            _no_created_time_col._set_parent(self)
+            self._columns.add(_no_created_time_col)
 
     def _create_pk_constraint(self) -> None:
         table_pks = [c for c in self._columns if c.primary_key]
