@@ -51,6 +51,7 @@ import copy
 
 from normlite.exceptions import ArgumentError
 from normlite.engine.interfaces import _CoreMultiExecuteParams, ExecutionOptions
+from normlite.sql.resultschema import SchemaInfo
 from normlite.utils import frozendict
 
 if TYPE_CHECKING:
@@ -371,7 +372,14 @@ class ExecutionContext:
         # extract the query params
         if 'query_params' in self.compiled_dict:
             self.query_params = self.compiled_dict['query_params']
-    
+
+        # inject schema info if invoked statement is not DDL
+        if self.invoked_stmt.is_ddl:
+            return
+        
+        schema = SchemaInfo.from_table(self.invoked_stmt.get_table(), self.compiled.result_columns())
+        self.cursor._inject_description(schema.as_sequence())
+
     def post_exec(self) -> None:
         """Perform row counting preservation after execution.
         

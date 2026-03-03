@@ -86,6 +86,21 @@ class ProgrammingError(DatabaseError):
     .. versionadded:: 0.8.0
 
     """
+
+class _Description:
+    """Internal DBAPI representation of cursor.description.
+    
+    .. versionadded:: 0.9.0
+    """
+
+    __slots__ = ("_entries",)
+
+    def __init__(self, entries: tuple[tuple, ...]):
+        self._entries = entries
+
+    def as_sequence(self) -> tuple[tuple, ...]:
+        return self._entries
+
 class Cursor:
     """Provide database base cursor functionalty according to the DBAPI 2.0 specification (PEP 249).
     
@@ -106,14 +121,14 @@ class Cursor:
         self._paramstyle: DBAPIParamStyle = 'named'
         """The default parameter style applied."""
 
-        self._description: tuple = None
+        self._description: Sequence[tuple] = None
         """Provide information describing one result column."""
 
         self._closed = False
         """Whether this cursor is closed. Always ``False`` after initialitation."""
 
     @property
-    def description(self) -> tuple:
+    def description(self) -> Optional[Sequence[tuple]]:
         """Provide the cursor description.
         
         This read-only attribute is a sequence of 7-item sequences.   
@@ -202,6 +217,10 @@ class Cursor:
             DBAPIParamStyle: The paramstyle currently in use.
         """
         return self._paramstyle
+    
+    def _inject_description(self, schema_entries: tuple[tuple, ...]) -> None:
+        description = _Description(schema_entries)
+        self._description = description.as_sequence()
 
     def _parse_object(self, obj: Dict[str, Any]) -> Tuple[tuple]:
         """Parse a Notion database or page from a list object into a list of tuples.
@@ -247,8 +266,6 @@ class Cursor:
                 'Only "page" or "database" objects supported.'
             )
     
-        #pdb.set_trace()
-
         oid = obj.get('id', None)
         if not oid:
             raise InterfaceError(f'Missing object id in: {obj}')
@@ -256,9 +273,14 @@ class Cursor:
         row_compiler = RowCompiler()
         desc_compiler = DescriptionCompiler()
         if object_ == 'page':
+            # IMPORTANT: Refactor cursor description in DBAPI.
+            # Pages are now compiled only by the row compiler.
+            # Description is injected by the ExecutionContext, because it is not
+            # inferred anymore using the description compiler.
+            # See issue: https://github.com/giant0791/normlite/issues/150
             page: NotionPage = parse_page(obj)
             row = page.compile(row_compiler)
-            self._description = page.compile(desc_compiler)
+            
         elif object_ == 'database':
             database: NotionDatabase = parse_database(obj)
             row = database.compile(row_compiler)

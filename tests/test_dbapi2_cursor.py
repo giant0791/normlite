@@ -3,6 +3,22 @@ import uuid
 
 import pytest
 from normlite.notiondbapi.dbapi2 import Cursor, Error, InterfaceError
+from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+from normlite.sql.resultschema import ResultColumn, SchemaInfo
+
+@pytest.fixture
+def students_schema() -> SchemaInfo:
+    return SchemaInfo(
+        columns=[
+            ResultColumn(name="_no_id", type_code=DBAPITypeCode.ID, nullable=False),
+            ResultColumn(name="_no_archived", type_code=DBAPITypeCode.ARCHIVAL_FLAG, nullable=False),
+            ResultColumn(name="_no_in_trash", type_code=DBAPITypeCode.ARCHIVAL_FLAG, nullable=False),
+            ResultColumn(name="_no_created_time", type_code=DBAPITypeCode.TIMESTAMP, nullable=False),
+            ResultColumn(name="id", type_code=DBAPITypeCode.NUMBER, nullable=False),
+            ResultColumn(name="grade", type_code=DBAPITypeCode.RICH_TEXT, nullable=False),
+            ResultColumn(name="name", type_code=DBAPITypeCode.TITLE, nullable=False),
+        ]
+    ) 
 
 def make_result_set(dbapi_cursor: Cursor) -> Cursor:
     dbapi_cursor._parse_result_set({
@@ -32,7 +48,6 @@ def make_result_set(dbapi_cursor: Cursor) -> Cursor:
             },
         ]
     }) 
-
 
 def test_rowcount_result_set_not_empty(dbapi_cursor: Cursor):
     # Given: 

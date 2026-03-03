@@ -342,6 +342,9 @@ class NumberComparator(Comparator):
 class DateComparator(Comparator):
     pass
 
+class TimeStampStringISO8601Comparator(Comparator):
+    pass
+
 class _NoArg(Enum):
     NO_ARG = 0
 

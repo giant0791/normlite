@@ -23,6 +23,7 @@ This module implements constants to be used in other modules of ``normlite``.
 
 """
 from enum import StrEnum
+import pdb
 
 class SpecialColumns(StrEnum):
     """Define enum constants for column names to access Notion-specific columns ("special columns").
@@ -56,11 +57,17 @@ class SpecialColumns(StrEnum):
     NO_IN_TRASH = "_no_in_trash"
     """Notion "in_trash" key for all objects."""
 
+    NO_CREATED_TIME = "_no_created_time"
+    """Notion "created_time" timestamp."""
+
     @classmethod
-    def values(cls) -> tuple[str, ...]:
+    def values(cls, is_dml: bool = True) -> tuple[str, ...]:
         """Provide all constants values as tuple.
         
         Helper class method for implementing is in tests.
+
+        .. versionchanged:: 0.9.0
+            This version introduces the paramater ``is_dml``.
 
         Example::
 
@@ -70,5 +77,22 @@ class SpecialColumns(StrEnum):
             >>> '_no_not_exists' in SpecialColumns.values()
             False
 
+        Args:
+            is_dml (bool, optional): If ``True``, it does not add the "_no_title" key (this is required for databases only). Defaults to True.
+
+        Returns:
+            tuple[str, ...]: A sequence containing all special columns names as plain strings.
         """
-        return tuple(m.value for m in cls)
+        values = ()
+        for m in cls:
+            if m.value == '_no_parent_id':
+                #skip: not implemented yet
+                continue
+
+            if m.value == '_no_title' and is_dml:
+                # skip: needed for DDL statements only
+                continue
+
+            values += (m.value, )
+        
+        return values

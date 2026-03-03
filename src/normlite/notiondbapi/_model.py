@@ -179,6 +179,7 @@ class NotionPage(NotionObject):
         properties: Sequence[NotionProperty],
         archived: Optional[bool] = None, 
         in_trash: Optional[bool] = None,
+        created_time: Optional[str] = None
     ):
         self.id = id
         """The page id as assigned by Notion."""
@@ -190,6 +191,8 @@ class NotionPage(NotionObject):
         self.in_trash = in_trash
         """The ``"in_trash"`` flag for this page. Defaults to ``None`` when
         the page is a newly created object."""
+
+        self.created_time = created_time
         
         self.properties = properties
         """The page ``"properties"`` object."""
@@ -226,6 +229,7 @@ class NotionDatabase(NotionObject):
         properties: Sequence[NotionProperty],
         archived: Optional[bool] = None, 
         in_trash: Optional[bool] = None,
+        created_time: Optional[str] = None,
     ):
 
         self.id = id
@@ -233,11 +237,12 @@ class NotionDatabase(NotionObject):
         self.title = title
         self.archived = archived
         self.in_trash = in_trash
+        self.created_time = created_time
         self.properties = properties
 
     def __repr__(self):
         prop_str = ", ".join([prop for prop in self.properties])
-        db_str = f'Database(id="{self.id}", title="{self.title}", archived={self.archived}, in_trash={self.in_trash}, properties={prop_str})'
+        db_str = f'Database(id="{self.id}", title="{self.title}", archived={self.archived}, in_trash={self.in_trash}, created_time={self.created_time}, properties={prop_str})'
         return db_str 
 
 
