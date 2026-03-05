@@ -156,12 +156,12 @@ class RowCompiler(NotionObjectCompiler):
             New redesigned visit method.
         """
         # (column_name, column_arg, column_value)
-        special_columns = [
+        visited_page = (
             page.id,
             page.archived,
             page.in_trash,
             page.created_time,
-        ]
+        )
 
         properties = [p.compile(self) for p in page.properties]
         for p in properties:

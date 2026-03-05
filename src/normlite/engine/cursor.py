@@ -86,7 +86,7 @@ class CursorResult:
             self._metadata = CursorResultMetaData(
                 self._cursor.description, 
                 self._compiled.is_ddl,
-                self._compiled.result_columns())
+            )
 
         else:
             # the cursor passed has not executed any operation yet

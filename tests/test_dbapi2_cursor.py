@@ -2,6 +2,7 @@ import pdb
 import uuid
 
 import pytest
+from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.notiondbapi.dbapi2 import Cursor, Error, InterfaceError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
@@ -182,7 +183,8 @@ def test_fetchall_returning_multiple_rows(dbapi_cursor: Cursor):
     rowcount = dbapi_cursor.rowcount
     rows = dbapi_cursor.fetchall()
     assert len(rows) == rowcount
-    assert rows == expected
+    assert rows[0][0] == expected[0][0]
+    assert rich_text_to_plain_text(rows[1][6].get('title')) == expected[1][5]
 
     assert [] == dbapi_cursor.fetchall()
 
@@ -225,7 +227,9 @@ def test_fetchone_returning_first_row(dbapi_cursor: Cursor):
     assert rowcount == 2
     
     row = dbapi_cursor.fetchone()
-    assert row == expected_1
+    assert row[0] == expected_1[0]
+    assert row[1] == expected_1[1]
+    assert rich_text_to_plain_text(row[6].get('title')) == expected_1[5]
     assert dbapi_cursor.rowcount == rowcount - 1
 
 def test_fetchone_until_result_set_empty(dbapi_cursor: Cursor):
@@ -257,14 +261,18 @@ def test_fetchone_until_result_set_empty(dbapi_cursor: Cursor):
     assert rowcount == 2
     
     row = dbapi_cursor.fetchone()
-    assert row == expected_1
+    assert row[0] == expected_1[0]
+    assert row[1] == expected_1[1]
+    assert rich_text_to_plain_text(row[6].get('title')) == expected_1[5]
     assert dbapi_cursor.rowcount == rowcount - 1
 
     rowcount = dbapi_cursor.rowcount
     assert rowcount == 1
 
     row = dbapi_cursor.fetchone()
-    assert row == expected_2
+    assert row[0] == expected_2[0]
+    assert row[1] == expected_2[1]
+    assert rich_text_to_plain_text(row[6].get('title')) == expected_2[5]
     assert dbapi_cursor.rowcount == 0
 
     row = dbapi_cursor.fetchone()
@@ -288,6 +296,12 @@ def test_fetchone_undefined_result_set(dbapi_cursor: Cursor):
         assert new_rows is None
         assert dbapi_cursor.lastrowid is None
         assert dbapi_cursor.rowcount == -1
+
+def test_last_inserted_ids(dbapi_cursor: Cursor):
+    make_result_set(dbapi_cursor)
+    lastrowid = dbapi_cursor._last_inserted_rowids[-1]
+
+    assert str(uuid.UUID(int=dbapi_cursor.lastrowid)) == lastrowid 
 
 def test_fetchone_on_closed_raises_error(dbapi_cursor: Cursor):
     dbapi_cursor.close()

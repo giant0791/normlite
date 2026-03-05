@@ -44,7 +44,7 @@ class Row:
     
     def _process_ddl_row(self, row_data: tuple) -> None:
         col_name, col_type, col_id, col_value = row_data
-        is_special_col = col_name in SpecialColumns.values(is_dml=False)
+        is_special_col = col_name in SpecialColumns.values()
         type_factory = type_mapper[col_type]
         result_proc = type_factory.result_processor()
         self._values[0] = col_name
