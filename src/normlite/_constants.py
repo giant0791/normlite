@@ -58,10 +58,13 @@ class SpecialColumns(StrEnum):
     """Notion "in_trash" key for all objects."""
 
     NO_CREATED_TIME = "_no_created_time"
-    """Notion "created_time" timestamp."""
+    """Date and time when this page was created. Formatted as an ISO 8601 date time string.
+    
+    .. versionadded:: 0.9.0
+    """
 
     @classmethod
-    def values(cls, is_dml: bool = True) -> tuple[str, ...]:
+    def values(cls) -> tuple[str, ...]:
         """Provide all constants values as tuple.
         
         Helper class method for implementing is in tests.
@@ -83,16 +86,4 @@ class SpecialColumns(StrEnum):
         Returns:
             tuple[str, ...]: A sequence containing all special columns names as plain strings.
         """
-        values = ()
-        for m in cls:
-            if m.value == '_no_parent_id':
-                #skip: not implemented yet
-                continue
-
-            if m.value == '_no_title' and is_dml:
-                # skip: needed for DDL statements only
-                continue
-
-            values += (m.value, )
-        
-        return values
+        return tuple(m.value for m in cls)

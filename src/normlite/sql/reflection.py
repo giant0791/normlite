@@ -55,10 +55,10 @@ class ReflectedTableInfo:
         return self._columns[self._colmap[SpecialColumns.NO_IN_TRASH]].value
     
     def get_user_columns(self) -> Sequence[ReflectedColumnInfo]:
-        return [rc for rc in self._columns if rc.name not in SpecialColumns.values(is_dml=False)]
+        return [rc for rc in self._columns if rc.name not in SpecialColumns.values()]
     
     def get_sys_columns(self) -> Sequence[ReflectedColumnInfo]:
-        return [rc for rc in self._columns if rc.name in SpecialColumns.values(is_dml=False)]
+        return [rc for rc in self._columns if rc.name in SpecialColumns.values()]
         
     def get_columns(self) -> Sequence[ReflectedColumnInfo]:
         return self._columns
@@ -67,7 +67,7 @@ class ReflectedTableInfo:
         if include_all:
             return [rc.name for rc in self._columns]
         else:
-            return [rc.name for rc in self._columns if rc.name not in SpecialColumns.values(is_dml=False)]
+            return [rc.name for rc in self._columns if rc.name not in SpecialColumns.values()]
         
     @classmethod
     def from_tuples(cls, cols_as_tuples: Sequence[tuple]) -> ReflectedTableInfo:

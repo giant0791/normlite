@@ -126,6 +126,13 @@ class Cursor:
 
         self._closed = False
         """Whether this cursor is closed. Always ``False`` after initialitation."""
+        
+        self._last_inserted_rowids = None
+        """The list containing all inserted rowids of the last executed operation.
+        
+        .. versionadded:: 0.9.0
+            See `#171:<https://github.com/giant0791/normlite/issues/171>`.
+        """
 
     @property
     def description(self) -> Optional[Sequence[tuple]]:
@@ -197,10 +204,8 @@ class Cursor:
             # Either result set is empty or semantics is undefined (example: result set is None)
             return None
         
-        # extract the object UUID, 2nd element of the last row as str
-        lastrowid = self._result_set[-1][0]   
-        
-        return uuid.UUID(lastrowid).int
+        # extract the object UUID of the last row as 128-bit integer
+        return uuid.UUID(self._last_inserted_rowids[-1]).int
 
     @property
     def paramstyle(self) -> DBAPIParamStyle:
@@ -320,6 +325,9 @@ class Cursor:
                     f'Unable to parse object: {page_or_database}, '
                     f'{ve}'
                 ) from ve
+            
+        # extract the last inserted rowids.
+        self._last_inserted_rowids = [r[0] for r in self._result_set]
         
     def __iter__(self) -> Iterator[tuple]:
         """Make cursors compatible with the iteration protocol.

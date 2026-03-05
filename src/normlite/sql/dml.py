@@ -208,7 +208,7 @@ class Insert(ValuesBase):
         super().__init__(table)
 
         self._returning = ()
-        """The tuple holding the Notion specific columns."""
+        """The tuple holding user defined comlumns only."""
 
     def get_table_columns(self) -> ReadOnlyColumnCollection:
         return self._table.columns

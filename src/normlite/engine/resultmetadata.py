@@ -102,7 +102,6 @@ class CursorResultMetaData(_NoCursorResultMetadata):
             self, 
             desc: Sequence[tuple], 
             is_ddl: bool,
-            result_columns: Optional[Sequence[str]] = None
         ):
         self._full_map: _ColMapType = dict()
         """Mapping between column name and its description record :class:`_CursorColMapRecType` as described by the DBAPI description"""
@@ -115,22 +114,10 @@ class CursorResultMetaData(_NoCursorResultMetadata):
         """
 
         self._is_ddl = is_ddl
-        self._full_colmap = {
+        self._colmap = {
             col_name: _CursorColMapRecType(col_name, index, column_type)
             for index, (col_name, column_type, _, _, _, _, _) in enumerate(desc)
         }
-
-        if result_columns is None:
-            # the projected view is the same as the DBAPI truth
-            self._colmap = self._full_colmap
-        else:
-            # The projection map is constructed using _full_map by accessing the records by key.
-            # This ensures that the projection map uses the same DBAPI indexes as _full_map
-            self._colmap = {
-                name: self._full_colmap[name]
-                for name in result_columns
-                if name in self._full_colmap
-            }
 
         self._key_to_index: Mapping[str, int] = dict()
         """Mapping between column name and its positional index."""

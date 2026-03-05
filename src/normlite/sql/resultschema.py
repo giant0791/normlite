@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
+from normlite._constants import SpecialColumns
 from normlite.exceptions import NoSuchColumnError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.schema import Table
@@ -61,7 +62,7 @@ class SchemaInfo:
     ) -> SchemaInfo:
         """Build schema information from a :class:`normlite.sql.schema.Table`.
 
-        The schema information **always** contains all columns: user defines **and** system columns.
+        The schema information **always** contains all columns: system columns **and** user defined.
 
         Args:
             table (Table): The table representive the authoritative source of the schema.
@@ -75,7 +76,14 @@ class SchemaInfo:
 
         .. versionadded:: 0.9.0
         """
-        result_columns: list[ResultColumn] = []
+
+        # always initialize the result_columns with sys cols
+        result_columns: list[ResultColumn] = [
+            ResultColumn(name=SpecialColumns.NO_ID, type_code=DBAPITypeCode.ID, nullable=None),
+            ResultColumn(name=SpecialColumns.NO_ARCHIVED, type_code=DBAPITypeCode.ARCHIVAL_FLAG, nullable=None),
+            ResultColumn(name=SpecialColumns.NO_IN_TRASH, type_code=DBAPITypeCode.ARCHIVAL_FLAG, nullable=None),
+            ResultColumn(name=SpecialColumns.NO_CREATED_TIME, type_code=DBAPITypeCode.TIMESTAMP, nullable=None),
+        ]
 
         for name in projected_names:
 

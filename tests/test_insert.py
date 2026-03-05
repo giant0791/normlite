@@ -203,16 +203,21 @@ def test_bindparam_column_name_not_found_error(students: Table):
 
 #---------------------------------------------
 # SchemaInfo tests
+#
+# IMPORTANT:
+# Tests need to set user defined cols only in 
+# the project_cols.
+# SchemaInfo already injects the sys cols
 #---------------------------------------------
 
 def test_schema_info_created_from_table_all_cols(students: Table):
-    projected_cols = [c.name for c in students.columns]
+    projected_cols = [c.name for c in students.get_user_defined_colums()]
     schema = SchemaInfo.from_table(students, projected_cols)
 
-    assert len(schema.columns) == 9
+    assert len(schema.columns) == 9        # 5 (usercols) + 4 (syscols)
 
 def test_schema_info_created_from_table_all_sys_cols(students: Table):
-    projected_cols = [c.name for c in students.columns if c.name in SpecialColumns.values()]
+    projected_cols = []
     schema = SchemaInfo.from_table(students, projected_cols)
     schema_col_names = [c.name for c in schema.columns]
 
@@ -227,6 +232,6 @@ def test_schema_info_created_from_table_projected_cols(students: Table):
     schema = SchemaInfo.from_table(students, projected_cols)
     schema_col_names = [c.name for c in schema.columns]
 
-    assert len(schema.columns) == 2
+    assert len(schema.columns) == 6
     assert "id" in schema_col_names
     assert "name" in schema_col_names

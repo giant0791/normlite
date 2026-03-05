@@ -347,14 +347,11 @@ class Compiled:
         self._execution_binds = dict(compiler._compiler_state.execution_binds)
         """The bind parameters for this compiled object."""
 
-        is_dml = not self.is_ddl
-        self._result_columns = [
-            colname
-            for colname in SpecialColumns.values(is_dml)
-        ]
+        self._result_columns = []
         """Optional sequence of strings specifying the column names to be considered 
         in the rows produced by the :class:`normlite.cursor.CursorResult` methods.
         """
+
         if compiler._compiler_state.result_columns is not None:
             self._result_columns.extend(compiler._compiler_state.result_columns)
 
