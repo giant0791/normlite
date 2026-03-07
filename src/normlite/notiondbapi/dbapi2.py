@@ -17,17 +17,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-import copy
-from enum import StrEnum
 import pdb
-from typing import Any, Dict, Iterator, List, Literal, Optional, Self, Sequence, Tuple, TypeAlias, Union
+from typing import Any, Dict, Iterator, List, Literal, NoReturn, Optional, Self, Sequence, Tuple, TypeAlias, Union
 import uuid
 from flask.testing import FlaskClient
 
 from normlite.notion_sdk.client import AbstractNotionClient, NotionError
-from normlite.notiondbapi._model import NotionDatabase, NotionPage
-from normlite.notiondbapi._parser import parse_database, parse_page
-from normlite.notiondbapi.compiler import RowCompiler, DescriptionCompiler
+from normlite.notiondbapi.resultset import ResultSet
 
 DBAPIParamStyle = Literal[
     'qmark',     
@@ -122,7 +118,20 @@ class Cursor:
         """The default parameter style applied."""
 
         self._description: Sequence[tuple] = None
-        """Provide information describing one result column."""
+        """Provide information describing one result column.
+        
+        This attribute is set by the :meth:`normlite.engine.context.ExecutionContext.pre_exec` via the :meth:`_inject_description` 
+        if the operation to be executed is a DML constrcut. For DML statements the table involved is the authoritative source of truth
+        for the schema (i.e. description).
+
+        .. versionchanged:: 0.9.0
+            In this version, the :attr:`_description` is now used to buffer the description until the
+            :meth:`_parse_result_set` is called. This method now uses the new :class:`normlite.notiondbapi.resultset.ResultSet`
+            to do the parsing of the Notion returned object. The new class for the result set takes care to 
+            either return the injected description, in the DML case, or to construct the description from the retrieved database, 
+            in the DDL case. 
+
+        """
 
         self._closed = False
         """Whether this cursor is closed. Always ``False`` after initialitation."""
@@ -159,7 +168,24 @@ class Cursor:
         This attribute will be ``None`` for operations that do not return rows or if the cursor has not had an operation invoked via the 
         :meth:`execute()` or :meth:`executemany()` methods yet.
         """
-        return self._description
+        if self._result_set is not None:
+            return self._result_set.description
+        
+        return None
+    
+    @property
+    def closed(self) -> bool:
+        """``True`` if the cursor is closed.
+        
+        .. admonition:: DBAPI extension
+            :class: note
+
+            The closed attribute is a normlite extension to the DBAPI 2.0.
+
+        .. versionadded:: 0.9.0
+            
+        """
+        return self._closed
     
     @property
     def rowcount(self) -> int:
@@ -226,6 +252,13 @@ class Cursor:
     def _inject_description(self, schema_entries: tuple[tuple, ...]) -> None:
         description = _Description(schema_entries)
         self._description = description.as_sequence()
+
+    def _check_closed(self) -> NoReturn:
+        if self._closed:
+            raise ProgrammingError(
+                'This cursor is closed. '
+                'Cannot fetch rows or execute operations on a closed cursor'
+            )
 
     def _parse_object(self, obj: Dict[str, Any]) -> Tuple[tuple]:
         """Parse a Notion database or page from a list object into a list of tuples.
@@ -299,35 +332,11 @@ class Cursor:
     def _parse_result_set(self, returned_obj: Dict[str, Any]) -> None:
         """Parse the JSON object returned by the command execution into the cursor's result set.
         """
-        if returned_obj['object'] == 'list':
-            # Multiple objects returned by the API call, example: databases.query.
-            # Parsing requires constructing a list of rows
-            results_as_json = returned_obj.get("results", [])
+        self._check_closed()
+        self._result_set = ResultSet(returned_obj, self._description)
 
-        else:
-            # Single page or database object returned by the API calls: 
-            # pages.create, pages.query, databases.create, databases.query with filters
-            results_as_json = [returned_obj]
-
-        # Parse the objects in the result set
-        self._result_set: List[tuple] = []
-        for page_or_database in results_as_json:
-            try: 
-                row = self._parse_object(page_or_database)
-                if page_or_database['object'] == 'database':
-                    # DDL case: row contains a list of rows describing the database columns
-                    self._result_set.extend(row)
-                else:
-                    # row contain the values of a page
-                    self._result_set.append(row)
-            except ValueError as ve:
-                raise InterfaceError(
-                    f'Unable to parse object: {page_or_database}, '
-                    f'{ve}'
-                ) from ve
-            
         # extract the last inserted rowids.
-        self._last_inserted_rowids = [r[0] for r in self._result_set]
+        self._last_inserted_rowids = self._result_set.last_inserted_rowids
         
     def __iter__(self) -> Iterator[tuple]:
         """Make cursors compatible with the iteration protocol.
@@ -360,27 +369,24 @@ class Cursor:
             The current implementation guarantees that a call to this method will only move 
             the associated cursor forward by one row.
 
+        .. versionchanged:: 0.9.0
+            This version uses the refactored result set. It raises :exc:`ProgrammingError` as sqlite3.
+
         .. versionchanged:: 0.5.0
             Calling this method on a closed cursor raises the :exc:`Error`.
 
         Raises:
             Error: If the cusors is closed.
-            InterfaceError: If the previous call to :meth:`.execute()` did not produce any result set
+            ProgrammingError: If the previous call to :meth:`.execute()` did not produce any result set
                             or no call was issued yet.
 
         Returns:
             Optional[tuple]: The next row as single tuple, or an empty tuple when no more data is available.
         """
-        if self._closed:
-            raise Error(
-                'This cursor is closed. '
-                'Cannot fetch rows or execute operations on a closed cursor'
-            )
+        self._check_closed()
 
         if self._result_set is None:
-            # the previous call to .execute*() did not produce any result set 
-            # or no call was issued yet.
-            raise InterfaceError(
+            raise ProgrammingError(
                 'Cursor result set is empty. '
                 'The previous call to .execute*() did not produce any result set '
                 'or no call was issued yet '
@@ -389,14 +395,10 @@ class Cursor:
                 'or -1 if no call was issued yet.' 
             )
 
-        # assume fetched rows exausted, all results consumed        
-        if len(self._result_set) > 0:
-            # fetched rows not exausted yet, consume return next row
-            return self._result_set.pop(0)
-        
-        # no more rows in the result set
-        self._result_set = None
-        return None
+        try:
+            return next(self._result_set)
+        except StopIteration:
+            return None
 
     def fetchall(self) -> List[tuple]:
         """Fetch all rows of this query result. 
@@ -410,28 +412,25 @@ class Cursor:
             After a call to the :meth:`.fetchall()` the result set is exausted (empty). Any subsequent call
             to this method returns an empty sequence. 
 
+        .. versionchanged:: 0.9.0
+            This version uses the refactored result set. It raises :exc:`ProgrammingError` as sqlite3.   
+
         .. versionchanged:: 0.5.0
             Calling this method on a closed cursor raises the :exc:`Error`.
 
         Raises:
             Error: If the cursor is closed.
-            InterfaceError: If the previous call to :meth:`.execute()` did not produce any result set
+            ProgrammingError: If the previous call to :meth:`.execute()` did not produce any result set
                             or no call was issued yet.
 
         Returns:
             List[tuple]: The list containing all the remaining queried rows. ``[]`` if no rows are available.
         """
 
-        if self._closed:
-            raise Error(
-                'This cursor is closed. '
-                'Cannot fetch rows or execute operations on a closed cursor'
-            )
+        self._check_closed()
 
         if self._result_set is None:
-            # the previous call to .execute*() did not produce any result set 
-            # or no call was issued yet.
-            raise InterfaceError(
+            raise ProgrammingError(
                 'Cursor result set is empty. '
                 'The previous call to .execute*() did not produce any result set '
                 'or no call was issued yet '
@@ -440,15 +439,7 @@ class Cursor:
                 'or -1 if no call was issued yet.' 
             )
 
-        # assume result set is empty
-        results = []
-        if len(self._result_set) > 0:
-            results = list(self)
-            
-            # Important: This ensures that any subsequent call returns an empty list
-            self._result_set = []          
-
-        return results
+        return list(self._result_set)
     
     def execute(self, operation: dict, parameters: DBAPIExecuteParameters) -> Self:
         """Prepare and execute a database operation (query or command).

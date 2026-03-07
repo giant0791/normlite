@@ -5,10 +5,25 @@ import pdb
 
 import pytest
 
+from normlite._constants import SpecialColumns
 from normlite.notion_sdk.client import InMemoryNotionClient
-from normlite.notion_sdk.getters import get_title_property_value, rich_text_to_plain_text
+from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.notiondbapi.resultset import ResultSet
+
+@pytest.fixture
+def row_description() -> tuple[tuple, ...]:
+    return (
+        ("id", DBAPITypeCode.ID, None, None, None, None, None,),
+        ("archived", DBAPITypeCode.ARCHIVAL_FLAG, None, None, None, None, None,),
+        ("in_trash", DBAPITypeCode.ARCHIVAL_FLAG, None, None, None, None, None,),
+        ("created_time", DBAPITypeCode.TIMESTAMP, None, None, None, None, None,),
+        ("name", DBAPITypeCode.TITLE, None, None, None, None, None,),
+        ("id", DBAPITypeCode.NUMBER, None, None, None, None, None,),
+        ("is_active", DBAPITypeCode.CHECKBOX, None, None, None, None, None,),
+        ("start_on", DBAPITypeCode.DATE, None, None, None, None, None,),
+        ("grade", DBAPITypeCode.RICH_TEXT, None, None, None, None, None,),
+    )
 
 @pytest.fixture
 def client() -> InMemoryNotionClient:
@@ -131,23 +146,27 @@ def test_client_conforms_API_version_2022_06_28(client: InMemoryNotionClient):
     assert list(properties['grade'].keys()) == ['id']
 
 
-def test_resultset_pages_from_json(prefilled_client: InMemoryNotionClient, database_id: str):
+def test_resultset_pages_from_json(prefilled_client: InMemoryNotionClient, database_id: str, row_description: tuple[tuple, ...]):
     results = prefilled_client.databases_query({"database_id": database_id})
-    resultset = ResultSet.from_json(results)
+    resultset = ResultSet(results, row_description)
 
     assert len(results["results"]) == len(resultset)
 
-def test_resultset_fetch_first(prefilled_client: InMemoryNotionClient, database_id: str):
+def test_resultset_fetch_first(prefilled_client: InMemoryNotionClient, database_id: str, row_description: tuple[tuple, ...]):
     results = prefilled_client.databases_query({"database_id": database_id})
-    resultset = ResultSet.from_json(results)
+    resultset = ResultSet(results, row_description)
     first = next(resultset)
+    get_in_trash = itemgetter(2)
+    get_col_name = itemgetter(4)
 
-    assert get_title_property_value(first["name"]) == "Galileo Galilei"
+    assert not get_in_trash(first)
+    assert rich_text_to_plain_text(get_col_name(first)) == "Galileo Galilei"
 
-def test_resultset_fetchall(prefilled_client: InMemoryNotionClient, database_id: str):
+def test_resultset_fetchall(prefilled_client: InMemoryNotionClient, database_id: str, row_description: tuple[tuple, ...]):
     results = prefilled_client.databases_query({"database_id": database_id})
-    resultset = ResultSet.from_json(results)
-    all = [get_title_property_value(row["name"]) for row in resultset]
+    resultset = ResultSet(results, row_description)
+    get_col_name = itemgetter(4)    
+    all = [rich_text_to_plain_text(get_col_name(row)) for row in resultset]
 
     assert ["Galileo Galilei", "Isaac Newton", "Ada Lovelace"] == all
 
@@ -157,26 +176,27 @@ def test_resultset_database_from_json(prefilled_client: InMemoryNotionClient, da
     )
 
     assert database["id"] == database_id
-    resultset = ResultSet.from_json(database)
+    resultset = ResultSet(database, description=None)
     #pdb.set_trace()
     rows = [row for row in resultset]
     get_col_name = itemgetter(0)
 
     # expected 9, 1 row for each col spec
-    assert len(resultset) == 9 
+    assert len(resultset) == 10 
 
     # sys cols spec 
-    assert get_col_name(rows[0]) == "object_id"
-    assert get_col_name(rows[1]) == "is_archived"
-    assert get_col_name(rows[2]) == "is_deleted"
-    assert get_col_name(rows[3]) == "created_at"
+    assert get_col_name(rows[0]) == SpecialColumns.NO_ID.value
+    assert get_col_name(rows[1]) == SpecialColumns.NO_ARCHIVED.value
+    assert get_col_name(rows[2]) == SpecialColumns.NO_IN_TRASH.value
+    assert get_col_name(rows[3]) == SpecialColumns.NO_CREATED_TIME.value
+    assert get_col_name(rows[4]) == SpecialColumns.NO_TITLE.value
 
     # user cols spec
-    assert get_col_name(rows[4]) == "name"
-    assert get_col_name(rows[5]) == "id"
-    assert get_col_name(rows[6]) == "is_active"
-    assert get_col_name(rows[7]) == "start_on"
-    assert get_col_name(rows[8]) == "grade"
+    assert get_col_name(rows[5]) == "name"
+    assert get_col_name(rows[6]) == "id"
+    assert get_col_name(rows[7]) == "is_active"
+    assert get_col_name(rows[8]) == "start_on"
+    assert get_col_name(rows[9]) == "grade"
 
 def test_resultset_database_cols_from_json(prefilled_client: InMemoryNotionClient, database_id: str):
     database = prefilled_client.databases_retrieve(
@@ -184,11 +204,42 @@ def test_resultset_database_cols_from_json(prefilled_client: InMemoryNotionClien
     )
 
     assert database["id"] == database_id
-    resultset = ResultSet.from_json(database)
-    description = resultset.make_description()
+    resultset = ResultSet(database, description=None)
+    description = resultset.description
     get_names = itemgetter(0)
     col_names = list(map(get_names, description))
 
     assert len(description) == 5
     assert ["column_name", "column_type", "column_id", "metadata", "is_system"] == col_names
 
+def test_resultset_database_cols_from_json_extract_table_name(prefilled_client: InMemoryNotionClient, database_id: str):
+    database = prefilled_client.databases_retrieve(
+        path_params={"database_id": database_id}
+    )
+    resultset = ResultSet(database, description=None)
+    get_table_name = itemgetter(3)
+    get_table_name_metadata = itemgetter(4)
+    table_name_metadata_row = get_table_name_metadata(resultset._rows)
+    table_name = get_table_name(table_name_metadata_row)
+
+    assert rich_text_to_plain_text(table_name) == "students"
+
+def test_resultset_last_inserted_rowids_from_pages(
+    prefilled_client: InMemoryNotionClient, #
+    database_id: str, 
+    row_description: tuple[tuple, ...]        
+):
+    results = prefilled_client.databases_query({"database_id": database_id})
+    resultset = ResultSet(results, row_description)
+
+    assert len(resultset.last_inserted_rowids) == len(resultset)    
+
+def test_resultset_last_inserted_rowids_from_database(prefilled_client: InMemoryNotionClient, database_id: str):
+    database = prefilled_client.databases_retrieve(
+        path_params={"database_id": database_id}
+    )
+
+    assert database["id"] == database_id
+    resultset = ResultSet(database, description=None)
+
+    assert len(resultset.last_inserted_rowids) == 1
