@@ -22,7 +22,9 @@ from .dbapi2 import (
     InterfaceError,
     DatabaseError,
     InternalError,
-    Cursor
+    ProgrammingError,
+    Cursor,
+    Connection,
 ) 
 
 __all__ = [
@@ -31,5 +33,7 @@ __all__ = [
     'InterfaceError',
     'DatabaseError',
     'InternalError',
-    'Cursor'
+    'ProgrammingError',
+    'Cursor',
+    'Connection',
 ]

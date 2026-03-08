@@ -121,7 +121,7 @@ class SchemaInfo:
                 None,                        # internal_size
                 None,                        # precision
                 None,                        # scale
-                None,                        # col.nullable for future versions.
+                col.nullable,                # col.nullable for future versions.
             )
 
             entries.append(entry)
