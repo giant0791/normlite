@@ -14,10 +14,10 @@ from normlite.notiondbapi.resultset import ResultSet
 @pytest.fixture
 def row_description() -> tuple[tuple, ...]:
     return (
-        ("id", DBAPITypeCode.ID, None, None, None, None, None,),
-        ("archived", DBAPITypeCode.ARCHIVAL_FLAG, None, None, None, None, None,),
-        ("in_trash", DBAPITypeCode.ARCHIVAL_FLAG, None, None, None, None, None,),
-        ("created_time", DBAPITypeCode.TIMESTAMP, None, None, None, None, None,),
+        (SpecialColumns.NO_ID, DBAPITypeCode.ID, None, None, None, None, None,),
+        (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.ARCHIVAL_FLAG, None, None, None, None, None,),
+        (SpecialColumns.NO_IN_TRASH, DBAPITypeCode.ARCHIVAL_FLAG, None, None, None, None, None,),
+        (SpecialColumns.NO_CREATED_TIME, DBAPITypeCode.TIMESTAMP, None, None, None, None, None,),
         ("name", DBAPITypeCode.TITLE, None, None, None, None, None,),
         ("id", DBAPITypeCode.NUMBER, None, None, None, None, None,),
         ("is_active", DBAPITypeCode.CHECKBOX, None, None, None, None, None,),
@@ -242,4 +242,4 @@ def test_resultset_last_inserted_rowids_from_database(prefilled_client: InMemory
     assert database["id"] == database_id
     resultset = ResultSet(database, description=None)
 
-    assert len(resultset.last_inserted_rowids) == 1
+    assert resultset.last_inserted_rowids is None

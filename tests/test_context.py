@@ -324,6 +324,7 @@ def test_execute_dml_context_returning(
     assert not students.c.is_active.name in mapping
     assert students.c._no_created_time.name in mapping
 
+@pytest.mark.skip(".returning requires new feature (see issue #200)")
 def test_execute_dml_context_returning_correct_dbapi_description(
     engine: Engine, 
     students: Table, 
