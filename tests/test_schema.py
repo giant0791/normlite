@@ -14,7 +14,7 @@ from normlite._constants import SpecialColumns
 from normlite.engine.systemcatalog import TableState
 from normlite.notion_sdk.getters import get_object_id, get_object_type
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
-from normlite.sql.schema import MetaData
+from normlite.sql.schema import MetaData, SystemColumn
 from normlite.sql.type_api import ObjectId, ArchivalFlag
 
 @pytest.fixture
@@ -151,19 +151,62 @@ def test_columncollection_no_duplicates(students: Table):
 # Table tests
 #---------------------------------------        
 
+def test_columns_returns_user_def_only(students: Table):
+    assert all([not col.is_system for col in students.columns])
+
+def test_all_sys_columns_have_parent(students: Table):
+    assert all([sc.parent is students for sc in students._sys_columns])
+
+def test_table_contains_sys_columns_if_no_usr_cols_defined(metadata: MetaData):
+    no_usr_col_table = Table("no_usr_cols", metadata)
+
+    assert "object_id" in no_usr_col_table._sys_columns
+    assert "is_deleted" in no_usr_col_table._sys_columns
+    assert "is_archived" in no_usr_col_table._sys_columns
+    assert "created_at" in no_usr_col_table._sys_columns
+    assert "table_name" in no_usr_col_table._sys_columns
+
+def test_sys_columns_api_names_correctly_mapped(metadata: MetaData):
+    table = Table("no_usr_cols", metadata)
+
+    assert table._sys_columns.object_id.api_key() == "id"
+    assert table._sys_columns.is_deleted.api_key() == "in_trash"
+    assert table._sys_columns.is_archived.api_key() == "archived"
+    assert table._sys_columns.created_at.api_key() == "created_time"
+    assert table._sys_columns.table_name.api_key() == "title"
+
+def test_sys_columns_cannot_be_redefined(metadata: MetaData):
+    with pytest.raises(ArgumentError) as exc:
+        table = Table(
+            "table",
+            metadata,
+            SystemColumn("object_id", String(is_title=True), api_name="some_name")
+        )
+
+    assert "object_id" in str(exc.value) 
+
+def test_usr_columns_cannot_be_pk(metadata: MetaData):
+    with pytest.raises(ArgumentError) as exc:
+        table = Table(
+            "students",
+            metadata,
+            Column("name", String(is_title=True), primary_key=True)
+        )
+
+    assert "name" in str(exc.value)
+
 def test_table_construct():
     metadata = MetaData()
     students = Table(
         'students',
         metadata,
-        Column('student_id', Integer(), primary_key=True),
+        Column('student_id', Integer()),
         Column('name', String(is_title=True)),
         Column('grade', String()),
         Column('since', Date())
     )
-    assert students.columns._no_id.primary_key
-    assert students.columns.student_id.primary_key
-    assert not students.columns.name.primary_key
+    assert students._sys_columns.object_id.primary_key
+    assert not students.columns.student_id.primary_key
     assert isinstance(students.c['name'].type_, String)
     assert isinstance(students.c['since'].type_, Date)
 
