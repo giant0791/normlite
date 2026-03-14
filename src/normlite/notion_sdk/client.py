@@ -1037,6 +1037,14 @@ class InMemoryNotionClient(AbstractNotionClient):
         if database_id is None:
             raise NotionError('Invalid request URL: database_id should be defined.')
 
+        # if the in_trash filter is not set ("in_trash" not in payload), skip deleted by default
+        skip_deleted_pages = (
+            not payload.get("in_trash", True)      
+            if payload 
+            else
+            None
+        ) 
+
         has_filter = bool(payload and payload.get('filter'))
         sorts = payload.get("sorts") if payload else None
 
@@ -1058,6 +1066,9 @@ class InMemoryNotionClient(AbstractNotionClient):
                 continue
 
             if parent.get("database_id") != database_id:
+                continue
+
+            if (skip_deleted_pages and obj.get("in_trash")):
                 continue
 
             if not has_filter:

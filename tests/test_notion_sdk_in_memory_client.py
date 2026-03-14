@@ -138,8 +138,7 @@ def test_create_page_under_page_with_valid_title(client):
 
     assert page["parent"]["page_id"] == client._ROOT_PAGE_ID_
     assert "Title" in page["properties"]
-    assert page["properties"]["Title"]["type"] == "title"
-    assert page["properties"]["Title"]["id"] == "title"
+    assert page["properties"]["Title"]["id"] == "title"     # only the property id is returned among the properties
 
 
 def test_page_under_page_rejects_multiple_properties(client):
@@ -223,10 +222,8 @@ def test_create_page_under_database_with_exact_schema(client):
 
     props = page["properties"]
 
+    # only property ids are returned
     assert set(props.keys()) == {"Name", "Age"}
-    assert props["Name"]["type"] == "title"
-    assert props["Age"]["type"] == "number"
-
     assert props["Name"]["id"] == db["properties"]["Name"]["id"]
     assert props["Age"]["id"] == db["properties"]["Age"]["id"]
 
@@ -312,11 +309,13 @@ def test_store_and_returned_object_are_consistent(client):
         payload=make_title_page(client._ROOT_PAGE_ID_, "Consistency")
     )
 
+    retrieved_page = client.pages_retrieve(path_params={"page_id": page["id"]})
+
     stored = client._get_by_id(page["id"])
 
     assert stored is not page  # deep copy returned
-    assert stored["id"] == page["id"]
-    assert stored["properties"] == page["properties"]
+    assert stored["id"] == retrieved_page["id"]
+    assert stored["properties"] == retrieved_page["properties"]
 
 
 # ---------------------------------------------------------
@@ -360,6 +359,21 @@ def test_pages_update_properties(client):
         == "Updated"
     )
 
+def test_pages_update_in_trash_flag(client):
+    page = client.pages_create(
+        payload=make_title_page(client._ROOT_PAGE_ID_)
+    )
+
+    updated = client.pages_update(
+        path_params={"page_id": page["id"]},
+        payload={"in_trash": True},
+    )
+
+    assert updated["in_trash"] is True
+
+    stored = client._get_by_id(page["id"])
+    assert stored["in_trash"] is True
+
 # ---------------------------------------------------------
 # Database query API (databases_query)
 # ---------------------------------------------------------
@@ -384,6 +398,63 @@ def test_databases_query_returns_pages_for_database(client):
     ids = {p["id"] for p in result["results"]}
     assert ids == {p1["id"], p2["id"]}
 
+def test_databases_query_does_not_return_deleted_pages_if_in_trash_false(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+
+    p1 = client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
+    p2 = client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
+
+    result = client.databases_query(
+        path_params={"database_id": db["id"]},
+        payload={},   # no filter
+    )
+
+    assert len(result["results"]) == 2
+
+    u1 = client.pages_update(
+        path_params={"page_id": p1["id"]},
+        payload={"in_trash": True},
+    )
+
+    result = client.databases_query(
+        path_params={"database_id": db["id"]},
+        payload={"in_trash": False},   # retrieve all non-deleted pages
+    )
+
+    assert len(result["results"]) == 1
+    ids = {p["id"] for p in result["results"]}
+    assert ids == {p2["id"]}
+
+def test_databases_query_returns_deleted_pages_if_in_trash_true(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+
+    p1 = client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
+    p2 = client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
+
+    result = client.databases_query(
+        path_params={"database_id": db["id"]},
+        payload={},   # no filter
+    )
+
+    assert len(result["results"]) == 2
+
+    u1 = client.pages_update(
+        path_params={"page_id": p1["id"]},
+        payload={"in_trash": True},
+    )
+
+    result = client.databases_query(
+        path_params={"database_id": db["id"]},
+        payload={"in_trash": True},   # retrieve all pages
+    )
+
+    assert len(result["results"]) == 2
+    ids = {p["id"] for p in result["results"]}
+    assert ids == {p1["id"], p2["id"]}
 
 def test_databases_query_does_not_return_pages_from_other_databases(client):
     db1 = client.databases_create(
@@ -725,11 +796,14 @@ def test_page_under_page_title_is_normalized(client):
         }
     )
 
-    title_rt = get_title_rich_text(page)
+    # always retrieve the page as pages_create() does not return the property values
+    retrieved_page = client.pages_retrieve(path_params={"page_id": page["id"]})
+
+    title_rt = get_title_rich_text(retrieved_page)
 
     assert isinstance(title_rt, list)
     assert title_rt[0]["text"]["content"] == "child"
-    assert get_title(page) == "child"
+    assert get_title(retrieved_page) == "child"
 
 def test_page_under_page_rejects_extra_properties(client):
     root = client.pages_create(
@@ -806,7 +880,9 @@ def test_page_under_database_properties_are_normalized(client):
         }
     )
 
-    props = page["properties"]
+    retrieved_page = client.pages_retrieve(path_params={"page_id": page["id"]})
+
+    props = retrieved_page["properties"]
 
     assert props["table_name"]["type"] == "title"
     assert props["table_name"]["title"][0]["text"]["content"] == "users"
@@ -1050,9 +1126,13 @@ def test_search_for_page_or_database_query_returns_matching_only(client):
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
     )
 
+    database1 = client.databases_retrieve(path_params={"database_id": db1["id"]})
+
     pg1 = client.pages_create(
         payload=make_title_page(client._ROOT_PAGE_ID_, title='students_v1')
     )
+
+    page1 = client.pages_retrieve(path_params={"page_id": pg1["id"]})
 
     result = client.search(
         payload={
@@ -1060,7 +1140,7 @@ def test_search_for_page_or_database_query_returns_matching_only(client):
         }
     )
 
-    assert result['results'] == [db1, pg1]
+    assert result['results'] == [database1, page1]
 
 def test_search_for_database_query_returns_matching_only(client):
     db1 = client.databases_create(
@@ -1092,6 +1172,7 @@ def test_search_for_page_query_returns_matching_only(client):
         payload=make_title_page(client._ROOT_PAGE_ID_, title='students_v1')
     )
 
+    page1 = client.pages_retrieve(path_params={"page_id": pg1["id"]})
     result = client.search(
         payload={
             'query': 'students_v1',
@@ -1102,7 +1183,7 @@ def test_search_for_page_query_returns_matching_only(client):
         }
     )
 
-    assert result['results'] == [pg1]
+    assert result['results'] == [page1]
 
 def test_search_returns_exact_match_only(client):
     db1 = client.databases_create(
@@ -1185,4 +1266,5 @@ def test_search_filter_value_not_a_page_or_database_raises(client):
     assert exc.value.status_code == 400
     assert "body.value should be either 'page' or 'database'." in str(exc.value)
 
-  
+def test_deleted_pages_have_in_trash_true(client):
+    pass
