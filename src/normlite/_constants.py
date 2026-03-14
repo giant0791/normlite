@@ -25,6 +25,8 @@ This module implements constants to be used in other modules of ``normlite``.
 from enum import StrEnum
 import pdb
 
+from normlite.utils import normlite_deprecated
+
 class SpecialColumns(StrEnum):
     """Define enum constants for column names to access Notion-specific columns ("special columns").
 
@@ -35,10 +37,10 @@ class SpecialColumns(StrEnum):
     .. versionadded:: 0.7.0
 
     """
-    NO_ID = "_no_id"
+    NO_ID = "object_id"
     """Notion "id" key for all objects."""
 
-    NO_PID = "_no_parent_id"
+    NO_PID = "parent_id"
     """Parent identifier for a Notion entity.
     
     The parent identifier is the "database_id" key for pages belonging to a database and
@@ -48,22 +50,23 @@ class SpecialColumns(StrEnum):
     
     """
 
-    NO_TITLE = "_no_title"
+    NO_TITLE = "table_name"
     """Notion "title" key for database objects."""
     
-    NO_ARCHIVED = "_no_archived"
+    NO_ARCHIVED = "is_archived"
     """Notion "archived" key for all objects."""
     
-    NO_IN_TRASH = "_no_in_trash"
+    NO_IN_TRASH = "is_deleted"
     """Notion "in_trash" key for all objects."""
 
-    NO_CREATED_TIME = "_no_created_time"
+    NO_CREATED_TIME = "created_at"
     """Date and time when this page was created. Formatted as an ISO 8601 date time string.
     
     .. versionadded:: 0.9.0
     """
 
     @classmethod
+    @normlite_deprecated("This method is deprecated and will be remove in a future version.")
     def values(cls) -> tuple[str, ...]:
         """Provide all constants values as tuple.
         

@@ -133,24 +133,15 @@ class CreateTable(ExecutableDDLStatement):
         rows = result.all()
         data_as_tuples = [r.as_tuple() for r in rows]        
         reflected_table_info = ReflectedTableInfo.from_tuples(data_as_tuples)
-
         table = self._table
+
+        # assign database id
+        table._sys_columns["object_id"]._value = reflected_table_info.id
         
-        # assign the table id
-        table.set_oid(reflected_table_info.id)
-
-        # assign user column ids
-        for colmeta in reflected_table_info.get_user_columns():
-            table.c[colmeta.name]._id = colmeta.id
-
-        # assign sys column values
-        for colmeta in reflected_table_info.get_sys_columns():
-            if colmeta.name in (SpecialColumns.NO_ID, SpecialColumns.NO_TITLE):
-                # skip the object id and title, they currently are not modelled as columns
-                # but attributes
-                continue
-
-            table.c[colmeta.name].value = colmeta.value
+        for colmeta in reflected_table_info.get_columns():           
+            if not colmeta.is_system:
+                # assign user column ids only
+                table.c[colmeta.name]._id = colmeta.id
         
         # add this table to the sys "tables" catalog
         engine = context.engine
@@ -255,20 +246,19 @@ class ReflectTable(ExecutableDDLStatement):
 
         # reflect columns
         for colmeta in self._reflected_table_info.get_columns():
-            primary_key = True if colmeta.name == SpecialColumns.NO_ID.value else False
-            new_col = Column(
-                colmeta.name,
-                colmeta.type,
-                colmeta.id,
-                primary_key
-            )
-
-            new_col._set_parent(self._reflected_table)
-            self._reflected_table.append_column(new_col)
-
-        # reflect primary key
-        self._reflected_table._create_pk_constraint()
-        self._reflected_table.add_constraint(self._reflected_table.primary_key)
+            if colmeta.is_system and colmeta.name != "table_name":
+                self._reflected_table._sys_columns[colmeta.name]._value = colmeta.value
+                continue
+           
+            if not colmeta.is_system:
+                # assign user column ids
+                new_col = Column(
+                    name=colmeta.name,
+                    type_=colmeta.type,
+                    id_=colmeta.id,
+                )
+                new_col._set_parent(self._reflected_table)
+                self._reflected_table.append_column(new_col)
 
     def _as_info(self) -> ReflectedTableInfo:
         return self._reflected_table_info

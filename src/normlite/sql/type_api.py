@@ -341,20 +341,35 @@ class String(TypeEngine):
                 return None
             return {self.get_col_spec(): [{'text': {'content': str(value)}}]}
         return process
+    
+    def _normalize_value_for_result_processing(self, value: Union[dict, list]) -> list:
+            if isinstance(value, list):
+                return value
+
+            if isinstance(value, dict):
+                text_value = value.get(self.get_col_spec())
+            
+                if not isinstance(text_value, list):
+                    raise ValueError(
+                        f'{self.get_col_spec()} value must be a list. '
+                        f'Value type is: {value.__class__.__name__}'
+                    )
+
+                return text_value
+    
+            # **new** string result processor must handle both dict **and** list.
+            raise ValueError(
+                f'{self.get_col_spec()} value must be either a dict or a list. '
+                f'Value type is: {value.__class__.__name__}'
+            )
 
     def result_processor(self):
-        def process(value: Optional[dict]) -> Optional[str]:
+        def process(value: Optional[Union[dict, list]]) -> Optional[str]:
             if value is None:
                 return None
-            
-            self._raise_if_val_not_dict(value)
-            text_value = value.get(self.get_col_spec())
-            
-            if not isinstance(text_value, list):
-                raise ValueError(
-                    f'{self.get_col_spec()} value must be a list. '
-                    f'Value type is: {value.__class__.__name__}'
-                )
+        
+            # **new** in 0.9.0: both dict and list values supported
+            text_value = self._normalize_value_for_result_processing(value)
             
             # Notion rich_text is a list of text objects → extract 'text'
             return "".join([block.get("text").get("content") for block in text_value])

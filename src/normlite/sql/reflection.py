@@ -22,12 +22,19 @@ from typing import Any, NamedTuple, Optional, Sequence
 from normlite._constants import SpecialColumns
 from normlite.notion_sdk.getters import get_title
 from normlite.sql.type_api import Boolean, ObjectId, String, TimeStampStringISO8601, TypeEngine, type_mapper
+from normlite.utils import normlite_deprecated
 
 class ReflectedColumnInfo(NamedTuple):
     name: str
     type: TypeEngine
     id: Optional[str]
     value: Optional[Any]
+    is_system: bool
+    """``True`` if the column is a system column.
+    
+    .. versionadded:: 0.9.0
+        See refactoring in issue [#202](https://github.com/giant0791/normlite/issues/202)
+    """
 
 class ReflectedTableInfo:
     def __init__(self, columns: Sequence[ReflectedColumnInfo]):
@@ -54,15 +61,18 @@ class ReflectedTableInfo:
     def in_trash(self) -> Optional[True]:
         return self._columns[self._colmap[SpecialColumns.NO_IN_TRASH]].value
     
+    @normlite_deprecated("This method is deprecated and will be removed in a future version.")
     def get_user_columns(self) -> Sequence[ReflectedColumnInfo]:
         return [rc for rc in self._columns if rc.name not in SpecialColumns.values()]
     
+    @normlite_deprecated("This method is deprecated and will be removed in a future version.")
     def get_sys_columns(self) -> Sequence[ReflectedColumnInfo]:
         return [rc for rc in self._columns if rc.name in SpecialColumns.values()]
         
     def get_columns(self) -> Sequence[ReflectedColumnInfo]:
         return self._columns
     
+    @normlite_deprecated("This method is deprecated and will be removed in a future version.")
     def get_column_names(self, include_all: Optional[bool] = True) -> Sequence[str]:
         if include_all:
             return [rc.name for rc in self._columns]
@@ -83,13 +93,15 @@ class ReflectedTableInfo:
         columns: list[ReflectedColumnInfo] = []
 
         for row in cols_as_tuples:
-            col_name, col_type, col_id, col_value = row
+            col_name, col_type, col_id, col_value, is_system = row
             columns.append(
                 ReflectedColumnInfo(
                     name=col_name,
                     type=col_type,
                     id=col_id,
                     value=col_value,
+                    is_system=is_system
+
                 )
             )
 

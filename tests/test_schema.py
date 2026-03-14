@@ -14,7 +14,7 @@ from normlite._constants import SpecialColumns
 from normlite.engine.systemcatalog import TableState
 from normlite.notion_sdk.getters import get_object_id, get_object_type
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
-from normlite.sql.schema import MetaData
+from normlite.sql.schema import MetaData, SystemColumn
 from normlite.sql.type_api import ObjectId, ArchivalFlag
 
 @pytest.fixture
@@ -105,10 +105,20 @@ def test_columncollection_getitem(students: Table):
     assert len(sc[0:3]) == 3
 
 def test_columncollection_contains(students: Table):
-    uc = students.get_user_defined_colums()
+    uc = students.columns
  
     assert 'id' in uc
-    assert not '_no_id' in uc
+    assert not 'object_id' in uc
+
+def test_columncollection_truthness(metadata: MetaData):
+    table = Table("no_col_table", metadata)
+
+    assert not bool(table.c)
+    assert len(table.c) == 0
+    assert not bool(table.columns)
+    assert len(table.columns) == 0
+    assert bool(table._sys_columns)     # system columns are always present
+    assert len(table._sys_columns) > 0
 
 def test_columncollection_getitem_wrong_index(students: Table):
     sc = students.columns
@@ -118,14 +128,14 @@ def test_columncollection_getitem_wrong_index(students: Table):
 
 def test_columncollection_add(students: Table):
     sc = students.columns
-    fake_id = Column("fake_id", ObjectId(), primary_key=True)
+    fake_id = Column("fake_id", ObjectId())
     fake_id._set_parent(students)
     fake_archived = Column("fake_archived", ArchivalFlag())
     fake_archived._set_parent(students)
     sc.add(fake_id)
     sc.add(fake_archived)
 
-    assert len(sc) == 10
+    assert len(sc) == 7
     assert isinstance(sc.fake_id, Column)
     assert isinstance(sc.fake_archived, Column)
 
@@ -135,37 +145,106 @@ def test_columncollection_getitem_wrong_key(students: Table):
     with pytest.raises(KeyError, match=f'{key}'):
         col = sc[key]
 
-def test_columncollection_asreadonly(students: Table):
+def test_usr_columncollection_asreadonly(students: Table):
     sc = students.columns
     ro_sc = sc.as_readonly()
     with pytest.raises(TypeError, match='object is immutable and/or readonly.'):
-        del ro_sc['student_id']
+        del ro_sc['id']
 
-def test_columncollection_no_duplicates(students: Table):
+def test_sys_columncollection_asreadonly(students: Table):
+    sc = students._sys_columns
+    ro_sc = sc.as_readonly()
+    with pytest.raises(TypeError, match='object is immutable and/or readonly.'):
+        del ro_sc['created_at']
+
+def test_usr_columncollection_no_duplicates(students: Table):
     sc = students.columns 
     dup_col = 'id'
     with pytest.raises(DuplicateColumnError, match=f'not allow duplicate columns: {dup_col}'):
         sc.add(Column('id', String()))
 
+def test_sys_columncollection_no_duplicates(students: Table):
+    sc = students._sys_columns 
+    dup_col = 'is_archived'
+    with pytest.raises(DuplicateColumnError, match=f'not allow duplicate columns: {dup_col}'):
+        sc.add(Column('is_archived', String()))
+
 # --------------------------------------
 # Table tests
 #---------------------------------------        
+
+def test_unreflected_columns_returns_none_sys_column_values(students: Table):
+    assert students.get_oid() is None
+    assert students.created_at is None
+
+def test_columns_returns_user_def_only(students: Table):
+    assert all([not col.is_system for col in students.columns])
+
+def test_all_sys_columns_have_parent(students: Table):
+    assert all([sc.parent is students for sc in students._sys_columns])
+
+def test_table_contains_sys_columns_if_no_usr_cols_defined(metadata: MetaData):
+    no_usr_col_table = Table("no_usr_cols", metadata)
+
+    assert "object_id" in no_usr_col_table._sys_columns
+    assert "is_deleted" in no_usr_col_table._sys_columns
+    assert "is_archived" in no_usr_col_table._sys_columns
+    assert "created_at" in no_usr_col_table._sys_columns
+    assert "table_name" in no_usr_col_table._sys_columns
+
+def test_sys_columns_api_names_correctly_mapped(metadata: MetaData):
+    table = Table("no_usr_cols", metadata)
+
+    assert table._sys_columns.object_id.api_key() == "id"
+    assert table._sys_columns.is_deleted.api_key() == "in_trash"
+    assert table._sys_columns.is_archived.api_key() == "archived"
+    assert table._sys_columns.created_at.api_key() == "created_time"
+    assert table._sys_columns.table_name.api_key() == "title"
+
+def test_sys_columns_cannot_be_redefined(metadata: MetaData):
+    with pytest.raises(ArgumentError) as exc:
+        table = Table(
+            "table",
+            metadata,
+            SystemColumn("object_id", String(is_title=True))
+        )
+
+    assert "object_id" in str(exc.value) 
+
+def test_usr_columns_cannot_be_pk(metadata: MetaData):
+    with pytest.raises(ArgumentError) as exc:
+        table = Table(
+            "students",
+            metadata,
+            Column("name", String(is_title=True), primary_key=True)
+        )
+
+    assert "name" in str(exc.value)
 
 def test_table_construct():
     metadata = MetaData()
     students = Table(
         'students',
         metadata,
-        Column('student_id', Integer(), primary_key=True),
+        Column('student_id', Integer()),
         Column('name', String(is_title=True)),
         Column('grade', String()),
         Column('since', Date())
     )
-    assert students.columns._no_id.primary_key
-    assert students.columns.student_id.primary_key
-    assert not students.columns.name.primary_key
+    assert students._sys_columns.object_id.primary_key
+    assert not students.columns.student_id.primary_key
     assert isinstance(students.c['name'].type_, String)
     assert isinstance(students.c['since'].type_, Date)
+    assert students.created_at is None
+
+def test_table_repr_contains_sys_columns(students: Table):
+    table_repr = repr(students)
+    
+    assert "object_id" in table_repr
+    assert "is_deleted" in table_repr
+    assert "is_archived" in table_repr
+    assert "created_at" in table_repr
+    assert "table_name" in table_repr
 
 def test_table_valid_minimal():
     metadata = MetaData()
@@ -215,7 +294,7 @@ def test_table_primary_key():
     students = Table(
         'students',
         metadata,
-        Column('student_id', Integer(), primary_key=True),
+        Column('student_id', Integer()),
         Column('name', String(is_title=True)),
         Column('grade', String()),
         Column('since', Date())
@@ -224,8 +303,8 @@ def test_table_primary_key():
     primary_key = students.primary_key
     assert students.primary_key.table == students
     assert isinstance(primary_key, PrimaryKeyConstraint)
-    assert '_no_id' in primary_key.c
-    assert 'student_id' in primary_key.c
+    assert 'object_id' in primary_key.c
+    assert 'id' not in primary_key.c
     assert not 'name' in primary_key.columns
 
 def test_invalid_table_name_empty(metadata: MetaData):
@@ -251,6 +330,8 @@ def test_create_table_populates_sys_table_page_id(engine: Engine, students: Tabl
     # precondition
     assert hasattr(students, "_sys_tables_page_id")
     assert students._sys_tables_page_id is None
+    assert students.get_oid() is None
+    assert students.created_at is None
     assert engine._catalog is not None
 
     # act
@@ -259,6 +340,8 @@ def test_create_table_populates_sys_table_page_id(engine: Engine, students: Tabl
     # postcondition
     assert students._sys_tables_page_id is not None
     assert isinstance(students._sys_tables_page_id, str)
+    assert students.get_oid() is not None
+    assert students.created_at is None
 
     # consitency assertion
     row = engine.find_table_metadata(
@@ -429,7 +512,7 @@ def test_drop_table_detects_catalog_corruption_more_than_one_table_entry(
                     "rich_text": [{"text": {"content": engine._user_database_name}}]
                 },
                 "table_id": {
-                    "rich_text": [{"text": {"content": students._database_id}}]
+                    "rich_text": [{"text": {"content": students.get_oid()}}]
                 },
             },
         },
@@ -569,10 +652,10 @@ def test_table_autoload_active(engine: Engine, metadata: MetaData):
     columns = [c.name for c in students.columns]
     pk_cols = [c.name for c in students.primary_key.c]
     assert includes_all(columns, ['id', 'name', 'grade', 'is_active'])
-    assert '_no_id' in columns
-    assert '_no_archived' in columns
+    assert not 'object_id' in students.c
+    assert not 'is_archived' in students.c
     assert len(pk_cols) == 1
-    assert SpecialColumns.NO_ID.value in pk_cols
+    assert "object_id" in pk_cols
 
 def test_table_autoload_missing_raises(engine: Engine, metadata: MetaData):
     with pytest.raises(NoSuchTableError) as exc:

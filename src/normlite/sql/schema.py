@@ -59,7 +59,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import pdb
 import re
-from typing import Any, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, Tuple, Union, overload, TYPE_CHECKING
+from typing import Any, ClassVar, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, Tuple, Union, overload, TYPE_CHECKING
 
 from normlite._constants import SpecialColumns
 from normlite.engine.systemcatalog import TableState
@@ -67,6 +67,7 @@ from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequ
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.sql.elements import ColumnElement, ColumnOperators
 from normlite.sql.type_api import ArchivalFlag, ObjectId, String, TimeStampStringISO8601, TypeEngine
+from normlite.utils import normlite_deprecated
 
 if TYPE_CHECKING:
     from normlite.engine.base import Engine
@@ -109,6 +110,12 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
     """
     __visit_name__ = 'column'
 
+    is_system: ClassVar[bool] = False
+    """``True`` if it is a system columns, ``False`` if user defined.
+    
+    .. versionadded:: 0.9.0
+    """
+
     def __init__(self, name: str, type_: TypeEngine, id_: str = None, primary_key: bool = False):
         self.name = name
         """The column name. This must be unique within the same table."""
@@ -131,6 +138,9 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
         .. versionadded: 0.8.0
         """
 
+        if primary_key and not self.is_system:
+            raise ArgumentError(f"No user column may be a primary key, column name '{name}'")
+
         self.primary_key = primary_key
         """Whether this column is a primary key or not."""
 
@@ -140,9 +150,21 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
         See :meth:`Table.append_column()` for more details.
         """
 
+    def api_key(self) -> str:
+        """Return the key to be used in compilation.
+        
+        This method enables to refer during compilation to a standardized API 
+        to inject the right column name:
+
+            - :attr:`Column.name` for user columns
+            - :attr:`SystemColumns._api_name` for system columns
+
+        .. versionadded:: 0.9.0
+        """
+        return self.name
+    
     def __hash__(self) -> int:
         return hash((self.name, self.parent.name, self._id, self.type_))
-
 
     def get_oid(self) -> str:
         return self._id
@@ -175,6 +197,49 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
             + ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
         )
     
+class SystemColumn(Column):
+    is_system: ClassVar[bool] = True
+
+    _SYSTEM_COLUMNS_MAP = {
+        "object_id": "id",
+        "is_deleted": "in_trash",
+        "is_archived": "archived",
+        "created_at": "created_time",
+        "edited_at": "last_edited_time",
+        "table_name": "title"
+    }
+
+    def __init__(
+        self,
+        name: str,
+        type_: TypeEngine,
+        id_: str | None = None,
+        primary_key: bool = False,
+    ):
+
+        if name not in self._SYSTEM_COLUMNS_MAP:
+            raise ArgumentError(f"Unknown system column name '{name}'")
+
+        self._api_name = self._SYSTEM_COLUMNS_MAP[name]
+
+        self._value = None
+        """Store the value of the corresponding read-only Notion key.
+
+        This value is set during table reflection only.
+        
+        .. versionadded:: 0.9.0
+        """
+
+        super().__init__(
+            name,
+            type_,
+            id_=id_,
+            primary_key=primary_key,
+        )
+    
+    def api_key(self) -> str:
+        return self._api_name
+
 def _is_valid_identifier(name: str) -> bool:
     if not isinstance(name, str):
         return False
@@ -299,12 +364,32 @@ class Table(HasIdentifier):
         self.metadata = metadata
         """The metadata object this table is associated with."""
 
-        self._columns: ColumnCollection = ColumnCollection()
-        """The underlying column collections for this table's column.
+        self._usr_columns: ColumnCollection = ColumnCollection()
+        """The underlying column collection for this table's user columns.
+
+        User columns correspond to the database properties in Notion.
+
+        .. versionchanged:: 0.9.0
+            Renamed to ``_usr_columns`` to better reflect that it only contains
+            columns that users define.
         
         .. seealso::
 
             :class:`ColumnCollection`
+            :class:`SystemColumn`
+
+        """
+
+        self._sys_columns: ColumnCollection = ColumnCollection()
+        """The underlying column collection for this table's system columns.
+        
+        System columns correspond to the database keys "id", "in_trash", etc. in Notion.
+
+        .. versionadded:: 0.9.0
+
+        .. seealso::
+
+            :class:`SystemColumn`
 
         """
 
@@ -322,9 +407,6 @@ class Table(HasIdentifier):
 
         """
 
-        self._database_id = None
-        """The Notion id corresponding to this table."""
-
         self._sys_tables_page_id = None
         """Cache the page corresponding to this table in system tables.
         
@@ -336,6 +418,24 @@ class Table(HasIdentifier):
         This is the Notion page id containing all the tables which belong to the same database. 
         """
 
+        # initialize internal structures
+        self._usr_columns = ColumnCollection()
+        self._sys_columns = ColumnCollection()
+        self._constraints = set()
+
+        # Always add system columns
+        self._ensure_system_columns()
+
+        # declarative columns
+        if args:
+            # add user-declared columns
+            for col in args:
+                self.append_column(col)
+
+        # Generate primary key constraint object
+        self._create_pk_constraint()
+        self.add_constraint(self._primary_key)
+
         if autoload_with is not None:
             if not isinstance(autoload_with, Engine):
                 raise ArgumentError(
@@ -344,21 +444,8 @@ class Table(HasIdentifier):
 
             if args:
                 raise ArgumentError('Columns cannot be specified when using "autoload_with" keyword argument')
-
-
+            
             self._autoload(autoload_with)
-        
-        if args:
-            # add user-declared columns
-            for col in args:
-                self.append_column(col)
-
-            # Always add implicit Notion columns
-            self._ensure_implicit_columns()
-
-            # Generate primary key constraint object
-            self._create_pk_constraint()
-            self.add_constraint(self._primary_key)
 
         # ensure there is a Column of type String(is_title=True)
         self._ensure_title_column()
@@ -372,12 +459,12 @@ class Table(HasIdentifier):
         
         It returns a ready-only copy column collection.
         """
-        return self._columns.as_readonly()
+        return self._usr_columns.as_readonly()
     
     @property
     def c(self) -> ReadOnlyColumnCollection:
         """Short form synonim for :attr:`columns`."""
-        return self._columns.as_readonly()
+        return self._usr_columns.as_readonly()
     
     @property
     def primary_key(self) -> PrimaryKeyConstraint:
@@ -392,6 +479,27 @@ class Table(HasIdentifier):
         """
         return self._primary_key
     
+    @property
+    def created_at(self) -> Optional[str]:
+        """Read-only table creation timestamp.
+        
+        This value is non ``None`` if the table has been previously reflected.
+
+        .. versionadded:: 0.9.0
+        """
+        return self._sys_columns["created_at"]._value
+    
+    def _add_system_column(self, column: SystemColumn):
+
+        if column.name in self._usr_columns:
+            raise ArgumentError(
+                f"Cannot redefine system column '{column.name}'"
+            )
+
+        column._set_parent(self)
+        self._sys_columns.add(column)
+
+    @normlite_deprecated("This method is deprecated and will be removed in a future version.")
     def get_user_defined_colums(self) -> ReadOnlyColumnCollection:
         """Return all user-defined columns."""
         non_special_columns = ColumnCollection()
@@ -401,8 +509,9 @@ class Table(HasIdentifier):
         return non_special_columns.as_readonly()
 
     def get_oid(self) -> str:
-        return self._database_id
+        return self._sys_columns["object_id"]._value
     
+    @normlite_deprecated("This method is deprecated and will be removed in a future version.")
     def set_oid(self, id_: str) -> None:
         self._database_id = id_
     
@@ -412,19 +521,73 @@ class Table(HasIdentifier):
         self._constraints.add(constraint)
 
     def append_column(self, column: Column):
-        """Append a column to this table."""
+        """Append a column to this table.
+        
+        .. versionchanged:: 0.9.0
+            This version rejects to add system columns.
+        """
+
+        if column.is_system:
+            raise ArgumentError(
+                f"System column {column.name} cannot be redefined."
+            )
+
         column._set_parent(self)
-        self._columns.add(column)
+        self._usr_columns.add(column)
 
     def _ensure_title_column(self) -> None:
+        if len(self.columns) == 0:
+            # no user columns defined yet, just return
+            # no invariant enforcement needed
+            return
+
         title_cols = 0
-        for c in self.get_user_defined_colums():
+        for c in self.columns:
             col_type = c.type_
             if isinstance(col_type, String) and col_type.is_title:
                 title_cols += 1
         
         if title_cols != 1:
-            raise ArgumentError(f"Table '{self.name}' must have only one column of type String(is_title=True)")
+            raise ArgumentError(f"Table '{self.name}' must have exactly one column of type String(is_title=True); found: {title_cols}.")
+
+    def _ensure_system_columns(self):
+        # Notion object ID: always primary key
+        object_id = SystemColumn(
+            name="object_id",
+            type_=ObjectId(),
+            primary_key=True,
+        )
+
+        is_archived = SystemColumn(
+            name="is_archived",
+            type_=ArchivalFlag(),
+        )
+
+        is_deleted = SystemColumn(
+            name="is_deleted",
+            type_=ArchivalFlag(),
+        )
+
+        created_at = SystemColumn(
+            name="created_at",
+            type_ = TimeStampStringISO8601(),
+        )
+
+        table_name = SystemColumn(
+            name="table_name",
+            type_= String(is_title=True)
+        )
+
+        self._add_system_column(object_id)
+        self._add_system_column(is_archived)
+        self._add_system_column(is_deleted)
+        self._add_system_column(created_at)
+        self._add_system_column(table_name)
+
+    def _create_pk_constraint(self) -> None:
+        table_pks = [c for c in self._sys_columns if c.primary_key]
+        # IMPORTANT: Here you have to unpack the table_pks list
+        self._primary_key = PrimaryKeyConstraint(*table_pks)
 
     def insert(self) -> Insert:
         """Generate a new SQL insert statement for this table."""
@@ -567,34 +730,6 @@ class Table(HasIdentifier):
         with bind.connect() as connection:
             connection.execute(stmt)
 
-    def _ensure_implicit_columns(self):
-        # Notion object ID: always primary key
-        if SpecialColumns.NO_ID not in self._columns:
-            _no_id_col = Column(SpecialColumns.NO_ID, ObjectId(), primary_key=True)
-            _no_id_col._set_parent(self)
-            self._columns.add(_no_id_col)
-
-        # Archival flag: always present
-        if SpecialColumns.NO_ARCHIVED not in self._columns:
-            _no_archived_col = Column(SpecialColumns.NO_ARCHIVED, ArchivalFlag())
-            _no_archived_col._set_parent(self)
-            self._columns.add(_no_archived_col)
-
-        if SpecialColumns.NO_IN_TRASH not in self._columns:
-            _no_in_trash_col = Column(SpecialColumns.NO_IN_TRASH, ArchivalFlag())
-            _no_in_trash_col._set_parent(self)
-            self._columns.add(_no_in_trash_col)
-
-        if SpecialColumns.NO_CREATED_TIME not in self._columns:
-            _no_created_time_col = Column(SpecialColumns.NO_CREATED_TIME, TimeStampStringISO8601())
-            _no_created_time_col._set_parent(self)
-            self._columns.add(_no_created_time_col)
-
-    def _create_pk_constraint(self) -> None:
-        table_pks = [c for c in self._columns if c.primary_key]
-        # IMPORTANT: Here you have to unpack the table_pks list
-        self._primary_key = PrimaryKeyConstraint(*table_pks)
-
     def _autoload(self, bind: Engine) -> None:
         from normlite.sql.ddl import ReflectTable
 
@@ -632,7 +767,7 @@ class Table(HasIdentifier):
             table_catalog=bind._user_database_name,
         )
 
-        self._database_id = entry.table_id    
+        self._sys_columns["object_id"]._value = entry.table_id    
         stmt = ReflectTable(self)
         with bind.connect() as connection:
             execution_options = {
@@ -644,13 +779,11 @@ class Table(HasIdentifier):
                 execution_options=execution_options
             )
 
-    def _set_table_oid(self, oid: str) -> None:
-        self._database_id = oid
-
     def __repr__(self) -> str:
         return "Table(%s)" % ", ".join(
             [repr(self.name)]
             + [repr(x) for x in self.columns]
+            + [repr(x) for x in self._sys_columns]
         )
     
 class ColumnCollection:
@@ -755,6 +888,9 @@ class ColumnCollection:
             ]
             return len(non_no_cols)
         return self.__len__()
+
+    def __bool__(self) -> bool:
+        return bool(self._collection)
 
     def __iter__(self) -> Iterator[Column]:
         # turn to a list first to maintain over a course of changes
