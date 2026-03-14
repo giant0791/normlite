@@ -67,6 +67,7 @@ from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequ
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.sql.elements import ColumnElement, ColumnOperators
 from normlite.sql.type_api import ArchivalFlag, ObjectId, String, TimeStampStringISO8601, TypeEngine
+from normlite.utils import normlite_deprecated
 
 if TYPE_CHECKING:
     from normlite.engine.base import Engine
@@ -220,6 +221,14 @@ class SystemColumn(Column):
             raise ArgumentError(f"Unknown system column name '{name}'")
 
         self._api_name = self._SYSTEM_COLUMNS_MAP[name]
+
+        self._value = None
+        """Store the value of the corresponding read-only Notion key.
+
+        This value is set during table reflection only.
+        
+        .. versionadded:: 0.9.0
+        """
 
         super().__init__(
             name,
@@ -398,9 +407,6 @@ class Table(HasIdentifier):
 
         """
 
-        self._database_id = None
-        """The Notion id corresponding to this table."""
-
         self._sys_tables_page_id = None
         """Cache the page corresponding to this table in system tables.
         
@@ -473,6 +479,16 @@ class Table(HasIdentifier):
         """
         return self._primary_key
     
+    @property
+    def created_at(self) -> Optional[str]:
+        """Read-only table creation timestamp.
+        
+        This value is non ``None`` if the table has been previously reflected.
+
+        .. versionadded:: 0.9.0
+        """
+        return self._sys_columns["created_at"]._value
+    
     def _add_system_column(self, column: SystemColumn):
 
         if column.name in self._usr_columns:
@@ -483,6 +499,7 @@ class Table(HasIdentifier):
         column._set_parent(self)
         self._sys_columns.add(column)
 
+    @normlite_deprecated("This method is deprecated and will be removed in a future version.")
     def get_user_defined_colums(self) -> ReadOnlyColumnCollection:
         """Return all user-defined columns."""
         non_special_columns = ColumnCollection()
@@ -492,8 +509,9 @@ class Table(HasIdentifier):
         return non_special_columns.as_readonly()
 
     def get_oid(self) -> str:
-        return self._database_id
+        return self._sys_columns["object_id"]._value
     
+    @normlite_deprecated("This method is deprecated and will be removed in a future version.")
     def set_oid(self, id_: str) -> None:
         self._database_id = id_
     
@@ -749,7 +767,7 @@ class Table(HasIdentifier):
             table_catalog=bind._user_database_name,
         )
 
-        self._database_id = entry.table_id    
+        self._sys_columns["object_id"]._value = entry.table_id    
         stmt = ReflectTable(self)
         with bind.connect() as connection:
             execution_options = {
@@ -761,13 +779,11 @@ class Table(HasIdentifier):
                 execution_options=execution_options
             )
 
-    def _set_table_oid(self, oid: str) -> None:
-        self._database_id = oid
-
     def __repr__(self) -> str:
         return "Table(%s)" % ", ".join(
             [repr(self.name)]
             + [repr(x) for x in self.columns]
+            + [repr(x) for x in self._sys_columns]
         )
     
 class ColumnCollection:

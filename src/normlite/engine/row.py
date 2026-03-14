@@ -43,14 +43,17 @@ class Row:
             self._values[col_index] = result_proc(value)
     
     def _process_ddl_row(self, row_data: tuple) -> None:
-        col_name, col_type, col_id, col_value = row_data
-        is_special_col = col_name in SpecialColumns.values()
+        col_name, col_type, col_id, col_value, is_system = row_data
         type_factory = type_mapper[col_type]
         result_proc = type_factory.result_processor()
         self._values[0] = col_name
         self._values[1] = type_factory
         self._values[2] = col_id
-        self._values[3] = result_proc(col_value) if is_special_col else None
+        self._values[3] = result_proc(col_value) if is_system else None
+
+        # **new** in 0.9.0: _values now stores the is_system flag
+        # this is used for proper reflection in sql/reflection.py
+        self._values[4] = is_system
 
     def keys(self) -> Sequence[str]:
         """Column names that can be accessed by this row."""
