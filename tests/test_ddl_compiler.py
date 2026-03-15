@@ -111,7 +111,7 @@ def test_compile_create_table_columns_as_properties(students: Table, engine: Eng
 #---------------------------------------------
 
 def test_compile_drop_table_is_ddl(students: Table, engine: Engine):
-    students.set_oid('12345678-9090-0606-1111-123456789012')
+    students._sys_columns["object_id"]._value = "12345678-9090-0606-1111-123456789012"
     stmt = DropTable(students)
     compiled = stmt.compile(engine._sql_compiler)
 
@@ -119,7 +119,7 @@ def test_compile_drop_table_is_ddl(students: Table, engine: Engine):
     assert isinstance(compiled, DDLCompiled)
 
 def test_compile_drop_table_database_id(students: Table, engine: Engine):
-    students.set_oid('12345678-9090-0606-1111-123456789012')
+    students._sys_columns["object_id"]._value = "12345678-9090-0606-1111-123456789012"
     stmt = DropTable(students)
     compiled = stmt.compile(engine._sql_compiler)
     as_dict = compiled.as_dict()
@@ -130,7 +130,7 @@ def test_compile_drop_table_database_id(students: Table, engine: Engine):
     db_id_param: BindParameter = compiled.params['database_id']
     assert db_id_param.type_ is None
     assert db_id_param.role == _BindRole.DBAPI_PARAM
-    assert db_id_param.effective_value == students._database_id
+    assert db_id_param.effective_value == students.get_oid()
     assert path_params['database_id'] == ':database_id'
 
 def test_compile_drop_table_no_database_id_raises(students: Table, engine: Engine):
@@ -140,7 +140,7 @@ def test_compile_drop_table_no_database_id_raises(students: Table, engine: Engin
         _ = stmt.compile(engine._sql_compiler)
         
 def test_compile_drop_table_operation(students: Table, engine: Engine):
-    students.set_oid('12345678-9090-0606-1111-123456789012')
+    students._sys_columns["object_id"]._value = "12345678-9090-0606-1111-123456789012"
     stmt = DropTable(students)
     compiled = stmt.compile(engine._sql_compiler)
     as_dict = compiled.as_dict()
@@ -149,7 +149,7 @@ def test_compile_drop_table_operation(students: Table, engine: Engine):
     assert as_dict['operation']['request'] == 'update'
 
 def test_compile_drop_table_payload(students: Table, engine: Engine):
-    students.set_oid('12345678-9090-0606-1111-123456789012')
+    students._sys_columns["object_id"]._value = "12345678-9090-0606-1111-123456789012"
     stmt = DropTable(students)
     compiled = stmt.compile(engine._sql_compiler)
     as_dict = compiled.as_dict()
@@ -185,7 +185,7 @@ def test_compile_reflect_table_database_id(students: Table, engine: Engine):
     db_id_param: BindParameter = compiled.params['database_id']
     assert db_id_param.type_ is None
     assert db_id_param.role == _BindRole.DBAPI_PARAM
-    assert db_id_param.effective_value == students._database_id
+    assert db_id_param.effective_value == students.get_oid()
     assert path_params['database_id'] == ':database_id'
 
 def test_compile_reflect_table_no_database_id_does_not_raise(students: Table, engine: Engine):

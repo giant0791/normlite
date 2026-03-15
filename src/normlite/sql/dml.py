@@ -384,7 +384,7 @@ class Select(ExecutableClauseElement, HasTable):
 
         self._table: Table = tables.pop()
         # --- SAFEGUARD: column names must exist on the table ---
-        table_columns = self._table.get_user_defined_colums()
+        table_columns = self._table.columns
 
         for col in columns:
             if col.name not in table_columns:

@@ -33,7 +33,7 @@ def students(metadata: MetaData, mocked_db_id: str) -> Table:
         Column('start_on', Date()),
         Column('grade',  String())
     )
-    students.set_oid(mocked_db_id)      # ensure table is in reflected state
+    students._sys_columns["object_id"]._value = mocked_db_id      # ensure table is in reflected state
     return students
 
 @pytest.fixture
@@ -251,7 +251,7 @@ def test_execute_dml_context_row_preservation(
 ):
     # create database and mock reflection
     database_id = create_students_db(engine)
-    students.set_oid(database_id)
+    students._sys_columns["object_id"]._value = database_id
     insert_stmt = insert(students)
 
     # Connection.execute(insert_stmt, insert_values)
@@ -281,10 +281,10 @@ def test_execute_dml_context_row_preservation(
     assert students.c.name.name not in mapping
     assert students.c.id.name not in mapping
     assert students.c.is_active.name not in mapping
-    assert students.c["_no_id"].name in mapping
-    assert students.c["_no_archived"].name in mapping
-    assert students.c["_no_in_trash"].name in mapping
-    assert students.c["_no_created_time"].name in mapping
+    assert students._sys_columns["object_id"].name in mapping
+    assert students._sys_columns["is_archived"].name in mapping
+    assert students._sys_columns["is_deleted"].name in mapping
+    assert students._sys_columns["created_at"].name in mapping
 
 @pytest.mark.skip(".returning requires new feature (see issue #200)")
 def test_execute_dml_context_returning(
@@ -377,7 +377,7 @@ def test_execute_dml_context_projection(
 ):
     # create database and mock reflection
     database_id = create_students_db(engine)
-    students.set_oid(database_id)
+    students._sys_columns["object_id"]._value = database_id
 
     # add rows
     inserted_ids = add_students_rows(engine, students)
@@ -486,7 +486,7 @@ def test_execute_ddl_context_create_table_returning_property_ids(engine: Engine,
 
 def test_execute_ddl_context_drop_table_returning_id_and_in_trash(engine: Engine, students: Table):
     database_id = create_students_db(engine)
-    students.set_oid(database_id)
+    students._sys_columns["object_id"]._value = database_id
     stmt = DropTable(students)
     compiled = stmt.compile(engine._sql_compiler)
     cursor = engine.raw_connection().cursor()
@@ -545,7 +545,7 @@ def test_connection_exec_pipeline_simulated(engine: Engine, students: Table):
     assert result.rowcount == -1
     assert is_valid_uuid4(students.get_oid())
 
-    name_col, id_col, is_active_col, start_on_col, grade_col = students.get_user_defined_colums()
+    name_col, id_col, is_active_col, start_on_col, grade_col = students.columns
     assert name_col._id 
     assert id_col._id
     assert is_active_col._id
@@ -568,7 +568,7 @@ def test_connection_exec_dml_context_row_preservation(
 ):
     # create database and mock reflection
     database_id = create_students_db(engine)
-    students.set_oid(database_id)
+    students._sys_columns["object_id"]._value = database_id
     insert_stmt = insert(students)
 
     with engine.connect() as connection:
@@ -598,7 +598,7 @@ def test_connection_exec_dml_context_returning(
 ):
     # create database and mock reflection
     database_id = create_students_db(engine)
-    students.set_oid(database_id)
+    students._sys_columns["object_id"]._value = database_id
     insert_stmt = insert(students).returning(students.c.name, students.c.id)
 
     with engine.connect() as connection:
@@ -632,7 +632,7 @@ def test_connection_exec_dml_context_projection(
 ):
     # create database and mock reflection
     database_id = create_students_db(engine)
-    students.set_oid(database_id)
+    students._sys_columns["object_id"]._value = database_id
 
     # add rows
     inserted_ids = add_students_rows(engine, students)
@@ -684,7 +684,7 @@ def test_connection_exec_ddl_context_create_table(engine: Engine, students: Tabl
     assert result.rowcount == -1
     assert is_valid_uuid4(students.get_oid())
     assert all(
-        [c._id is not None for c in students.get_user_defined_colums()]
+        [c._id is not None for c in students.columns]
     )
 
 def test_connection_exec_ddl_context_drop_table(engine: Engine, students: Table):
