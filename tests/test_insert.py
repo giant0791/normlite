@@ -60,7 +60,7 @@ def test_values_is_generative(students: Table):
 
 def test_compiler_dbapi_param_correctness(students: Table, insert_values: dict):
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
     stmt = insert(students).values(**insert_values)
 
     nc = NotionCompiler()
@@ -99,7 +99,7 @@ def test_compiler_correctness(students: Table, insert_values: dict):
 def test_compiler_generates_parent_id_as_bindparams(students: Table):
     """Does the compiler generates bind parameters for the payload?"""
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
     stmt = insert(students).values(
         name = 'Galileo Galilei',
         id=123456,
@@ -120,7 +120,7 @@ def test_compiler_generates_values_as_bindparams(students: Table, insert_values:
     """Does the compiler generates bind parameters for the Insert.values()?"""
     nc = NotionCompiler()
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
     stmt = insert(students).values(**insert_values)
 
     compiled = stmt.compile(nc)
@@ -140,7 +140,7 @@ def test_compiler_generates_values_as_bindparams(students: Table, insert_values:
 def test_compiler_detects_missing_values(students: Table, insert_values: dict):        
     nc = NotionCompiler()
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
     stmt = insert(students)
     stmt.values(**insert_values)
 
@@ -211,7 +211,7 @@ def test_bindparam_column_name_not_found_error(students: Table):
 #---------------------------------------------
 
 def test_schema_info_created_from_table_all_cols(students: Table):
-    projected_cols = [c.name for c in students.get_user_defined_colums()]
+    projected_cols = [c.name for c in students.columns]
     schema = SchemaInfo.from_table(students, projected_cols)
 
     assert len(schema.columns) == 9        # 5 (usercols) + 4 (syscols)
@@ -221,10 +221,10 @@ def test_schema_info_created_from_table_all_sys_cols(students: Table):
     schema = SchemaInfo.from_table(students, projected_cols)
     schema_col_names = [c.name for c in schema.columns]
 
-    assert "_no_id" in schema_col_names
-    assert "_no_archived" in schema_col_names
-    assert "_no_in_trash" in schema_col_names
-    assert "_no_created_time" in schema_col_names
+    assert "object_id" in schema_col_names
+    assert "is_archived" in schema_col_names
+    assert "is_deleted" in schema_col_names
+    assert "created_at" in schema_col_names
     assert len(schema.columns) == 4
 
 def test_schema_info_created_from_table_projected_cols(students: Table):

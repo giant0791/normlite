@@ -272,6 +272,7 @@ def test_compile_binexp_number_operators():
     students = Table(
         'students', 
         metadata, 
+        Column("name", String(is_title=True)),
         Column('id', Integer()),
         Column('rate', Money(currency='dollar')),
         Column('grade', Numeric())    
@@ -299,7 +300,7 @@ def test_compile_binexp_number_operators():
 
 def test_compile_binexp_date_before():
     metadata = MetaData()
-    students = Table('students', metadata, Column('start_date', Date()))
+    students = Table('students', metadata, Column('start_date', Date()), Column("name", String(is_title=True)))
     exp: BinaryExpression = students.c.start_date.before(date.today)
     nc = NotionCompiler()
     nc._compiler_state = CompilerState()
@@ -311,7 +312,7 @@ def test_compile_binexp_date_before():
 
 def test_compile_binexp_date_after():
     metadata = MetaData()
-    students = Table('students', metadata, Column('start_date', Date()))
+    students = Table('students', metadata, Column('start_date', Date()), Column("name", String(is_title=True)))
     exp: BinaryExpression = students.c.start_date.after(date.today)
     nc = NotionCompiler()
     nc._compiler_state = CompilerState()
@@ -323,7 +324,7 @@ def test_compile_binexp_date_after():
 
 def test_compile_binexp_bool_opertors():
     metadata = MetaData()
-    students = Table('students', metadata, Column('is_active', Boolean()))
+    students = Table('students', metadata, Column('is_active', Boolean()), Column("name", String(is_title=True)))
     e1: BinaryExpression = students.c.is_active == True
     e2: BinaryExpression = students.c.is_active != True
     e3: BinaryExpression = students.c.is_active.is_(True)
@@ -347,7 +348,7 @@ def test_compile_binexp_bool_opertors():
 
 def test_compile_binexp_bool_forbid_truthiness():
     metadata = MetaData()
-    students = Table('students', metadata, Column('is_active', Boolean()))
+    students = Table('students', metadata, Column('is_active', Boolean()), Column("name", String(is_title=True)))
 
     with pytest.raises(TypeError, match='Use explicit comparison.'):
        if students.c.is_active:
@@ -355,20 +356,26 @@ def test_compile_binexp_bool_forbid_truthiness():
 
 def test_compile_select():
     metadata = MetaData()
-    students = Table('students', metadata, Column('start_date', Date()))
+    students = Table(
+        'students', 
+        metadata, 
+        Column('name', String(is_title=True)),
+        Column('start_date', Date())
+    )
     # monkey patch the id to simulate reflection
     database_id = str(uuid.uuid4())
-    students.set_oid(database_id)
+    students._sys_columns['object_id']._value = database_id
     stmt = select(students)
     sql_compiler = NotionCompiler()
     compiled = stmt.compile(sql_compiler)
     as_dict = compiled.as_dict()
     assert as_dict['operation']['request'] == 'query'
     assert as_dict['path_params']['database_id'] == ':database_id'
+    assert as_dict['payload']['in_trash'] == False
 
 def test_compile_select_w_where():
     metadata = MetaData()
-    students = Table('students', metadata, Column('start_date', Date()))
+    students = Table('students', metadata, Column('start_date', Date()), Column("name", String(is_title=True)))
     # monkey patch the id to simulate reflection
     database_id = str(uuid.uuid4())
     students.set_oid(database_id)

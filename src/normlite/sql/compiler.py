@@ -269,7 +269,7 @@ class NotionCompiler(SQLCompiler):
 
         # emit code for properties object
         payload['properties'] = self._compile_table_columns(
-            stmt_table.get_user_defined_colums()
+            stmt_table.columns
         )
         
         self._compiler_state.result_columns = [
@@ -377,7 +377,7 @@ class NotionCompiler(SQLCompiler):
             # create a mapping for all user columns with dummy values
             placeholders = {
                 col.name: 'placeholder_value'
-                for col in insert.get_table().get_user_defined_colums()
+                for col in insert.get_table().columns
             }
 
             insert = insert.values(**placeholders)
@@ -435,12 +435,14 @@ class NotionCompiler(SQLCompiler):
     def visit_select(self, select: Select) -> dict:
         self._compiler_state.is_select = select.is_select
         self._compiler_state.stmt = select
+        self._compiler_state.result_columns = list()
 
         operation = dict(endpoint='databases', request='query')
         path_params = {}
         query_params = {}
         payload = {
-            'page_size': 100        # Notion imposed max page size
+            'page_size': 100,        # Notion imposed max page size
+            'in_trash': False,       # Always return non deleted pages only
         }
         
         table = select.get_table()
@@ -468,13 +470,13 @@ class NotionCompiler(SQLCompiler):
 
         if projection:
             # use select projections for the result columns    
-            self._compiler_state.result_columns = list(projection)
+            self._compiler_state.result_columns.extend(projection)
             query_params['filter_properties'] = projection
         
         else:
             # the select statement provides no projections
             # add all user defined columns
-            user_cols = [col.name for col in table.get_user_defined_colums()]
+            user_cols = [col.name for col in table.columns]
             self._compiler_state.result_columns.extend(user_cols)
 
         if select._order_by.has_expression():
@@ -629,7 +631,7 @@ class NotionCompiler(SQLCompiler):
     def _compile_insert_update_values(self, values: dict) -> dict:
         properties = {}
         stmt_table = self._compiler_state.stmt._table
-        user_cols = stmt_table.get_user_defined_colums()
+        user_cols = stmt_table.columns
         if len(user_cols) != len(values):
             raise CompileError(
                 'Not enough values supplied for all user defined columns '

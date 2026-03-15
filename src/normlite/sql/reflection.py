@@ -61,13 +61,11 @@ class ReflectedTableInfo:
     def in_trash(self) -> Optional[True]:
         return self._columns[self._colmap[SpecialColumns.NO_IN_TRASH]].value
     
-    @normlite_deprecated("This method is deprecated and will be removed in a future version.")
     def get_user_columns(self) -> Sequence[ReflectedColumnInfo]:
-        return [rc for rc in self._columns if rc.name not in SpecialColumns.values()]
+        return [rc for rc in self._columns if not rc.is_system]
     
-    @normlite_deprecated("This method is deprecated and will be removed in a future version.")
     def get_sys_columns(self) -> Sequence[ReflectedColumnInfo]:
-        return [rc for rc in self._columns if rc.name in SpecialColumns.values()]
+        return [rc for rc in self._columns if rc.is_system]
         
     def get_columns(self) -> Sequence[ReflectedColumnInfo]:
         return self._columns
@@ -77,7 +75,7 @@ class ReflectedTableInfo:
         if include_all:
             return [rc.name for rc in self._columns]
         else:
-            return [rc.name for rc in self._columns if rc.name not in SpecialColumns.values()]
+            return [rc.name for rc in self._columns if not rc.is_system]
         
     @classmethod
     def from_tuples(cls, cols_as_tuples: Sequence[tuple]) -> ReflectedTableInfo:

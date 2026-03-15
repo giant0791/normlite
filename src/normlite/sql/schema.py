@@ -513,7 +513,7 @@ class Table(HasIdentifier):
     
     @normlite_deprecated("This method is deprecated and will be removed in a future version.")
     def set_oid(self, id_: str) -> None:
-        self._database_id = id_
+        self._sys_columns["object_id"]._value = id_
     
     def add_constraint(self, constraint: Constraint) -> None:
         """Add a constraint to this table."""

@@ -111,7 +111,7 @@ def test_bool_col_expr(students: Table):
 #---------------------------------------------
 def test_select_generate_operation(students: Table, select_stmt: Select):
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
 
     stmt = (
         select_stmt
@@ -130,7 +130,7 @@ def test_select_generate_operation(students: Table, select_stmt: Select):
 #---------------------------------------------
 def test_where_generative_one_clause(students: Table, select_stmt: Select):
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
 
     stmt = (
         select_stmt
@@ -154,7 +154,7 @@ def test_where_generative_one_clause(students: Table, select_stmt: Select):
 
 def test_where_generative_multi_clause(students: Table, select_stmt: Select):
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
 
     stmt = (
         select_stmt
@@ -195,7 +195,7 @@ def test_where_generative_multi_clause(students: Table, select_stmt: Select):
 #---------------------------------------------
 def test_columns_subset_projection(students: Table):
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
     stmt: Select = select(students.c.name, students.c.id, students.c.is_active)
 
     nc = NotionCompiler()
@@ -206,7 +206,7 @@ def test_columns_subset_projection(students: Table):
 
 def test_columns_all_projection(students: Table):
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
     stmt: Select = select(students)
 
     nc = NotionCompiler()
@@ -217,16 +217,17 @@ def test_columns_all_projection(students: Table):
     assert 'query_params' not in asdict
 
     # there is only 1 key ==> this is the page_size
-    assert len(asdict['payload']) == 1  
+    assert len(asdict['payload']) == 2  
     assert 'page_size' in asdict['payload']
     assert asdict['payload']['page_size'] == 100
+    assert asdict["payload"]["in_trash"] == False
 
 #---------------------------------------------
 # ORDER BY tests
 #---------------------------------------------
 def test_order_by_generative_one_clause(students: Table, select_stmt: Select):
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
     stmt = (
         select_stmt
         .where(students.c.is_active.is_(True))
@@ -244,7 +245,7 @@ def test_order_by_generative_one_clause(students: Table, select_stmt: Select):
 
 def test_order_by_generative_multi_clauses(students: Table, select_stmt: Select):
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
     stmt = (
         select_stmt
         .where(students.c.is_active.is_(True))
@@ -268,7 +269,7 @@ def test_order_by_generative_multi_clauses(students: Table, select_stmt: Select)
 #---------------------------------------------
 def test_full_select(students: Table):
     mocked_db_id = str(uuid.uuid4())
-    students.set_oid(mocked_db_id)
+    students._sys_columns["object_id"]._value = mocked_db_id
     stmt_base = select(students.c.id, students.c.name)
     stmt = (
         stmt_base

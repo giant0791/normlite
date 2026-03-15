@@ -204,7 +204,7 @@ def test_engine_inspector_reflect_sys_table(engine: Engine, inspector: Inspector
     #pdb.set_trace()
     inspector.reflect_table(tables)
 
-    assert tables._database_id == engine._tables_id
+    assert tables._sys_columns["object_id"]._value == engine._tables_id
     assert 'table_name' in tables.c
     assert 'table_schema' in tables.c
     assert 'table_catalog' in tables.c
