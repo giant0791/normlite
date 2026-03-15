@@ -78,6 +78,7 @@ from typing import Any, Callable, List, Literal, NoReturn, Optional, Protocol, T
 import uuid
 
 from normlite.exceptions import InvalidRequestError
+from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.elements import Operator, BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, StringComparator, TimeStampStringISO8601Comparator
 
@@ -182,6 +183,9 @@ These are the same literal strings as defined by Notion.
 class Number(TypeEngine):
     """Notion-specific number type. Can represent integer, decimal, percent, or currency.
     
+    .. versionchanged:: 0.9.0
+        Add value normalization to dict for more robust result processing.
+    
     .. versionadded:: 0.7.0
     """
 
@@ -223,21 +227,32 @@ class Number(TypeEngine):
                 return None
             return {self.get_col_spec(): value}
         return process
+    
+    def _normalize_value_for_result_processing(self, value: Union[int, float, dict]) -> dict[Union[int, float]]:
+        if isinstance(value, (int, float)):
+            return {
+                self.get_col_spec(): value
+            }
+        
+        if isinstance(value, dict):
+            return value
+        
+        raise ValueError(
+            'Number value can be either float, int, or dict. '
+            f'Value type is: {value.__class__.__name__}'
+        )
 
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[_NumericType]:
             if value is None:
                 return None
             
+            value = self._normalize_value_for_result_processing(value)
             self._raise_if_val_not_dict(value)
-            num_value = value.get('number')
+            num_value = value.get(self.get_col_spec())
             if isinstance(num_value, Decimal):
                 num_value = float(num_value)            
-            if not isinstance(num_value, (float, int,)):
-                raise ValueError(
-                    'Number value can be either float or int. '
-                    f'Value type is: {num_value.__class__.__name__}'
-                )
+
             return Decimal(num_value) if isinstance(num_value, float) else int(num_value)
         return process
 
@@ -316,6 +331,9 @@ class String(TypeEngine):
         >>> rich_text.get_col_spec()
         {"rich_text": {}}
 
+    .. versionchanged:: 0.9.0
+        Add value normalization to dict for more robust result processing.
+    
     .. versionadded:: 0.7.0
     """
 
@@ -342,27 +360,20 @@ class String(TypeEngine):
             return {self.get_col_spec(): [{'text': {'content': str(value)}}]}
         return process
     
-    def _normalize_value_for_result_processing(self, value: Union[dict, list]) -> list:
+    def _normalize_value_for_result_processing(self, value: Union[dict, list]) -> dict:
             if isinstance(value, list):
-                return value
+                return {
+                    self.get_col_spec(): value
+                }
 
             if isinstance(value, dict):
-                text_value = value.get(self.get_col_spec())
+                return value
             
-                if not isinstance(text_value, list):
-                    raise ValueError(
-                        f'{self.get_col_spec()} value must be a list. '
-                        f'Value type is: {value.__class__.__name__}'
-                    )
-
-                return text_value
-    
-            # **new** string result processor must handle both dict **and** list.
             raise ValueError(
-                f'{self.get_col_spec()} value must be either a dict or a list. '
+                'String value must be either a dict or list. '
                 f'Value type is: {value.__class__.__name__}'
             )
-
+    
     def result_processor(self):
         def process(value: Optional[Union[dict, list]]) -> Optional[str]:
             if value is None:
@@ -372,7 +383,8 @@ class String(TypeEngine):
             text_value = self._normalize_value_for_result_processing(value)
             
             # Notion rich_text is a list of text objects → extract 'text'
-            return "".join([block.get("text").get("content") for block in text_value])
+            return rich_text_to_plain_text(text_value.get(self.get_col_spec(), []))
+        
         return process
 
     def get_col_spec(self):
@@ -396,6 +408,9 @@ class String(TypeEngine):
 
 class Boolean(TypeEngine):
     """Covenient type engine class for "checkbox" objects.
+
+    .. versionchanged:: 0.9.0
+        Add value normalization to dict for more robust result processing.
     
     .. versionadded:: 0.7.0
     """
@@ -417,27 +432,35 @@ class Boolean(TypeEngine):
                 return {self.get_col_spec(): value}
             return {self.get_col_spec(): bool(value)}
         return process
+    
+    def _normalize_value_for_result_processing(self, value: Union[bool, dict]) -> dict:
+        if isinstance(value, dict):
+            return value
+        
+        if isinstance(value, bool):
+            return {
+                self.get_col_spec(): value
+            }
+        
+        raise ValueError(
+            f"""
+                Boolean value must be either a bool or a dict.
+                Type of value argument: {value.__class__.__name__}
+            """
+        )
 
     def result_processor(self):
         def process(value: Optional[Union[bool, dict]]) -> Optional[bool]:
             if value is None:
                 return None
             
-            if isinstance(value, dict):
-                bool_value = value.get(self.get_col_spec())
-                if bool_value is None:
-                    raise TypeError('Boolean value must have "checkbox" object')
-                return bool_value
+            value = self._normalize_value_for_result_processing(value)
+            bool_value = value.get(self.get_col_spec())
+            if bool_value is None:
+                raise TypeError('Boolean value must have "checkbox" object')
             
-            if isinstance(value, bool):
-                return value
-
-            raise ValueError(
-                f"""
-                    Boolean value must be either a bool or a dictionary "checkbox" object.
-                    Type of value argument: {value.__class__.__name__}
-                """
-            )
+            return bool_value
+            
         return process
     
     @property
@@ -563,7 +586,7 @@ class UUID(TypeEngine):
     """
     def bind_processor(self):
         raise InvalidRequestError(
-            "Cannot bind values to system-managed object/property id columns."
+            "Cannot bind values to system-managed 'object_id' columns."
         )
 
     def result_processor(self):
@@ -633,11 +656,9 @@ class ArchivalFlag(Boolean):
         raise NotImplementedError('Column spec is not supported for this type engine subclass.')
     
     def bind_processor(self):
-        def process(value: Optional[bool]) -> Optional[bool]:
-            if value is None:
-                return None
-            return bool(value)
-        return process
+        raise InvalidRequestError(
+            "Cannot bind values to system-managed preperties 'is_archived' or 'is_deleted' columns."
+        )
 
     def result_processor(self):
         def process(value: Optional[bool]) -> Optional[bool]:
@@ -672,7 +693,7 @@ class TimeStampStringISO8601(TypeEngine):
 
     def bind_processor(self):
         raise InvalidRequestError(
-            "Cannot bind values to system-managed timestamp columns."
+            "Cannot bind values to system-managed 'created_at' columns."
         )
 
     def result_processor(self):
