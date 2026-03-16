@@ -116,6 +116,9 @@ class Cursor:
         the :class:`Cursor` does not support transaction awareness. Use :class:`CompositeCursor` for fully
         DBAPI 2.0 compliant cursor.
 
+    .. versionchanged: 0.9.0
+        This version supports execution of bulk operations, see :meth:`Cursor.executemany`.
+
     .. versionadded:: 0.7.0
 
     """
@@ -123,8 +126,24 @@ class Cursor:
         self._client = client
         """The client implementing the Notion API."""
 
+        self._result_sets: list[ResultSet] = []
+        """The result sets returned by bulk operations.
+        
+        .. versionadded:: 0.9.0
+        """
+        
+        self._result_index: int = 0
+        """The current result set to be consumed in the result sets sequence.
+        
+        .. versionadded:: 0.9.0
+        """
+        
         self._result_set = None
-        """The result set returned by the last :meth:`.execute()`. It is set by :meth:`._parse_result_set()`"""
+        """The result set returned by the last :meth:`.execute()`. It is set by :meth:`._parse_result_set()`
+        
+        ..version-removed:: 0.9.0
+            Outdated internal attribute. This will be removed in the next version.
+        """
         
         self._paramstyle: DBAPIParamStyle = 'named'
         """The default parameter style applied."""
@@ -157,6 +176,13 @@ class Cursor:
         """
 
     @property
+    def _current_result_set(self) -> Optional[ResultSet]:
+        """Provide access to current result set."""
+        if not self._result_sets:
+            return None
+        return self._result_sets[self._result_index]    
+
+    @property
     def description(self) -> Optional[Sequence[tuple]]:
         """Provide the cursor description.
         
@@ -181,9 +207,10 @@ class Cursor:
         This attribute will be ``None`` for operations that do not return rows or if the cursor has not had an operation invoked via the 
         :meth:`execute()` or :meth:`executemany()` methods yet.
         """
-        if self._result_set is not None:
-            return self._result_set.description
-        
+        rs = self._current_result_set
+        if rs is not None:
+            return rs.description
+    
         return None
     
     @property
@@ -203,11 +230,11 @@ class Cursor:
     @property
     def rowcount(self) -> int:
         """This read-only attribute specifies the number of rows that 
-           the last :meth:`.execute()` produced.
+           the last :meth:`.execute` / :meth:`executemany` produced.
 
         .. important::
             This version supports non paginated results. Thus, the :attr:`rowcount` is _always_
-            equal to the rows contained in the result set.
+            equal to the rows contained in the current result set.
             In future versions supporting paginated results, the :attr:`rowcount` will be -1 
             _until all pages have been retrieved_. Once this condition is fulfilled, :attr:`rowcount`
             will provide the sum of all retrieved pages.
@@ -219,8 +246,12 @@ class Cursor:
             int: Number of rows. `-1` if in case no :meth:`.execute()` has been performed 
                  on the cursor or the rowcount of the last operation cannot be 
                  determined by the interface.
+
+        .. versionchanged:: 0.9.0
+            This version adds support for row counting in case of multiple result sets
         """
-        return -1 if self._result_set is None else len(self._result_set)
+        rs = self._current_result_set
+        return -1 if rs is None else len(rs)   
     
     @property
     def lastrowid(self) -> Optional[int]:
@@ -228,6 +259,8 @@ class Cursor:
 
         Most Notion API calls return an object with an id, which is used as rowid. 
         If the operation does not set a rowid, this attribute is set to ``None``.
+        In case of bulk execution, it returns the rowid of the last modified row
+        belonging to the current result set. 
 
         .. admonition:: DBAPI extension
             :class: note
@@ -254,13 +287,14 @@ class Cursor:
         .. versionchanged:: 0.9.0
             This version derives the last inserted rowid from the new attribute
             :attr:`normlite.notiondbapi.resultset.ResultSet.last_inserted_rowids`.
+            Additionally, it now supports multiple result sets.
         """
-        if self._result_set is None:
-            # Either result set is empty or semantics is undefined (example: result set is None)
-            return None
+        rs = self._current_result_set
+        if rs is None:
+            return None       
         
         # extract the object UUID of the last row as 128-bit integer
-        last_inserted_rowids = self._result_set.last_inserted_rowids
+        last_inserted_rowids = rs.last_inserted_rowids
         if last_inserted_rowids is None:
             # no rows modified
             return None
@@ -294,12 +328,22 @@ class Cursor:
                 'Cannot fetch rows or execute operations on a closed cursor'
             )
 
-    def _parse_result_set(self, returned_obj: Dict[str, Any]) -> None:
-        """Parse the JSON object returned by the command execution into the cursor's result set.
+    def _append_result_set(self, returned_obj: Dict[str, Any]) -> None:
+        """Parse the JSON object returned by the command execution and add it to the current result set.
+
+        .. versionchanged:: 0.9.0
+            This method now fully supports multiple result sets and it has been renamed from 
+            `_parse_result_set()`.
         """
         self._check_closed()
-        self._result_set = ResultSet(returned_obj, self._description)
-        
+        rs = ResultSet(returned_obj, self._description)
+        self._result_sets.append(rs)
+
+    def _reset_results(self) -> None:
+        """Reset helper."""
+        self._result_sets = []
+        self._result_index = 0
+
     def __iter__(self) -> Iterator[tuple]:
         """Make cursors compatible with the iteration protocol.
 
@@ -313,14 +357,15 @@ class Cursor:
         .. versionchanged:: 0.9.0
             This version uses the new redesigned iterator based :class:`normlite.notiondbapi.resultset.ResultSet`
             class.
+            Additionally, it supports bulk executions.
             
         .. versionchanged:: 0.5.0
             Calling this method on a closed cursor raises the :exc:`Error`.
 
         """
         self._check_closed()
-
-        if self._result_set is None:
+        rs = self._current_result_set
+        if rs is None:
             raise ProgrammingError(
                 'Cursor result set is empty. '
                 'The previous call to .execute*() did not produce any result set '
@@ -351,13 +396,14 @@ class Cursor:
 
         .. versionchanged:: 0.9.0
             This version uses the refactored result set. It raises :exc:`ProgrammingError` as sqlite3.
+            Additionally, it supports bulk executions.
 
         .. versionchanged:: 0.5.0
             Calling this method on a closed cursor raises the :exc:`Error`.
         """
         self._check_closed()
-
-        if self._result_set is None:
+        rs = self._current_result_set
+        if rs is None:
             raise ProgrammingError(
                 'Cursor result set is empty. '
                 'The previous call to .execute*() did not produce any result set '
@@ -368,7 +414,7 @@ class Cursor:
             )
 
         try:
-            return next(self._result_set)
+            return next(rs)
         except StopIteration:
             return None
 
@@ -385,7 +431,8 @@ class Cursor:
             to this method returns an empty sequence. 
 
         .. versionchanged:: 0.9.0
-            This version uses the refactored result set. It raises :exc:`ProgrammingError` as sqlite3.   
+            This version uses the refactored result set. It raises :exc:`ProgrammingError` as sqlite3.
+            Additionally, it supports bulk executions.   
 
         .. versionchanged:: 0.5.0
             Calling this method on a closed cursor raises the :exc:`Error`.
@@ -401,7 +448,8 @@ class Cursor:
 
         self._check_closed()
 
-        if self._result_set is None:
+        rs = self._current_result_set
+        if rs is None:
             raise ProgrammingError(
                 'Cursor result set is empty. '
                 'The previous call to .execute*() did not produce any result set '
@@ -411,7 +459,7 @@ class Cursor:
                 'or -1 if no call was issued yet.' 
             )
 
-        return list(self._result_set)
+        return list(rs)
     
     def fetchmany(self, size: Optional[int]=None) -> list[tuple]:
         """Fetch the next set of rows of a query result, returning a sequence of sequences (e.g. a list of tuples). 
@@ -438,10 +486,12 @@ class Cursor:
             design of the class :class:`normlite.notiondbapi.resultset.ResultSet`.
             The core optimization delegating the fetch loop to :func:`itertools.islice`, which uses the Python runtime's 
             highly optimized C code and reduces the overhead of the Python interpreter for every row fetched. 
+            Additionally, it supports bulk executions.
         """
         self._check_closed()
 
-        if self._result_set is None:
+        rs = self._current_result_set
+        if rs is None:
             raise ProgrammingError(
                 'Cursor result set is empty. '
                 'The previous call to .execute*() did not produce any result set '
@@ -453,8 +503,7 @@ class Cursor:
 
         n = self.arraysize if size is None else size
 
-        return list(islice(self._result_set, n))
-
+        return list(islice(rs, n))
     
     def execute(self, operation: dict, parameters: DBAPIExecuteParameters) -> Self:
         """Prepare and execute a database operation (query or command).
@@ -565,10 +614,11 @@ class Cursor:
                 f'Unhandled NotionError("{self._client.__class__.__name__}"): {ne}'
             ) from ne
         
-        self._parse_result_set(object_)         # initialize result set with parsed rows, if any
+        self._reset_results()
+        self._append_result_set(object_)
         return self
     
-    def executemany(self, operation: dict, parameters: Sequence[dict]) -> Self:
+    def executemany(self, operation: dict, parameters: Sequence[DBAPIExecuteParameters]) -> Self:
         """Prepare a database operation (query or command) and then execute it against all parameter sequences or 
         mappings found in the sequence seq_of_parameters.
 
@@ -582,9 +632,74 @@ class Cursor:
 
         Returns:
             Self: This :class:`Cursor` instance.
-        """
-        raise NotImplementedError
 
+        .. versionadded:: 0.9.0
+        """
+        self._check_closed()
+        self._reset_results()
+
+        for param_set in parameters:
+
+            try:
+                object_ = self._client(
+                    operation['endpoint'],
+                    operation['request'],
+                    param_set.get('path_params'),
+                    param_set.get('query_params'),
+                    param_set.get('payload'),
+                )
+            except KeyError as ke:
+                # Programming error in the DBAPI usage
+                raise InterfaceError(
+                    f"Missing required key in operation or parameters: {ke.args[0]}"
+                ) from ke
+
+            except NotionError as ne:
+                # --- Database object does not exist -----------------------------
+                if ne.code == "object_not_found":
+                    raise ProgrammingError(
+                        f'NotionError("Object not found: {ne}'
+                    ) from ne
+
+                # --- Authentication / authorization -----------------------------
+                if ne.code in {"unauthorized", "forbidden"}:
+                    raise OperationalError(
+                        f'Authentication/authorization failure: {ne}'
+                    ) from ne
+
+                # --- Rate limiting / availability -------------------------------
+                if ne.code in {"rate_limited", "service_unavailable"}:
+                    raise OperationalError(
+                        f'Backend temporarily unavailable: {ne}'
+                    ) from ne
+
+                # --- Malformed request / client misuse --------------------------
+                if ne.code in {"invalid_request", "validation_error"}:
+                    raise InterfaceError(
+                        f'Invalid request sent to backend: {ne}'
+                    ) from ne
+
+                # --- Fallback: backend rejected operation -----------------------
+                raise DatabaseError(
+                    f'Unhandled NotionError("{self._client.__class__.__name__}"): {ne}'
+                ) from ne
+            
+            self._append_result_set(object_)
+        
+        return self
+        
+    def nextset(self) -> bool:
+        """Advance to the next available result set.
+        
+        .. versionadded:: 0.9.0
+        """
+
+        if self._result_index + 1 >= len(self._result_sets):
+            return False
+
+        self._result_index += 1
+        return True
+    
     def close(self) -> None:
         """Close the cursor now.
 
@@ -595,7 +710,7 @@ class Cursor:
         """
         # set internal cursor state and close it
         self._description = None
-        self._result_set = None
+        self._reset_results()
         self._closed = True
                 
 class CompositeCursor(Cursor):
