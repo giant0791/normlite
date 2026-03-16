@@ -489,3 +489,174 @@ def test_lastrowid_returns_non_if_no_rows_modified(
     execute_query_returns_no_rows(cursor, row_description, database_id)
     assert len(cursor.fetchall()) == 0
     assert cursor.lastrowid is None
+
+#----------------------------------------------------------------
+# executemany / multiple result sets tests
+#----------------------------------------------------------------
+
+def build_trash_operation(page_id: str) -> dict:
+    return {
+        "path_params": {"page_id": page_id},
+        "payload": {"in_trash": True},
+    }
+
+def return_all_pages_in_database(prefilled_client: InMemoryNotionClient, database_id: str) -> list[dict]:
+    result = prefilled_client.databases_query(
+        path_params={"database_id": database_id},
+    )
+
+    return result["results"]
+
+def test_executemany_executes_all_operations(
+        cursor: Cursor,
+        prefilled_client: InMemoryNotionClient,
+        row_description: tuple[tuple, ...],
+        database_id: str,
+):
+    """
+    executemany() should execute the same operation for all parameter sets.
+    """
+
+    # get all pages belonging to the database
+    pages = return_all_pages_in_database(prefilled_client, database_id)
+    params = [build_trash_operation(p["id"]) for p in pages]
+    cursor._inject_description(row_description)
+
+    # execute the operation on all pages retrieved by the query
+    cursor.executemany(
+        operation={
+            "endpoint": "pages",
+            "request": "update"
+        },
+        parameters=params
+    )
+
+    # verify all pages were modified
+    for p in pages:
+        stored = prefilled_client.pages_retrieve({"page_id": p["id"]})
+        assert stored["in_trash"] is True
+
+
+def test_executemany_produces_multiple_result_sets(
+        cursor: Cursor,
+        prefilled_client: InMemoryNotionClient,
+        row_description: tuple[tuple, ...],
+        database_id: str,
+):
+    """
+    executemany() should produce one result set per operation.
+    """
+
+    pages = return_all_pages_in_database(prefilled_client, database_id)
+    params = [build_trash_operation(p["id"]) for p in pages]
+
+    cursor._inject_description(row_description)
+
+    cursor.executemany(
+        operation={
+            "endpoint": "pages",
+            "request": "update"
+        },
+        parameters=params
+    )
+
+    rows = cursor.fetchall()
+
+    # first result set should contain exactly one updated page
+    assert len(rows) == 1
+
+
+def test_next_moves_to_next_result_set(
+        cursor: Cursor,
+        prefilled_client: InMemoryNotionClient,
+        row_description: tuple[tuple, ...],
+        database_id: str,
+):
+    """
+    next() should move the cursor to the next result set.
+    """
+
+    pages = return_all_pages_in_database(prefilled_client, database_id)
+    params = [build_trash_operation(p["id"]) for p in pages]
+
+    cursor._inject_description(row_description)
+
+    cursor.executemany(
+        operation={
+            "endpoint": "pages",
+            "request": "update"
+        },
+        parameters=params
+    )
+
+    first = cursor.fetchone()
+
+    cursor.nextset()
+
+    second = cursor.fetchone()
+
+    assert first != second
+
+
+def test_next_allows_iterating_all_result_sets(
+        cursor: Cursor,
+        prefilled_client: InMemoryNotionClient,
+        row_description: tuple[tuple, ...],
+        database_id: str,
+):
+    """
+    All result sets should be reachable through next().
+    """
+
+    pages = return_all_pages_in_database(prefilled_client, database_id)
+    params = [build_trash_operation(p["id"]) for p in pages]
+
+    cursor._inject_description(row_description)
+
+    cursor.executemany(
+        operation={
+            "endpoint": "pages",
+            "request": "update"
+        },
+        parameters=params
+    )
+
+    seen_ids = []
+
+    for _ in range(len(pages)):
+        row = cursor.fetchone()
+        seen_ids.append(row[0])
+        cursor.nextset()
+
+    assert len(seen_ids) == len(pages)
+
+
+def test_next_on_last_result_set_exhausts_results(
+        cursor: Cursor,
+        prefilled_client: InMemoryNotionClient,
+        row_description: tuple[tuple, ...],
+        database_id: str,
+):
+    """
+    Calling next() after the last result set should exhaust the cursor.
+    """
+
+    pages = return_all_pages_in_database(prefilled_client, database_id)
+    params = [build_trash_operation(p["id"]) for p in pages]
+
+    cursor._inject_description(row_description)
+
+    cursor.executemany(
+        operation={
+            "endpoint": "pages",
+            "request": "update"
+        },
+        parameters=params
+    )
+
+    for _ in range(len(pages)):
+        _ = cursor.fetchall()
+        cursor.nextset()
+
+    # no more result sets
+    assert cursor.fetchone() is None
