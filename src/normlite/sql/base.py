@@ -25,15 +25,12 @@ import pdb
 from typing import Any, ClassVar, NoReturn, Optional, Protocol, TYPE_CHECKING, Self, Sequence, overload
 import copy
 
-from normlite._constants import SpecialColumns
-from normlite.engine.interfaces import _distill_params
 from normlite.exceptions import ArgumentError, UnsupportedCompilationError
 from normlite.utils import frozendict
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import Table
     from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
-    from normlite.sql.dml import Insert, Select
+    from normlite.sql.dml import Insert, Select, Delete
     from normlite.sql.elements import ColumnElement, UnaryExpression, BinaryExpression, BindParameter, BooleanClauseList
     from normlite.engine.cursor import CursorResult
     from normlite.engine.interfaces import _CoreAnyExecuteParams, ExecutionOptions, ReturningStrategy
@@ -153,16 +150,22 @@ class Executable(ClauseElement):
         This base class fully supports the connection-driven execution flow of SQL statements.
     """
 
-    supports_execution: bool = True
+    supports_execution: ClassVar[bool] = True
     """Structural flag denoting the main characteristic for an executable of supporting execution.
     
     .. versionadded:: 0.8.0
     """
 
-    is_ddl: bool = False
+    is_ddl: ClassVar[bool] = False
     """``True`` if the executable subclass is a DDL statement.
     
     .. versionadded:: 0.8.0
+    """
+
+    is_delete: ClassVar[bool] = False
+    """``True`` if executable is a DELETE statement.
+    
+    .. versionadded:: 0.9.0
     """
 
     _execution_options: Optional[ExecutionOptions] = None
@@ -433,6 +436,9 @@ class SQLCompiler(Protocol):
         ...
 
     def visit_select(self, select: Select) -> dict:
+        ...
+
+    def visit_delete(self, delete: Delete) -> dict:
         ...
 
     def visit_column_element(self, column: ColumnElement) -> dict:

@@ -423,3 +423,23 @@ def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)
         
 
+class Delete(ExecutableClauseElement, HasTable):
+    """Represent a SQL DELETE statement."""
+
+    __visit_name__ = "delete"
+    is_delete = True
+
+    def __init__(self, table: Table):
+        self._table = table
+        self._whereclause = WhereClause()
+
+    @generative
+    def where(self, expr: ColumnElement) -> Self:
+        self._whereclause = self._whereclause.where(expr)
+        return self
+    
+    def _setup_execution(self, context: ExecutionContext) -> None:
+        pass
+
+def delete(table: Table) -> Delete:
+    return Delete(table)

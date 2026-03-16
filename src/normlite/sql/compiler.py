@@ -25,7 +25,7 @@ from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.base import _CompileState, SQLCompiler
-from normlite.sql.dml import OrderByClause
+from normlite.sql.dml import Delete, OrderByClause
 from normlite.sql.elements import _BindRole, BooleanClauseList, Operator, OrderByExpression, ColumnElement
 from normlite.sql.elements import BindParameter
 from normlite.sql.schema import ReadOnlyColumnCollection
@@ -491,6 +491,48 @@ class NotionCompiler(SQLCompiler):
 
         if query_params:           
             compiled_dict['query_params'] = query_params
+
+        return compiled_dict
+    
+    def visit_delete(self, delete: Delete):
+        self._compiler_state.is_delete = delete.is_delete
+        self._compiler_state.stmt = delete
+        self._compiler_state.result_columns = list()
+ 
+        operation = dict(endpoint='databases', request='query')
+        path_params = {}
+        query_params = {}
+        payload = {
+            'page_size': 100,        # Notion imposed max page size
+            'in_trash': False,       # Always return non deleted pages only
+        }
+ 
+        table = delete.get_table()
+        database_id = table.get_oid()
+        if database_id is None:
+            raise CompileError(f'Table: {table.name} has not been previously reflected.')
+
+        with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
+            db_id_key = self._add_bindparam(
+                BindParameter(
+                    key='database_id',
+                    value=database_id
+                )
+            )
+            path_params['database_id'] = f':{db_id_key}'
+
+        if delete._whereclause.has_expression():
+            with self._compiling(new_state=_CompileState.COMPILING_WHERE):
+                # emit the JSON code for the filter object of the query
+                # in the right context
+                filter_obj = delete._whereclause.expression._compiler_dispatch(self)
+                payload['filter'] = filter_obj
+
+        compiled_dict = {
+            'operation': operation, 
+            'path_params': path_params, 
+            'payload': payload
+        }
 
         return compiled_dict
 
