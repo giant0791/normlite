@@ -10,7 +10,7 @@ from normlite.sql.reflection import ReflectedTableInfo
 from normlite.notion_sdk.getters import get_object_id, rich_text_to_plain_text
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.ddl import CreateTable, DropTable
-from normlite.sql.dml import insert, select
+from normlite.sql.dml import insert, select, delete
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, Number, String
 
@@ -194,8 +194,8 @@ def test_resolve_params_for_insert(engine: Engine, students: Table, insert_value
     )
     ctx.pre_exec()
 
-    assert ctx.execution_style == ExecutionStyle.SINGLE
-    payload = ctx.payload[0]
+    assert ctx.execution_style == ExecutionStyle.EXECUTE
+    payload = ctx.payload
     assert payload['parent']['database_id'] == students.get_oid()
     assert payload['properties']['id']['number'] == 6789012
 
@@ -210,11 +210,11 @@ def test_resolve_params_for_select(engine: Engine, students: Table):
     )
     ctx.pre_exec()
 
-    assert ctx.execution_style == ExecutionStyle.SINGLE
+    assert ctx.execution_style == ExecutionStyle.EXECUTE
     assert ctx.path_params['database_id'] == students.get_oid()
     assert ctx.query_params.get('filter_properties') is not None
     assert 'id' in ctx.query_params['filter_properties']
-    name_col_val = ctx.payload[0]['filter']['title']['equals']
+    name_col_val = ctx.payload['filter']['title']['equals']
     assert name_col_val == 'Galileo Galilei'
 
 def test_resolve_params_for_create_table(students: Table, engine: Engine):
@@ -229,9 +229,9 @@ def test_resolve_params_for_create_table(students: Table, engine: Engine):
     )
     ctx.pre_exec()
 
-    assert ctx.execution_style == ExecutionStyle.SINGLE
+    assert ctx.execution_style == ExecutionStyle.EXECUTE
 
-    payload = ctx.payload[0]
+    payload = ctx.payload
     assert payload['parent']['page_id'] == engine._user_tables_page_id
     assert rich_text_to_plain_text(payload['title']) == 'students'
 
@@ -427,6 +427,40 @@ def is_valid_uuid4(uuid_string: str) -> bool:
         return False
     
     return True
+
+def test_execute_dml_context_delete_prefetch(
+    engine: Engine, 
+    students: Table
+):
+    # create database and mock reflection
+    database_id = create_students_db(engine)
+    students._sys_columns["object_id"]._value = database_id
+
+    # add rows
+    inserted_ids = add_students_rows(engine, students)
+
+    # construct select with projection
+    delete_stmt = (
+        delete(students)
+        .where(students.c.start_on.after(date(1580,1,1)))
+    )
+
+    # stmt._execute_on_connection(connection, distilled_params, execution_options)
+    compiled = delete_stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+        execution_options={"preserve_rowcount": True}
+    )
+
+    # Connection._execute_result_bulk(context) -> CursorResult:
+    ctx.pre_exec()
+    elem = ctx.invoked_stmt
+    elem._setup_execution(ctx)
+    
 
 def test_execute_ddl_context_create_table_returning_id_and_title(engine: Engine, students: Table):
     students._db_parent_id = engine._user_tables_page_id

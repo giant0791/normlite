@@ -49,7 +49,7 @@ import pdb
 from typing import TYPE_CHECKING, Any, Mapping, Optional
 import copy
 
-from normlite.exceptions import ArgumentError
+from normlite.exceptions import ArgumentError, InvalidRequestError
 from normlite.engine.interfaces import _CoreMultiExecuteParams, ExecutionOptions
 from normlite.sql.resultschema import SchemaInfo
 from normlite.utils import frozendict
@@ -68,14 +68,22 @@ class ExecutionStyle(Enum):
     .. versionadded:: 0.8.0
     """
     
-    SINGLE = auto()
-    """A single operation is executed."""
-
-    RESULT_BULK = auto()
-    """Multiple operations are executed on a result.
+    EXECUTE = auto()
+    """A single operation is executed.
     
+    It indicates cursor.execute() will be used.
+
+    .. versionchanged:: 0.9.0
+    """
+
+    EXECUTEMANY = auto()
+    """Multiple operations are executed on a query result.
+
+    It indicates that cursor.execute() will be used.
     This execution style is used for DELETE/UPDATE statements where the execution loop is
     driven by the query results.
+
+    .. versionchanged:: 0.9.0
     """
 
     PARAMETER_BULK = auto()
@@ -250,6 +258,24 @@ class ExecutionContext:
     .. versionadded: 0.9.0
     """
 
+    bulk_operation: Optional[dict]
+    """The operation to be executed when :attr:`execution_style` is :attr:`ExecutionStyle.EXCUTEMANY`.
+    
+    .. versionadded:: 0.9.0
+    """
+
+    bulk_parameters: Optional[list[dict]]
+    """The parameters set for the bulk operation when :attr:`execution_style` is :attr:`ExecutionStyle.EXCUTEMANY`.
+
+    .. versionadded:: 0.9.0
+    """
+
+    internal_cursor: Optional[DBAPICursor]
+    """The cursor used internally for prefetching Notion pages in delete/update.
+    
+    .. versionadded:: 0.9.0
+    """
+
     def __init__(
             self,
             engine: Engine,
@@ -273,20 +299,18 @@ class ExecutionContext:
         self.payload = None
         self._result = None
         self._rowcount = None
+        self.bulk_operation = None
+        self.bulk_parameters = None
+        self.internal_cursor = None
 
     def _determine_execution_style(self) -> ExecutionStyle:
-        params = self.distilled_params
+        stmt = self.invoked_stmt
 
-        # Single execution: no parameters or exactly one parameter set
-        if len(params) == 1:
-            return ExecutionStyle.SINGLE
+        # delete
+        if stmt.is_delete:
+            return ExecutionStyle.EXECUTEMANY
 
-        # Bulk execution
-        if self.compiled._compiler_state.is_insert:
-            return ExecutionStyle.PARAMETER_BULK
-
-        # update/delete
-        return ExecutionStyle.RESULT_BULK
+        return ExecutionStyle.EXECUTE
 
     @property
     def operation(self) -> dict:
@@ -319,12 +343,7 @@ class ExecutionContext:
             dbapi_params['query_params'] = self.query_params
 
         if self.payload:
-            dbapi_params['payload'] = (
-                self.payload[0]
-                if self.execution_style in (ExecutionStyle.SINGLE, ExecutionStyle.RESULT_BULK)
-                else
-                self.payload
-            )
+            dbapi_params['payload'] = self.payload
 
         return dbapi_params
     
@@ -357,12 +376,11 @@ class ExecutionContext:
             )
 
         if 'payload' in self.compiled_dict:
-            self.payload = [
-                self._bind_params(
+            self.payload = self._bind_params(
                     copy.deepcopy(self.compiled_dict['payload']),
                     resolved_params
-                )
-            ]
+            )
+            
 
         if resolved_params:
             raise ArgumentError(

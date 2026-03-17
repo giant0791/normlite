@@ -230,16 +230,32 @@ class Connection:
 
         # 4. normalize params, options, payload
         ctx.pre_exec()
-        if ctx.execution_style == ExecutionStyle.SINGLE:
-            return self._execute_single(ctx)
+        elem = ctx.invoked_stmt
+
+        # 5. statement prepares execution
+        elem._setup_execution(ctx)      
+
+        if ctx.execution_style == ExecutionStyle.EXECUTE:
+            self._execute_single(ctx)
         
-        raise NotImplementedError('SINGLE execution style supported only.')
+        elif ctx.execution_style == ExecutionStyle.EXECUTEMANY:
+            self._execute_many(ctx)
+        
+        else:
+            raise NotImplementedError(f"'{ctx.execution_style}' execution style not supported.")
+        
+        # 7. the execution is mechanically complete before semantic interpretation begins
+        #    make lastrowid, rowcount, etc. available to the result
+        ctx.post_exec()
+
+        # 8. result interpretation
+        #    semantic reconstruction / reflection for DDL statements
+        elem._finalize_execution(ctx)   
+
+        return ctx.setup_cursor_result()
 
     def _execute_single(self, context: ExecutionContext) -> CursorResult:
         elem = context.invoked_stmt
-
-        # 5. statement prepares execution
-        elem._setup_execution(context)      
         
         # 6. side effects happen (HTTP)
         try:
@@ -251,15 +267,19 @@ class Connection:
         except Error as exc:
             elem._handle_dbapi_error(exc, context)
 
-        # 7. the execution is mechanically complete before semantic interpretation begins
-        #    make lastrowid, rowcount, etc. available to the result
-        context.post_exec()
+    
+    def _execute_many(self, context: ExecutionContext) -> CursorResult:
+        elem = context.invoked_stmt
 
-        # 8. result interpretation
-        #    semantic reconstruction / reflection for DDL statements
-        elem._finalize_execution(context)   
-
-        return context.setup_cursor_result()
+        # 6. side effects happen (HTTP)
+        try:
+            self._engine.do_executemany(
+                context.cursor, 
+                context.bulk_operation, 
+                context.bulk_parameters
+            )
+        except Error as exc:
+            elem._handle_dbapi_error(exc, context)
 
     def _resolve_execution_options(self, stmt_execution_options: ExecutionOptions) -> ExecutionOptions:
         """Resolve the connection's execution options with the statement's ones."""
@@ -865,7 +885,16 @@ class Engine:
     ) -> None:
         """Execute an operation on the supplied DBAPI cursor."""
         cursor.execute(operation, parameters)
-                        
+
+    def do_executemany(
+            self,
+            cursor: DBAPICursor,
+            operation: dict,
+            parameters: list[dict]
+    ) -> None:
+        """Execute the same operation over multiple parameters."""
+        cursor.executemany(operation, parameters)
+
 class Inspector:
     """Provide facilities for inspecting database objects.
 
