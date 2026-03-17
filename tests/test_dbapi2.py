@@ -660,3 +660,24 @@ def test_next_on_last_result_set_exhausts_results(
 
     # no more result sets
     assert cursor.fetchone() is None
+
+def test_rowcount_returns_sum_of_resultsets(
+    cursor: Cursor,
+    prefilled_client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...],
+    database_id: str,
+):
+    pages = return_all_pages_in_database(prefilled_client, database_id)
+    params = [build_trash_operation(p["id"]) for p in pages]
+
+    cursor._inject_description(row_description)
+
+    cursor.executemany(
+        operation={
+            "endpoint": "pages",
+            "request": "update"
+        },
+        parameters=params
+    )
+
+    assert cursor.rowcount == len(pages)

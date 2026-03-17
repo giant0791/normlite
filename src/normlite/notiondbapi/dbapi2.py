@@ -250,9 +250,12 @@ class Cursor:
         .. versionchanged:: 0.9.0
             This version adds support for row counting in case of multiple result sets
         """
-        rs = self._current_result_set
-        return -1 if rs is None else len(rs)   
-    
+        if not self._result_sets:
+            return -1
+        
+        # sum of all result sets in the cursor
+        return sum(len(rs) for rs in self._result_sets)
+        
     @property
     def lastrowid(self) -> Optional[int]:
         """This read-only attribute provides the rowid of the last modified row.
