@@ -143,6 +143,9 @@ class CursorResult:
     def __iter__(self) -> Iterator[Row]:
         """Provide an iterator for this cursor result.
 
+        .. versionchanged:: 0.9.0
+            This version adds support for multiple result sets returned by the underlying DBAPI cursor.
+
         .. versionchanged:: 0.7.0   
             Raise :exc:`ResourceClosedError` if it was previously closed.
         
@@ -155,13 +158,12 @@ class CursorResult:
             Iterator[Row]: The row iterator.
         """
         self._check_if_closed()
-        for raw_row in self._cursor:
+
+        for raw_row in self._cursor._iter_all():
             yield Row(self._metadata, raw_row)
 
-        # close the result set
-        self._metadata = _NO_CURSOR_RESULT_METADATA
-        self._cursor.close()        
-    
+        self.close()    
+
     def one(self) -> Row:
         """Return exactly one row or raise an exception.
 
@@ -180,18 +182,26 @@ class CursorResult:
         """
         self._check_if_closed()
 
-        if not self._metadata.returns_row:
-            raise NoResultFound('No row was found when one was required.')
-        
-        if self._cursor.rowcount > 1:
-            raise MultipleResultsFound('Multiple rows were found when exactly one was required.')
-        
-        return self.all()[0]
+        row = self.fetchone()
+        if row is None:
+            raise NoResultFound("No row was found when one was required.")
+
+        second = self.fetchone()
+        if second is not None:
+            raise MultipleResultsFound(
+                "Multiple rows were found when exactly one was required."
+            )
+
+        self.close()
+        return row
     
     def all(self) -> Sequence[Row]:
         """Return all rows in a sequence.
 
         This method closes the result set after invocation. Subsequent calls will return an empty sequence.
+
+        .. versionchanged:: 0.9.0
+            This version adds support for multiple result sets returned by the underlying DBAPI cursor.
 
         .. versionchanged:: 0.7.0   
             Raise :exc:`ResourceCloseError` if it was previously closed.
@@ -207,17 +217,12 @@ class CursorResult:
         self._check_if_closed()
 
         if not self._metadata.returns_row:
-            return list()
-        
-        raw_rows = self._cursor.fetchall()  # [(id_val, archived_val, in_trash_val, col1_val, ...), ...]
-        #row_sequence = [Row(self._metadata, row_data) for row_data in raw_rows]
-        row_sequence = list()
-        for row_data in raw_rows:
-            row = Row(self._metadata, row_data)
-            row_sequence.append(row)
+            return []
+
+        rows = [Row(self._metadata, raw) for raw in self._cursor._iter_all()]
 
         self.close()
-        return row_sequence
+        return rows    
     
     def first(self) -> Optional[Row]:
         """Return the first row or ``None`` if no row is present.
@@ -225,7 +230,9 @@ class CursorResult:
         Note:
             This method closes the result set and discards remaining rows.
 
-        .. versionchanged:: 0.7.0  Raise :exc:`ResourceClosedError` if it was previously closed.
+        .. versionchanged:: 0.7.0  
+            Raise :exc:`ResourceClosedError` if it was previously closed.
+
         .. versionadded:: 0.5.0
 
 
@@ -239,39 +246,38 @@ class CursorResult:
 
         if not self._metadata.returns_row:
             return None
-        
-        rows = list(self.all())
-        return rows[0]
+
+        row = self.fetchone()
+        self.close()
+        return row
     
     def fetchone(self) -> Optional[Row]:
         """Fetch the next row.
 
         When all rows are exhausted, returns ``None``.
 
+        .. versionchanged:: 0.9.0
+            This version adds support for multiple result sets returned by the underlying DBAPI cursor.
+
         .. versionadded:: 0.5.0
 
         Returns:
             Optional[Row]: The row object in the result.
         """
+        self._check_if_closed()
+
         if not self._metadata.returns_row:
-            # underlying DBAPI cursor is closed or no rows returned from a query
             return None
 
-        try:
-            next_row = self._cursor.fetchone()
-        except InterfaceError:
-            # Either call to cursor execute() did not produce results or execute() was not called yet
-            self._metadata = _NO_CURSOR_RESULT_METADATA
-            self._cursor.close()        
-            return None
-        
-        if next_row:
-            # the next row is not empty ()
-            return Row(self._metadata, next_row)
-        
-        # next_row is an empty tuple
-        return None
+        while True:
+            raw = self._cursor.fetchone()
+            if raw is not None:
+                return Row(self._metadata, raw)
 
+            # move to next result set
+            if not self._cursor.nextset():
+                return None
+            
     def fetchall(self) -> Sequence[Row]:
         """Synonim for :class:`CursorResult.all()` method.
 
@@ -284,10 +290,13 @@ class CursorResult:
         """
         return self.all()
     
-    def fetchmany(self) -> Sequence[Row]:
+    def fetchmany(self, size: Optional[int] = None) -> Sequence[Row]:
         """Fetch many rows.
 
         When all rows are exhausted, returns an empty sequence.
+
+        .. versionchanged:: 0.9.0
+            This version adds support for multiple result sets returned by the underlying DBAPI cursor.
 
         .. versionadded:: 0.5.0
 
@@ -297,8 +306,26 @@ class CursorResult:
         Returns:
             Sequence[Row]: All rows or an empty sequence when exhausted.
         """
-        raise NotImplementedError
-    
+        self._check_if_closed()
+
+        if not self._metadata.returns_row:
+            return []
+
+        n = self._cursor.arraysize if size is None else size
+        result = []
+
+        while len(result) < n:
+            chunk = self._cursor.fetchmany(n - len(result))
+            result.extend(Row(self._metadata, r) for r in chunk)
+
+            if len(result) >= n:
+                break
+
+            if not self._cursor.nextset():
+                break
+
+        return result    
+
     def close(self) -> None:
         """Close the cursor result.
         

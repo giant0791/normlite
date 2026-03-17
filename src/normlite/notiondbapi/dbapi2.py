@@ -702,6 +702,23 @@ class Cursor:
 
         self._result_index += 1
         return True
+
+    def _iter_all(self) -> Iterator[tuple]:
+        """Iterate over all rows across all result sets.
+        
+        This is a private API used by :class:`normlite.engine.cursor.CursorResult` to return all rows.
+
+        .. versionadded:: 0.9.0
+        """
+        self._check_closed()
+
+        if not self._result_sets:
+            raise ProgrammingError(
+                "Cursor result set is empty. No execute*() call was issued."
+            )
+
+        for rs in self._result_sets:
+            yield from rs
     
     def close(self) -> None:
         """Close the cursor now.

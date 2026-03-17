@@ -17,6 +17,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
+from copy import Error
+from operator import itemgetter
 import pdb
 from types import MappingProxyType
 from typing import Any, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
@@ -24,6 +26,7 @@ from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable, ClauseElement, generative
 from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElement
+from normlite.sql.resultschema import SchemaInfo
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
@@ -439,7 +442,53 @@ class Delete(ExecutableClauseElement, HasTable):
         return self
     
     def _setup_execution(self, context: ExecutionContext) -> None:
+        elem = context.invoked_stmt
+
+        # create a second cursor for the internal query
+        internal_cursor = context.connection._engine.raw_connection().cursor()
+        context.internal_cursor = internal_cursor
+
+        # IMPORTANT: inject the description in the cursor prior to use it
+        schema_info: SchemaInfo = SchemaInfo.from_table(
+            self._table,
+            [col.name for col in self._table.c]    
+        )
+        internal_cursor._inject_description(schema_info.as_sequence())
+
+        # execute the compiled query
+        try:
+            context.engine.do_execute(
+                internal_cursor,
+                context.operation,
+                context.parameters
+            )
+        except Error as exc:
+            elem._handle_dbapi_error(exc, context)
+
+        pages = internal_cursor.fetchall()
+
+        # build parameters for pages.update
+        bulk_params = []
+        get_object_id = itemgetter(0)
+
+        for page in pages:
+            bulk_params.append({
+                "path_params": {"page_id": get_object_id(page)},
+                "payload": {"in_trash": True}
+            })
+
+        context.bulk_operation = {
+            "endpoint": "pages",
+            "request": "update"
+        }
+
+        context.bulk_parameters = bulk_params
+    
+    def _finalize_execution(self, context: ExecutionContext) -> None:
+        # if preserve_rowcount then set the rowcount and consume the result
+        #result = context.setup_cursor_result()
         pass
+
 
 def delete(table: Table) -> Delete:
     return Delete(table)

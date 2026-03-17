@@ -54,6 +54,7 @@ def test_delete_generate_operation_no_where_clause(students: Table, delete_stmt:
     assert asdict['path_params']['database_id'] == ":database_id"
     assert "in_trash" in asdict["payload"]
     assert "page_size" in asdict["payload"]
+    assert compiled._compiler_state.is_delete
 
 #---------------------------------------------
 # WHERE tests
