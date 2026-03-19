@@ -145,6 +145,33 @@ def test_client_conforms_API_version_2022_06_28(client: InMemoryNotionClient):
     assert list(properties['start_on'].keys()) == ['id']
     assert list(properties['grade'].keys()) == ['id']
 
+def test_resultset_created_pages_from_json(client: InMemoryNotionClient, row_description: tuple[tuple, ...]):
+    _, pages = add_pages(
+        client, [
+            {
+                "name": "Galileo Galilei", 
+                "id": 123456, 
+                "is_active": False, 
+                "start_on": "1581-01-01", 
+                "grade": "A"
+            }
+        ]
+    )
+
+    resultset = ResultSet(pages[0], row_description)
+    get_name = itemgetter(4)
+    get_id = itemgetter(5)
+    get_is_active = itemgetter(6)
+    get_start_on = itemgetter(7)
+    get_grade = itemgetter(8)
+    first = next(resultset)
+
+    # All property values from a page returned by pages.create are None
+    assert get_name(first) is None
+    assert get_id(first) is None
+    assert get_is_active(first) is None
+    assert get_start_on(first) is None
+    assert get_grade(first) is None
 
 def test_resultset_pages_from_json(prefilled_client: InMemoryNotionClient, database_id: str, row_description: tuple[tuple, ...]):
     results = prefilled_client.databases_query({"database_id": database_id})
