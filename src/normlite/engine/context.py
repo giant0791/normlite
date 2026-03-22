@@ -276,6 +276,8 @@ class ExecutionContext:
     .. versionadded:: 0.9.0
     """
 
+
+
     def __init__(
             self,
             engine: Engine,
@@ -395,7 +397,10 @@ class ExecutionContext:
         if self.invoked_stmt.is_ddl:
             return
         
-        schema = SchemaInfo.from_table(self.invoked_stmt.get_table(), self.compiled.result_columns())
+        schema = SchemaInfo.from_table(
+            self.invoked_stmt.get_table(), 
+            projected_usr_names=self.compiled.result_columns()
+        )
         self.cursor._inject_description(schema.as_sequence())
 
     def post_exec(self) -> None:

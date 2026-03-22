@@ -127,8 +127,8 @@ class ResultSet:
 
         for col in columns:           
             prop = page["properties"][col]
-            typ = prop["type"]
-            row.append(prop[typ])     # e.g. ([{"text": {"content": "..."}}])
+            typ = prop.get("type")
+            row.append(prop[typ] if typ else None)     # value is available only if the page is returned by databases.query or pages.retrieve
 
         return tuple(row)
     

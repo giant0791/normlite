@@ -7,13 +7,9 @@ import pytest
 from normlite.engine.base import Engine, create_engine
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import _distill_params
-from normlite.sql.reflection import ReflectedTableInfo
-from normlite.notion_sdk.getters import get_object_id, rich_text_to_plain_text
-from normlite.sql.compiler import NotionCompiler
-from normlite.sql.ddl import CreateTable, DropTable
 from normlite.sql.dml import ExecutableClauseElement, insert, select, delete
 from normlite.sql.schema import Column, MetaData, Table
-from normlite.sql.type_api import Boolean, Date, Integer, Number, String
+from normlite.sql.type_api import Boolean, Date, Integer, String
 
 @pytest.fixture
 def mocked_db_id() -> str:
@@ -49,7 +45,10 @@ def insert_values() -> dict:
 
 @pytest.fixture
 def engine() -> Engine:
-    return create_engine('normlite:///:memory:')
+    engine = create_engine('normlite:///:memory:')
+    engine.execution_options(preserve_rowcount=True)
+    return engine
+
 
 fake = Faker()
 Faker.seed(42)
@@ -233,4 +232,76 @@ def test_delete_complete_exec_pipeline(
     assert len(rows) == 0
     assert del_result.rowcount == MAX_ROWS
 
-    
+def test_delete_exec_pipeline_returning_syscols_only(
+    engine: Engine,
+    students: Table,
+):
+    generate_rows(engine, students, n=MAX_ROWS)
+    elem = delete(students).where(students.c.is_active.is_(True))
+
+    with engine.connect() as connection:
+        # query the database before deleting all rows
+        stmt = select(students).where(students.c.is_active.is_(True))
+        result = connection.execute(stmt)
+        orig_rows = result.all()
+
+        # delete all rows
+        del_result = connection.execute(elem)
+        del_rows = del_result.all()
+
+        # this query shall return no rows
+        stmt = select(students).where(students.c.is_active.is_(True))
+        sel_result = connection.execute(stmt)
+        rows = sel_result.all()
+
+    assert len(rows) == 0
+    assert result.rowcount == MAX_ROWS
+    assert del_result.rowcount == MAX_ROWS
+
+    assert orig_rows[0]["object_id"] == del_rows[0]["object_id"]
+    assert orig_rows[MAX_ROWS - 1]["object_id"] == del_rows[MAX_ROWS - 1]["object_id"]  
+    assert "name" not in orig_rows[0]
+    assert "id" not in orig_rows[0]
+    assert "is_active" not in orig_rows[0]
+    assert "start_on" not in orig_rows[0]
+    assert "grade" not in orig_rows[0]
+
+def test_delete_exec_pipeline_returning_usrcols(
+    engine: Engine,
+    students: Table,
+):
+    generate_rows(engine, students, n=MAX_ROWS)
+    elem = (
+        delete(students)
+        .where(students.c.is_active.is_(True))
+        .returning(students.c.name, students.c.id)
+    )
+    #pdb.set_trace()
+
+    with engine.connect() as connection:
+        # query the database before deleting all rows
+        stmt = (
+            select(students.c.name, students.c.id)
+            .where(students.c.is_active.is_(True))
+        )
+        result = connection.execute(stmt)
+        orig_rows = result.all()
+
+        # delete all rows
+        del_result = connection.execute(elem)
+        del_rows = del_result.all()
+
+        # this query shall return no rows
+        stmt = select(students).where(students.c.is_active.is_(True))
+        sel_result = connection.execute(stmt)
+        rows = sel_result.all()
+
+    assert len(rows) == 0
+    assert result.rowcount == MAX_ROWS
+    assert del_result.rowcount == MAX_ROWS
+
+    for idx, orig_row in enumerate(orig_rows):
+        assert orig_row.object_id == del_rows[idx].object_id
+        assert orig_row.name == del_rows[idx].name
+        assert orig_row.id == del_rows[idx].id
+

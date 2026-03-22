@@ -402,7 +402,7 @@ class NotionCompiler(SQLCompiler):
 
         # IMPORTANT: concatenate the values tuple containing the special columns WITH the returning tuple.
         # This ensures that the values for the special columns are always available even if the returning tuple is ().
-        self._compiler_state.result_columns = list(insert._returning)
+        self._compiler_state.result_columns = [col.name for col in insert._returning]
         return {'operation': operation, 'payload': payload}  
 
     def visit_order_by_clause(self, clause: OrderByClause) -> dict:
@@ -435,7 +435,7 @@ class NotionCompiler(SQLCompiler):
     def visit_select(self, select: Select) -> dict:
         self._compiler_state.is_select = select.is_select
         self._compiler_state.stmt = select
-        self._compiler_state.result_columns = list()
+        self._compiler_state.result_columns = []
 
         operation = dict(endpoint='databases', request='query')
         path_params = {}
@@ -470,15 +470,9 @@ class NotionCompiler(SQLCompiler):
 
         if projection:
             # use select projections for the result columns    
-            self._compiler_state.result_columns.extend(projection)
+            self._compiler_state.result_columns = projection
             query_params['filter_properties'] = projection
         
-        else:
-            # the select statement provides no projections
-            # add all user defined columns
-            user_cols = [col.name for col in table.columns]
-            self._compiler_state.result_columns.extend(user_cols)
-
         if select._order_by.has_expression():
             sorts_obj = select._order_by._compiler_dispatch(self)
             payload['sorts'] = sorts_obj
@@ -497,11 +491,9 @@ class NotionCompiler(SQLCompiler):
     def visit_delete(self, delete: Delete):
         self._compiler_state.is_delete = delete.is_delete
         self._compiler_state.stmt = delete
-        self._compiler_state.result_columns = list()
  
         operation = dict(endpoint='databases', request='query')
         path_params = {}
-        query_params = {}
         payload = {
             'page_size': 100,        # Notion imposed max page size
             'in_trash': False,       # Always return non deleted pages only
@@ -533,7 +525,7 @@ class NotionCompiler(SQLCompiler):
             'path_params': path_params, 
             'payload': payload
         }
-
+        self._compiler_state.result_columns = [col.name for col in delete._returning]
         return compiled_dict
 
     def visit_binary_expression(self, expression: BinaryExpression) -> dict:
