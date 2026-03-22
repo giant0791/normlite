@@ -1,7 +1,9 @@
+from operator import itemgetter
 import pdb
 import uuid
 import pytest
 
+from normlite.exceptions import ArgumentError
 from normlite.sql.base import _CompileState, CompilerState
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Delete, delete 
@@ -121,4 +123,70 @@ def test_where_generative_multi_clause(students: Table, delete_stmt: Delete):
     assert 'param_1' in compiled.params
     assert len(compiled.params) == 2 + 1        # :database_id is also a bind parameter!
 
+#---------------------------------------------
+# generative returning() tests
+#---------------------------------------------
+get_oid = itemgetter(0)
+get_is_archived = itemgetter(1)
+get_is_deleted = itemgetter(2)
+get_created_at = itemgetter(3)
 
+def test_delete_always_returns_no_cols_without_returning(students: Table, delete_stmt: Delete):
+    mocked_db_id = str(uuid.uuid4())
+    students._sys_columns["object_id"]._value = mocked_db_id
+
+    assert len(delete_stmt._returning) == 0
+
+def test_returning_generative(students: Table, delete_stmt: Delete):
+    mocked_db_id = str(uuid.uuid4())
+    students._sys_columns["object_id"]._value = mocked_db_id
+
+    stmt = (
+        delete_stmt
+        .returning(students.c.name)
+        .returning(students.c.grade)
+    )
+
+    get_name = itemgetter(0)
+    get_grade = itemgetter(1)
+    assert len(stmt._returning) == 2
+    assert get_name(stmt._returning) is students.c.name
+    assert get_grade(stmt._returning) is students.c.grade
+
+def test_delete_returning_generative_sys_columns_warns_and_skips(students: Table, delete_stmt: Delete):
+    mocked_db_id = str(uuid.uuid4())
+    students._sys_columns["object_id"]._value = mocked_db_id
+
+    with pytest.warns(UserWarning):
+        stmt = (
+            delete_stmt
+            .returning(students.c.name, students.c.id)
+            .returning(students._sys_columns.object_id)
+        )
+
+    assert len(stmt._returning) == 2
+
+def test_returning_raises_if_col_not_in_table(students: Table, metadata: MetaData, delete_stmt: Delete):
+    wrong_table = Table("wrong_table", metadata, Column("wrong_column", String(is_title=True)))
+
+    with pytest.raises(ArgumentError) as exc:
+        delete_stmt.returning(wrong_table.c.wrong_column)
+
+    error = str(exc.value)
+    assert "students" in error
+    assert "wrong_column" in error
+
+def test_accumulation_has_deduplication_and_warns(students: Table, delete_stmt: Delete):
+    mocked_db_id = str(uuid.uuid4())
+    students._sys_columns["object_id"]._value = mocked_db_id
+
+    with pytest.warns(UserWarning):
+        stmt = (
+            delete_stmt
+            .returning(students.c.name)
+            .returning(students.c.name)
+        )
+
+
+    assert len(stmt._returning) == 1
+    assert stmt._returning == (students.c.name,)

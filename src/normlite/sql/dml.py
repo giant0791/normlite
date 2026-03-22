@@ -22,6 +22,7 @@ from operator import itemgetter
 import pdb
 from types import MappingProxyType
 from typing import Any, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
+import warnings
 from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable, ClauseElement, generative
@@ -47,7 +48,7 @@ class HasTable(Protocol):
                 f"Class '{self.__class__.__name__}' shall have a '_table' attribute."
             )
 
-class ExecutableClauseElement(HasTable, Executable):
+class ExecutableClauseElement(Executable):
     """Specialized executable for DML statements
     
     This class is the base of all DML constructs.
@@ -56,9 +57,6 @@ class ExecutableClauseElement(HasTable, Executable):
     """
     
     is_ddl = False
-
-    _table: Table
-    """The table this executable is referred to."""
 
     def _execute_on_connection(
             self, 
@@ -77,11 +75,76 @@ class ExecutableClauseElement(HasTable, Executable):
             params, 
             execution_options=merged_execution_options
         )
+    
+class UpdateBase(HasTable, ExecutableClauseElement):
+    """Base for all DML statements.
 
-class ValuesBase(ExecutableClauseElement):
+    This class allows the generative pattern and provide RETURNING columns incrementally.
+
+    .. versionadded:: 0.9.0
+    """
+
+    _returning: tuple[Column, ...] = ()
+    """Provide the columns to be returned by the DML statement."""
+
+    _table: Table = None
+    """The table this executable is referred to."""
+
+
+    def __init__(self, table: Table):
+        self._table = table
+
+    @generative
+    def returning(self, *cols: Column) -> Self:
+        """Add the specified columns to the columns to be returned.
+
+        Raises:
+            ArgumentError: If a specified column does not belong to the table this statement
+                is applied to.
+
+        Returns:
+            Self: This instance for generative usage.
+        """
+
+        existing = list(self._returning)
+        seen = {
+            (col.parent.name, col.name, col.is_system)
+            for col in existing
+        }
+
+        for col in cols:
+            key = (col.parent.name, col.name, col.is_system)
+
+            if key in seen:
+                warnings.warn(
+                    f"Column '{col.name}' already declared as returning, skipping."
+                )
+                continue
+
+            if col.is_system:
+                warnings.warn(
+                    f"System columns are always added to the RETURNING clause by default ('{col.name}')"
+                )
+                continue
+
+            if col.parent is not self._table:
+                raise ArgumentError(
+                    f"Column: '{col.name}' does not belong to table: '{self._table.name}'"
+                )
+            
+            seen.add(col)
+            existing.append(col)
+
+        self._returning = tuple(existing)
+        return self
+
+class ValuesBase(UpdateBase):
     """Base for all DML statements with the VALUES clause.
 
     This class allows the generative pattern and provide values incrementally.
+
+    .. versionchanged:: 0.9.0
+        Fix class MRO issue and provide more logical hierarchy structure.
 
     .. versionadded:: 0.8.0
     """
@@ -90,8 +153,8 @@ class ValuesBase(ExecutableClauseElement):
     """The immutable mapping holding the values."""
 
     def __init__(self, table: Table):
-        self._table = table
-        self._values = None
+       super().__init__(table)
+       self._values = None
 
     @generative
     def values(self, *args: Union[dict, Sequence[Any]], **kwargs: Any) -> Self:
@@ -161,6 +224,8 @@ class ValuesBase(ExecutableClauseElement):
 
         self._values = MappingProxyType(existing)
 
+        return self
+
 class Insert(ValuesBase):
     """Provide the SQL ``INSERT`` node to create a new row in the specified table. 
 
@@ -210,32 +275,9 @@ class Insert(ValuesBase):
     def __init__(self, table: Table):
         super().__init__(table)
 
-        self._returning = ()
-        """The tuple holding user defined comlumns only."""
-
     def get_table_columns(self) -> ReadOnlyColumnCollection:
         return self._table.columns
-    
-    def returning(self, *cols: Column) -> Self:
-        """Provide the ``RETURNING`` clause to specify the column to be returned.
-
-        Raises:
-            ArgumentError: If a specified column does not belong to the table this insert statement
-                is applied to.
-
-        Returns:
-            Self: This instance for generative usage.
-        """
-        if cols:
-            for col in cols:
-                if col.parent is not self._table:
-                    raise ArgumentError(
-                        f'Column: {col.name} does not belong to table: {self._table.name}'
-                    )
-                self._returning += (col.name,)
         
-        return self
-    
     def _process_dict_values(self, dict_arg: dict) -> MappingProxyType:
         kv_pairs = {}
         try:
@@ -340,7 +382,7 @@ class OrderByClause(HasExpression, ClauseElement):
     def has_expression(self) -> bool:
         return self.clauses
 
-class Select(ExecutableClauseElement, HasTable):
+class Select(HasTable, ExecutableClauseElement):
     __visit_name__ = 'select'
     is_select = True
 
@@ -426,14 +468,14 @@ def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)
         
 
-class Delete(ExecutableClauseElement, HasTable):
+class Delete(UpdateBase):
     """Represent a SQL DELETE statement."""
 
     __visit_name__ = "delete"
     is_delete = True
 
     def __init__(self, table: Table):
-        self._table = table
+        UpdateBase.__init__(self, table)
         self._whereclause = WhereClause()
 
     @generative
@@ -449,11 +491,12 @@ class Delete(ExecutableClauseElement, HasTable):
         context.internal_cursor = internal_cursor
 
         # IMPORTANT: inject the description in the cursor prior to use it
-        schema_info: SchemaInfo = SchemaInfo.from_table(
+        fetch_schema: SchemaInfo = SchemaInfo.from_table(
             self._table,
-            [col.name for col in self._table.c]    
+            projected_sys_names=context.compiled._fetch_columns,
+            projected_usr_names=context.compiled.result_columns()    
         )
-        internal_cursor._inject_description(schema_info.as_sequence())
+        internal_cursor._inject_description(fetch_schema.as_sequence())
 
         # execute the compiled query
         try:
@@ -469,7 +512,7 @@ class Delete(ExecutableClauseElement, HasTable):
 
         # build parameters for pages.update
         bulk_params = []
-        get_object_id = itemgetter(0)
+        get_object_id = fetch_schema.column_getter("object_id")
 
         for page in pages:
             bulk_params.append({
@@ -485,10 +528,7 @@ class Delete(ExecutableClauseElement, HasTable):
         context.bulk_parameters = bulk_params
     
     def _finalize_execution(self, context: ExecutionContext) -> None:
-        # if preserve_rowcount then set the rowcount and consume the result
-        #result = context.setup_cursor_result()
         pass
-
 
 def delete(table: Table) -> Delete:
     return Delete(table)

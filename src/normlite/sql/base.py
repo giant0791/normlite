@@ -312,8 +312,10 @@ class CompilerState:
     )
     """Bind parameters to be evaluated at execution time."""
 
-    # result metadata
-    result_columns: Optional[list[str]] = None
+    # result metadata: calling CompileState() makes the factory to produce []
+    result_columns: Optional[list[str]] = field(default_factory=list)
+
+    fetch_columns: list[str] = field(default_factory=lambda: ["object_id"])
 
     # compiler phase
     compile_state: _CompileState = _CompileState.NOT_STARTED
@@ -353,6 +355,12 @@ class Compiled:
         self._result_columns = []
         """Optional sequence of strings specifying the column names to be considered 
         in the rows produced by the :class:`normlite.cursor.CursorResult` methods.
+        """
+
+        self._fetch_columns = compiler._compiler_state.fetch_columns
+        """Minimal set required to execute an executemany-style statement (DELETE/UPDATE).
+        
+        .. versionadded:: 0.9.0
         """
 
         if compiler._compiler_state.result_columns is not None:
