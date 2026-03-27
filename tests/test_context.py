@@ -287,7 +287,7 @@ def test_execute_dml_context_row_preservation(
     assert students._sys_columns["created_at"].name in mapping
 
 @pytest.mark.skip(".returning requires new feature (see issue #200)")
-def test_execute_dml_context_returning(
+def test_execute_dml_context_insert_returning(
     engine: Engine, 
     students: Table, 
     insert_values: dict
@@ -579,7 +579,7 @@ def test_connection_exec_pipeline_simulated(engine: Engine, students: Table):
     assert result.rowcount == -1
     assert is_valid_uuid4(students.get_oid())
 
-    name_col, id_col, is_active_col, start_on_col, grade_col = students.columns
+    name_col, id_col, is_active_col, start_on_col, grade_col = students._usr_columns
     assert name_col._id 
     assert id_col._id
     assert is_active_col._id
@@ -718,7 +718,7 @@ def test_connection_exec_ddl_context_create_table(engine: Engine, students: Tabl
     assert result.rowcount == -1
     assert is_valid_uuid4(students.get_oid())
     assert all(
-        [c._id is not None for c in students.columns]
+        [c._id is not None for c in students._usr_columns]
     )
 
 def test_connection_exec_ddl_context_drop_table(engine: Engine, students: Table):
