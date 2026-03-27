@@ -270,7 +270,7 @@ class NotionCompiler(SQLCompiler):
 
         # emit code for properties object
         payload['properties'] = self._compile_table_columns(
-            stmt_table.columns
+            stmt_table._usr_columns
         )
         
         self._compiler_state.result_columns = [
@@ -377,7 +377,7 @@ class NotionCompiler(SQLCompiler):
             # create a mapping for all user columns with dummy values
             placeholders = {
                 col.name: VALUE_PLACEHOLDER
-                for col in insert.get_table().columns
+                for col in insert.get_table()._usr_columns
             }
 
             insert = insert.values(**placeholders)
@@ -476,6 +476,9 @@ class NotionCompiler(SQLCompiler):
             # use select projections for the result columns    
             self._compiler_state.result_columns = projection
             query_params['filter_properties'] = projection
+        
+        else:
+            self._compiler_state.result_columns = [col.name for col in table.columns]
         
         if select._order_by.has_expression():
             sorts_obj = select._order_by._compiler_dispatch(self)
@@ -669,7 +672,7 @@ class NotionCompiler(SQLCompiler):
     def _compile_insert_update_values(self, values: dict) -> dict:
         properties = {}
         stmt_table = self._compiler_state.stmt._table
-        user_cols = stmt_table.columns
+        user_cols = stmt_table._usr_columns
         if len(user_cols) != len(values):
             raise CompileError(
                 'Not enough values supplied for all user defined columns '

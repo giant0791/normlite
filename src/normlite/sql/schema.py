@@ -57,6 +57,7 @@ You can inspect the table's primary key constraints by calling the :attr:`primar
 """
 from __future__ import annotations
 from abc import ABC, abstractmethod
+import itertools
 import pdb
 import re
 from typing import Any, ClassVar, Dict, Iterable, Iterator, List, NoReturn, Optional, Set, Tuple, Union, overload, TYPE_CHECKING
@@ -393,6 +394,12 @@ class Table(HasIdentifier):
 
         """
 
+        self._all_columns: ReadOnlyColumnCollection = None
+        """Provide the union view of user and system columns as read-only collection.
+        
+        .. versionadded:: 0.9.0
+        """
+
         self._constraints: Set[Constraint] = set()
         """The set of constraints associated to this table's columns."""
 
@@ -458,13 +465,28 @@ class Table(HasIdentifier):
         """Accessor for this table's columns.
         
         It returns a ready-only copy column collection.
+
+        .. versionchanged:: 0.9.0
+            This version now returns all columns as a union view of user and system ones.
         """
-        return self._usr_columns.as_readonly()
-    
+        if self._all_columns is None:
+            cols_union = list(itertools.chain(self._sys_columns, self._usr_columns))
+            all_cols = ColumnCollection(
+                [
+                    (col.name, col) 
+                    for col in cols_union
+                    if col.name != SpecialColumns.NO_TITLE      # exclude table name
+                ]
+            )
+
+            self._all_columns = all_cols.as_readonly()
+
+        return self._all_columns
+
     @property
     def c(self) -> ReadOnlyColumnCollection:
         """Short form synonim for :attr:`columns`."""
-        return self._usr_columns.as_readonly()
+        return self.columns
     
     @property
     def primary_key(self) -> PrimaryKeyConstraint:
@@ -520,6 +542,7 @@ class Table(HasIdentifier):
         constraint._set_parent(self)
         self._constraints.add(constraint)
 
+
     def append_column(self, column: Column):
         """Append a column to this table.
         
@@ -536,13 +559,13 @@ class Table(HasIdentifier):
         self._usr_columns.add(column)
 
     def _ensure_title_column(self) -> None:
-        if len(self.columns) == 0:
+        if len(self._usr_columns) == 0:
             # no user columns defined yet, just return
             # no invariant enforcement needed
             return
 
         title_cols = 0
-        for c in self.columns:
+        for c in self._usr_columns:
             col_type = c.type_
             if isinstance(col_type, String) and col_type.is_title:
                 title_cols += 1

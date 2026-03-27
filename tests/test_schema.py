@@ -221,6 +221,21 @@ def test_usr_columns_cannot_be_pk(metadata: MetaData):
 
     assert "name" in str(exc.value)
 
+def test_all_columns_contains_them_all(students: Table):
+    all_cols = [col.name for col in students.columns]
+
+    assert all_cols == [
+        "object_id",
+        "is_archived",
+        "is_deleted",
+        "created_at",
+        "name",
+        "id",
+        "is_active",
+        "start_on",
+        "grade"
+    ]
+
 def test_table_construct():
     metadata = MetaData()
     students = Table(

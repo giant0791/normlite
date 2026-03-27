@@ -201,8 +201,11 @@ def test_columns_subset_projection(students: Table):
     nc = NotionCompiler()
     compiled = stmt.compile(nc)
     asdict = compiled.as_dict()
+    expected = ['name', 'id', 'is_active']
 
-    assert asdict['query_params']['filter_properties'] == ['name', 'id', 'is_active']
+    assert asdict['query_params']['filter_properties'] == expected
+    assert compiled.result_columns() == expected
+    assert compiled._fetch_columns == ["object_id"]
 
 def test_columns_all_projection(students: Table):
     mocked_db_id = str(uuid.uuid4())
@@ -212,6 +215,17 @@ def test_columns_all_projection(students: Table):
     nc = NotionCompiler()
     compiled = stmt.compile(nc)
     asdict = compiled.as_dict()
+    expected = [
+        'object_id', 
+        'is_archived', 
+        'is_deleted', 
+        'created_at', 
+        'name', 
+        'id', 
+        'is_active', 
+        'start_on', 
+        'grade'
+    ]
 
     # there are no query parameters <==> project all columns
     assert 'query_params' not in asdict
@@ -221,6 +235,7 @@ def test_columns_all_projection(students: Table):
     assert 'page_size' in asdict['payload']
     assert asdict['payload']['page_size'] == 100
     assert asdict["payload"]["in_trash"] == False
+    assert expected == compiled.result_columns()
 
 #---------------------------------------------
 # ORDER BY tests
