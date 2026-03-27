@@ -51,6 +51,7 @@ import copy
 
 from normlite.exceptions import ArgumentError, InvalidRequestError
 from normlite.engine.interfaces import _CoreMultiExecuteParams, ExecutionOptions
+from normlite.sql._sentinels import VALUE_PLACEHOLDER
 from normlite.sql.resultschema import SchemaInfo
 from normlite.utils import frozendict
 
@@ -367,6 +368,11 @@ class ExecutionContext:
             self._resolve_parameters(self.distilled_params)
         )
 
+        # validate insert values, if stmt is_insert
+        if self.compiled._compiler_state.is_insert:
+            self._validate_insert_values(resolved_params)
+        
+ 
         # resolve execution options
         self._resolve_exec_options()
 
@@ -389,7 +395,7 @@ class ExecutionContext:
                 f"Unused bind parameters: {', '.join(resolved_params.keys())}"
             )
         
-        # extract the query params
+       # extract the query params
         if 'query_params' in self.compiled_dict:
             self.query_params = self.compiled_dict['query_params']
 
@@ -448,6 +454,21 @@ class ExecutionContext:
             resolved_params.update({key: new_value})
 
         return resolved_params
+
+    def _validate_insert_values(self, resolved_parameters: dict[str, BindParameter]):
+        missing_cols = [
+            key
+            for key, bindparam in resolved_parameters.items()
+            if bindparam.value is VALUE_PLACEHOLDER
+        ]
+
+        if missing_cols:
+            table_name = self.compiled._compiler_state.stmt.get_table().name
+            cols_word = "column" if len(missing_cols) == 1 else "columns"
+            formatted = ", ".join(f"'{col}'" for col in missing_cols)
+            raise ArgumentError(
+                f"Missing values for {cols_word} {formatted} in INSERT into '{table_name}'."
+            )
 
     def _resolve_exec_options(self) -> None:
         opts = {}
