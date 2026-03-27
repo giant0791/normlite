@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Optional
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+from normlite.sql._sentinels import VALUE_PLACEHOLDER
 from normlite.sql.base import _CompileState, SQLCompiler
 from normlite.sql.dml import Delete, OrderByClause
 from normlite.sql.elements import _BindRole, BooleanClauseList, Operator, OrderByExpression, ColumnElement
@@ -369,18 +370,21 @@ class NotionCompiler(SQLCompiler):
             dict: The dictionary containing the compiled object.
         """
         self._compiler_state.is_insert = True
-        self._compiler_state.stmt = insert
         payload = {}
         db_id_key = None
 
         if insert._values is None:
             # create a mapping for all user columns with dummy values
             placeholders = {
-                col.name: 'placeholder_value'
+                col.name: VALUE_PLACEHOLDER
                 for col in insert.get_table().columns
             }
 
             insert = insert.values(**placeholders)
+
+        # IMPORTANT: initialize the stmt in the compiler state after the values check
+        # .values() is generative and returns a new instance
+        self._compiler_state.stmt = insert
 
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
