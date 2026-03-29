@@ -70,14 +70,16 @@ Usage::
 """
 
 from __future__ import annotations
-from datetime import date, datetime
+from typing import Optional, Union, Any, Dict
+from datetime import datetime, date, time, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from decimal import Decimal
 import pdb
 from types import MappingProxyType
 from typing import Any, Callable, List, Literal, NoReturn, Optional, Protocol, TypeAlias, Union, TYPE_CHECKING
 import uuid
 
-from normlite.exceptions import InvalidRequestError
+from normlite.exceptions import ArgumentError, InvalidRequestError
 from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.elements import Operator, BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, StringComparator, TimeStampStringISO8601Comparator
@@ -470,6 +472,260 @@ class Boolean(TypeEngine):
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.CHECKBOX
 
+def _normalize_datetime_value(
+    value: Union[datetime, str, None],
+    timezone: Optional[tzinfo],
+) -> Optional[datetime]:
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        dt = value
+
+    elif isinstance(value, date):
+        dt = datetime.combine(value, time.min)
+
+    elif isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value)
+        except ValueError:
+            try:
+                d = date.fromisoformat(value)
+                dt = datetime.combine(d, time.min)
+            except ValueError:
+                raise ValueError(f"Invalid ISO date/datetime string: {value}")
+
+    else:
+        raise ValueError(f"Unsupported datetime value: {value} ({type(value)})")
+
+    # Apply timezone if provided and datetime is naive
+    if timezone:
+        if dt.tzinfo:
+            dt = dt.astimezone(timezone)
+        else:
+            dt = dt.replace(tzinfo=timezone)
+
+    return dt
+
+def _parse_timezone(tz_name: str):
+    try:
+        return ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError) as e:
+        raise ArgumentError(f"Invalid IANA timezone: '{tz_name}' for DateTimeRange") from e
+    
+def _detect_date_only(
+        start: Union[date, datetime, str], 
+        end: Union[date, datetime, str]
+) -> bool:
+    def is_date_like(v: Union[date, datetime, str]):
+        return isinstance(v, date) and not isinstance(v, datetime)
+
+    def is_str_date_only(v: Union[date, datetime, str]):
+        return isinstance(v, str) and "T" not in v
+
+    return (
+        (is_date_like(start) or is_str_date_only(start)) and
+        (end is None or is_date_like(end) or is_str_date_only(end))
+    )
+
+class DateTimeRange:
+    """Python domain object for Notion date types.
+
+    This class provides a convenient Python type to natively represent Notion date types.
+    It fully supports dates (start only), intervals (start and end), and time zones. 
+    
+    .. versionadded:: 0.9.0
+    """
+    def __init__(
+        self,
+        start_datetime: Union[datetime, str, None] = None,
+        end_datetime: Union[datetime, str, None] = None,
+        start_time_format: Optional[str] = None,
+        end_time_format: Optional[str] = None,
+        timezone: Optional[tzinfo | str] = None,
+    ) -> None:
+
+        # -----------------------------------------
+        # Detect intent BEFORE normalization: 
+        # is it a date or a datetime
+        # -----------------------------------------
+        self._is_date_only = _detect_date_only(start_datetime, end_datetime)
+
+        # -----------------------------------------
+        # Normalize timezone
+        # -----------------------------------------
+        if isinstance(timezone, str):
+            timezone = _parse_timezone(tz_name=timezone)
+
+        self.timezone: Optional[tzinfo] = timezone
+
+        # -----------------------------------------
+        # Normalize values
+        # -----------------------------------------
+        self.start = _normalize_datetime_value(start_datetime, timezone)
+        self.end = _normalize_datetime_value(end_datetime, timezone)
+
+        self._validate_invariants()
+
+        self.start_time_format = start_time_format
+        self.end_time_format = end_time_format
+
+    def _validate_invariants(self) -> None:
+        if self.start is None:
+            raise ValueError("DateTimeRange requires a start datetime")
+
+        if self.end is not None and self.end < self.start:
+            raise ValueError("End datetime must be >= start datetime")
+        
+        if self._is_date_only and self.timezone is not None:
+            raise ValueError(
+                "Date-only values cannot have a timezone"
+            )        
+
+    # -----------------------------------------
+    # JSON constructor
+    # -----------------------------------------
+    @classmethod
+    def _from_parsed(
+        cls,
+        start: datetime,
+        end: Optional[datetime],
+        timezone: Optional[tzinfo],
+        is_date_only: bool
+    ) -> DateTimeRange:
+        """Trusted internal constructor.
+        
+        This internal constructor is exclusively used by :meth:`DateTimeRange.from_json`.
+        It trusts Notion to ensure wellformedness of date objects.
+        Therefore, **no validation is done**.
+        """
+        obj = cls.__new__(cls)
+
+        obj.start = start
+        obj.end = end
+        obj.timezone = timezone
+        obj.start_time_format = None
+        obj.end_time_format = None
+        obj._is_date_only = is_date_only
+        obj._validate_invariants()
+
+        return obj
+    
+    @classmethod
+    def from_json(cls, value: Dict[str, Any]) -> DateTimeRange:
+        """
+        Expected format:
+        {
+            "date": {
+                "start": "...",
+                "end": "..." | None
+                "time_zone": "..." | None
+            }
+        }
+        """
+        date_obj = value["date"]
+
+        start_raw: str = date_obj.get("start")
+        end_raw: Optional[str] = date_obj.get("end")
+        tz_name: Optional[str] = date_obj.get("time_zone")
+
+        if start_raw is None:
+            raise ValueError("JSON date must contain 'start' field")
+
+        is_date_only = (
+            "T" not in start_raw and
+            (end_raw is None or "T" not in end_raw)
+        )
+
+        def parse(dt_str: Optional[str]) -> Optional[datetime]:
+            return datetime.fromisoformat(dt_str) if dt_str else None
+
+        start_dt = parse(start_raw)
+        end_dt = parse(end_raw)
+
+        timezone = None
+
+        if tz_name:
+            timezone = _parse_timezone(tz_name=tz_name)
+
+            # Notion guarantees correctness → just attach
+            start_dt = start_dt.replace(tzinfo=timezone)
+            if end_dt:
+                end_dt = end_dt.replace(tzinfo=timezone)
+
+        return cls._from_parsed(start_dt, end_dt, timezone, is_date_only)    
+
+    def to_json(self) -> dict:
+        def serialize(dt: Optional[datetime]) -> Optional[str]:
+            if dt is None:
+                return None
+
+            # -----------------------------------------
+            # Date-only
+            # -----------------------------------------
+            if self._is_date_only:
+                return dt.date().isoformat()
+
+            # -----------------------------------------
+            # Case A: timezone present → strip offset
+            # -----------------------------------------
+            if self.timezone is not None:
+                # convert to target timezone first (safety)
+                dt = dt.astimezone(self.timezone)
+
+                # remove tzinfo → Notion expects naive string
+                dt = dt.replace(tzinfo=None)
+
+                return dt.isoformat(timespec="seconds")
+
+            # -----------------------------------------
+            # Case B: no timezone → keep offset
+            # -----------------------------------------
+            if dt.tzinfo is not None:
+                return dt.isoformat(timespec="seconds")
+
+            # -----------------------------------------
+            # Case C: naive datetime → date-only (guarded)
+            # -----------------------------------------
+            if dt.time() != time.min:
+                raise ValueError(
+                    "Invalid DateTimeRange: naive datetime with time component "
+                    "requires a timezone or tzinfo for serialization. "
+                    f"Received: {dt.isoformat()}"
+                )
+
+            return dt.date().isoformat()
+
+        return {
+            "date": {
+                "start": serialize(self.start),
+                "end": serialize(self.end),
+                "time_zone": str(self.timezone) if self.timezone else None,
+            }
+        }
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DateTimeRange):
+            return NotImplemented
+
+        return (
+            self.start == other.start and
+            self.end == other.end and
+            self.timezone == other.timezone
+        )
+
+    def __repr__(self) -> str:
+        def fmt(dt: datetime) -> str:
+            if dt is None:
+                return "None"
+            
+            return dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+        if self.end:
+            return f"{fmt(self.start)} - {fmt(self.end)}"
+
+        return fmt(self.start)
+
 class Date(TypeEngine):
     """Convenient type engine class for "date" objects.
     
@@ -489,82 +745,64 @@ class Date(TypeEngine):
     })
 
     def bind_processor(self):
-        def process(value: Optional[_DateTimeRangeType]) -> Optional[dict]:
+        def process(value: Union[str, date, datetime, DateTimeRange,    None]):
             if value is None:
                 return None
-            
+
             if isinstance(value, str) and value.startswith(':'):
                 return {self.get_col_spec(): value}
             
-            if isinstance(value, tuple):
-                start, end = value
-                if not start:
-                    raise ValueError('Date must have a start (end is optional)')
-                
-                if not isinstance(start, datetime):
-                    raise ValueError(f'Start date must be a valid datetime, received: {start}')
-                
-                if not end and not isinstance(end, datetime):
-                    raise ValueError(f'End date must be a valid datetime, received: {end}')
+            try:
+                dtr = value if isinstance(value, DateTimeRange) else DateTimeRange(value)
+            except Exception as e:
+                raise ValueError(
+                    f"{self.get_col_spec()} value must be a valid date or DateTimeRange. "
+                    f"Received: {value} ({type(value).__name__})"
+                ) from e
 
-                return {
-                    self.get_col_spec(): {
-                        "start": start.isoformat(),
-                        "end": end.isoformat() if end else None
-                    }
-                }
-            
-            # IMPORTANT: Both data types must be checked as both are valid
-            if isinstance(value, (date, datetime,)):
-                return { 
-                    self.get_col_spec(): {
-                        "start": value.isoformat(), 
-                        "end": None
-                    }
-                }
-            
+            return dtr.to_json()
+        
         return process
 
     def result_processor(self):
-        def process(value: Optional[dict]) -> Optional[tuple[Optional[datetime], Optional[datetime]]]:
+        def process(value: Optional[dict]) -> Optional[DateTimeRange]:
             if value is None:
                 return None
 
             self._raise_if_val_not_dict(value)
-            date_value = value.get("date")
+            return DateTimeRange.from_json(value)
 
-            if not date_value:
-                return None
-
-            start_raw = date_value.get("start")
-            end_raw = date_value.get("end")
-
-            start = datetime.fromisoformat(start_raw) if start_raw else None
-            end = datetime.fromisoformat(end_raw) if end_raw else None
-
-            if start is None and end is None:
-                return None
-
-            return (start, end)
         return process
-    
+
+
     def filter_value_processor(self):
-        def process(value: Union[datetime, date, str]) -> Optional[str]:
+        def process(
+            value: Union[DateTimeRange, datetime, date, str, None]
+        ) -> Optional[str]:
             if value is None:
                 return None
-            
-            if not isinstance(value, (datetime, date, str,)):
+
+            # -----------------------------------------
+            # Normalize to DateTimeRange
+            # -----------------------------------------
+            try:
+                dtr = value if isinstance(value, DateTimeRange) else DateTimeRange(value)
+            except Exception as e:
                 raise ValueError(
-                    f'{self.get_col_spec()} value must be either a date or a str. '
-                    f'Value type is: {value.__class__.__name__}.'
-                )
+                    f"{self.get_col_spec()} filter value must be a valid date/datetime/ISO string. "
+                    f"Received: {value} ({type(value).__name__})"
+                ) from e
 
-            if isinstance(value, str):
-                value = datetime.fromisoformat(value)
+            # -----------------------------------------
+            # Extract start date (Notion filter semantics)
+            # -----------------------------------------
+            start = dtr.start
 
-            return value.isoformat()
+            # Notion expects date-only string for filters like on_or_after
+            return start.date().isoformat()
+
         return process
-
+    
     def get_col_spec(self):
         return "date"
 
