@@ -966,7 +966,7 @@ class Inspector:
             # access the Notion property identifier associate to a column
             print(
                 f'Property "{students.c.student_name.name}": '
-                f'"{inspector.get_oid(students)}"')                  # uuid string associated to the property
+                f'"{inspector.get_oid(students.c.student_name)}"')                  # uuid string associated to the property
 
         .. versionadded:: 0.7.0
             The current version supports both Notion object and property identifiers.
@@ -976,6 +976,22 @@ class Inspector:
         """
 
         return has_id.get_oid()
+
+    def is_dropped(self, table: Union[Table, str]) -> bool:
+        """``True`` if table state is :attr:`normlite.engine.systemcatalog.TableState.DROPPED`.
+        
+        .. versionadded:: 0.9.0
+        """
+        from normlite.sql.schema import Table
+
+        if isinstance(table, (Table, str,)):
+            name = table.name if isinstance(table, Table) else table
+            state = self._engine.get_table_state(name)
+            return state is TableState.DROPPED
+        
+        raise ArgumentError(
+            f"Table or str argument expected, got '{table.__class__.__name__}' instead."
+        )
 
     def _find_table_in_catalog(self, name: str, catalog: str) -> dict:
         return self._engine._client.databases_query({
