@@ -24,62 +24,12 @@ def row_description() -> tuple[tuple, ...]:
         ("start_on", DBAPITypeCode.DATE, None, None, None, None, None,),
         ("grade", DBAPITypeCode.RICH_TEXT, None, None, None, None, None,),
     )
+
 @pytest.fixture
 def client() -> InMemoryNotionClient:
     new_client = InMemoryNotionClient()
     new_client._ensure_root()   
     return new_client
-
-@pytest.fixture
-def prefilled_client(client: InMemoryNotionClient) -> InMemoryNotionClient:
-    _, _ = add_pages(
-        client, [
-            {
-                "name": "Galileo Galilei", 
-                "id": 123456, 
-                "is_active": False, 
-                "start_on": "1581-01-01", 
-                "grade": "A"
-            }, 
-            {
-                "name": "Isaac Newton", 
-                "id": 123457, 
-                "is_active": False, 
-                "start_on": "1681-01-01", 
-                "grade": "B"
-            }, 
-            {
-                "name": "Ada Lovelace", 
-                "id": 123458, 
-                "is_active": False, 
-                "start_on": "1781-01-01", 
-                "grade": "C"
-            }, 
-        ]
-    )
-
-    return client
-
-@pytest.fixture
-def database_id(prefilled_client: InMemoryNotionClient) -> str:
-    found = prefilled_client.search(
-        payload={
-            "query": "students",
-            "filter": {
-                "property": "object",
-                "value": "database"
-            }
-        }
-    )
-
-    results = found["results"]
-    assert len(results) == 1
-
-    return results[0]["id"]
-
-@pytest.fixture
-def cursor(prefilled_client: InMemoryNotionClient) -> Cursor:
-    return Cursor(prefilled_client)
 
 def add_pages(client: InMemoryNotionClient, page_data: list[dict]) -> tuple[str, list[str]]:
 
@@ -190,13 +140,7 @@ def generate_pages(client: InMemoryNotionClient, n: int) -> tuple[str, list[dict
             }
         )
 
-        rows.append({
-            "page_id": page["id"],
-            "created_time": page["created_time"],
-            "archived": page["archived"],
-            "in_trash": page["in_trash"],
-            **data
-        })
+        rows.append(page)
 
     return db_id, rows
 
@@ -258,9 +202,9 @@ def execute_query_returns_no_rows(
             "path_params": {"database_id": database_id},
             "payload":{
                 "filter": {
-                    "property": "name",
-                    "title": {
-                        "equals": "Albert Einstein"
+                    "property": "is_active",
+                    "checkbox": {
+                        "equals": True
                     }
                 }
             }
@@ -297,20 +241,30 @@ get_name = itemgetter(4)
 # Description tests
 #----------------------------------------------------------------
 
-def test_description_none_if_no_execute(cursor: Cursor):
+def test_description_none_if_no_execute(client: InMemoryNotionClient):
+    cursor = Cursor(client)
+
     assert cursor.description is None
 
 def test_description_none_if_no_rows(
-        cursor: Cursor, 
-        row_description: tuple[tuple, ...],
-        database_id: str
+    client: InMemoryNotionClient, 
+    row_description: tuple[tuple, ...],
 ):
+    cursor = Cursor(client)
+    database_id, pages = generate_pages(client, n=10)
     execute_query_returns_no_rows(cursor, row_description, database_id)
+
     assert cursor.description is None
 
-def test_description_none_on_closed_cursor(cursor: Cursor):
+def test_description_none_on_closed_cursor(
+    client: InMemoryNotionClient, 
+    row_description: tuple[tuple, ...],
+):
+    cursor = Cursor(client)
+    database_id, pages = generate_pages(client, n=10)
     execute_query_returns_all_rows(cursor, row_description, database_id)
     cursor.close()
+
     assert cursor.description is None
 
 #----------------------------------------------------------------
@@ -318,49 +272,79 @@ def test_description_none_on_closed_cursor(cursor: Cursor):
 #----------------------------------------------------------------
 
 def test_fetchone_returns_none_if_no_rows_found(
-        cursor: Cursor, 
-        row_description: tuple[tuple, ...],
-        database_id: str
+    client: InMemoryNotionClient, 
+    row_description: tuple[tuple, ...],
 ):
+    cursor = Cursor(client)
+    database_id, pages = generate_pages(client, n=10)
+    cursor._inject_description(row_description)
     execute_query_returns_no_rows(cursor, row_description, database_id)
     row = cursor.fetchone()
 
     assert row is None
 
 def test_fetchone_returns_first_row_found(
-        cursor: Cursor, 
-        row_description: tuple[tuple, ...],
-        database_id: str
+    client: InMemoryNotionClient, 
+    row_description: tuple[tuple, ...],
 ):
+    cursor = Cursor(client)
+    database_id, pages = generate_pages(client, n=10)
+    cursor._inject_description(row_description)
     execute_query_returns_all_rows(cursor, row_description, database_id)
+    first_page = client("pages", "retrieve", path_params={"page_id": pages[0]["id"]})
     first = cursor.fetchone()
 
-    assert rich_text_to_plain_text(get_name(first)) == "Galileo Galilei"
+    assert rich_text_to_plain_text(get_name(first)) == rich_text_to_plain_text(
+        first_page["properties"]["name"]["title"]
+    )
     assert not cursor.closed
 
 def test_fetchone_consumes_cursor(
-        cursor: Cursor, 
-        row_description: tuple[tuple, ...],
-        database_id: str
+    client: InMemoryNotionClient, 
+    row_description: tuple[tuple, ...],
 ):
+    cursor = Cursor(client)
+    database_id, pages = generate_pages(client, n=3)
+    cursor._inject_description(row_description)
     execute_query_returns_all_rows(cursor, row_description, database_id)
     first = cursor.fetchone()
     second = cursor.fetchone()
     third = cursor.fetchone()
+    first_page = client("pages", "retrieve", path_params={"page_id": pages[0]["id"]})
+    second_page = client("pages", "retrieve", path_params={"page_id": pages[1]["id"]})
+    third_page = client("pages", "retrieve", path_params={"page_id": pages[2]["id"]})
+
     should_be_none = cursor.fetchone()
 
-    assert rich_text_to_plain_text(get_name(first)) == "Galileo Galilei"
-    assert rich_text_to_plain_text(get_name(second)) == "Isaac Newton"
-    assert rich_text_to_plain_text(get_name(third)) == "Ada Lovelace"
+    assert rich_text_to_plain_text(get_name(first)) == rich_text_to_plain_text(
+        first_page["properties"]["name"]["title"]
+    )
+    assert rich_text_to_plain_text(get_name(second)) == rich_text_to_plain_text(
+        second_page["properties"]["name"]["title"]
+    )
+    assert rich_text_to_plain_text(get_name(third)) == rich_text_to_plain_text(
+        third_page["properties"]["name"]["title"]
+    )
     assert should_be_none is None
     assert not cursor.closed
 
-def test_fetchone_raises_on_closed_cursor(cursor: Cursor):
+def test_fetchone_raises_on_closed_cursor(
+    client: InMemoryNotionClient, 
+    row_description: tuple[tuple, ...],
+):
+    cursor = Cursor(client)
+    database_id, _ = generate_pages(client, n=3)
+    cursor._inject_description(row_description)
+    execute_query_returns_all_rows(cursor, row_description, database_id)
     cursor.close()
+
     with pytest.raises(ProgrammingError):
         _ = cursor.fetchone()
 
-def test_fetchone_raises_if_no_execute(cursor: Cursor):
+def test_fetchone_raises_if_no_execute(
+    client: InMemoryNotionClient, 
+):
+    cursor = Cursor(client)
     with pytest.raises(ProgrammingError):
         _ = cursor.fetchone()
 
@@ -369,25 +353,39 @@ def test_fetchone_raises_if_no_execute(cursor: Cursor):
 #----------------------------------------------------------------
 
 def test_fetchall_returns_all_rows_found(
-        cursor: Cursor, 
-        row_description: tuple[tuple, ...],
-        database_id: str
+    client: InMemoryNotionClient, 
+    row_description: tuple[tuple, ...],
 ):
+    cursor = Cursor(client)
+    database_id, pages = generate_pages(client, n=100)
+    cursor._inject_description(row_description)
     execute_query_returns_all_rows(cursor, row_description, database_id)
+    first_page = client("pages", "retrieve", path_params={"page_id": pages[0]["id"]})
+    last_page = client("pages", "retrieve", path_params={"page_id": pages[-1]["id"]})
     rows = cursor.fetchall()
     should_be_none = cursor.fetchone()
 
-    assert len(rows) == 3
-    assert rich_text_to_plain_text(get_name(rows[0])) == "Galileo Galilei"
-    assert rich_text_to_plain_text(get_name(rows[2])) == "Ada Lovelace"
+    assert len(rows) == 100
+    assert rich_text_to_plain_text(get_name(rows[0])) == rich_text_to_plain_text(
+        first_page["properties"]["name"]["title"]
+    )
+    assert rich_text_to_plain_text(get_name(rows[-1])) == rich_text_to_plain_text(
+        last_page["properties"]["name"]["title"]
+    )
     assert should_be_none is None
     assert not cursor.closed
 
-def test_fetchall_raises_if_no_execute(cursor: Cursor):
+def test_fetchall_raises_if_no_execute(
+    client: InMemoryNotionClient, 
+):
+    cursor = Cursor(client)
     with pytest.raises(ProgrammingError):
         _ = cursor.fetchall()
 
-def test_fetchall_raises_on_closed_cursor(cursor: Cursor):
+def test_fetchall_raises_on_closed_cursor(
+    client: InMemoryNotionClient, 
+):
+    cursor = Cursor(client)
     cursor.close()
     with pytest.raises(ProgrammingError):
         _ = cursor.fetchall()
@@ -414,11 +412,17 @@ def test_fetch_many_returns_arrasize_multiples_of_rows(
     assert len(batch_2) == len(rows_2)
     assert cursor.fetchone() is None
 
-def test_fetchmany_raises_if_no_execute(cursor: Cursor):
+def test_fetchmany_raises_if_no_execute(
+    client: InMemoryNotionClient, 
+):
+    cursor = Cursor(client)
     with pytest.raises(ProgrammingError):
         _ = cursor.fetchmany()
 
-def test_fetchmany_raises_on_closed_cursor(cursor: Cursor):
+def test_fetchmany_raises_on_closed_cursor(
+    client: InMemoryNotionClient, 
+):
+    cursor = Cursor(client)
     cursor.close()
     with pytest.raises(ProgrammingError):
         _ = cursor.fetchmany()
@@ -432,11 +436,13 @@ def test_rowcount_returns_minus_one_if_no_execute(client):
     assert cursor.rowcount == -1
 
 def test_rowcount_returns_zero_if_no_rows_found(        
-    cursor: Cursor, 
-    row_description: tuple[tuple, ...],
-    database_id: str
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...]
 ):
+    cursor = Cursor(client)
+    database_id, inserted_rows = generate_pages(client, 1000)
     execute_query_returns_no_rows(cursor, row_description, database_id)
+    
     assert cursor.rowcount == 0
 
 def test_rowcount_returns_count_of_all_rows_found(
@@ -445,7 +451,7 @@ def test_rowcount_returns_count_of_all_rows_found(
 ):
     n_pages = 100
     cursor = Cursor(client)
-    database_id, inserted_rows = generate_pages(client, n_pages)
+    database_id, _ = generate_pages(client, n_pages)
     execute_query_returns_all_rows(cursor, row_description, database_id)
 
     assert n_pages == cursor.rowcount
@@ -463,14 +469,15 @@ def test_lastrowid_returns_last_inserted_id(
     database_id, inserted_rows = generate_pages(client, n_pages)
     execute_query_returns_all_rows(cursor, row_description, database_id)
     # check generate_pages() for how inserted rows are returned
-    last_inserted_rowid = uuid.UUID(inserted_rows[-1]["page_id"]).int
+    last_inserted_rowid = uuid.UUID(inserted_rows[-1]["id"]).int
 
     assert last_inserted_rowid == cursor.lastrowid
 
 def test_lastrowid_returns_none_if_table_metadata_retrieved(
-    cursor: Cursor,
-    database_id: str
+    client: InMemoryNotionClient,
 ):
+    cursor = Cursor(client)
+    database_id, inserted_rows = generate_pages(client, n=10)
     # retrieve "students" database
     cursor.execute(
         operation={"endpoint": "databases", "request": "retrieve"},
@@ -481,11 +488,12 @@ def test_lastrowid_returns_none_if_table_metadata_retrieved(
     assert len(metadata) == 10      # 9 + 1 title property for database name
     assert cursor.lastrowid is None
 
-def test_lastrowid_returns_non_if_no_rows_modified(
-        cursor: Cursor, 
-        row_description: tuple[tuple, ...],
-        database_id: str
+def test_lastrowid_returns_none_if_no_rows_modified(
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...]
 ):
+    cursor = Cursor(client)
+    database_id, inserted_rows = generate_pages(client, n=10)
     execute_query_returns_no_rows(cursor, row_description, database_id)
     assert len(cursor.fetchall()) == 0
     assert cursor.lastrowid is None
@@ -500,25 +508,27 @@ def build_trash_operation(page_id: str) -> dict:
         "payload": {"in_trash": True},
     }
 
-def return_all_pages_in_database(prefilled_client: InMemoryNotionClient, database_id: str) -> list[dict]:
-    result = prefilled_client.databases_query(
+def return_all_pages_in_database(client: InMemoryNotionClient, database_id: str) -> list[dict]:
+    result = client.databases_query(
         path_params={"database_id": database_id},
     )
 
     return result["results"]
 
 def test_executemany_executes_all_operations(
-        cursor: Cursor,
-        prefilled_client: InMemoryNotionClient,
-        row_description: tuple[tuple, ...],
-        database_id: str,
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...]
 ):
     """
     executemany() should execute the same operation for all parameter sets.
     """
 
+    # pre-fill the client
+    cursor = Cursor(client)
+    database_id, _ = generate_pages(client, n=10)
+    
     # get all pages belonging to the database
-    pages = return_all_pages_in_database(prefilled_client, database_id)
+    pages = return_all_pages_in_database(client, database_id)
     params = [build_trash_operation(p["id"]) for p in pages]
     cursor._inject_description(row_description)
 
@@ -533,21 +543,23 @@ def test_executemany_executes_all_operations(
 
     # verify all pages were modified
     for p in pages:
-        stored = prefilled_client.pages_retrieve({"page_id": p["id"]})
+        stored = client.pages_retrieve({"page_id": p["id"]})
         assert stored["in_trash"] is True
 
 
 def test_executemany_produces_multiple_result_sets(
-        cursor: Cursor,
-        prefilled_client: InMemoryNotionClient,
-        row_description: tuple[tuple, ...],
-        database_id: str,
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...]
 ):
     """
     executemany() should produce one result set per operation.
     """
 
-    pages = return_all_pages_in_database(prefilled_client, database_id)
+    # pre-fill the client
+    cursor = Cursor(client)
+    database_id, _ = generate_pages(client, n=10)
+    
+    pages = return_all_pages_in_database(client, database_id)
     params = [build_trash_operation(p["id"]) for p in pages]
 
     cursor._inject_description(row_description)
@@ -567,16 +579,16 @@ def test_executemany_produces_multiple_result_sets(
 
 
 def test_next_moves_to_next_result_set(
-        cursor: Cursor,
-        prefilled_client: InMemoryNotionClient,
-        row_description: tuple[tuple, ...],
-        database_id: str,
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...]
 ):
     """
     next() should move the cursor to the next result set.
     """
 
-    pages = return_all_pages_in_database(prefilled_client, database_id)
+    cursor = Cursor(client)
+    database_id, _ = generate_pages(client, n=10)
+    pages = return_all_pages_in_database(client, database_id)
     params = [build_trash_operation(p["id"]) for p in pages]
 
     cursor._inject_description(row_description)
@@ -599,16 +611,16 @@ def test_next_moves_to_next_result_set(
 
 
 def test_next_allows_iterating_all_result_sets(
-        cursor: Cursor,
-        prefilled_client: InMemoryNotionClient,
-        row_description: tuple[tuple, ...],
-        database_id: str,
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...]
 ):
     """
     All result sets should be reachable through next().
     """
 
-    pages = return_all_pages_in_database(prefilled_client, database_id)
+    cursor = Cursor(client)
+    database_id, _ = generate_pages(client, n=100)
+    pages = return_all_pages_in_database(client, database_id)
     params = [build_trash_operation(p["id"]) for p in pages]
 
     cursor._inject_description(row_description)
@@ -632,16 +644,16 @@ def test_next_allows_iterating_all_result_sets(
 
 
 def test_next_on_last_result_set_exhausts_results(
-        cursor: Cursor,
-        prefilled_client: InMemoryNotionClient,
-        row_description: tuple[tuple, ...],
-        database_id: str,
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...]
 ):
     """
     Calling next() after the last result set should exhaust the cursor.
     """
 
-    pages = return_all_pages_in_database(prefilled_client, database_id)
+    cursor = Cursor(client)
+    database_id, _ = generate_pages(client, n=100)
+    pages = return_all_pages_in_database(client, database_id)
     params = [build_trash_operation(p["id"]) for p in pages]
 
     cursor._inject_description(row_description)
@@ -662,12 +674,12 @@ def test_next_on_last_result_set_exhausts_results(
     assert cursor.fetchone() is None
 
 def test_rowcount_returns_sum_of_resultsets(
-    cursor: Cursor,
-    prefilled_client: InMemoryNotionClient,
-    row_description: tuple[tuple, ...],
-    database_id: str,
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...]
 ):
-    pages = return_all_pages_in_database(prefilled_client, database_id)
+    cursor = Cursor(client)
+    database_id, _ = generate_pages(client, n=100)
+    pages = return_all_pages_in_database(client, database_id)
     params = [build_trash_operation(p["id"]) for p in pages]
 
     cursor._inject_description(row_description)
