@@ -293,16 +293,18 @@ def test_create_table(engine, students):
     assert not result.returns_rows
     assert result.rowcount == -1
     assert is_valid_uuid4(students.get_oid())
-    assert all(c._id for c in students._usr_columns)
+    assert all(c._id for c in students.user_columns)
 
 
 def test_drop_table(engine, students, students_db):
+    inspector = engine.inspect()
     result, ctx = run_context(engine, DropTable(students))
 
     with pytest.raises(ResourceClosedError):
         rows = result.all()
 
-    assert students.c.is_deleted
+    assert inspector.is_dropped(students)
+    assert inspector.is_dropped(students.name)
     assert not result.returns_rows
 
 
