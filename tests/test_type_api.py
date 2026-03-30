@@ -1,5 +1,5 @@
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 import pdb
 from zoneinfo import ZoneInfo
@@ -18,6 +18,10 @@ from normlite import (
 
 from normlite.exceptions import ArgumentError, InvalidRequestError
 from normlite.sql.type_api import DateTimeRange, ObjectId, ArchivalFlag
+
+@pytest.fixture
+def filter_proc():
+    return Date().filter_value_processor()
 
 @pytest.mark.parametrize('type_obj, no_obj, py_obj, no_type', [
     (
@@ -168,7 +172,7 @@ def test_type_engine_datetimerange_dt_only_w_tz_raises():
     (
         Date(), 
         {"date": {"start": "2023-02-23", "end": "2023-04-23", "time_zone": None}}, 
-        DateTimeRange(datetime(2023,2,23), datetime(2023,4,23)), 
+        DateTimeRange(date(2023,2,23), "2023-04-23"), 
         "date"
     ),
     (
@@ -200,3 +204,113 @@ def test_archivalflag_raises_if_bind_is_attempted():
     with pytest.raises(InvalidRequestError):
         bind = type_obj.bind_processor()
 
+#----------------------------------------------------
+# filter value processing for Date objects
+#----------------------------------------------------
+
+@pytest.mark.filter_proc
+def test_filter_datetime_with_tzinfo_preserves_offset(filter_proc):
+    value = datetime(2026, 3, 31, 12, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+
+    result = filter_proc(value)
+
+    assert result == "2026-03-31T12:00:00+02:00"
+
+@pytest.mark.filter_proc
+def test_filter_dtr_with_timezone_preserves_offset(filter_proc):
+    value = DateTimeRange(
+        "2021-05-10T12:00:00",
+        timezone="America/Los_Angeles"
+    )
+
+    result = filter_proc(value)
+
+    # May vary depending on DST, so compute expected dynamically
+    expected = (
+        value.start
+        .astimezone(value.timezone)
+        .isoformat(timespec="seconds")
+    )
+
+    assert result == expected
+    assert result.endswith("-07:00") or result.endswith("-08:00")
+
+@pytest.mark.filter_proc
+def test_filter_dtr_timezone_not_stripped(filter_proc):
+    value = DateTimeRange(
+        "2021-05-10T12:00:00",
+        timezone="America/Los_Angeles"
+    )
+
+    result = filter_proc(value)
+
+    # Previously buggy behavior returned no offset
+    assert "T" in result
+    assert "+" in result or "-" in result[-6:]  # crude but effective
+
+@pytest.mark.filter_proc
+def test_filter_date_only(filter_proc):
+    value = DateTimeRange("2021-05-10")
+
+    result = filter_proc(value)
+
+    assert result == "2021-05-10"
+
+@pytest.mark.filter_proc
+def test_filter_naive_datetime(filter_proc):
+    value = datetime(2021, 5, 10, 12, 0)
+
+    result = filter_proc(value)
+
+    assert result == "2021-05-10T12:00:00"
+
+@pytest.mark.filter_proc
+def test_filter_iso_string_with_offset(filter_proc):
+    value = "2021-10-15T12:00:00-07:00"
+
+    result = filter_proc(value)
+
+    assert result == "2021-10-15T12:00:00-07:00"
+
+@pytest.mark.filter_proc
+def test_filter_iso_date_string(filter_proc):
+    value = "2021-05-10"
+
+    result = filter_proc(value)
+
+    assert result == "2021-05-10"
+
+@pytest.mark.filter_proc
+def test_filter_rejects_date_ranges(filter_proc):
+    value = DateTimeRange("2021-01-01", "2021-12-31")
+
+    with pytest.raises(ValueError):
+        filter_proc(value)
+
+@pytest.mark.filter_proc
+def test_filter_vs_bind_timezone_asymmetry():
+    date_type = Date()
+
+    bind = date_type.bind_processor()
+    filter_proc = date_type.filter_value_processor()
+
+    value = DateTimeRange(
+        "2021-05-10T12:00:00",
+        timezone="America/Los_Angeles"
+    )
+
+    bound = bind(value)
+    filtered = filter_proc(value)
+
+    # -----------------------------------------
+    # Bind → structured timezone
+    # -----------------------------------------
+    assert bound["date"]["time_zone"] == "America/Los_Angeles"
+    assert "T12:00:00" in bound["date"]["start"]
+    assert "+" not in bound["date"]["start"]  # no offset
+
+    # -----------------------------------------
+    # Filter → offset encoding
+    # -----------------------------------------
+    assert "time_zone" not in filtered
+    assert "+" in filtered or "-" in filtered[-6:]

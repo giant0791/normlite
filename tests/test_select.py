@@ -1,6 +1,7 @@
-from datetime import date
+from datetime import date, datetime
 import pdb
 import uuid
+from zoneinfo import ZoneInfo
 import pytest
 
 from normlite.sql.base import _CompileState, CompilerState
@@ -8,7 +9,7 @@ from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Select, select
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList
 from normlite.sql.schema import Column, MetaData, Table
-from normlite.sql.type_api import Boolean, Date, Integer, String
+from normlite.sql.type_api import Boolean, Date, DateTimeRange, Integer, String
 
 """TDD for all select() use scenarios.
 
@@ -89,6 +90,24 @@ def test_date_col_expr(students: Table):
     assert compiled['property'] == 'start_on'
     assert compiled['date'] == {'after': ':param_0'}
 
+def test_datetimerange_col_expr(students: Table):
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    exp = students.c.start_on.after(DateTimeRange("1690-01-01"))
+    compiled: dict = None
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        compiled = exp._compiler_dispatch(nc)
+
+    assert exp.column is students.c.start_on
+    assert isinstance(exp, BinaryExpression)
+    assert isinstance(exp.value, BindParameter)
+    assert exp.value.key == 'param_0'
+    assert students.c.start_on.type_ is exp.value.type_
+    assert exp.value.effective_value == date(1690,1,1)
+    assert exp.value.effective_value == DateTimeRange(date(1690,1,1))
+    assert compiled['property'] == 'start_on'
+    assert compiled['date'] == {'after': ':param_0'}
+
 def test_bool_col_expr(students: Table):
     nc = NotionCompiler()
     nc._compiler_state = CompilerState()
@@ -151,6 +170,39 @@ def test_where_generative_one_clause(students: Table, select_stmt: Select):
     }
 
     assert 'param_0' in compiled.params
+
+def test_where_multi_date_clauses(students: Table, select_stmt: Select):
+    mocked_db_id = str(uuid.uuid4())
+    students._sys_columns["object_id"]._value = mocked_db_id
+
+    stmt = (
+        select_stmt
+        .where(students.c.start_on.after("2026-03-01"))
+        .where(students.c.start_on.before(datetime(2026, 3, 31)))
+        .where(students.c.start_on.after(datetime(2026, 3, 31, 12, 0, tzinfo=ZoneInfo("Europe/Berlin"))))
+        .where(students.c.start_on.after(DateTimeRange("2021-05-10T12:00:00", timezone="America/Los_Angeles")))
+    )
+
+    nc = NotionCompiler()
+    compiled = stmt.compile(nc)
+    raw1 = compiled.params["param_0"].effective_value
+    proc1 = compiled.params["param_0"].type_.filter_value_processor()
+    raw2 = compiled.params["param_1"].effective_value
+    proc2 = compiled.params["param_1"].type_.filter_value_processor()
+    raw3 = compiled.params["param_2"].effective_value
+    proc3 = compiled.params["param_2"].type_.filter_value_processor()
+    raw4 = compiled.params["param_3"].effective_value
+    proc4 = compiled.params["param_3"].type_.filter_value_processor()
+    val1 = proc1(raw1)
+    val2 = proc2(raw2)
+    val3 = proc3(raw3)
+    val4 = proc4(raw4)
+
+    # Notion expects ISO 8601 dates only
+    assert val1 == "2026-03-01"
+    assert val2 == "2026-03-31T00:00:00"
+    assert val3 == "2026-03-31T12:00:00+02:00"
+    assert val4 == "2021-05-10T12:00:00-07:00"
 
 def test_where_generative_multi_clause(students: Table, select_stmt: Select):
     mocked_db_id = str(uuid.uuid4())

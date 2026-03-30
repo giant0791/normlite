@@ -84,6 +84,8 @@ from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.elements import Operator, BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, StringComparator, TimeStampStringISO8601Comparator
 
+DEFAULT_DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+DEFAULT_DATE_FORMAT = "%Y-%m-%d"
 
 class TypeEngine(Protocol):
     """Base class for all Notion/SQL datatypes.
@@ -705,21 +707,62 @@ class DateTimeRange:
         }
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, DateTimeRange):
-            return NotImplemented
+        # -----------------------------------------
+        # Case 1: DateTimeRange
+        # -----------------------------------------
+        if isinstance(other, DateTimeRange):
+            return (
+                self.start == other.start and
+                self.end == other.end and
+                self.timezone == other.timezone and
+                self._is_date_only == other._is_date_only
+            )
 
-        return (
-            self.start == other.start and
-            self.end == other.end and
-            self.timezone == other.timezone
-        )
+        # -----------------------------------------
+        # Case 2: date
+        # -----------------------------------------
+        if isinstance(other, date) and not isinstance(other, datetime):
+            try:
+                other_dtr = DateTimeRange(other)
+            except Exception:
+                return False
+            return self == other_dtr
+
+        # -----------------------------------------
+        # Case 3: datetime
+        # -----------------------------------------
+        if isinstance(other, datetime):
+            pdb.set_trace()
+            try:
+                other_dtr = DateTimeRange(other)
+            except Exception:
+                return False
+            return self == other_dtr
+
+        # -----------------------------------------
+        # Case 4: ISO string
+        # -----------------------------------------
+        if isinstance(other, str):
+            try:
+                other_dtr = DateTimeRange(other)
+            except Exception:
+                return False
+            return self == other_dtr
+
+        # -----------------------------------------
+        # Fallback
+        # -----------------------------------------
+        return NotImplemented
 
     def __repr__(self) -> str:
+        if self._is_date_only:
+            return self.start.strftime(DEFAULT_DATE_FORMAT)
+
         def fmt(dt: datetime) -> str:
             if dt is None:
                 return "None"
-            
-            return dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+                       
+            return dt.strftime(DEFAULT_DATETIME_FORMAT)
 
         if self.end:
             return f"{fmt(self.start)} - {fmt(self.end)}"
@@ -745,7 +788,7 @@ class Date(TypeEngine):
     })
 
     def bind_processor(self):
-        def process(value: Union[str, date, datetime, DateTimeRange,    None]):
+        def process(value: Union[str, date, datetime, DateTimeRange, None]):
             if value is None:
                 return None
 
@@ -793,16 +836,43 @@ class Date(TypeEngine):
                     f"Received: {value} ({type(value).__name__})"
                 ) from e
 
+            if dtr.end is not None:
+                raise ValueError(
+                    f"{self.get_col_spec()} filter does not accept date ranges; "
+                    "use a single value (start only)"
+                )            
+            
             # -----------------------------------------
             # Extract start date (Notion filter semantics)
             # -----------------------------------------
             start = dtr.start
 
-            # Notion expects date-only string for filters like on_or_after
-            return start.date().isoformat()
+            # -----------------------------------------
+            # Case 1: date-only
+            # -----------------------------------------
+            if dtr._is_date_only:
+                return start.date().isoformat()
+
+            # -----------------------------------------
+            # Case 2: timezone (IANA)
+            # -----------------------------------------
+            if dtr.timezone is not None:
+                dt = start.astimezone(dtr.timezone)
+                return dt.isoformat(timespec="seconds")
+
+            # -----------------------------------------
+            # Case 3: offset-aware datetime
+            # -----------------------------------------
+            if start.tzinfo is not None:
+                return start.isoformat(timespec="seconds")
+
+            # -----------------------------------------
+            # Case 4: naive datetime (allowed by Notion)
+            # -----------------------------------------
+            return start.isoformat(timespec="seconds")
 
         return process
-    
+
     def get_col_spec(self):
         return "date"
 
