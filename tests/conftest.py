@@ -10,6 +10,15 @@ from normlite.notiondbapi.dbapi2 import Connection, Cursor
 from normlite.proxy.server import create_app
 from normlite.proxy.state import transaction_manager, notion
 
+# conftest.py
+
+def pytest_configure(config):
+    # The first argument is the section ('markers')
+    # The second argument is the marker name and its description
+    config.addinivalue_line(
+        "markers", "filter_proc: marks tests related to filter value processing"
+    )
+
 @pytest.fixture(scope="session")
 def api_key() -> str:
     # This is a fake key, read the real one from env variable
