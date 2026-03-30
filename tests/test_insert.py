@@ -211,14 +211,20 @@ def test_bindparam_column_name_not_found_error(students: Table):
 #---------------------------------------------
 
 def test_schema_info_created_from_table_all_cols(students: Table):
-    projected_cols = [c.name for c in students.columns]
-    schema = SchemaInfo.from_table(students, projected_cols)
+    projected_cols = [c.name for c in students.user_columns]
+    schema = SchemaInfo.from_table(
+        students, 
+        projected_usr_names=projected_cols
+    )
 
     assert len(schema.columns) == 9        # 5 (usercols) + 4 (syscols)
 
 def test_schema_info_created_from_table_all_sys_cols(students: Table):
     projected_cols = []
-    schema = SchemaInfo.from_table(students, projected_cols)
+    schema = SchemaInfo.from_table(
+        students, 
+        projected_usr_names=projected_cols
+    )
     schema_col_names = [c.name for c in schema.columns]
 
     assert "object_id" in schema_col_names
@@ -229,7 +235,10 @@ def test_schema_info_created_from_table_all_sys_cols(students: Table):
 
 def test_schema_info_created_from_table_projected_cols(students: Table):
     projected_cols = ["id", "name"]
-    schema = SchemaInfo.from_table(students, projected_cols)
+    schema = SchemaInfo.from_table(
+        students, 
+        projected_usr_names=projected_cols
+    )
     schema_col_names = [c.name for c in schema.columns]
 
     assert len(schema.columns) == 6
