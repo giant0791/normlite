@@ -97,15 +97,18 @@ def test_columncollection_getattr(students: Table):
 
 def test_columncollection_getitem(students: Table):
     sc = students.columns
+    col_slice = sc[0:3]
+    col_slice_names = [c.name for c in col_slice]
  
     assert isinstance(sc['id'], Column)
     assert isinstance(sc[0], Column)
     assert not sc['id'].primary_key
-    assert not sc[0].primary_key
-    assert len(sc[0:3]) == 3
+    assert sc[0].primary_key
+    assert len(col_slice) == 3
+    assert col_slice_names == ["object_id", "is_archived", "is_deleted"]
 
 def test_columncollection_contains(students: Table):
-    uc = students.columns
+    uc = students.user_columns
  
     assert 'id' in uc
     assert not 'object_id' in uc
@@ -113,10 +116,10 @@ def test_columncollection_contains(students: Table):
 def test_columncollection_truthness(metadata: MetaData):
     table = Table("no_col_table", metadata)
 
-    assert not bool(table.c)
-    assert len(table.c) == 0
-    assert not bool(table.columns)
-    assert len(table.columns) == 0
+    assert not bool(table.uc)
+    assert len(table.uc) == 0
+    assert not bool(table.user_columns)
+    assert len(table.user_columns) == 0
     assert bool(table._sys_columns)     # system columns are always present
     assert len(table._sys_columns) > 0
 
@@ -135,7 +138,7 @@ def test_columncollection_add(students: Table):
     sc.add(fake_id)
     sc.add(fake_archived)
 
-    assert len(sc) == 7
+    assert len(sc) == 7 + 4
     assert isinstance(sc.fake_id, Column)
     assert isinstance(sc.fake_archived, Column)
 
@@ -177,8 +180,8 @@ def test_unreflected_columns_returns_none_sys_column_values(students: Table):
     assert students.get_oid() is None
     assert students.created_at is None
 
-def test_columns_returns_user_def_only(students: Table):
-    assert all([not col.is_system for col in students.columns])
+def test_user_columns_returns_user_def_only(students: Table):
+    assert all([not col.is_system for col in students.user_columns])
 
 def test_all_sys_columns_have_parent(students: Table):
     assert all([sc.parent is students for sc in students._sys_columns])
@@ -667,8 +670,8 @@ def test_table_autoload_active(engine: Engine, metadata: MetaData):
     columns = [c.name for c in students.columns]
     pk_cols = [c.name for c in students.primary_key.c]
     assert includes_all(columns, ['id', 'name', 'grade', 'is_active'])
-    assert not 'object_id' in students.c
-    assert not 'is_archived' in students.c
+    assert not 'object_id' in students.uc
+    assert not 'is_archived' in students.uc
     assert len(pk_cols) == 1
     assert "object_id" in pk_cols
 

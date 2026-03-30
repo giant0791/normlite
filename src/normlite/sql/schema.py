@@ -489,6 +489,23 @@ class Table(HasIdentifier):
         return self.columns
     
     @property
+    def user_columns(self) -> ReadOnlyColumnCollection:
+        """Return all user defined columns only.
+        
+        .. versionadded:: 0.9.0
+            Use this method instead of depreacted :meth:`Table.get_user_defined_columns`.
+        """
+        return self._usr_columns.as_readonly()
+    
+    @property
+    def uc(self) -> ReadOnlyColumnCollection:
+        """Short form synonim for :attr:`user_columns`.
+        
+        .. versionadded:: 0.9.0
+        """
+        return self.user_columns
+    
+    @property
     def primary_key(self) -> PrimaryKeyConstraint:
         """Return the primary key constraint object associated to this table.
 
