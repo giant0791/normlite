@@ -1,22 +1,23 @@
+from __future__ import annotations
 from operator import itemgetter
 import pdb
-from typing import Optional
+from typing import Any, Callable, Optional, Sequence
 
 from normlite._constants import SpecialColumns
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+
+_SYSTEM_COLUMNS_PAGE = {
+    SpecialColumns.NO_ID: "id",                       # TODO: rename in "object_id"
+    SpecialColumns.NO_ARCHIVED: "archived",           # TODO: rename in "is_archived"   
+    SpecialColumns.NO_IN_TRASH: "in_trash",           # TODO: rename in "is_deleted"
+    SpecialColumns.NO_CREATED_TIME: "created_time",   # TODO: rename in "created_at"
+    #("updated_at", DBAPITypeCode.TIMESTAMP, "last_edited_time"),
+}
 
 
 class ResultSet:
     """DBAPI-level representation of a Notion result set."""
 
-    _SYSTEM_COLUMNS_PAGE = (
-        (SpecialColumns.NO_ID, DBAPITypeCode.ID, "id"),                              # TODO: rename in "object_id"
-        (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.ARCHIVAL_FLAG, "archived"),       # TODO: rename in "is_archived"   
-        (SpecialColumns.NO_IN_TRASH, DBAPITypeCode.ARCHIVAL_FLAG, "in_trash"),       # TODO: rename in "is_deleted"
-        (SpecialColumns.NO_CREATED_TIME, DBAPITypeCode.TIMESTAMP, "created_time"),   # TODO: rename in "created_at"
-
-        #("updated_at", DBAPITypeCode.TIMESTAMP, "last_edited_time"),
-    )    
 
     _SYSTEM_COLUMNS_DATABASE = (
         (SpecialColumns.NO_ID, DBAPITypeCode.ID, "id"),                              # TODO: rename in "object_id"
@@ -33,18 +34,30 @@ class ResultSet:
     _pg_oid_getter = itemgetter(0)
     _db_oid_getter = itemgetter(3) 
 
-    def __init__(self, notion_obj:dict, description: tuple[tuple, ...]):
+    def __init__(
+        self,
+        description: tuple[tuple, ...],
+        object_type: str,
+        rows: list[tuple],
+    ):
         self._index = 0
         self._description = description
-        self._object_type = None
-        self._rows = self._from_json(notion_obj)
+        self._object_type = object_type
+        self._rows = rows
 
-    def _from_json(self, notion_obj: dict) -> list[tuple]:
+    @classmethod
+    def from_json(
+        cls, 
+        description: tuple[tuple, ...],
+        notion_obj: dict
+    ) -> ResultSet:
         if notion_obj["object"] == "list":
             results = notion_obj.get("results")
+            object_type = notion_obj["type"]
 
         else:
             results = [notion_obj]
+            object_type = notion_obj["object"]
 
         rows = []
 
@@ -52,17 +65,17 @@ class ResultSet:
             obj_type = obj["object"]
 
             if obj_type == "page":
-                self._object_type = obj_type
-                rows.append(self._process_page(obj))
+                object_type = obj_type
+                rows.append(cls._process_page(description, obj))
 
             elif obj_type == "database":
-                self._object_type = obj_type
-                rows.extend(self._process_database(obj))
+                object_type = obj_type
+                rows.extend(cls._process_database(obj))
 
             else:
                 raise NotImplementedError(obj_type)
 
-        return rows
+        return cls(description, object_type, rows)
 
     def __iter__(self):
         return self
@@ -111,34 +124,37 @@ class ResultSet:
         # each entry in the result set provides ids
         return [self._pg_oid_getter(r) for r in self._rows]
             
-    def _process_page(self, page: dict) -> tuple:
+    @classmethod
+    def _process_page(
+        cls, 
+        description: tuple[tuple, ...],        
+        page: dict,
+    ) -> tuple:
         """Normalize a page object."""
 
-        get_col_name = itemgetter(0)
-        get_syscol_name = itemgetter(2)
-        columns = [
-            get_col_name(d) 
-            for d in self._description 
-            if get_col_name(d) not in SpecialColumns
-        ]
-        
-        sys_cols = [get_syscol_name(c) for c in self._SYSTEM_COLUMNS_PAGE]
-        row = [page[col] for col in sys_cols]
+        row = []
+        properties = page.get("properties", {})
 
-        for col in columns:           
-            prop = page["properties"][col]
-            typ = prop.get("type")
-            row.append(prop[typ] if typ else None)     # value is available only if the page is returned by databases.query or pages.retrieve
+        for desc_entry in description:
+            col = desc_entry[0]
 
-        return tuple(row)
+            if col in SpecialColumns:
+                row.append(page.get(_SYSTEM_COLUMNS_PAGE[col]))
+            else:
+                prop = properties.get(str(col))
+                typ = prop.get("type")
+                row.append(prop.get(typ) if typ else None)
+
+        return tuple(row)    
     
-    def _process_database(self, database: dict) -> list[tuple]:
+    @classmethod
+    def _process_database(cls, database: dict) -> list[tuple]:
         """Normalize a database object."""
 
         rows = []
 
         # system columns
-        for colname, coltype, field in self._SYSTEM_COLUMNS_DATABASE:
+        for colname, coltype, field in cls._SYSTEM_COLUMNS_DATABASE:
             rows.append(
                 (
                     colname,

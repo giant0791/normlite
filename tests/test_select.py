@@ -259,6 +259,34 @@ def test_columns_subset_projection(students: Table):
     assert compiled.result_columns() == expected
     assert compiled._fetch_columns == ["object_id"]
 
+def test_explicit_object_id_exists_once_in_fetch_columns(students: Table):
+    mocked_db_id = str(uuid.uuid4())
+    students._sys_columns["object_id"]._value = mocked_db_id
+    stmt: Select = select(students.c.object_id, students.c.name, students.c.id, students.c.is_active)
+
+    nc = NotionCompiler()
+    compiled = stmt.compile(nc)
+    asdict = compiled.as_dict()
+    expected = ['name', 'id', 'is_active']
+
+    assert asdict['query_params']['filter_properties'] == expected
+    assert compiled.result_columns() == expected
+    assert compiled._fetch_columns == ["object_id"]
+
+def test_syscol_subset_in_fetch_columns_no_result_columns(students: Table):
+    mocked_db_id = str(uuid.uuid4())
+    students._sys_columns["object_id"]._value = mocked_db_id
+    stmt: Select = select(students.c.is_archived, students.c.is_deleted, students.c.created_at)
+
+    nc = NotionCompiler()
+    compiled = stmt.compile(nc)
+    asdict = compiled.as_dict()
+    expected = []
+
+    assert not asdict.get('query_params')
+    assert compiled.result_columns() == expected
+    assert compiled._fetch_columns == ["object_id", "is_archived", "is_deleted", "created_at"]
+
 def test_columns_all_projection(students: Table):
     mocked_db_id = str(uuid.uuid4())
     students._sys_columns["object_id"]._value = mocked_db_id
@@ -267,11 +295,13 @@ def test_columns_all_projection(students: Table):
     nc = NotionCompiler()
     compiled = stmt.compile(nc)
     asdict = compiled.as_dict()
-    expected = [
+    sys_expected = [
         'object_id', 
         'is_archived', 
         'is_deleted', 
         'created_at', 
+    ]
+    usr_expected = [
         'name', 
         'id', 
         'is_active', 
@@ -287,7 +317,8 @@ def test_columns_all_projection(students: Table):
     assert 'page_size' in asdict['payload']
     assert asdict['payload']['page_size'] == 100
     assert asdict["payload"]["in_trash"] == False
-    assert expected == compiled.result_columns()
+    assert usr_expected == compiled.result_columns()
+    assert sys_expected == compiled._fetch_columns
 
 #---------------------------------------------
 # ORDER BY tests

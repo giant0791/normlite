@@ -404,7 +404,8 @@ class ExecutionContext:
             return
         
         schema = SchemaInfo.from_table(
-            self.invoked_stmt.get_table(), 
+            self.invoked_stmt.get_table(),
+            projected_sys_names=self.compiled._fetch_columns, 
             projected_usr_names=self.compiled.result_columns()
         )
         self.cursor._inject_description(schema.as_sequence())

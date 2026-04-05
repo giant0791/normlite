@@ -473,12 +473,28 @@ class NotionCompiler(SQLCompiler):
         projection = self._compiler_state.stmt._projection
 
         if projection:
-            # use select projections for the result columns    
-            self._compiler_state.result_columns = projection
-            query_params['filter_properties'] = projection
-        
+            # use select projections for the result columns
+            for col in projection:
+                if col.is_system:
+                    if col.name != "object_id":
+                        # object_id is always in fetch_columns by default, don't add it twice
+                        self._compiler_state.fetch_columns.append(col.name)
+    
+                else:
+                    self._compiler_state.result_columns.append(col.name)
+
+                if self._compiler_state.result_columns:
+                    query_params['filter_properties'] = self._compiler_state.result_columns
+
         else:
-            self._compiler_state.result_columns = [col.name for col in table.columns]
+            self._compiler_state.fetch_columns.extend(
+                [
+                    col.name 
+                    for col in table._sys_columns 
+                    if col.name != "object_id" and col.name != "table_name"
+                ]
+            )
+            self._compiler_state.result_columns = [col.name for col in table._usr_columns]
         
         if select._order_by.has_expression():
             sorts_obj = select._order_by._compiler_dispatch(self)

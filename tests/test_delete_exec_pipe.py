@@ -232,6 +232,7 @@ def test_delete_complete_exec_pipeline(
     assert len(rows) == 0
     assert del_result.rowcount == MAX_ROWS
 
+
 def test_delete_exec_pipeline_returning_syscols_only(
     engine: Engine,
     students: Table,
