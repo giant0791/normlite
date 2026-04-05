@@ -320,9 +320,11 @@ class Cursor:
         """
         return self._paramstyle
     
-    def _inject_description(self, schema_entries: tuple[tuple, ...]) -> None:
-        description = _Description(schema_entries)
-        self._description = description.as_sequence()
+    def _inject_description(
+        self, 
+        schema_entries: tuple[tuple, ...],
+    ) -> None:
+        self._description = schema_entries
 
     def _check_closed(self) -> NoReturn:
         if self._closed:
@@ -339,7 +341,10 @@ class Cursor:
             `_parse_result_set()`.
         """
         self._check_closed()
-        rs = ResultSet(returned_obj, self._description)
+        rs = ResultSet.from_json(
+            self._description,
+            returned_obj
+        )
         self._result_sets.append(rs)
 
     def _reset_results(self) -> None:

@@ -436,7 +436,7 @@ class Select(HasTable, ExecutableClauseElement):
                 raise ArgumentError(
                     f'Column: {col.name} does not belong to table: {self._table.name}'
                 )
-        self._projection = [col.name for col in columns]
+        self._projection = columns
 
     @generative
     def where(self, expr: ColumnElement) -> Self:
