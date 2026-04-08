@@ -49,7 +49,7 @@ import pdb
 from typing import TYPE_CHECKING, Any, Mapping, Optional
 import copy
 
-from normlite.exceptions import ArgumentError, InvalidRequestError
+from normlite.exceptions import ArgumentError
 from normlite.engine.interfaces import _CoreMultiExecuteParams, ExecutionOptions
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
 from normlite.sql.resultschema import SchemaInfo
@@ -129,10 +129,16 @@ class ExecutionContext:
     .. versionadded::0.8.0
     """
 
-    cursor: DBAPICursor
-    """The DBAPI cursor holding the result set of the executed statement.
-    
-    .. versionchanged:: 0.8.0
+    _cursor: Optional[DBAPICursor]
+    """The DBAPI cursor holding the result set of the executed statement if no pre-fetch/post-fetch 
+    is required.
+
+    .. seealso::
+        :attr:`ExecutionContext._result_cursor`
+
+    .. versionchanged: 0.9.0
+
+    .. versionadded:: 0.8.0
     """
 
     compiled: Compiled
@@ -256,7 +262,13 @@ class ExecutionContext:
     _rowcount: Optional[int] 
     """The rowcount returned by an INSERT/UPDATE/DELETE/SELECT statement.
     
-    .. versionadded: 0.9.0
+    .. versionadded:: 0.9.0
+    """
+
+    _returned_primary_keys_rows: Optional[list[tuple]]
+    """The list of primary keys returned by the last executed DML statement as row.
+    
+    .. versionadded:: 0.9.0 
     """
 
     bulk_operation: Optional[dict]
@@ -271,13 +283,17 @@ class ExecutionContext:
     .. versionadded:: 0.9.0
     """
 
-    internal_cursor: Optional[DBAPICursor]
-    """The cursor used internally for prefetching Notion pages in delete/update.
+    _result_cursor: Optional[DBAPICursor]
+    """The cursor used internally for prefetching/postfetching Notion pages in delete/update/insert.
     
     .. versionadded:: 0.9.0
     """
 
-
+    _staged_result_cursor: Optional[DBAPICursor]
+    """The cursor used internally to route results after pre-fetch/post-fetching.
+    
+    .. versionadded:: 0.9.0
+    """
 
     def __init__(
             self,
@@ -291,7 +307,7 @@ class ExecutionContext:
     ) -> None:
         self.engine = engine
         self.connection = connection
-        self.cursor = cursor
+        self._cursor = cursor
         self.compiled = compiled
         self.compiled_dict = compiled.as_dict()
         self.invoked_stmt = compiled._element
@@ -302,9 +318,37 @@ class ExecutionContext:
         self.payload = None
         self._result = None
         self._rowcount = None
+        self._returned_primary_keys_rows = None
         self.bulk_operation = None
         self.bulk_parameters = None
-        self.internal_cursor = None
+        self._result_cursor = None
+        self._staged_result_cursor = None
+
+    @property
+    def cursor(self) -> Optional[DBAPICursor]:
+        """Return the effective DBAPI cursor for this execution.
+
+        This property implements **cursor routing**, selecting the cursor that
+        represents the *final, user-visible outcome* of the execution.
+        
+        Design principle
+        ----------------
+        The decision of *which cursor to expose* is made **entirely upstream**
+        during the execution pipeline, specifically in the statement’s
+        ``_finalize_execution()`` phase. This property does **not** contain any
+        conditional logic related to statement type (INSERT/UPDATE/DELETE),
+        execution options, or returning behavior.
+
+        Instead, it simply reflects the outcome of that decision:
+
+        - If a post-processing step (e.g. bulk update, post-fetch, RETURNING)
+        has produced a new cursor, it will have been assigned to
+        :attr:`_result_cursor` and is returned here.
+        - Otherwise, the original execution cursor (:attr:`_cursor`) is returned.
+
+        .. versionadded:: 0.9.0
+        """
+        return self._result_cursor or self._cursor
 
     def _determine_execution_style(self) -> ExecutionStyle:
         stmt = self.invoked_stmt
@@ -405,10 +449,11 @@ class ExecutionContext:
         
         schema = SchemaInfo.from_table(
             self.invoked_stmt.get_table(),
-            projected_sys_names=self.compiled._fetch_columns, 
-            projected_usr_names=self.compiled.result_columns()
+            execution_names=self.compiled.fetch_columns(), 
+            projected_names=self.compiled.result_columns()
         )
-        self.cursor._inject_description(schema.as_sequence())
+    
+        self._cursor._inject_description(schema.as_sequence())
 
     def post_exec(self) -> None:
         """Perform row counting preservation after execution.
@@ -422,7 +467,7 @@ class ExecutionContext:
 
         exec_opts = self.execution_options
         if exec_opts.get('preserve_rowcount', False):
-            self._rowcount =  self.cursor.rowcount
+            self._rowcount =  self._cursor.rowcount
             return
         
         self._rowcount = -1

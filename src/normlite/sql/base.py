@@ -383,9 +383,13 @@ class Compiled:
         return self._compiled
     
     def result_columns(self) -> Optional[Sequence[str]]:
-        """Optionally return the column names for the cursor result."""
+        """Optionally return the user column names for the cursor result."""
         return self._result_columns
     
+    def fetch_columns(self) -> Sequence[str]:
+        """Return the system column names to be included in the cursor result"""
+        return self._fetch_columns
+
     def __str__(self) -> str:
         return self.string
     

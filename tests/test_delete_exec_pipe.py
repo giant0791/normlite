@@ -68,7 +68,6 @@ def generate_rows(
                 name = fake.name(),
                 id=fake.random_int(100000, 999999),
                 is_active=True,
-                # fake.date() causes a TypeError, see issue 220 (https://github.com/giant0791/normlite/issues/220)
                 start_on=fake.date_between(start_date='-10y', end_date='today'),
                 grade=fake.random_element(["A", "B", "C", "D"])
             )
@@ -238,7 +237,7 @@ def test_delete_exec_pipeline_returning_syscols_only(
     students: Table,
 ):
     generate_rows(engine, students, n=MAX_ROWS)
-    elem = delete(students).where(students.c.is_active.is_(True))
+    elem = delete(students).where(students.c.is_active.is_(True)).returning(students.c.object_id)
 
     with engine.connect() as connection:
         # query the database before deleting all rows
@@ -275,14 +274,13 @@ def test_delete_exec_pipeline_returning_usrcols(
     elem = (
         delete(students)
         .where(students.c.is_active.is_(True))
-        .returning(students.c.name, students.c.id)
+        .returning(students.c.object_id, students.c.name, students.c.id)
     )
-    #pdb.set_trace()
 
     with engine.connect() as connection:
         # query the database before deleting all rows
         stmt = (
-            select(students.c.name, students.c.id)
+            select(students.c.object_id, students.c.name, students.c.id)
             .where(students.c.is_active.is_(True))
         )
         result = connection.execute(stmt)
@@ -305,4 +303,60 @@ def test_delete_exec_pipeline_returning_usrcols(
         assert orig_row.object_id == del_rows[idx].object_id
         assert orig_row.name == del_rows[idx].name
         assert orig_row.id == del_rows[idx].id
+
+def test_delete_exec_pipeline_implicit_returning_true(
+    engine: Engine,
+    students: Table,
+):
+    generate_rows(engine, students, n=MAX_ROWS)
+    elem = delete(students).where(students.c.is_active.is_(True))
+
+    with engine.connect() as connection:
+        # query the database before deleting all rows
+        stmt = select(students).where(students.c.is_active.is_(True))
+        result = connection.execute(stmt)
+        orig_rows = result.all()
+
+        # delete all rows
+        del_result = connection.execute(elem, execution_options={"implicit_returning": True})
+
+        # this query shall return no rows
+        stmt = select(students).where(students.c.is_active.is_(True))
+        sel_result = connection.execute(stmt)
+        rows = sel_result.all()
+
+    deleted_ids = [(r["object_id"],) for r in orig_rows]
+
+    assert len(rows) == 0
+    assert result.rowcount == MAX_ROWS
+    assert del_result.rowcount == MAX_ROWS
+    assert del_result.returned_primary_keys_rows == deleted_ids
+    assert not del_result.returns_rows
+
+def test_delete_exec_pipeline_implicit_returning_false(
+    engine: Engine,
+    students: Table,
+):
+    generate_rows(engine, students, n=MAX_ROWS)
+    elem = delete(students).where(students.c.is_active.is_(True))
+
+    with engine.connect() as connection:
+        # query the database before deleting all rows
+        stmt = select(students).where(students.c.is_active.is_(True))
+        result = connection.execute(stmt)
+        orig_rows = result.all()
+
+        # delete all rows
+        del_result = connection.execute(elem)
+
+        # this query shall return no rows
+        stmt = select(students).where(students.c.is_active.is_(True))
+        sel_result = connection.execute(stmt)
+        rows = sel_result.all()
+
+    assert len(rows) == 0
+    assert result.rowcount == MAX_ROWS
+    assert del_result.rowcount == MAX_ROWS
+    assert del_result.returned_primary_keys_rows is None
+    assert not del_result.returns_rows
 

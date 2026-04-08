@@ -302,8 +302,35 @@ class Cursor:
             # no rows modified
             return None
         
-        return uuid.UUID(last_inserted_rowids[-1]).int
-
+        return uuid.UUID(last_inserted_rowids[-1][0]).int
+    
+    @property
+    def lastrowid_as_string(self) -> Optional[str]:
+        rs = self._current_result_set
+        if rs is None:
+            return None       
+        
+        # extract the object UUID of the last row as 128-bit integer
+        last_inserted_rowids = rs.last_inserted_rowids
+        if last_inserted_rowids is None:
+            # no rows modified
+            return None
+        
+        return last_inserted_rowids[-1][0]
+    
+    @property
+    def _last_inserted_row_ids(self) -> Optional[list[tuple]]:
+        """Return all row ids of the last inserted rows as flattened out list.
+        
+        .. versionadded:: 0.9.0
+        """
+        all_ids = []
+        for rs in self._result_sets:
+            if rs.last_inserted_rowids is not None:
+                all_ids.extend(rs.last_inserted_rowids)
+        
+        return all_ids
+        
     @property
     def paramstyle(self) -> DBAPIParamStyle:
         """String constant stating the type of parameter marker formatting expected by the interface. 

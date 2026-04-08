@@ -29,7 +29,7 @@ from normlite.sql.base import _CompileState, SQLCompiler
 from normlite.sql.dml import Delete, OrderByClause
 from normlite.sql.elements import _BindRole, BooleanClauseList, Operator, OrderByExpression, ColumnElement
 from normlite.sql.elements import BindParameter
-from normlite.sql.schema import ReadOnlyColumnCollection
+from normlite.sql.schema import Column, ReadOnlyColumnCollection
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
@@ -354,10 +354,20 @@ class NotionCompiler(SQLCompiler):
     def visit_insert(self, insert: Insert) -> dict:
         """Compile the ``INSERT`` DML statement.
 
-        This visit method compiles the DML :class:`normlite.sql.dml.Insert` construct into a Notion payload for the pages.create request.
+        This visit method compiles the DML :class:`normlite.sql.dml.Insert` construct into a Notion payload 
+        for the pages.create request.
+
+        Raises:
+            CompileError: If the RETURNING clause does not include the system column "object_id"
 
         Args:
             insert (Insert): The DML statement to be compiled.
+
+        .. versionchanged:: 0.9.0
+            This version adds full support for INSERT ... RETURNING.
+            It initializes the :attr:`normlite.sql.base.CompilerState.result_columns
+
+
 
         .. versionchanged:: 0.8.0
             This method extends parameterization via named argument also to the "database_id" key. Thus, the "parameters" dictionary 
@@ -372,6 +382,12 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state.is_insert = True
         payload = {}
         db_id_key = None
+
+        # select the user columns to be included in the returned rows
+        self._compiler_state.result_columns = [
+            col.name 
+            for col in insert._returning
+        ]
 
         if insert._values is None:
             # create a mapping for all user columns with dummy values
@@ -403,10 +419,6 @@ class NotionCompiler(SQLCompiler):
             payload['properties'] = self._compile_insert_update_values(insert._values)
 
         operation = dict(endpoint='pages', request='create')
-
-        # IMPORTANT: concatenate the values tuple containing the special columns WITH the returning tuple.
-        # This ensures that the values for the special columns are always available even if the returning tuple is ().
-        self._compiler_state.result_columns = [col.name for col in insert._returning]
         return {'operation': operation, 'payload': payload}  
 
     def visit_order_by_clause(self, clause: OrderByClause) -> dict:
@@ -474,27 +486,19 @@ class NotionCompiler(SQLCompiler):
 
         if projection:
             # use select projections for the result columns
-            for col in projection:
-                if col.is_system:
-                    if col.name != "object_id":
-                        # object_id is always in fetch_columns by default, don't add it twice
-                        self._compiler_state.fetch_columns.append(col.name)
-    
-                else:
-                    self._compiler_state.result_columns.append(col.name)
+            self._compiler_state.fetch_columns = [
+                col.name
+                for col in projection
+            ]
 
-                if self._compiler_state.result_columns:
-                    query_params['filter_properties'] = self._compiler_state.result_columns
-
-        else:
-            self._compiler_state.fetch_columns.extend(
-                [
-                    col.name 
-                    for col in table._sys_columns 
-                    if col.name != "object_id" and col.name != "table_name"
+            if self._compiler_state.result_columns:
+                # add the filter_properties query parameters
+                # use user columns only
+                query_params['filter_properties'] = [
+                    col
+                    for col in self._compiler_state.result_columns
+                    if col not in SpecialColumns
                 ]
-            )
-            self._compiler_state.result_columns = [col.name for col in table._usr_columns]
         
         if select._order_by.has_expression():
             sorts_obj = select._order_by._compiler_dispatch(self)
@@ -522,6 +526,12 @@ class NotionCompiler(SQLCompiler):
             'in_trash': False,       # Always return non deleted pages only
         }
  
+        # select the user columns to be included in the returned rows
+        self._compiler_state.result_columns = [
+            col.name 
+            for col in delete._returning
+        ]
+
         table = delete.get_table()
         database_id = table.get_oid()
         if database_id is None:
@@ -548,7 +558,6 @@ class NotionCompiler(SQLCompiler):
             'path_params': path_params, 
             'payload': payload
         }
-        self._compiler_state.result_columns = [col.name for col in delete._returning]
         return compiled_dict
 
     def visit_binary_expression(self, expression: BinaryExpression) -> dict:

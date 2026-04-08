@@ -253,6 +253,17 @@ def test_insert_rowcount(engine, students, students_db, insert_values, preserve_
 
     assert result.rowcount == expected
 
+def test_insert_implicit_returning(engine, students, students_db, insert_values):
+    result = run_execute(
+        engine,
+        insert(students),
+        insert_values,
+        execution_options={"implicit_returning": True},
+    )
+
+    assert not result.returns_rows
+    assert len(result.returned_primary_keys_rows) == 1
+
 
 def test_select_projection(engine, populated_students, students):
     stmt = select(students.c.is_active)

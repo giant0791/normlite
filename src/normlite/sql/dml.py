@@ -21,7 +21,8 @@ from copy import Error
 from operator import itemgetter
 import pdb
 from types import MappingProxyType
-from typing import Any, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
+from typing import Any, Callable, NoReturn, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
+import uuid
 import warnings
 from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
@@ -90,7 +91,6 @@ class UpdateBase(HasTable, ExecutableClauseElement):
     _table: Table = None
     """The table this executable is referred to."""
 
-
     def __init__(self, table: Table):
         self._table = table
 
@@ -118,12 +118,6 @@ class UpdateBase(HasTable, ExecutableClauseElement):
             if key in seen:
                 warnings.warn(
                     f"Column '{col.name}' already declared as returning, skipping."
-                )
-                continue
-
-            if col.is_system:
-                warnings.warn(
-                    f"System columns are always added to the RETURNING clause by default ('{col.name}')"
                 )
                 continue
 
@@ -290,12 +284,87 @@ class Insert(ValuesBase):
         return MappingProxyType(kv_pairs)
 
     def _setup_execution(self, context: ExecutionContext) -> None:
-        # nothing to be setup
-        pass
+        # setup only if returning is declared
+        if not self._returning:
+            return
+        
+        # 1. prepare result cursor (but don’t assign yet)
+        result_cursor = context.connection._engine.raw_connection().cursor()
+
+        fetch_schema = SchemaInfo.from_table(
+            self._table,
+            execution_names=None,
+            projected_names=context.compiled.result_columns()
+        )
+        
+        result_cursor._inject_description(fetch_schema.as_sequence())
+
+        # 2. stage it
+        context._staged_result_cursor = result_cursor
+
+        # 3. stage operation
+        context.bulk_operation = {
+            "endpoint": "pages",
+            "request": "retrieve"
+        }
+
+        # parameters will be filled in _finalize_execution()    
+
+    def _handle_dbapi_error(
+        self, 
+        exc: Error, 
+        context: ExecutionContext
+    ) -> Optional[NoReturn]:
+        
+        # all DBAPI errors propagate
+        raise
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
-        # nothing to be finalized
-        pass
+        if self._returning:
+            at_leat_one_usr_column = any([
+                not col.is_system
+                for col in self._returning
+            ])
+
+            if at_leat_one_usr_column:
+                self._post_fetch_inserted_row(context)    
+
+            context._returned_primary_keys_rows = None
+            return
+        
+        implicit_returning = context.execution_options.get("implicit_returning", False)
+        if not implicit_returning:
+            result = context.setup_cursor_result()
+            result._soft_close()
+            context._returned_primary_keys_rows = None
+            return
+        
+        if implicit_returning:
+            result = context.setup_cursor_result()
+            result._soft_close()
+            context._returned_primary_keys_rows = context.cursor._last_inserted_row_ids
+
+    def _post_fetch_inserted_row(self, context: ExecutionContext) -> None:
+        elem = context.invoked_stmt
+
+        # build parameters for pages.retrieve
+        for row in context._cursor.fetchall():
+            context.bulk_parameters = [{
+                "path_params": {"page_id": row[0]}
+            }]
+
+        # execute post-fetch
+        try:
+            context.engine.do_executemany(
+                context._staged_result_cursor,
+                context.bulk_operation,
+                context.bulk_parameters
+            )
+        except Error as exc:
+            elem._handle_dbapi_error(exc, context)
+
+        # finalize cursor routing
+        context._result_cursor = context._staged_result_cursor
 
     def __repr__(self):
         kwarg = []
@@ -407,7 +476,13 @@ class Select(HasTable, ExecutableClauseElement):
             # a Table object has been provided
             table = entities[0]
             self._table = table
-            self._projection = []  # project all columns
+
+            # project all columns
+            self._projection = [
+                col
+                for col in self._table.c
+                if col.name != "table_name"
+            ]  
             return
 
         # A list of columns has been provided
@@ -486,33 +561,38 @@ class Delete(UpdateBase):
     def _setup_execution(self, context: ExecutionContext) -> None:
         elem = context.invoked_stmt
 
-        # create a second cursor for the internal query
-        internal_cursor = context.connection._engine.raw_connection().cursor()
-        context.internal_cursor = internal_cursor
-
-        # IMPORTANT: inject the description in the cursor prior to use it
-        fetch_schema: SchemaInfo = SchemaInfo.from_table(
+        # 1. prepare schema for compiled query
+        schema_for_query: SchemaInfo = SchemaInfo.from_table(
             self._table,
-            projected_sys_names=context.compiled._fetch_columns,
-            projected_usr_names=context.compiled.result_columns()    
+            execution_names=context.compiled.fetch_columns(),
+            projected_names=context.compiled.result_columns()    
         )
-        internal_cursor._inject_description(fetch_schema.as_sequence())
+        context._cursor._inject_description(
+            schema_for_query.as_sequence()
+        )
 
         # execute the compiled query
         try:
             context.engine.do_execute(
-                internal_cursor,
+                context._cursor,
                 context.operation,
                 context.parameters
             )
         except Error as exc:
             elem._handle_dbapi_error(exc, context)
 
-        pages = internal_cursor.fetchall()
+        pages = context._cursor.fetchall()
 
         # build parameters for pages.update
+        result_cursor = context.connection._engine.raw_connection().cursor()
+        schema_for_returning: SchemaInfo = SchemaInfo.from_table(
+            self._table,
+            execution_names=context.compiled.fetch_columns(),
+            projected_names=context.compiled.result_columns()    
+        )
+        result_cursor._inject_description(schema_for_returning.as_sequence())
         bulk_params = []
-        get_object_id = fetch_schema.column_getter("object_id")
+        get_object_id = schema_for_returning.column_getter("object_id")
 
         for page in pages:
             bulk_params.append({
@@ -520,6 +600,7 @@ class Delete(UpdateBase):
                 "payload": {"in_trash": True}
             })
 
+        context._staged_result_cursor = result_cursor
         context.bulk_operation = {
             "endpoint": "pages",
             "request": "update"
@@ -528,7 +609,22 @@ class Delete(UpdateBase):
         context.bulk_parameters = bulk_params
     
     def _finalize_execution(self, context: ExecutionContext) -> None:
-        pass
+        if self._returning:
+            # finalize cursor routing
+            context._result_cursor = context._staged_result_cursor
+            return
+
+        implicit_returning = context.execution_options.get("implicit_returning", False)
+        if not implicit_returning:
+            result = context.setup_cursor_result()
+            result._soft_close()
+            context._returned_primary_keys_rows = None
+            return
+        
+        if implicit_returning:
+            result = context.setup_cursor_result()
+            result._soft_close()
+            context._returned_primary_keys_rows = context.cursor._last_inserted_row_ids
 
 def delete(table: Table) -> Delete:
     return Delete(table)

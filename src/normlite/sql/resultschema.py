@@ -35,12 +35,42 @@
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from normlite._constants import SpecialColumns
-from normlite.exceptions import ArgumentError, InvalidRequestError, NoSuchColumnError
+from normlite.exceptions import InvalidRequestError, NoSuchColumnError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.schema import Table
+
+def _merge_names(
+    execution_names: Optional[Sequence[str]],
+    projected_names: Optional[Sequence[str]],
+) -> List[str]:
+    """Merge execution and projected column names into a single ordered list.
+
+    Rules:
+    - execution_names are included first (internal requirements)
+    - projected_names follow (user projection)
+    - duplicates are removed while preserving order
+    - None is treated as an empty sequence
+
+    Args:
+        execution_names: Internal names required for execution.
+        projected_names: User-requested names.
+
+    Returns:
+        List[str]: Ordered, de-duplicated sequence of names.
+    """
+    seen = set()
+    result: List[str] = []
+
+    for source in (execution_names or [], projected_names or []):
+        for name in source:
+            if name not in seen:
+                seen.add(name)
+                result.append(name)
+
+    return result
 
 @dataclass(frozen=True)
 class ResultColumn:
@@ -49,28 +79,6 @@ class ResultColumn:
     type_code: DBAPITypeCode
     nullable: bool
 
-_SYSCOL_SCHEMA = {
-    SpecialColumns.NO_ID.value: ResultColumn(
-        name=SpecialColumns.NO_ID, 
-        type_code=DBAPITypeCode.ID, 
-        nullable=None
-    ),
-    SpecialColumns.NO_ARCHIVED.value: ResultColumn(
-        name=SpecialColumns.NO_ARCHIVED, 
-        type_code=DBAPITypeCode.ARCHIVAL_FLAG, 
-        nullable=None
-    ),
-    SpecialColumns.NO_IN_TRASH.value: ResultColumn(
-        name=SpecialColumns.NO_IN_TRASH, 
-        type_code=DBAPITypeCode.ARCHIVAL_FLAG, 
-        nullable=None
-    ),
-    SpecialColumns.NO_CREATED_TIME.value: ResultColumn(
-        name=SpecialColumns.NO_CREATED_TIME, 
-        type_code=DBAPITypeCode.TIMESTAMP, 
-        nullable=None
-    ),
-}
 
 @dataclass(frozen=True)
 class SchemaInfo:
@@ -89,8 +97,8 @@ class SchemaInfo:
         cls,
         table: Table,
         *,
-        projected_sys_names: Optional[Sequence[str]] = None,
-        projected_usr_names: Optional[Sequence[str]] = None,
+        execution_names: Optional[Sequence[str]] = None,
+        projected_names: Optional[Sequence[str]] = None,
     ) -> SchemaInfo:
         """Build schema information from a :class:`normlite.sql.schema.Table`.
 
@@ -98,9 +106,8 @@ class SchemaInfo:
 
         Args:
             table (Table): The table representive the authoritative source of the schema.
-            projected_sys_names (Optional[Sequence[str]]): The ordered projection list of system columns (Notion key values).
-            projected_usr_names (Optional[Sequence[str]]): The ordered projection list of user columns (Notion properties)
-                coming from :attr:`normlite.engine.context.ExecutionContext.compiled._result_columns`.
+            execution_names (Optional[Sequence[str]]): The ordered projection list of system columns (Notion key values) required for statement execution.
+            projected_names (Optional[Sequence[str]]): The ordered projection list of columns (Notion key valuses **and** properties) the user wants to have in the returned rows.
 
         Raises:
             NoSuchColumnError: If any of the column names in ``projection_names`` could not be found in the table.
@@ -111,49 +118,28 @@ class SchemaInfo:
         .. versionadded:: 0.9.0
         """
 
-        # always initialize the result_columns with sys cols
-        result_columns = []
-        if projected_sys_names is not None:
-            result_columns = [
-                _SYSCOL_SCHEMA[sysc.name] 
-                for sysc in table._sys_columns
-                if sysc.name in projected_sys_names
-            ]
+        result_columns: List[ResultColumn] = []
+        merged_columns = _merge_names(
+            execution_names=execution_names,
+            projected_names=projected_names,
+        )
 
-        else:
-            # always return all columns if projection is empty
-            result_columns = [
-                col
-                for col in _SYSCOL_SCHEMA.values()
-            ]
-
-        if projected_usr_names is not None:
-            for name in projected_usr_names:
-
-                # Table-declared columns
-                try:
-                    column = table.c[name]
-                except KeyError:
-                    raise NoSuchColumnError(
-                        f"Column '{name}' not found in table '{table.name}'."
-                    )
-
-                result_columns.append(
-                    ResultColumn(
-                        name=name,
-                        type_code=column.type_.get_dbapi_type(),
-                        nullable=None,
-                    )
+        for name in merged_columns:
+            # Table-declared columns
+            try:
+                column = table.c[name]
+            except KeyError:
+                raise NoSuchColumnError(
+                    f"Column '{name}' not found in table '{table.name}'."
                 )
-        else:
-            for column in table.c:
-                result_columns.append(
-                    ResultColumn(
-                        name=column.name,
-                        type_code=column.type_.get_dbapi_type(),
-                        nullable=None,
-                    )
+
+            result_columns.append(
+                ResultColumn(
+                    name=name,
+                    type_code=column.type_.get_dbapi_type(),
+                    nullable=None,
                 )
+            )
 
         return cls(tuple(result_columns))
     

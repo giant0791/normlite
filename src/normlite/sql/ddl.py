@@ -131,6 +131,7 @@ class CreateTable(ExecutableDDLStatement):
         # result empty in the context.
         result = context.setup_cursor_result()
         rows = result.all()
+        result.close()
         data_as_tuples = [r.as_tuple() for r in rows]        
         reflected_table_info = ReflectedTableInfo.from_tuples(data_as_tuples)
         table = self._table
@@ -183,7 +184,7 @@ class DropTable(ExecutableDDLStatement):
     def _finalize_execution(self, context: ExecutionContext) -> None:
         # IMPORTANT: This consumes the result
         result = context.setup_cursor_result()
-        _ = result.all()
+        result.close()
         engine = context.engine
 
         # Ensure we have a valid sys_tables_page_id
@@ -239,7 +240,8 @@ class ReflectTable(ExecutableDDLStatement):
         # So reflection consumes the results by interpreting and leaves the
         # result empty in the context.
         result = context.setup_cursor_result()
-        rows = result.all()        
+        rows = result.all()
+        result.close()        
         data_as_tuples = [r.as_tuple() for r in rows]        
         self._reflected_table_info = ReflectedTableInfo.from_tuples(data_as_tuples)
         self._reflected_table._db_parent_id = context.engine._user_tables_page_id
