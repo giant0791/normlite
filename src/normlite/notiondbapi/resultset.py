@@ -110,7 +110,7 @@ class ResultSet:
         return desc
     
     @property
-    def last_inserted_rowids(self) -> Optional[list[str]]:
+    def last_inserted_rowids(self) -> Optional[list[tuple]]:
         if self._object_type == "database":
             # the result set contains columns metadata from a database:
             # the first row only provides the database id
@@ -122,7 +122,7 @@ class ResultSet:
 
         # the result set contains pages
         # each entry in the result set provides ids
-        return [self._pg_oid_getter(r) for r in self._rows]
+        return [(self._pg_oid_getter(r),) for r in self._rows]
             
     @classmethod
     def _process_page(

@@ -274,7 +274,7 @@ class Connection:
         # 6. side effects happen (HTTP)
         try:
             self._engine.do_executemany(
-                context.cursor, 
+                context._staged_result_cursor, 
                 context.bulk_operation, 
                 context.bulk_parameters
             )

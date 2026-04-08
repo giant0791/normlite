@@ -74,7 +74,22 @@ class ExecutionOptions(TypedDict, total=False):
 
     .. seealso::
         
-        See :attr:`normlite.engine.cursor.CursorResult.rowcount` for notes regarding the behavior of this attribute.
+        See :attr:`normlite.engine.cursor.CursorResult.rowcount` for notes regarding the behavior of 
+        this attribute.
+
+    .. versionadded:: 0.9.0
+    """
+
+    implicit_returning: Optional[bool]
+    """When True, the ``cursor.returned_primary_keys`` attribute will be unconditionally memoized within 
+    the result and made available via the :attr:`normlite.engine.cursor.CursorResult.returned_primary_keys` attribute.
+
+    .. seealso::
+
+        See :attr:`normlite.engine.cursor.CursorResult.returned_primary_keys` for notes regarding 
+        the behavior of this attribute.
+
+    .. versionadded:: 0.9.0
     """
 
 _CoreSingleExecuteParams = Mapping[str, Any]
