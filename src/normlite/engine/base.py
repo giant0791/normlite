@@ -74,7 +74,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 
 from normlite.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext, ExecutionStyle
-from normlite.engine.interfaces import ReturningStrategy, _distill_params, IsolationLevel
+from normlite.engine.interfaces import _distill_params, IsolationLevel
 from normlite.engine.systemcatalog import SystemCatalog, SystemTablesEntry, TableState
 from normlite.exceptions import ArgumentError, ObjectNotExecutableError
 from normlite.sql.reflection import ReflectedColumnInfo
@@ -127,8 +127,10 @@ class Connection:
         compiled_cache: Optional[CompiledCacheType] = ...,
         logging_token: str = ...,
         isolation_level: IsolationLevel = ..., # type: ignore
-        returning_strategy: ReturningStrategy = "echo",
-        preserve_rowcount: bool = False,            
+        implicit_returning: bool = False,
+        preserve_rowcount: bool = False,    
+        preserve_rowid: bool = False,        
+        page_size: int = 100,
         **opts: Any
     ) -> Connection:
         ...
@@ -260,7 +262,7 @@ class Connection:
         # 6. side effects happen (HTTP)
         try:
             self._engine.do_execute(
-                context.cursor, 
+                context._get_exec_cursor(), 
                 context.operation, 
                 context.parameters
             )
@@ -274,7 +276,7 @@ class Connection:
         # 6. side effects happen (HTTP)
         try:
             self._engine.do_executemany(
-                context._staged_result_cursor, 
+                context._get_exec_cursor(), 
                 context.bulk_operation, 
                 context.bulk_parameters
             )
@@ -493,9 +495,6 @@ class Engine:
         self._client = None
         """The Notion client this engine interacts with."""
  
-        self._isolation_level: IsolationLevel = "AUTOCOMMIT" # type: ignore
-        """Isolation level for transactions. Defaults to ``AUTOCOMMIT``."""
-
         self._catalog = None
         """The information schema system catalog.
         
@@ -524,8 +523,10 @@ class Engine:
         compiled_cache: Optional[CompiledCacheType] = ...,
         logging_token: str = ...,
         isolation_level: IsolationLevel = ..., # type: ignore
-        returning_strategy: ReturningStrategy = "echo",
-        preserve_rowcount: bool = False,            
+        implicit_returning: bool = False,
+        preserve_rowcount: bool = False,
+        preserve_rowid: bool = False,
+        page_size: int = 100,            
         **opts: Any
     ) -> Engine:
         ...
@@ -908,13 +909,6 @@ class Inspector:
         self._engine = engine
         """The engine it connects to."""
 
-    def get_columns(self, table_name: str) -> Sequence[ReflectedColumnInfo]:
-        from normlite.sql.schema import Table, MetaData
-        metadata = MetaData()
-        table = Table(table_name, metadata)
-        database_info = self._engine._reflect_table(table)
-        return database_info.get_columns()
-
     def has_table(self, table_name: str) -> bool:
         """Return ``True`` if the specified table name exists in the database being inspected.
 
@@ -993,23 +987,3 @@ class Inspector:
             f"Table or str argument expected, got '{table.__class__.__name__}' instead."
         )
 
-    def _find_table_in_catalog(self, name: str, catalog: str) -> dict:
-        return self._engine._client.databases_query({
-            'database_id': self._engine._tables_id,
-            'filter': {
-                'and': [
-                    {
-                        'property': 'table_name',
-                        'title' : {
-                            'equals': name
-                        }
-                    },
-                    {
-                        'property': 'table_catalog',
-                        'rich_text': {
-                            'equals': catalog
-                        }
-                    }
-                ]
-            }
-        })

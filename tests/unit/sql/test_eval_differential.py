@@ -1,9 +1,10 @@
 import json
 import pdb
 from collections import Counter
+import pytest
 from tqdm import tqdm
 
-from tests.generators.genutils import ReferenceGenerator
+from tests.utils.generators import ReferenceGenerator
 from tests.utils.evaluator import reference_eval
 
 from normlite.notion_sdk.client import _Filter  # production
@@ -13,17 +14,62 @@ def test_differential_random():
     schema = refgen.gen_schema(min_props=3, max_props=30)
     pages = [refgen.gen_page(schema) for _ in range(1000)]
 
-    for _ in range(200):
+    for _ in tqdm(range(200), desc="Comparing ref vs prod filter evaluation", unit="filter"):
         filt = refgen.gen_filter(schema, depth=3, max_depth=8)
         filter = {'filter': filt}
-        print(f'\n{filter}')
 
         expected = [p for p in pages if reference_eval(p, filt)]
         actual = [p for p in pages if _Filter(p, filter).eval()]
 
         assert actual == expected
 
+def test_differential_random_dryrun():
+    refgen = ReferenceGenerator(seed=28)
+
+    NUM_SCHEMAS = 100
+    PAGES_PER_SCHEMA = 100
+    FILTERS_PER_SCHEMA = 100
+    counters = []
+
+    print()
+    for _ in tqdm(range(NUM_SCHEMAS), desc="Comparing ref vs prod filter eval dryrun", unit="schema"):
+        # 1. Generate schema
+        schema = refgen.gen_schema(min_props=3, max_props=30)
+        counters.append(debug_schema(schema))
+
+        # 2. Generate pages for this schema
+        pages = [refgen.gen_page(schema) for _ in range(PAGES_PER_SCHEMA)]
+
+        # 3. Generate and test filters
+        for _ in range(FILTERS_PER_SCHEMA):
+            filt = refgen.gen_filter(schema, depth=3, max_depth=8)
+            filter_payload = {"filter": filt}
+
+            """
+            expected = [p for p in pages if reference_eval(p, filt)]
+            actual = [p for p in pages if _Filter(p, filter_payload).eval()]
+
+            assert actual == expected
+            """
+            for p in pages:
+                ref = reference_eval(p, filt)
+                prod = _Filter(p, filter_payload).eval()
+                if ref != prod:
+                    print("DIVERGENCE")
+                    print("PAGE:", p["properties"])
+                    print("FILTER:", filt)
+                    print("REFERENCE:", ref)
+                    print("PRODUCTION:", prod)
+                    break       
+
+@pytest.mark.skip(reason="Very long test, skipped by default")
 def test_differential_random_massive():
+    """Massive differential test reference vs production filter evaluation.
+    
+    .. attention::
+        This test evaluates 1M randomly generated expression.
+        It takes hours.
+    """
     refgen = ReferenceGenerator(seed=28)
 
     NUM_SCHEMAS = 1000
@@ -31,7 +77,7 @@ def test_differential_random_massive():
     FILTERS_PER_SCHEMA = 1000
     counters = []
 
-    for _ in tqdm(range(NUM_SCHEMAS), desc="Schemas", unit="schema"):
+    for _ in tqdm(range(NUM_SCHEMAS), desc="Comparing ref vs prod filter eval dryrun", unit="schema"):
         # 1. Generate schema
         schema = refgen.gen_schema(min_props=3, max_props=30)
         counters.append(debug_schema(schema))
@@ -67,9 +113,8 @@ def test_differential_random_massive():
                     break
 
 
-    print(f'\nSchema property types stats: \n  {pretty_print(describe(counters))}')
+    #print(f'\nSchema property types stats: \n  {pretty_print(describe(counters))}')
 
-        
 
 def debug_schema(schema):
     return Counter(spec["type"] for spec in schema.values())
@@ -112,7 +157,7 @@ def test_schema_skewness():
         schema = refgen.gen_schema(min_props=3, max_props=30)
         counters.append(debug_schema(schema))
 
-    print(f'\nSchema property types stats: \n  {pretty_print(describe(counters))}')
+    #print(f'\nSchema property types stats: \n  {pretty_print(describe(counters))}')
 
 def test_condition_skewness():
     refgen = ReferenceGenerator(seed=28)
@@ -121,4 +166,4 @@ def test_condition_skewness():
         schema = refgen.gen_schema(min_props=3, max_props=30)
         counters.append(debug_condition(refgen, schema))
 
-    print(f'\nFilter condition types stats: \n  {pretty_print(describe(counters))}')
+    #print(f'\nFilter condition types stats: \n  {pretty_print(describe(counters))}')

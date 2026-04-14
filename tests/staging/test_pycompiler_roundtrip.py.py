@@ -7,7 +7,7 @@ from normlite.sql.elements import BinaryExpression, BooleanClauseList, ColumnEle
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, Money, Numeric, String
 from tests.generators.genutils import ReferenceGenerator
-from tests.reference.compiler import PythonExpressionCompiler, ast_equal, exec_expression
+from tests.utils.compiler import PythonExpressionCompiler, ast_equal, exec_expression
 
 def exec_namespace(table: Table):
     return {

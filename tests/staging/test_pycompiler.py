@@ -7,7 +7,7 @@ from normlite.sql.elements import BinaryExpression, ColumnElement, and_, not_, o
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, Money, Numeric, String
 from tests.generators.genutils import ExpressionGenerator
-from tests.reference.compiler import ast_equal, exec_expression
+from tests.utils.compiler import ast_equal, exec_expression
 
 @pytest.fixture
 def col() -> Column:

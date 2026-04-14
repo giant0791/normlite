@@ -1,14 +1,16 @@
+from datetime import date
 import json
 from pathlib import Path
-import pdb
-from typing import Any, Generator, Literal
-import uuid
-from flask.testing import FlaskClient
+from typing import Literal
 import pytest
+from normlite._constants import SpecialColumns
+from normlite.engine.base import Engine, create_engine
 from normlite.notion_sdk.client import AbstractNotionClient, InMemoryNotionClient
-from normlite.notiondbapi.dbapi2 import Connection, Cursor
-from normlite.proxy.server import create_app
-from normlite.proxy.state import transaction_manager, notion
+from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+from normlite.sql.base import _CompileState, CompilerState
+from normlite.sql.compiler import NotionCompiler
+from normlite.sql.schema import Column, MetaData, Table
+from normlite.sql.type_api import Boolean, Date, Integer, String
 
 # conftest.py
 
@@ -18,6 +20,67 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "filter_proc: marks tests related to filter value processing"
     )
+
+@pytest.fixture
+def row_description() -> tuple[tuple, ...]:
+    return (
+        (SpecialColumns.NO_ID, DBAPITypeCode.ID, None, None, None, None, None,),
+        (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.ARCHIVAL_FLAG, None, None, None, None, None,),
+        (SpecialColumns.NO_IN_TRASH, DBAPITypeCode.ARCHIVAL_FLAG, None, None, None, None, None,),
+        (SpecialColumns.NO_CREATED_TIME, DBAPITypeCode.TIMESTAMP, None, None, None, None, None,),
+        ("name", DBAPITypeCode.TITLE, None, None, None, None, None,),
+        ("id", DBAPITypeCode.NUMBER, None, None, None, None, None,),
+        ("is_active", DBAPITypeCode.CHECKBOX, None, None, None, None, None,),
+        ("start_on", DBAPITypeCode.DATE, None, None, None, None, None,),
+        ("grade", DBAPITypeCode.RICH_TEXT, None, None, None, None, None,),
+    )
+
+@pytest.fixture
+def metadata() -> MetaData:
+    return MetaData()
+
+@pytest.fixture
+def students(metadata: MetaData) -> Table:
+    return Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+        Column("is_active", Boolean()),
+        Column("start_on", Date()),
+        Column("grade", String()),
+    )
+
+@pytest.fixture
+def insert_values() -> dict:
+    return dict(
+        name="Galileo Galilei",
+        id=123456,
+        is_active=False,
+        start_on=date(1690, 1, 1),
+        grade="A",
+    )
+
+@pytest.fixture
+def engine() -> Engine:
+    engine = create_engine("normlite:///:memory:")
+    engine.execution_options(
+        preserve_rowcount=True, 
+        preserve_rowid=False,
+        isolation_level="AUTOCOMMIT",
+        implicit_returning=False,
+        page_size=100,
+    )
+    return engine
+
+# fixture for testing the expression compiler
+@pytest.fixture
+def prod_compiler() -> NotionCompiler:
+    nc = NotionCompiler()
+    # IMPORTANT: Set the correct compile state expected in the visit_* method
+    nc._compiler_state = CompilerState(compile_state=_CompileState.COMPILING_WHERE)
+    return nc
+
 
 @pytest.fixture(scope="session")
 def api_key() -> str:
@@ -42,30 +105,6 @@ def json_fixtures():
     with fixture_path.open() as f:
         return json.load(f)
     
-@pytest.fixture(scope='function')
-def proxy_client() -> Generator[FlaskClient, Any, None]:
-    """Create Flask test client with an in-memory Notion client."""
-    app = create_app()
-    app.config["TESTING"] = True
-
-    with app.test_client() as client:
-        yield client
-
-        # tear down: empties the active txns and Notion store
-        transaction_manager.active_txs = {}
-        notion._create_store()
-
-
-@pytest.fixture(scope="function")
-def dbapi_connection(proxy_client: FlaskClient, client: AbstractNotionClient) -> Connection:
-    return Connection(proxy_client, client)
-
-
-# The following fixture must be scope=function otherwise the attribute
-# _result_set gets overwritten when executing all tests together
-@pytest.fixture(scope="function")
-def dbapi_cursor(client: AbstractNotionClient) -> Cursor:
-    return Cursor(client)
 
 # =================================================================
 # Helper accessor methods

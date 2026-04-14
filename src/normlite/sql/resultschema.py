@@ -102,7 +102,7 @@ class SchemaInfo:
     ) -> SchemaInfo:
         """Build schema information from a :class:`normlite.sql.schema.Table`.
 
-        The schema information **always** contains all columns: system columns **and** user defined.
+        The schema information merges the columns specified in the ``execution_names`` and ``projected_names``.
 
         Args:
             table (Table): The table representive the authoritative source of the schema.
