@@ -765,67 +765,6 @@ class Cursor:
         self._reset_results()
         self._closed = True
                 
-class CompositeCursor(Cursor):
-    """Transaction-aware DBAPI cursor
-    
-    This is how the new Cursor class will work in tandem with :class:`Connection`.
-
-    Note:
-        Unfortunately, the DBAPI 2.0 does not forsee an execute() method for the Connection class.
-        This leads to a suboptimal separation of concerns: The Connection clas should be responsible to manage the
-        transaction and to execute operations, while Cursor should only be concerned with providing access to
-        the results. In the lack of an execute() method at connection level, the Cursor class needs to have a reference 
-        to the connection, so it can start a new transaction on the first call to its execute() method.
-
-    .. versionchanged:: 0.7.0
-    
-    """
-    def __init__(self, dbapi_connection: Connection):
-        self._dbapi_connection = dbapi_connection
-        super().__init__(self._dbapi_connection._client)
-
-    def execute(self, operation: dict, parameters: Optional[DBAPIExecuteParameters] = None) -> Self:
-        """Execute the operation within the currently opened transaction.
-
-        This method is similar to :meth:`BaseCursor.execute()` with the additional feature of
-        executing the operation within the currently opened transaction. 
-        This means that it does not execute immediately the operation, but it add the operation
-        to the operations list of the opened transaction.
-        Execution is deferred to the point in time when the :meth:`Connection.commit()` is called.
-
-        Args:
-            operation (dict): A dictionary containing the Notion API request to be executed.
-            parameters (DBAPIExecuteParameters): A dictionary containing the payload for the Notion API request
-
-        Raises:
-            OperationalError: If it fails to add the operation to the transaction.
-            InternalError: If the operation is not supported or not recognized.
-
-        Returns:
-            _type_: This cursor instance.
-
-        .. versionadded:: 0.7.0
-        """
-        # begin a new transaction if the connection is not in transaction state
-        if not self._dbapi_connection._in_transaction():
-            self._dbapi_connection._begin_transaction()
-
-        # IMPORTANT => DO NOT CALL the parent's method implementation!
-        # Otherwise the operation will be executed immediately and outside the transaction context.
-        # Add the operation and parameters to the transaction operations list
-        payload = {}
-        if parameters and parameters.get('params', {}):
-            # bind the params and construct the final payload
-            payload = self._bind_parameters(parameters)
-        
-        else:
-            # no binding necessary, extract the payload
-            payload = parameters.get('payload')
-
-        self._dbapi_connection._execute_in_transaction(operation, payload)
-
-        return self
-
 IsolationLevel = Literal[
     """Isolation level supported by the API."""
 
@@ -835,8 +774,6 @@ IsolationLevel = Literal[
     "READ UNCOMMITTED",
     "AUTOCOMMIT",
 ]
-
-
 
 class Connection:
     """Provide database base connection functionalty according to the DBAPI 2.0 specification (PEP 249).
@@ -872,14 +809,14 @@ class Connection:
         """
         return self._isolation_level == 'AUTOCOMMIT'
 
-    def cursor(self, composite: Optional[bool] = False) -> Union[Cursor, CompositeCursor]:
+    def cursor(self) -> Cursor:
         """Procure a new cursor object using the connection.
 
-        Args:
-            composite (bool, optional): ``False`` supported only. The provided value is ignored. 
-
         Returns:
-            Union[Cursor, CompositeCursor]: Always a non-composite cursor regardless of the supplied argument value.
+            Cursor: The new cursor object using this connection.
+
+        .. versionchanged:: 0.9.0
+            All code related to composite cursor is removed.    
 
         .. versionchanged:: 0.7.0
 
@@ -914,188 +851,4 @@ class Connection:
         
         """
         self.cursor().execute(operation, parameters)
-
-class TxnConnection(Connection):
-    """Provide database base connection functionalty according to the DBAPI 2.0 specification (PEP 249).
-
-    Warning:
-        This class is still proof-of-concept stage. It needs to be initialized with a Flask testing client (:class:`FlaskClient`).
-        **DO NOT USE YET!**
-
-    .. versionadded:: 0.7.0
-
-    """
-    def __init__(self, proxy_client: FlaskClient, client: AbstractNotionClient):
-        super().__init__(client)
-        self._proxy_client = proxy_client
-        
-        self._tx_id: str = None 
-        
-        self._cursor: Cursor = None
-        """Classic DBAPI cursor to execute operations and fetch rows."""
-        
-        self._comp_cursor: CompositeCursor = None
-        """Composite cursor holding all cursors created out of committed changes in the transaction."""
-
-        self._cursors: List[Cursor] = []
-
-    def cursor(self, composite: Optional[bool] = False) -> Union[Cursor, CompositeCursor]:
-        """Procure a new cursor object using the connection.
-
-        Args:
-            composite (bool, optional): If ``True`` procure a :class:`normlite.notiondbapi.dbapi2.CompositeCursor`, else 
-            a `normlite.notiondbapi.dbapi2.Cursor` instance holding the last result set returned by the last
-            committed statement. Defaults to ``False``.
-
-        Returns:
-            Union[Cursor, CompositeCursor]: Either a cursor or a composite depending on the argument value.
-
-        .. versionchanged:: 0.7.0
-
-        """
-        if composite:
-            self._cursor = CompositeCursor(self._cursors)
-        else:
-            self._cursor = self._cursors[-1]  # last_only = True => only return the last result set
-        
-        return self._cursor
-    
-    def _begin_transaction(self) -> None:
-        """Begin a new transaction."""
-        
-        # Assumption: The caller implements correctly the internal API.
-        # Call _begin_transaction() only if _in_transaction() returns False
-        # => No checks consistency to avoid multiple txn here!
-        response = self._proxy_client.post('/transactions')
-        if response.status_code != 200:
-            raise InterfaceError(
-                f'Unable to start a new transaction in the proxy server. '
-                f'Reason: {response.get_json()['error']}'
-            )
-        
-        self._tx_id = response.get_json()['transaction_id']
-
-    def _in_transaction(self) -> bool:
-        """True if the connection has already initiated a transaction.
-        
-        This method is used by the cursor to determin whether to begin a new transaction or not.
-        """
-        return self._tx_id
-    
-    def _execute_in_transaction(self, operation: dict, parameters: Optional[DBAPIExecuteParameters] = None) -> None:
-        """Execute the operation in the context of the opened transaction.
-        
-        Args:
-            operation (dict): A dictionary containing the Notion API request to be executed.
-            parameters (DBAPIExecuteParameters): A dictionary containing the payload for the Notion API request
-
-        Raises:
-            OperationalError: If it fails to add the operation to the transaction.
-            InternalError: If the operation is not supported or not recognized.
-
-        .. versionadded:: 0.7.0
-        
-        """
-             
-        if operation['endpoint'] == 'pages' and operation['request'] == 'create':
-            # add insert operation
-            response = self._proxy_client.post(
-                f"/transactions/{self._tx_id}/insert", 
-                json=parameters
-            )
-
-            if response.status_code != 202:
-                raise OperationalError(f'Failed to add insert operation to transaction. Reason: {response.get_json()['error']}')
-            
-        else:
-            raise InternalError(f'Unsupported or bad operation: {operation}')
-                
-    def commit(self) -> None:
-        """Commit any pending transaction to the database.
-
-        Note:
-            If the database supports an auto-commit feature, this must be initially off. 
-            An interface method may be provided to turn it back on.
-
-        .. versionadded:: 0.7.0
-
-        """ 
-        response = self._proxy_client.post(
-            f'/transactions/{self._tx_id}/commit'
-        )
-
-        if response.status_code != 200:
-            raise DatabaseError(
-                f'Failed to commit transaction: {self._tx_id}. '
-                f'Reason: {response.get_json()['error']}'
-            )
-        
-        # create cursors
-        self._create_cursors(response.get_json()['data'])
-
-    def _create_cursors(self, result_sets: Sequence[dict]) -> None:
-        """Helper to populate the _cursors attribute holding the cursors to access all rows returned in the transaction.
-        
-        .. versionadded:: 0.7.0
-
-        """
-        for result_set in result_sets:
-            cursor = Cursor(self)
-            cursor._parse_result_set(result_set)
-            self._cursors.append(cursor)
-
-class OldCompositeCursor(Cursor):
-    """Extend a DBAPI cursor to manage multiple child cursors, one per result set returned
-    from a multi-statement transaction commit.
-    """
-    def __init__(self, cursors: Sequence[Cursor]):
-        self._cursors = list(cursors)
-        self._current_index = 0
-        self._current_cursor = self._cursors[self._current_index]
-
-    def nextset(self) -> bool:
-        """Advance to the next result set if available.
-        
-        This method makes the cursor skip to the next available set, discarding any remaining rows from the current set. 
-        It returns ``False`` if there are no more sets or returns ``True`` and subsequent calls to the cursor.fetch*() methods 
-        returns rows from the next result set. 
-        """
-        if self._current_index + 1 < len(self._cursors):
-            # close the current cursor, advance and forget
-            self._current_cursor.close()
-            self._current_index += 1
-            self._current_cursor = self._cursors[self._current_index]
-            return True
-        return False
-    
-    @property
-    def rowcount(self) -> int:
-        """Return the row count of the current cursor."""
-        return self._current_cursor.rowcount
-    
-    @property
-    def lastrowid(self) -> int:
-        """Return the last row id of the current cursor."""
-        return self._current_cursor.lastrowid
-    
-    @property
-    def description(self) -> tuple:
-        """Return the description of the current cursor."""
-        return self._current_cursor.description
-    
-    @property
-    def paramstyle(self) -> DBAPIParamStyle:
-        """Return the row parameter style of the current cursor."""
-        return self._current_cursor.paramstyle
-    
-    def fetchone(self) -> Optional[tuple]:
-        """Fetch the next row of the current cursor's result set."""
-        return self._current_cursor.fetchone()
-    
-    def fetchall(self) -> List[tuple]:
-        """Fetch all rows of the current cursor's result set. """
-        return self._current_cursor.fetchall()
-
-
-
 

@@ -1,5 +1,5 @@
-# tests/reference/evaluator.py
-# Copyright (C) 2025 Gianmarco Antonini
+# tests/axioms/test_eval_axioms.py
+# Copyright (C) 2026 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
 #
@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Validates the reference evaluator for the Notion-like query engine.
+"""Validate the reference evaluator for the Notion-like query engine.
 
 This testsuite bootstraps ground truth using axioms and truth tables.
 If these tests fail, **nothing else matters**.

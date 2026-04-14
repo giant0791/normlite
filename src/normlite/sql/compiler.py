@@ -491,15 +491,23 @@ class NotionCompiler(SQLCompiler):
                 for col in projection
             ]
 
-            if self._compiler_state.result_columns:
-                # add the filter_properties query parameters
-                # use user columns only
-                query_params['filter_properties'] = [
-                    col
-                    for col in self._compiler_state.result_columns
-                    if col not in SpecialColumns
-                ]
-        
+            self._compiler_state.result_columns = [
+                col 
+                for col in self._compiler_state.fetch_columns
+                if col not in SpecialColumns
+            ]
+
+            uc_names = [uc.name for uc in select._table.uc]
+
+            if (
+                self._compiler_state.result_columns and
+                len(self._compiler_state.result_columns) < len(uc_names)
+            ):
+                # add the filter_properties query parameters only
+                # if any user column was projected and the projected user colums are 
+                # a subset of all user columns
+                query_params['filter_properties'] = self._compiler_state.result_columns
+
         if select._order_by.has_expression():
             sorts_obj = select._order_by._compiler_dispatch(self)
             payload['sorts'] = sorts_obj

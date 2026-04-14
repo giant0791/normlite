@@ -321,14 +321,7 @@ class Insert(ValuesBase):
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
         if self._returning:
-            at_leat_one_usr_column = any([
-                not col.is_system
-                for col in self._returning
-            ])
-
-            if at_leat_one_usr_column:
-                self._post_fetch_inserted_row(context)    
-
+            self._post_fetch_inserted_row(context)    
             context._returned_primary_keys_rows = None
             return
         
@@ -481,7 +474,6 @@ class Select(HasTable, ExecutableClauseElement):
             self._projection = [
                 col
                 for col in self._table.c
-                if col.name != "table_name"
             ]  
             return
 

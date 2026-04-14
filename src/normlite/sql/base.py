@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from normlite.sql.dml import Insert, Select, Delete
     from normlite.sql.elements import ColumnElement, UnaryExpression, BinaryExpression, BindParameter, BooleanClauseList
     from normlite.engine.cursor import CursorResult
-    from normlite.engine.interfaces import _CoreAnyExecuteParams, ExecutionOptions, ReturningStrategy
+    from normlite.engine.interfaces import _CoreAnyExecuteParams, ExecutionOptions
     from normlite.engine.base import Connection
     from normlite.engine.context import ExecutionContext
     from normlite.notiondbapi.dbapi2 import Error
@@ -178,8 +178,11 @@ class Executable(ClauseElement):
     def execution_options(
         self,
         *,
-        returning_strategy: ReturningStrategy = "echo",
-        preserve_rowcount: bool = False,            
+        isolation_level: IsolationLevel = ..., # type: ignore
+        implicit_returning: bool = False,
+        preserve_rowcount: bool = False,    
+        preserve_rowid: bool = False,        
+        page_size: int = 100,
         **opts: Any
     ) -> Connection:
         ...

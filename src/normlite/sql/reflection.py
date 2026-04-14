@@ -20,6 +20,7 @@ from __future__ import annotations
 import pdb
 from typing import Any, NamedTuple, Optional, Sequence
 from normlite._constants import SpecialColumns
+from normlite.notion_sdk import getters
 from normlite.notion_sdk.getters import get_title
 from normlite.sql.type_api import Boolean, ObjectId, String, TimeStampStringISO8601, TypeEngine, type_mapper
 from normlite.utils import normlite_deprecated
@@ -47,7 +48,10 @@ class ReflectedTableInfo:
 
     @property
     def name(self) -> str:
-        return self._columns[self._colmap[SpecialColumns.NO_TITLE]].value
+        table_name = getters.rich_text_to_plain_text(
+            self._columns[self._colmap[SpecialColumns.NO_TITLE]].value
+        )
+        return table_name
     
     @property
     def id(self) -> str:
@@ -83,7 +87,7 @@ class ReflectedTableInfo:
         Build a ReflectedTableInfo from a sequence of column-definition tuples.
 
         Each row must provide:
-            (column_name, column_type, column_id, column_value)
+            ("column_name", "column_type", "column_id", "metadata", "is_system")
 
         Special columns carry table-level metadata via column_value.
         """
@@ -104,7 +108,7 @@ class ReflectedTableInfo:
             )
 
         # ---- validation (fail fast) ----
-        # TODO
+        # TODO: see https://github.com/giant0791/normlite/issues/248
 
         return cls(columns=columns)
 
@@ -118,35 +122,39 @@ class ReflectedTableInfo:
             type=ObjectId(),
             id=None,
             value=database_obj['id'],
+            is_system=True
         ))
 
-        database_name = get_title(database_obj)
         cols.append(ReflectedColumnInfo(
             name=SpecialColumns.NO_TITLE,
             type=String(is_title=True),
             id=None,
-            value=database_name,
+            value=database_obj['title'],
+            is_system=True
         ))
 
         cols.append(ReflectedColumnInfo(
             name=SpecialColumns.NO_ARCHIVED,
             type=Boolean(),
             id=None,
-            value=database_obj['archived']
+            value=database_obj['archived'],
+            is_system=True
         ))
 
         cols.append(ReflectedColumnInfo(
             name=SpecialColumns.NO_IN_TRASH,
             type=Boolean(),
             id=None,
-            value=database_obj['in_trash']
+            value=database_obj['in_trash'],
+            is_system=True
         ))
 
         cols.append(ReflectedColumnInfo(
             name=SpecialColumns.NO_CREATED_TIME,
             type=TimeStampStringISO8601(),
             id=None,
-            value=database_obj['created_time']
+            value=database_obj['created_time'],
+            is_system=True
         ))
 
         # reflect properties
@@ -157,6 +165,7 @@ class ReflectedTableInfo:
                     type=type_mapper[prop["type"]],
                     id=prop["id"],
                     value=None,
+                    is_system=False
                 )
             )
         

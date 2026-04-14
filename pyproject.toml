@@ -43,11 +43,43 @@ dev = [
     "sphinx-design>=0.6.1",
     "myst-parser>=4.0.1",
     "tqdm>=4.67.1",
+    "pytest-cov>=7.1.0",
+    "coverage[toml]>=7.13.5",
 ]
 
+pythonpath = ["src"]
+
 [tool.pytest.ini_options]
-addopts = [  
+addopts = [ 
+    "--strict-markers",
+    "--tb=short", 
     "-v",  
     "-s",  
 ] 
-pythonpath = ["src"]
+testpaths = ["normlite/tests/unit"]
+
+[tool.coverage.run]
+branch = true
+source = ["normlite"]
+omit = [
+    "*/normlite/future/*",
+    "*/normlite/proxy/*",
+    "*/normlite/txmodel/*",
+    "*/normlite/sql/sql.py",
+]
+
+[tool.coverage.report]
+omit = [
+    "*/normlite/future/*",
+    "*/normlite/proxy/*",
+    "*/normlite/txmodel/*",
+    "*/normlite/sql/sql.py",
+    "*/tests/*",
+    "*/__init__.py",
+    "*/staging/*",
+]
+show_missing = true
+skip_covered = true
+
+
+

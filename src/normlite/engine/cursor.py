@@ -296,6 +296,9 @@ class CursorResult:
 
         .. versionadded:: 0.5.0
 
+        Raises:
+            ResourceClosedError: If it was previously closed.        
+        
         Returns:
             Optional[Row]: The row object in the result.
         """
@@ -356,6 +359,10 @@ class CursorResult:
             if not self._cursor.nextset():
                 break
 
+        # soft-closes if no more rows are in the result set
+        if not result:
+            self._soft_close()
+            
         return result    
 
     def close(self) -> None:

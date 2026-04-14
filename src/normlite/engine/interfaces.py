@@ -33,8 +33,6 @@ IsolationLevel = Literal[
 ]
 """"AUTOCOMMIT" is currently the only supported isolation level."""
 
-ReturningStrategy = Literal["echo", "refetch"]
-
 class ExecutionOptions(TypedDict, total=False):
     """Options for configuring the execution pipeline.
     
