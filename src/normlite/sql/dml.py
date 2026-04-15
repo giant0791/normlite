@@ -18,13 +18,12 @@
 
 from __future__ import annotations
 from copy import Error
-from operator import itemgetter
 import pdb
 from types import MappingProxyType
-from typing import Any, Callable, NoReturn, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
-import uuid
+from typing import Any, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
+import collections.abc as collections_abc
+
 import warnings
-from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable, ClauseElement, generative
 from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElement
@@ -146,16 +145,107 @@ class ValuesBase(UpdateBase):
     _values: Optional[MappingProxyType] = None
     """The immutable mapping holding the values."""
 
+    _has_multi_parameters: Optional[bool] = False
+    """``True`` if the VALUES clause provides multiple parameters.
+    
+    .. versionadded:: 0.9.0
+    """
+
+    _multi_parameters: Optional[Sequence[Mapping[str, Any]]] = None
+    """The values for multiple parameters as a sequence of mappings.
+    
+    .. versionadded:: 0.9.0
+    """
+
     def __init__(self, table: Table):
-       super().__init__(table)
-       self._values = None
+        super().__init__(table)
+        self._values = None
+        self._has_multi_parameters = False
+        self._multi_parameters = None
+
+    def _process_single_values(self, values: Mapping[str, Any]) -> MappingProxyType:
+        if self._has_multi_parameters:
+            raise ArgumentError(
+                "Cannot mix single values with bulk values"
+            )
+
+        existing = dict(self._values) if self._values else {}
+
+        for key, value in values.items():
+            if key not in self.get_table().columns:
+                raise ArgumentError(f"Wrong key supplied: {key}")
+
+            if isinstance(value, BindParameter):
+                bp = value
+            else:
+                bp = BindParameter(
+                    key=key,
+                    value=value,
+                    type_=None
+                )
+
+            existing[key] = bp
+
+        self._values = MappingProxyType(existing)
+    
+    def _process_multi_values(
+        self, 
+        rows: Sequence[Mapping[str, Any]]
+    ) -> None:
+
+        if self._values and not self._has_multi_parameters:
+            raise ArgumentError(
+                "Cannot mix bulk values with existing single values"
+            )
+
+        if not rows:
+            raise ArgumentError("values() received empty sequence")
+
+        normalized_rows = []
+        for row in rows:
+            if not isinstance(row, Mapping):
+                raise ArgumentError(
+                    "Bulk values must be a sequence of mappings"
+                )
+            normalized_rows.append(dict(row))
+
+        first_keys = set(normalized_rows[0].keys())
+
+        for i, row in enumerate(normalized_rows):
+            if set(row.keys()) != first_keys:
+                raise ArgumentError(
+                    f"Inconsistent keys in row {i}"
+                )
+
+        table_columns = self.get_table().columns
+        for key in first_keys:
+            if key not in table_columns:
+                raise ArgumentError(f"Wrong key supplied: {key}")
+
+        template = {
+            key: BindParameter(
+                key=key,
+                type_=None      # no value specified, it defaults to NoArg.NO_ARG
+            )
+            for key in first_keys
+        }
+        self._values = MappingProxyType(template)
+        self._multi_parameters = normalized_rows
+        self._has_multi_parameters = True
 
     @generative
-    def values(self, *args: Union[dict, Sequence[Any]], **kwargs: Any) -> Self:
+    def values(
+        self, 
+        *args: Union[dict, Sequence[Mapping[str, Any]]], 
+        **kwargs: Any
+    ) -> Self:
         """Provide the ``VALUES`` clause to specify the values to be inserted in the new row.
 
         Each call to this method create a new :class:`ValuesBase` object that carries over the
         values previously added.
+
+        .. versionchanged:: 0.9.0
+            Support for multi-parameters added.
 
         .. versionchanged:: 0.8.0
             The values provided are now coerced to :class:`normlite.sql.elements.BindParameter`
@@ -170,11 +260,14 @@ class ValuesBase(UpdateBase):
             Self: This instance for generative usage.
 
         """
-        existing = dict(self._values) if self._values else {}
+
+        if self._has_multi_parameters:
+            raise ArgumentError("values() already called with bulk parameters")
 
         if args:
-            # positional args have been passed:
-            # either a dict or a sequence has been provided
+            # positional case: either a dict or a sequence has been provided.
+            # If it is a sequence, distinguish between multi-parameter case (sequence of dicts)
+            # and the single parameter case (a tuple of values)
             # IMPORTANT: args is a tuple containing the dict or sequence as first element
             arg = args[0]
             if kwargs:
@@ -188,35 +281,46 @@ class ValuesBase(UpdateBase):
                 raise ArgumentError(
                     "values() accepts at most one positional argument"
                 )
-            arg = args[0]
+            
+            if isinstance(arg, collections_abc.Sequence) and not isinstance(arg, (str, bytes)):
+                # it is a sequence: determine if it is a sequence of dictionary
+                if arg and isinstance(arg[0], dict):
+                    # values([{"name": "Galileo Galilei", ...}, {"name": "Isaac Newton", ...}, ...])
+                    # multi-parameters case
+                    self._process_multi_values(arg)
+                    self._has_multi_parameters = True
+                    return self
+                
+                if arg and isinstance(arg[0], (list, tuple)):
+                    # values(["Galileo Galilei", ...], ["Isaac Newton", ...]) NOT SUPPORTED
+                    raise ArgumentError(
+                        "values() accepts sequence of dictionaries only for bulk inserts"
+                    )
+            
+            if isinstance(arg, dict):
+                # values({"name": "...", })
+                self._process_single_values(arg)
+                self._has_multi_parameters = False
+                self._multi_parameters = None
+                return self
 
-            if not isinstance(arg, dict):
+            # values(("Galileo Galilei", 1, "A", ...)) single parameter case with a tuple or a list
+            # normalize tuple or list to dict, but ensure length is equal to columns
+            columns = list(self._table.uc)
+            if len(arg) != len(columns):
                 raise ArgumentError(
-                    "Positional argument to values() must be a dict"
+                    f"Expected {len(columns)} values, got {len(arg)}"
                 )
 
+            arg = {c.name: value for c, value in zip(columns, arg)}            
             new_values = arg
         else:
+            # kwarg single parameter case
             new_values = kwargs
 
-        # Convert raw values → BindParameter
-        for key, value in new_values.items():
-            # structural validation
-            if key not in self.get_table().columns:
-                raise ArgumentError(f"Wrong key supplied: {key}")
-
-            if isinstance(value, BindParameter):
-                bp = value
-            else:
-                bp = BindParameter(
-                    key=key,
-                    value=value,
-                    type_=None      # compiler will fill this
-                )
-
-            existing[key] = bp
-
-        self._values = MappingProxyType(existing)
+        self._has_multi_parameters = False
+        self._multi_parameters = None
+        self._process_single_values(new_values)
 
         return self
 
