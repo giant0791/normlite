@@ -83,7 +83,8 @@ def test_delete_generate_operation_with_where_clause(students: Table, delete_stm
     assert asdict["payload"]["filter"]["property"] == "name"
     assert "title" in asdict["payload"]["filter"]
     assert asdict["payload"]["filter"]["title"] == {"equals": ":param_0"}
-    assert 'param_0' in compiled.params
+    assert 'param_0' in compiled._execution_binds
+    assert 'Galileo Galilei' == compiled._execution_binds['param_0'].effective_value
 
 def test_where_generative_multi_clause(students: Table, delete_stmt: Delete):
     mocked_db_id = str(uuid.uuid4())
@@ -119,9 +120,9 @@ def test_where_generative_multi_clause(students: Table, delete_stmt: Delete):
         ]        
     }
 
-    assert 'param_0' in compiled.params
-    assert 'param_1' in compiled.params
-    assert len(compiled.params) == 2 + 1        # :database_id is also a bind parameter!
+    assert 'param_0' in compiled._execution_binds
+    assert 'param_1' in compiled._execution_binds
+    assert len(compiled._execution_binds) == 2 + 1        # :database_id is also a bind parameter!
 
 #---------------------------------------------
 # generative returning() tests

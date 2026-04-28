@@ -28,9 +28,9 @@ def test_compile_create_table_parent_id(students: Table, engine: Engine):
     stmt = CreateTable(students)
     compiled = stmt.compile(engine._sql_compiler)
 
-    assert 'page_id' in compiled.params
+    assert 'page_id' in compiled._execution_binds
 
-    db_id_param: BindParameter = compiled.params['page_id']
+    db_id_param: BindParameter = compiled._execution_binds['page_id']
     assert db_id_param.type_ is None
     assert db_id_param.role == _BindRole.DBAPI_PARAM
     assert db_id_param.effective_value == students._db_parent_id
@@ -52,9 +52,9 @@ def test_compile_create_table_title_as_table_name(students: Table, engine: Engin
     stmt = CreateTable(students)
     compiled = stmt.compile(engine._sql_compiler)
 
-    assert 'table_name' in compiled.params
+    assert 'table_name' in compiled._execution_binds
 
-    title_param: BindParameter = compiled.params['table_name']
+    title_param: BindParameter = compiled._execution_binds['table_name']
     assert title_param.type_ is None
     assert title_param.role == _BindRole.DBAPI_PARAM
     assert title_param.effective_value == 'students'
@@ -100,9 +100,9 @@ def test_compile_drop_table_database_id(students: Table, engine: Engine):
     as_dict = compiled.as_dict()
     path_params = as_dict['path_params']
 
-    assert 'database_id' in compiled.params
+    assert 'database_id' in compiled._execution_binds
 
-    db_id_param: BindParameter = compiled.params['database_id']
+    db_id_param: BindParameter = compiled._execution_binds['database_id']
     assert db_id_param.type_ is None
     assert db_id_param.role == _BindRole.DBAPI_PARAM
     assert db_id_param.effective_value == students.get_oid()
@@ -130,9 +130,9 @@ def test_compile_drop_table_payload(students: Table, engine: Engine):
     as_dict = compiled.as_dict()
     payload = as_dict['payload']
     
-    assert 'in_trash' in compiled.params
+    assert 'in_trash' in compiled._execution_binds
 
-    in_trash_param: BindParameter = compiled.params['in_trash']
+    in_trash_param: BindParameter = compiled._execution_binds['in_trash']
     assert in_trash_param.type_ is None
     assert in_trash_param.role == _BindRole.DBAPI_PARAM
     assert in_trash_param.effective_value == True
@@ -155,9 +155,9 @@ def test_compile_reflect_table_database_id(students: Table, engine: Engine):
     as_dict = compiled.as_dict()
     path_params = as_dict['path_params']
 
-    assert 'database_id' in compiled.params
+    assert 'database_id' in compiled._execution_binds
 
-    db_id_param: BindParameter = compiled.params['database_id']
+    db_id_param: BindParameter = compiled._execution_binds['database_id']
     assert db_id_param.type_ is None
     assert db_id_param.role == _BindRole.DBAPI_PARAM
     assert db_id_param.effective_value == students.get_oid()

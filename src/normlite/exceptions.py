@@ -104,3 +104,9 @@ class NoSuchColumnError(InvalidRequestError):
     
     .. versionadded:: 0.9.0
     """
+
+class StatementError(NormliteError):
+    """An error occurred during execution of a SQL statement.
+    
+    .. versionadded: 0.9.0
+    """

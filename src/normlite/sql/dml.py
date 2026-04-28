@@ -17,14 +17,15 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from copy import Error
-from operator import itemgetter
+from normlite.notiondbapi import Error
+from normlite.sql.schema import ColumnCollection
+
 import pdb
 from types import MappingProxyType
-from typing import Any, Callable, NoReturn, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
-import uuid
+from typing import Any, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING, Tuple
+import collections.abc as collections_abc
+
 import warnings
-from normlite._constants import SpecialColumns
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable, ClauseElement, generative
 from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElement
@@ -88,7 +89,7 @@ class UpdateBase(HasTable, ExecutableClauseElement):
     _returning: tuple[Column, ...] = ()
     """Provide the columns to be returned by the DML statement."""
 
-    _table: Table = None
+    _table: Table
     """The table this executable is referred to."""
 
     def __init__(self, table: Table):
@@ -126,7 +127,7 @@ class UpdateBase(HasTable, ExecutableClauseElement):
                     f"Column: '{col.name}' does not belong to table: '{self._table.name}'"
                 )
             
-            seen.add(col)
+            seen.add(key)
             existing.append(col)
 
         self._returning = tuple(existing)
@@ -144,18 +145,116 @@ class ValuesBase(UpdateBase):
     """
 
     _values: Optional[MappingProxyType] = None
-    """The immutable mapping holding the values."""
+    """The immutable mapping holding the template.
+
+    This attributes holds the template to bind the values stored in :attr:`_single_parameters` at runtime.
+    
+    .. versionchanged:: 0.9.0
+        This attributes holds a mapping containing bind parameters instead of plain values.
+    """
+
+    _has_multi_parameters: Optional[bool] = False
+    """``True`` if the VALUES clause provides multiple parameters.
+    
+    .. versionadded:: 0.9.0
+    """
+
+    _single_parameters: Optional[Mapping[str, Any]] = None
+    """The values for single parameters as a mapping.
+    
+    .. versionadded:: 0.9.0
+    """
+
+    _multi_parameters: Optional[Sequence[Mapping[str, Any]]] = None
+    """The values for multiple parameters as a sequence of mappings.
+    
+    .. versionadded:: 0.9.0
+    """
 
     def __init__(self, table: Table):
-       super().__init__(table)
-       self._values = None
+        super().__init__(table)
+
+    def _process_single_values(self, values: Mapping[str, Any]) -> MappingProxyType:
+        if self._has_multi_parameters:
+            raise ArgumentError(
+                "Cannot mix single values with bulk values"
+            )
+
+        existing_values = dict(self._values) if self._values else {}
+        existing_params = dict(self._single_parameters) if self._single_parameters else {}
+
+        for key, value in values.items():
+            if key not in self.get_table().columns:
+                raise ArgumentError(f"Wrong key supplied: {key}")
+
+            # template
+            existing_values[key] = BindParameter(key=key, type_=None)
+
+            # actual data
+            existing_params[key] = value
+
+        self._values = MappingProxyType(existing_values)
+        self._single_parameters = existing_params
+    
+    def _process_multi_values(
+        self, 
+        rows: Sequence[Mapping[str, Any]]
+    ) -> None:
+
+        if self._values and not self._has_multi_parameters:
+            raise ArgumentError(
+                "Cannot mix bulk values with existing single values"
+            )
+
+        if not rows:
+            raise ArgumentError("values() received empty sequence")
+
+        normalized_rows = []
+        for row in rows:
+            if not isinstance(row, Mapping):
+                raise ArgumentError(
+                    "Bulk values must be a sequence of mappings"
+                )
+            normalized_rows.append(dict(row))
+
+        key_sets = [set(row.keys()) for row in normalized_rows]
+        all_keys = set.union(*key_sets)
+
+        for i, keys in enumerate(key_sets):
+            if keys != all_keys:
+                raise ArgumentError(
+                    f"Inconsistent keys in row {i}: {keys} != expected {all_keys}"
+                )
+
+        table_columns = self.get_table().columns
+        for key in all_keys:
+            if key not in table_columns:
+                raise ArgumentError(f"Wrong key supplied: {key}")
+
+        template = {
+            key: BindParameter(
+                key=key,
+                type_=None      # no value specified, it defaults to NoArg.NO_ARG
+            )
+            for key in all_keys
+        }
+        self._values = MappingProxyType(template)
+        self._multi_parameters = normalized_rows
+        self._has_multi_parameters = True
 
     @generative
-    def values(self, *args: Union[dict, Sequence[Any]], **kwargs: Any) -> Self:
+    def values(
+        self, 
+        *args: Union[dict, Sequence[Mapping[str, Any]]], 
+        **kwargs: Any
+    ) -> Self:
         """Provide the ``VALUES`` clause to specify the values to be inserted in the new row.
 
         Each call to this method create a new :class:`ValuesBase` object that carries over the
         values previously added.
+
+        .. versionchanged:: 0.9.0
+            Support for multi-parameters added.
 
         .. versionchanged:: 0.8.0
             The values provided are now coerced to :class:`normlite.sql.elements.BindParameter`
@@ -170,11 +269,14 @@ class ValuesBase(UpdateBase):
             Self: This instance for generative usage.
 
         """
-        existing = dict(self._values) if self._values else {}
+
+        if self._has_multi_parameters:
+            raise ArgumentError("values() already called with bulk parameters")
 
         if args:
-            # positional args have been passed:
-            # either a dict or a sequence has been provided
+            # positional case: either a dict or a sequence has been provided.
+            # If it is a sequence, distinguish between multi-parameter case (sequence of dicts)
+            # and the single parameter case (a tuple of values)
             # IMPORTANT: args is a tuple containing the dict or sequence as first element
             arg = args[0]
             if kwargs:
@@ -188,35 +290,46 @@ class ValuesBase(UpdateBase):
                 raise ArgumentError(
                     "values() accepts at most one positional argument"
                 )
-            arg = args[0]
+            
+            if isinstance(arg, collections_abc.Sequence) and not isinstance(arg, (str, bytes)):
+                # it is a sequence: determine if it is a sequence of dictionary
+                if arg and isinstance(arg[0], dict):
+                    # values([{"name": "Galileo Galilei", ...}, {"name": "Isaac Newton", ...}, ...])
+                    # multi-parameters case
+                    self._process_multi_values(arg)
+                    self._has_multi_parameters = True
+                    return self
+                
+                if arg and isinstance(arg[0], (list, tuple)):
+                    # values(["Galileo Galilei", ...], ["Isaac Newton", ...]) NOT SUPPORTED
+                    raise ArgumentError(
+                        "values() accepts sequence of dictionaries only for bulk inserts"
+                    )
+            
+            if isinstance(arg, dict):
+                # values({"name": "...", })
+                self._process_single_values(arg)
+                self._has_multi_parameters = False
+                self._multi_parameters = None
+                return self
 
-            if not isinstance(arg, dict):
+            # values(("Galileo Galilei", 1, "A", ...)) single parameter case with a tuple or a list
+            # normalize tuple or list to dict, but ensure length is equal to columns
+            columns = list(self._table.uc)
+            if len(arg) != len(columns):
                 raise ArgumentError(
-                    "Positional argument to values() must be a dict"
+                    f"Expected {len(columns)} values, got {len(arg)}"
                 )
 
+            arg = {c.name: value for c, value in zip(columns, arg)}            
             new_values = arg
         else:
+            # kwarg single parameter case
             new_values = kwargs
 
-        # Convert raw values → BindParameter
-        for key, value in new_values.items():
-            # structural validation
-            if key not in self.get_table().columns:
-                raise ArgumentError(f"Wrong key supplied: {key}")
-
-            if isinstance(value, BindParameter):
-                bp = value
-            else:
-                bp = BindParameter(
-                    key=key,
-                    value=value,
-                    type_=None      # compiler will fill this
-                )
-
-            existing[key] = bp
-
-        self._values = MappingProxyType(existing)
+        self._has_multi_parameters = False
+        self._multi_parameters = None
+        self._process_single_values(new_values)
 
         return self
 
@@ -272,17 +385,6 @@ class Insert(ValuesBase):
     def get_table_columns(self) -> ReadOnlyColumnCollection:
         return self._table.columns
         
-    def _process_dict_values(self, dict_arg: dict) -> MappingProxyType:
-        kv_pairs = {}
-        try:
-            for col in self._table.get_user_defined_colums():
-                value = dict_arg[col.name]
-                kv_pairs[col.name] = BindParameter(col.name, value, col.type_)
-        except KeyError as ke:
-            raise KeyError(f'Missing value for: {ke.args[0]}')
-        
-        return MappingProxyType(kv_pairs)
-
     def _setup_execution(self, context: ExecutionContext) -> None:
         # setup only if returning is declared
         if not self._returning:
@@ -341,10 +443,13 @@ class Insert(ValuesBase):
         elem = context.invoked_stmt
 
         # build parameters for pages.retrieve
-        for row in context._cursor.fetchall():
-            context.bulk_parameters = [{
+        # for insert with single parameters, there is just 1 result set
+        # for bulk insert, there are as many result sets as rows inserted, thus the use of _iter_all()
+        context.bulk_parameters = []
+        for row in context._cursor._iter_all():
+            context.bulk_parameters.append({
                 "path_params": {"page_id": row[0]}
-            }]
+            })
 
         # execute post-fetch
         try:
@@ -442,13 +547,13 @@ class OrderByClause(HasExpression, ClauseElement):
         return OrderByClause(self.clauses + clauses)
     
     def has_expression(self) -> bool:
-        return self.clauses
+        return self.clauses != ()
 
 class Select(HasTable, ExecutableClauseElement):
     __visit_name__ = 'select'
     is_select = True
 
-    _projection: Sequence[str]
+    _projection: ReadOnlyColumnCollection
     """The column names to be projected in this select statement."""
 
     def __init__(self, *entities: Union[Table, Column]):
@@ -471,15 +576,12 @@ class Select(HasTable, ExecutableClauseElement):
             self._table = table
 
             # project all columns
-            self._projection = [
-                col
-                for col in self._table.c
-            ]  
+            self._projection = self._table.c
             return
 
         # A list of columns has been provided
         tables = set()
-        columns: list[Column] = []
+        columns: list[tuple[str, Column]] = []
 
         for ent in entities:
             if not isinstance(ent, Column):
@@ -487,7 +589,7 @@ class Select(HasTable, ExecutableClauseElement):
                     "select() arguments must be either a Table or Column objects"
                 )
             tables.add(ent.parent)
-            columns.append(ent)
+            columns.append((ent.name, ent))
 
         if len(tables) != 1:
             raise ArgumentError(
@@ -496,14 +598,15 @@ class Select(HasTable, ExecutableClauseElement):
 
         self._table: Table = tables.pop()
         # --- SAFEGUARD: column names must exist on the table ---
-        table_columns = self._table.columns
+        table_columns: ReadOnlyColumnCollection = self._table.columns
 
-        for col in columns:
+        for column in columns:
+            _, col = column
             if col.name not in table_columns:
                 raise ArgumentError(
                     f'Column: {col.name} does not belong to table: {self._table.name}'
                 )
-        self._projection = columns
+        self._projection = ColumnCollection(columns).as_readonly()
 
     @generative
     def where(self, expr: ColumnElement) -> Self:

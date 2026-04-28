@@ -655,11 +655,7 @@ class Cursor:
     
     def executemany(self, operation: dict, parameters: Sequence[DBAPIExecuteParameters]) -> Self:
         """Prepare a database operation (query or command) and then execute it against all parameter sequences or 
-        mappings found in the sequence seq_of_parameters.
-
-        Note:
-            This method is not implemented yet.
-            Calling it raises :exc:`NotImplementedError`.
+        mappings found in the parameters argument.
 
         Args:
             operation (dict): A dictionary containing the Notion API request to be executed.
