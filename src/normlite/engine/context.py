@@ -357,14 +357,14 @@ class ExecutionContext:
         It hides the implementaion details related to which cursor shall be used to execute the DBAPI operation.
         The cursor is crucial because it holds the result set(s). Different cursors are created, 
         depending on the statement being executed.
-        For ``EXECUTE`` style statements (e.g., SELECT), the :attr:`_cursor` is used to execute the operation
+        For ``EXECUTE`` and ``INSERTMANYVALUES`` style statements (e.g., SELECT or bulk inserts), the :attr:`_cursor` is used to execute the operation
         and to hold the corresponding result set.
         For ``EXECUTEMANY`` style statements (e.g., DELETE/UPDATE/INSERT...RETURNING), the :attr:`_staged_result_cursor`
         is used to execute the operation and to hold the corresponding result set.
 
         .. versionadded:: 0.9.0
         """
-        if self.execution_style == ExecutionStyle.EXECUTE:
+        if self.execution_style in (ExecutionStyle.EXECUTE, ExecutionStyle.INSERTMANYVALUES):
             return self._cursor
         
         return self._staged_result_cursor

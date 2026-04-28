@@ -243,6 +243,9 @@ class Connection:
         elif ctx.execution_style == ExecutionStyle.EXECUTEMANY:
             self._execute_many(ctx)
         
+        elif ctx.execution_style == ExecutionStyle.INSERTMANYVALUES:
+            self._execute_insert_many(ctx)
+
         else:
             raise NotImplementedError(f"'{ctx.execution_style}' execution style not supported.")
         
@@ -256,7 +259,7 @@ class Connection:
 
         return ctx.setup_cursor_result()
 
-    def _execute_single(self, context: ExecutionContext) -> CursorResult:
+    def _execute_single(self, context: ExecutionContext) -> None:
         elem = context.invoked_stmt
         
         # 6. side effects happen (HTTP)
@@ -270,15 +273,31 @@ class Connection:
             elem._handle_dbapi_error(exc, context)
 
     
-    def _execute_many(self, context: ExecutionContext) -> CursorResult:
+    def _execute_many(self, context: ExecutionContext) -> None:
         elem = context.invoked_stmt
 
         # 6. side effects happen (HTTP)
+        #    execute_many uses the bulk_* attributes which have been prepared in the 
+        #    invoked statement's _finilize_execution() hook
         try:
             self._engine.do_executemany(
                 context._get_exec_cursor(), 
                 context.bulk_operation, 
                 context.bulk_parameters
+            )
+        except Error as exc:
+            elem._handle_dbapi_error(exc, context)
+
+    def _execute_insert_many(self, context: ExecutionContext) -> None:
+        elem = context.invoked_stmt
+
+        # 6. side effects happen (HTTP)
+        #    insert_many expects a multi-payload in parameters
+        try:
+            self._engine.do_executemany(
+                context._get_exec_cursor(), 
+                context.operation, 
+                context.parameters
             )
         except Error as exc:
             elem._handle_dbapi_error(exc, context)

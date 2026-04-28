@@ -443,10 +443,13 @@ class Insert(ValuesBase):
         elem = context.invoked_stmt
 
         # build parameters for pages.retrieve
-        for row in context._cursor.fetchall():
-            context.bulk_parameters = [{
+        # for insert with single parameters, there is just 1 result set
+        # for bulk insert, there are as many result sets as rows inserted, thus the use of _iter_all()
+        context.bulk_parameters = []
+        for row in context._cursor._iter_all():
+            context.bulk_parameters.append({
                 "path_params": {"page_id": row[0]}
-            }]
+            })
 
         # execute post-fetch
         try:

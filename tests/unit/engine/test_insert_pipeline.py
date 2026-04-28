@@ -1,3 +1,5 @@
+import pdb
+
 from faker import Faker
 import pytest
 
@@ -183,7 +185,7 @@ def test_returning_all_cols(
 # ----------------------------------------------
 # Bulk insert tests
 # ----------------------------------------------
-def test_insert_with_exec_params(engine: Engine, students: Table):
+def test_bulk_insert_with_exec_params(engine: Engine, students: Table):
     students.create(bind=engine, checkfirst=True)
     stmt = insert(students)
     with engine.connect() as connection:
@@ -194,3 +196,50 @@ def test_insert_with_exec_params(engine: Engine, students: Table):
         result_insert = connection.execute(stmt, parameters=params)
         
     assert result_insert.rowcount == 2
+
+def test_bulk_insert_with_values(engine: Engine, students: Table):
+    students.create(bind=engine, checkfirst=True)
+    stmt = insert(students).values([
+            generate_values(),
+            generate_values()
+    ]
+    )
+    with engine.connect() as connection:
+        result_insert = connection.execute(stmt)
+        
+    assert result_insert.rowcount == 2
+
+def test_bulk_insert_with_exec_params_returning(engine: Engine, students: Table):
+    students.create(bind=engine, checkfirst=True)
+    stmt = insert(students).returning(students.c.object_id)
+    with engine.connect() as connection:
+        params = [
+            generate_values(),
+            generate_values()
+        ]
+        result_insert = connection.execute(stmt, parameters=params)
+        inserted_rowids = set([row.object_id for row in result_insert])
+
+        stmt = select(students.c.object_id)
+        result_stmt = connection.execute(stmt)
+        selected_rowids = set([row.object_id for row in result_stmt])
+
+    assert result_insert.rowcount == 2
+    assert len(inserted_rowids) == 2
+    assert inserted_rowids.difference(selected_rowids) == set()
+
+
+
+def test_bulk_insert_with_exec_params_returns_primary_keys_rows(engine: Engine, students: Table):
+    students.create(bind=engine, checkfirst=True)
+    stmt = insert(students).execution_options(implicit_returning=True)
+    with engine.connect() as connection:
+        params = [
+            generate_values(),
+            generate_values()
+        ]
+        result_insert = connection.execute(stmt, parameters=params)
+        #inserted_rowids = [row.object_id for row in result_insert]
+
+    assert not result_insert.returns_rows
+    assert len(result_insert.returned_primary_keys_rows) == 2
