@@ -428,7 +428,6 @@ class Table(HasIdentifier):
         # initialize internal structures
         self._usr_columns = ColumnCollection()
         self._sys_columns = ColumnCollection()
-        self._constraints = set()
 
         # Always add system columns
         self._ensure_system_columns()
@@ -613,16 +612,10 @@ class Table(HasIdentifier):
             type_ = TimeStampStringISO8601(),
         )
 
-        table_name = SystemColumn(
-            name="table_name",
-            type_= String(is_title=True)
-        )
-
         self._add_system_column(object_id)
         self._add_system_column(is_archived)
         self._add_system_column(is_deleted)
         self._add_system_column(created_at)
-        self._add_system_column(table_name)
 
     def _create_pk_constraint(self) -> None:
         table_pks = [c for c in self._sys_columns if c.primary_key]

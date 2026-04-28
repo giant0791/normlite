@@ -1,14 +1,12 @@
-import uuid
 import pytest
 
-from normlite.engine.base import Engine, create_engine
+from normlite.engine.base import Engine
 from normlite.exceptions import CompileError
 from normlite.notion_sdk.getters import get_property
 from normlite.sql.base import DDLCompiled
 from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
 from normlite.sql.elements import _BindRole, BindParameter
-from normlite.sql.schema import Column, MetaData, Table
-from normlite.sql.type_api import Boolean, Date, Integer, String
+from normlite.sql.schema import Table
 
 
 #---------------------------------------------

@@ -193,7 +193,7 @@ def test_table_contains_sys_columns_if_no_usr_cols_defined(metadata: MetaData):
     assert "is_deleted" in no_usr_col_table._sys_columns
     assert "is_archived" in no_usr_col_table._sys_columns
     assert "created_at" in no_usr_col_table._sys_columns
-    assert "table_name" in no_usr_col_table._sys_columns
+    assert "table_name" not in no_usr_col_table._sys_columns
 
 def test_sys_columns_api_names_correctly_mapped(metadata: MetaData):
     table = Table("no_usr_cols", metadata)
@@ -202,7 +202,6 @@ def test_sys_columns_api_names_correctly_mapped(metadata: MetaData):
     assert table._sys_columns.is_deleted.api_key() == "in_trash"
     assert table._sys_columns.is_archived.api_key() == "archived"
     assert table._sys_columns.created_at.api_key() == "created_time"
-    assert table._sys_columns.table_name.api_key() == "title"
 
 def test_sys_columns_cannot_be_redefined(metadata: MetaData):
     with pytest.raises(ArgumentError) as exc:
@@ -262,7 +261,7 @@ def test_table_repr_contains_sys_columns(students: Table):
     assert "is_deleted" in table_repr
     assert "is_archived" in table_repr
     assert "created_at" in table_repr
-    assert "table_name" in table_repr
+    assert "table_name" not in table_repr
 
 def test_table_valid_minimal():
     metadata = MetaData()

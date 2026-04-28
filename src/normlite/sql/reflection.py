@@ -74,6 +74,13 @@ class ReflectedTableInfo:
     def get_columns(self) -> Sequence[ReflectedColumnInfo]:
         return self._columns
     
+    def get_reflectable_cols(self) -> Sequence[ReflectedColumnInfo]:
+        return [
+            col 
+            for col in self._columns
+            if col.name != SpecialColumns.NO_TITLE
+        ]
+
     @normlite_deprecated("This method is deprecated and will be removed in a future version.")
     def get_column_names(self, include_all: Optional[bool] = True) -> Sequence[str]:
         if include_all:
