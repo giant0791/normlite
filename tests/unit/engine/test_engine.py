@@ -183,14 +183,14 @@ def test_is_table_dropped_wrong_type_raises(engine: Engine, inspector: Inspector
     with pytest.raises(ArgumentError):
         _ = inspector.is_dropped({"wrong": "type"})
 
-@pytest.mark.skip("Requires table_name refactoring")
+#@pytest.mark.skip("Requires table_name refactoring")
 def test_engine_inspector_reflect_sys_table(engine: Engine, inspector: Inspector):
     metadata = MetaData()
     tables: Table = Table('tables', metadata)
     inspector.reflect_table(tables)
 
     assert tables._sys_columns["object_id"]._value == engine._tables_id
-    assert 'table_name' in tables.c
+    assert 'table_name' not in tables.c
     assert 'table_schema' in tables.c
     assert 'table_catalog' in tables.c
     assert 'table_id' in tables.c

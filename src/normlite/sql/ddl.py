@@ -247,12 +247,11 @@ class ReflectTable(ExecutableDDLStatement):
         self._reflected_table._db_parent_id = context.engine._user_tables_page_id
 
         # reflect columns
-        for colmeta in self._reflected_table_info.get_columns():
-            if colmeta.is_system and colmeta.name != "table_name":
+        for colmeta in self._reflected_table_info.get_reflectable_cols():
+            if colmeta.is_system:
                 self._reflected_table._sys_columns[colmeta.name]._value = colmeta.value
-                continue
            
-            if not colmeta.is_system:
+            else:
                 # assign user column ids
                 new_col = Column(
                     name=colmeta.name,
@@ -261,6 +260,7 @@ class ReflectTable(ExecutableDDLStatement):
                 )
                 new_col._set_parent(self._reflected_table)
                 self._reflected_table.append_column(new_col)
+        
 
     def _as_info(self) -> ReflectedTableInfo:
         return self._reflected_table_info
