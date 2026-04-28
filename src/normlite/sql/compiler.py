@@ -19,15 +19,15 @@ from __future__ import annotations
 from contextlib import contextmanager
 import copy
 import pdb
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from normlite._constants import SpecialColumns
-from normlite.exceptions import CompileError
+from normlite.exceptions import CompileError, StatementError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
 from normlite.sql.base import _CompileState, SQLCompiler
 from normlite.sql.dml import Delete, OrderByClause
-from normlite.sql.elements import _BindRole, BooleanClauseList, Operator, OrderByExpression, ColumnElement
+from normlite.sql.elements import _BindRole, _NoArg, BooleanClauseList, Operator, OrderByExpression, ColumnElement
 from normlite.sql.elements import BindParameter
 from normlite.sql.schema import Column, ReadOnlyColumnCollection
 
@@ -211,6 +211,74 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state = None
         self._bind_counter = 0
 
+    def construct_params(
+        self,
+        params: Optional[dict] = None,
+        group: Optional[int] = None
+    ) -> dict[str, Any]:
+        """Inject values to the execution binds from compile time.
+        
+        This methods constructs a dictionary with values computed based on the bind parameter role.
+        if ``params`` is supplied, it is merged into the values known at compile time (e. g., from a 
+        ``VALUES`` clause) and it is used to resolve the bind parameter values.
+
+        .. versionadded:: 0.9.0
+        """
+
+        statement = self._compiler_state.stmt
+        bindparams = self._compiler_state.execution_binds
+        resolved = {}
+
+        base: dict[str, Any] = {}
+
+        if statement.is_insert and not statement._has_multi_parameters:
+            base = statement._single_parameters
+
+        if params:
+            base = {**base, **params}
+
+        for key, bindparam in bindparams.items():
+
+            # user supplied values INSERT+SELECT
+            if bindparam.role in (_BindRole.COLUMN_VALUE, _BindRole.COLUMN_FILTER):
+                if key in base:
+                    resolved[key] = base[key]
+                elif bindparam.value is not _NoArg.NO_ARG:
+                    resolved[key] = bindparam.value
+                else:
+                    err_msg = (
+                        f"A value is required for bind parameter '{key}' (in parameter group {group})"
+                        if group is not None
+                        else f"A value is required for bind parameter '{key}'"
+                    )
+                    raise StatementError(err_msg)
+
+            # SYSTEM PARAM
+            elif bindparam.role == _BindRole.DBAPI_PARAM:
+                if bindparam.value is None or bindparam.value is _NoArg.NO_ARG:
+                    raise StatementError(
+                        f"Internal bind parameter '{key}' has no value"
+                    )
+                resolved[key] = bindparam.value
+
+            else:
+                raise StatementError(
+                    f"Unknown bind role for parameter '{key}'"
+                )
+
+        # --- EXTRA KEYS VALIDATION ---
+        if params:
+            extra_keys = set(params.keys()) - set(bindparams.keys())
+            if extra_keys:
+                err_msg = (
+                    f"Unknown parameter(s): {extra_keys} (in parameter group {group})"
+                    if group is not None
+                    else f"Unknown parameter(s): {extra_keys}"
+                )
+                raise StatementError(err_msg)
+
+        return resolved
+
     def visit_create_table(self, ddl_stmt: CreateTable) -> dict:
         """Compile a ``CREATE TABLE`` statement.
         
@@ -270,7 +338,7 @@ class NotionCompiler(SQLCompiler):
 
         # emit code for properties object
         payload['properties'] = self._compile_table_columns(
-            stmt_table._usr_columns
+            stmt_table.user_columns
         )
         
         self._compiler_state.result_columns = [
@@ -393,10 +461,13 @@ class NotionCompiler(SQLCompiler):
             # create a mapping for all user columns with dummy values
             placeholders = {
                 col.name: VALUE_PLACEHOLDER
-                for col in insert.get_table()._usr_columns
+                for col in insert.get_table().user_columns
             }
-
-            insert = insert.values(**placeholders)
+            if insert._has_multi_parameters:
+                multi_placehoders = [placeholders] * len(insert._multi_parameters)
+                insert = insert.values(multi_placehoders)
+            else:
+                insert = insert.values(**placeholders)
 
         # IMPORTANT: initialize the stmt in the compiler state after the values check
         # .values() is generative and returns a new instance
@@ -609,6 +680,23 @@ class NotionCompiler(SQLCompiler):
             bindparam: BindParameter, 
             column_name: Optional[str] = None,
         ) -> str:
+        """Assign keys, types and roles to the bind parameter argument based on the actual compilation phase.
+        
+        At compilation phase, bind parameters' keys, types and roles only are known.
+        The values are associated **only** at execution time by :meth:`construct_params`.
+        This method assigns the bind parameters attributes according to the following scheme:
+
+        * ``WHERE`` clause: key is an auto-generated anonymous parameter "params_n", type is the column's type and role is
+            :attr:`normlite.sql.base._CompileState.COLUMN_FILTER` (meaning the ``filter_value_processor()`` 
+            shall be used).
+
+        * ``VALUES`` clause: key is the column's name, type is the column's type and role is
+            :attr:`normlite.sql.base._CompileState.COLUMN_VALUE` (meaning the ``bind_processor()`` 
+            shall be used). 
+
+        * DBAPI parameters: the already assigned key remains, only the bind role is assigned to 
+            :attr:`normlite.sql.base._CompileState.DBAPI_PARAM` (meaning the value shall be used).
+        """
 
         if bindparam.role != _BindRole.NO_BINDROLE:
             raise CompileError("BindParameter role already assigned")
@@ -705,11 +793,18 @@ class NotionCompiler(SQLCompiler):
     def _compile_insert_update_values(self, values: dict) -> dict:
         properties = {}
         stmt_table = self._compiler_state.stmt._table
-        user_cols = stmt_table._usr_columns
-        if len(user_cols) != len(values):
+        user_cols = stmt_table.user_columns
+        uc_names = set([c.name for c in user_cols])
+        val_names = set(values.keys())
+        remaining = uc_names - val_names
+
+        if remaining:
+            missing = ", ".join(remaining)
+            format_val = "Values" if len(remaining) > 1 else "Value"
+            format_col = "columns" if len(remaining) > 1 else "column"
             raise CompileError(
-                'Not enough values supplied for all user defined columns '
-                f'in INSERT statment: {len(user_cols)} != {len(values)}')
+                f"{format_val} for {format_col} '{missing}' not supplied in INSERT statement"
+            )
 
         # reorder the keys in values according to the order in user_cols
         ordered_values = {}

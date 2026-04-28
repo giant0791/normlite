@@ -18,7 +18,7 @@ from normlite.engine.row import Row
 from normlite.sql.base import _CompileState, Compiled, CompilerState
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import insert, select
-from normlite.sql.elements import _BindRole, BinaryExpression, BindParameter
+from normlite.sql.elements import _BindRole, _NoArg, BinaryExpression, BindParameter
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, Money, Numeric, String
 from tests.utils.db_helpers import attach_table_oid
@@ -36,9 +36,9 @@ def test_insert_bind_values():
     year_reg = stmt._values['year_reg']
     assert stmt.is_insert
     assert isinstance(name, BindParameter)
-    assert name.value == 'Galileo Galilei'
+    assert stmt._single_parameters["name"] == 'Galileo Galilei'
     assert isinstance(year_reg, BindParameter)
-    assert year_reg.value == datetime(1689, 9, 1) 
+    assert stmt._single_parameters["year_reg"] == datetime(1689, 9, 1) 
 
 def test_compile_insert_bindparams():
     metadata = MetaData()
@@ -54,14 +54,15 @@ def test_compile_insert_bindparams():
     stmt = insert(students).values(name='Galileo Galilei', year_reg=datetime(1689, 9, 1))
     sql_compiler = NotionCompiler()
     compiled = stmt.compile(sql_compiler)
-    name_bp = compiled.params['name']
-    year_bp = compiled.params['year_reg']
+    name_bp = compiled._execution_binds['name']
+    year_bp = compiled._execution_binds['year_reg']
+    
     assert isinstance(name_bp, BindParameter)
     assert name_bp.role is _BindRole.COLUMN_VALUE
-    assert name_bp.value == 'Galileo Galilei'
+    assert name_bp.value == _NoArg.NO_ARG               # exec bindings have no value
     assert isinstance(year_bp, BindParameter)
     assert year_bp.role is _BindRole.COLUMN_VALUE
-    assert year_bp.value == datetime(1689, 9, 1)
+    assert year_bp.value == _NoArg.NO_ARG
 
 def test_create_ast_for_simple_col_expr():
     metadata = MetaData()

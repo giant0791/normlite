@@ -6,7 +6,7 @@ from normlite.exceptions import CompileError
 from normlite.sql.base import _CompileState, CompilerState
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import ValuesBase, insert
-from normlite.sql.elements import _BindRole, BindParameter
+from normlite.sql.elements import _BindRole, _NoArg, BindParameter
 from normlite.sql.schema import Table
 
 
@@ -17,9 +17,11 @@ def test_values_is_generative(students: Table):
     stmt = ValuesBase(students)
     stmt = stmt.values(name='Galileo Galilei').values(is_active=True)
     
-    assert len(stmt._values) == 2
-    assert stmt._values['name'].value == 'Galileo Galilei'
-    assert stmt._values['is_active'].value
+    assert len(stmt._values) == len(stmt._single_parameters)
+    assert stmt._values['name'].value == _NoArg.NO_ARG              # _values is the template
+    assert stmt._single_parameters["name"] == "Galileo Galilei"     #  _single_parameters is the actual data
+    assert stmt._values['is_active'].value == _NoArg.NO_ARG
+    assert stmt._single_parameters["is_active"]
 
 #---------------------------------------------
 # Compilation tests
@@ -35,8 +37,8 @@ def test_compiler_dbapi_param_correctness(students: Table, insert_values: dict):
     as_dict = compiled.as_dict()
 
     assert not compiled.is_ddl
-    assert as_dict['payload']['parent']['database_id'].lstrip(':') in compiled.params
-    assert 'database_id' in compiled.params
+    assert as_dict['payload']['parent']['database_id'].lstrip(':') in compiled._execution_binds
+    assert 'database_id' in compiled._execution_binds
 
 def test_compiler_correctness(students: Table, insert_values: dict):
     """Does the refactored compiler generates code correctly according to new client?"""
@@ -77,10 +79,10 @@ def test_compiler_generates_parent_id_as_bindparams(students: Table):
 
     compiled = stmt.compile(NotionCompiler())
 
-    assert 'database_id' in compiled.params
-    assert isinstance(compiled.params['database_id'], BindParameter)
-    assert compiled.params['database_id'].value == mocked_db_id
-    assert compiled.params['database_id'].role == _BindRole.DBAPI_PARAM
+    assert 'database_id' in compiled._execution_binds
+    assert isinstance(compiled._execution_binds['database_id'], BindParameter)
+    assert compiled._execution_binds['database_id'].value == mocked_db_id
+    assert compiled._execution_binds['database_id'].role == _BindRole.DBAPI_PARAM
     assert compiled.as_dict()['payload']['parent']['database_id'] == ':database_id'
 
 def test_compiler_generates_values_as_bindparams(students: Table, insert_values: dict):
@@ -93,16 +95,16 @@ def test_compiler_generates_values_as_bindparams(students: Table, insert_values:
     compiled = stmt.compile(nc)
 
     assert nc._compiler_state.is_insert
-    assert compiled.params['name'].value == 'Galileo Galilei'
-    assert compiled.params['name'].role == _BindRole.COLUMN_VALUE
-    assert compiled.params['id'].value == 123456
-    assert compiled.params['id'].role == _BindRole.COLUMN_VALUE
-    assert not compiled.params['is_active'].value 
-    assert compiled.params['is_active'].role == _BindRole.COLUMN_VALUE
-    assert compiled.params['start_on'].value == date(1690,1,1)
-    assert compiled.params['start_on'].role == _BindRole.COLUMN_VALUE
-    assert compiled.params['grade'].value == 'A'
-    assert compiled.params['grade'].role == _BindRole.COLUMN_VALUE
+    assert compiled.params["name"] == "Galileo Galilei"
+    assert compiled._execution_binds['name'].role == _BindRole.COLUMN_VALUE
+    assert compiled.params['id'] == 123456
+    assert compiled._execution_binds['id'].role == _BindRole.COLUMN_VALUE
+    assert not compiled.params['is_active'] 
+    assert compiled._execution_binds['is_active'].role == _BindRole.COLUMN_VALUE
+    assert compiled.params['start_on'] == date(1690,1,1)
+    assert compiled._execution_binds['start_on'].role == _BindRole.COLUMN_VALUE
+    assert compiled.params['grade'] == 'A'
+    assert compiled._execution_binds['grade'].role == _BindRole.COLUMN_VALUE
 
 def test_compiler_detects_missing_values(students: Table, insert_values: dict):        
     nc = NotionCompiler()
@@ -111,7 +113,7 @@ def test_compiler_detects_missing_values(students: Table, insert_values: dict):
     stmt = insert(students)
     stmt.values(**insert_values)
 
-    with pytest.raises(CompileError, match='in INSERT statment: 5 != 4'):
+    with pytest.raises(CompileError, match="'name' not supplied in INSERT statement"):
         insert_values.pop('name')
         stmt._values = insert_values
         compiled = stmt.compile(nc)

@@ -170,7 +170,7 @@ def test_where_generative_one_clause(students: Table, select_stmt: Select):
         }
     }
 
-    assert 'param_0' in compiled.params
+    assert 'param_0' in compiled._execution_binds
 
 def test_where_multi_date_clauses(students: Table, select_stmt: Select):
     mocked_db_id = str(uuid.uuid4())
@@ -186,14 +186,14 @@ def test_where_multi_date_clauses(students: Table, select_stmt: Select):
 
     nc = NotionCompiler()
     compiled = stmt.compile(nc)
-    raw1 = compiled.params["param_0"].effective_value
-    proc1 = compiled.params["param_0"].type_.filter_value_processor()
-    raw2 = compiled.params["param_1"].effective_value
-    proc2 = compiled.params["param_1"].type_.filter_value_processor()
-    raw3 = compiled.params["param_2"].effective_value
-    proc3 = compiled.params["param_2"].type_.filter_value_processor()
-    raw4 = compiled.params["param_3"].effective_value
-    proc4 = compiled.params["param_3"].type_.filter_value_processor()
+    raw1 = compiled._execution_binds["param_0"].effective_value
+    proc1 = compiled._execution_binds["param_0"].type_.filter_value_processor()
+    raw2 = compiled._execution_binds["param_1"].effective_value
+    proc2 = compiled._execution_binds["param_1"].type_.filter_value_processor()
+    raw3 = compiled._execution_binds["param_2"].effective_value
+    proc3 = compiled._execution_binds["param_2"].type_.filter_value_processor()
+    raw4 = compiled._execution_binds["param_3"].effective_value
+    proc4 = compiled._execution_binds["param_3"].type_.filter_value_processor()
     val1 = proc1(raw1)
     val2 = proc2(raw2)
     val3 = proc3(raw3)
@@ -239,9 +239,9 @@ def test_where_generative_multi_clause(students: Table, select_stmt: Select):
         ]        
     }
 
-    assert 'param_0' in compiled.params
-    assert 'param_1' in compiled.params
-    assert len(compiled.params) == 2 + 1        # :database_id is also a bind parameter!
+    assert 'param_0' in compiled._execution_binds
+    assert 'param_1' in compiled._execution_binds
+    assert len(compiled._execution_binds) == 2 + 1        # :database_id is also a bind parameter!
 
 #---------------------------------------------
 # Column projection tests

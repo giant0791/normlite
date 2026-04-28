@@ -17,10 +17,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from copy import Error
+from normlite.notiondbapi import Error
+from normlite.sql.schema import ColumnCollection
+
 import pdb
 from types import MappingProxyType
-from typing import Any, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
+from typing import Any, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING, Tuple
 import collections.abc as collections_abc
 
 import warnings
@@ -87,7 +89,7 @@ class UpdateBase(HasTable, ExecutableClauseElement):
     _returning: tuple[Column, ...] = ()
     """Provide the columns to be returned by the DML statement."""
 
-    _table: Table = None
+    _table: Table
     """The table this executable is referred to."""
 
     def __init__(self, table: Table):
@@ -125,7 +127,7 @@ class UpdateBase(HasTable, ExecutableClauseElement):
                     f"Column: '{col.name}' does not belong to table: '{self._table.name}'"
                 )
             
-            seen.add(col)
+            seen.add(key)
             existing.append(col)
 
         self._returning = tuple(existing)
@@ -143,10 +145,22 @@ class ValuesBase(UpdateBase):
     """
 
     _values: Optional[MappingProxyType] = None
-    """The immutable mapping holding the values."""
+    """The immutable mapping holding the template.
+
+    This attributes holds the template to bind the values stored in :attr:`_single_parameters` at runtime.
+    
+    .. versionchanged:: 0.9.0
+        This attributes holds a mapping containing bind parameters instead of plain values.
+    """
 
     _has_multi_parameters: Optional[bool] = False
     """``True`` if the VALUES clause provides multiple parameters.
+    
+    .. versionadded:: 0.9.0
+    """
+
+    _single_parameters: Optional[Mapping[str, Any]] = None
+    """The values for single parameters as a mapping.
     
     .. versionadded:: 0.9.0
     """
@@ -159,9 +173,6 @@ class ValuesBase(UpdateBase):
 
     def __init__(self, table: Table):
         super().__init__(table)
-        self._values = None
-        self._has_multi_parameters = False
-        self._multi_parameters = None
 
     def _process_single_values(self, values: Mapping[str, Any]) -> MappingProxyType:
         if self._has_multi_parameters:
@@ -169,24 +180,21 @@ class ValuesBase(UpdateBase):
                 "Cannot mix single values with bulk values"
             )
 
-        existing = dict(self._values) if self._values else {}
+        existing_values = dict(self._values) if self._values else {}
+        existing_params = dict(self._single_parameters) if self._single_parameters else {}
 
         for key, value in values.items():
             if key not in self.get_table().columns:
                 raise ArgumentError(f"Wrong key supplied: {key}")
 
-            if isinstance(value, BindParameter):
-                bp = value
-            else:
-                bp = BindParameter(
-                    key=key,
-                    value=value,
-                    type_=None
-                )
+            # template
+            existing_values[key] = BindParameter(key=key, type_=None)
 
-            existing[key] = bp
+            # actual data
+            existing_params[key] = value
 
-        self._values = MappingProxyType(existing)
+        self._values = MappingProxyType(existing_values)
+        self._single_parameters = existing_params
     
     def _process_multi_values(
         self, 
@@ -209,16 +217,17 @@ class ValuesBase(UpdateBase):
                 )
             normalized_rows.append(dict(row))
 
-        first_keys = set(normalized_rows[0].keys())
+        key_sets = [set(row.keys()) for row in normalized_rows]
+        all_keys = set.union(*key_sets)
 
-        for i, row in enumerate(normalized_rows):
-            if set(row.keys()) != first_keys:
+        for i, keys in enumerate(key_sets):
+            if keys != all_keys:
                 raise ArgumentError(
-                    f"Inconsistent keys in row {i}"
+                    f"Inconsistent keys in row {i}: {keys} != expected {all_keys}"
                 )
 
         table_columns = self.get_table().columns
-        for key in first_keys:
+        for key in all_keys:
             if key not in table_columns:
                 raise ArgumentError(f"Wrong key supplied: {key}")
 
@@ -227,7 +236,7 @@ class ValuesBase(UpdateBase):
                 key=key,
                 type_=None      # no value specified, it defaults to NoArg.NO_ARG
             )
-            for key in first_keys
+            for key in all_keys
         }
         self._values = MappingProxyType(template)
         self._multi_parameters = normalized_rows
@@ -376,17 +385,6 @@ class Insert(ValuesBase):
     def get_table_columns(self) -> ReadOnlyColumnCollection:
         return self._table.columns
         
-    def _process_dict_values(self, dict_arg: dict) -> MappingProxyType:
-        kv_pairs = {}
-        try:
-            for col in self._table.get_user_defined_colums():
-                value = dict_arg[col.name]
-                kv_pairs[col.name] = BindParameter(col.name, value, col.type_)
-        except KeyError as ke:
-            raise KeyError(f'Missing value for: {ke.args[0]}')
-        
-        return MappingProxyType(kv_pairs)
-
     def _setup_execution(self, context: ExecutionContext) -> None:
         # setup only if returning is declared
         if not self._returning:
@@ -546,13 +544,13 @@ class OrderByClause(HasExpression, ClauseElement):
         return OrderByClause(self.clauses + clauses)
     
     def has_expression(self) -> bool:
-        return self.clauses
+        return self.clauses != ()
 
 class Select(HasTable, ExecutableClauseElement):
     __visit_name__ = 'select'
     is_select = True
 
-    _projection: Sequence[str]
+    _projection: ReadOnlyColumnCollection
     """The column names to be projected in this select statement."""
 
     def __init__(self, *entities: Union[Table, Column]):
@@ -575,15 +573,12 @@ class Select(HasTable, ExecutableClauseElement):
             self._table = table
 
             # project all columns
-            self._projection = [
-                col
-                for col in self._table.c
-            ]  
+            self._projection = self._table.c
             return
 
         # A list of columns has been provided
         tables = set()
-        columns: list[Column] = []
+        columns: list[tuple[str, Column]] = []
 
         for ent in entities:
             if not isinstance(ent, Column):
@@ -591,7 +586,7 @@ class Select(HasTable, ExecutableClauseElement):
                     "select() arguments must be either a Table or Column objects"
                 )
             tables.add(ent.parent)
-            columns.append(ent)
+            columns.append((ent.name, ent))
 
         if len(tables) != 1:
             raise ArgumentError(
@@ -600,14 +595,15 @@ class Select(HasTable, ExecutableClauseElement):
 
         self._table: Table = tables.pop()
         # --- SAFEGUARD: column names must exist on the table ---
-        table_columns = self._table.columns
+        table_columns: ReadOnlyColumnCollection = self._table.columns
 
-        for col in columns:
+        for column in columns:
+            _, col = column
             if col.name not in table_columns:
                 raise ArgumentError(
                     f'Column: {col.name} does not belong to table: {self._table.name}'
                 )
-        self._projection = columns
+        self._projection = ColumnCollection(columns).as_readonly()
 
     @generative
     def where(self, expr: ColumnElement) -> Self:

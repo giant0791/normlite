@@ -1,3 +1,4 @@
+from normlite import CursorResult
 from datetime import date
 import pdb
 import uuid
@@ -6,7 +7,7 @@ import pytest
 from normlite.engine.base import Engine, create_engine
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import _distill_params
-from normlite.exceptions import ArgumentError, CompileError, ResourceClosedError
+from normlite.exceptions import ArgumentError, CompileError, ResourceClosedError, StatementError
 from normlite.sql.reflection import ReflectedTableInfo
 from normlite.notion_sdk.getters import get_object_id
 from normlite.sql.ddl import CreateTable, DropTable
@@ -124,7 +125,7 @@ def populated_students(engine, students, students_db):
 # Execution harness
 # =========================================================
 
-def run_context(engine, stmt, params=None, execution_options=None):
+def run_context(engine, stmt, params=None, execution_options=None) -> tuple[CursorResult, ExecutionContext]:
     compiled = stmt.compile(engine._sql_compiler)
     cursor = engine.raw_connection().cursor()
 
@@ -196,7 +197,7 @@ def test_execution_style_delete(engine, populated_students, students):
 def test_insert_missing_values_raises(engine, students, students_db):
     stmt = insert(students)
 
-    with pytest.raises(ArgumentError) as exc:
+    with pytest.raises(StatementError) as exc:
         run_context(engine, stmt, params={"name": "Alice"})
 
     msg = str(exc.value)

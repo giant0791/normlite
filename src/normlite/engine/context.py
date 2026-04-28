@@ -46,10 +46,10 @@ The design of SQL statement execution separates responsibilities cleanly using t
 from __future__ import annotations
 from enum import Enum, auto
 import pdb
-from typing import TYPE_CHECKING, Any, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Mapping, Optional, Union, Sequence
 import copy
 
-from normlite.exceptions import ArgumentError
+from normlite.exceptions import ArgumentError, StatementError
 from normlite.engine.interfaces import _CoreMultiExecuteParams, ExecutionOptions
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
 from normlite.sql.resultschema import SchemaInfo
@@ -87,7 +87,7 @@ class ExecutionStyle(Enum):
     .. versionchanged:: 0.9.0
     """
 
-    PARAMETER_BULK = auto()
+    INSERTMANYVALUES = auto()
     """The same operation is executed multiple on time with different parameters.
     
     This execution style is used for INSERT statements that add multiple rows. The execution loop is
@@ -370,12 +370,21 @@ class ExecutionContext:
         return self._staged_result_cursor
 
     def _determine_execution_style(self) -> ExecutionStyle:
+        if len(self.distilled_params) > 1:
+            # user has provided a list of dictionaries as parameters to Connection.execute()
+            return ExecutionStyle.INSERTMANYVALUES 
+
         stmt = self.invoked_stmt
 
-        # delete
+        # insert with multi parameters
+        if stmt.is_insert and stmt._has_multi_parameters:
+            return ExecutionStyle.INSERTMANYVALUES
+
+        # delete or insert with single parameters
         if stmt.is_delete:
             return ExecutionStyle.EXECUTEMANY
-
+        
+        # select or insert without returning
         return ExecutionStyle.EXECUTE
 
     @property
@@ -387,7 +396,7 @@ class ExecutionContext:
         return self.compiled_dict['operation']
     
     @property
-    def parameters(self) -> dict:
+    def parameters(self) -> Union[dict, list[dict]]:
         """Return the DBAPI parameters for the related operation.
 
         This attribute provides the DBAPI parameters as a dictionary with the following keys:
@@ -397,9 +406,33 @@ class ExecutionContext:
         - "query_params": This stores the query paramters for the DBAPI operation.
 
         - "payload": This stores the payload for the DBAPI operation.
+
+        :attr:`parameters` is a materialized view based on the parameters calculations done in
+        :meth:`pre_exec`. It aggregates the computed attributes :attr:`path_params`, :attr:`query_params`,
+        and :attr:`payload` into the DBAPI parameters dictionary structure.
+
+        .. seealso::
+            :class:`normlite.notion_sdk.client.AbstractNotionClient` for the client parameters API structure.
+        
+        .. versionchanged:: 0.9.0    
         
         .. versionadded:: 0.8.0
         """
+
+        if self.execution_style == ExecutionStyle.INSERTMANYVALUES:
+            if not isinstance(self.payload, list):
+                RuntimeError("INSERTMANYVALUES requires DBAPI 'payload' parameter to be a list")
+
+            return [
+                {
+                    "payload": payload
+                }
+                for payload in self.payload
+
+            ]
+
+        if not isinstance(self.payload, dict):
+            RuntimeError("EXECUTE and EXCUTEMANY require DBAPI 'payload' parameter to be a dictionary")
 
         dbapi_params = {}
         if self.path_params:
@@ -416,6 +449,9 @@ class ExecutionContext:
     def pre_exec(self) -> None:
         """Perform value binding and type adaptation before execution.
 
+        ..versionchanged: 0.9.0
+            In this version, binding supports bulk inserts with multi-parameters.
+
         .. versionchanged:: 0.8.0
             In this version, binding has been extended to support the override case (user-provided parameters in the execute call).
             Execution options resolution is also supported now.
@@ -423,13 +459,11 @@ class ExecutionContext:
         # determine execution style
         self.execution_style = self._determine_execution_style()
 
+        # build overrides sets
+        overrides = self._build_overrides_sets()
+
         # resolve parameters only if there are parameters to be resolved
-        resolved_params = (
-            self.compiled.params
-            if self.distilled_params is None
-            else
-            self._resolve_parameters(self.distilled_params)
-        )
+        resolved_params = self._resolve_parameters(overrides)
 
         # validate insert values, if stmt is_insert
         if self.compiled._compiler_state.is_insert:
@@ -439,26 +473,27 @@ class ExecutionContext:
         # resolve execution options
         self._resolve_exec_options()
 
-        # bind the parameters for execution with the resolved values
         if 'path_params' in self.compiled_dict:
             self.path_params = self._bind_params(
-                copy.deepcopy(self.compiled_dict['path_params']), 
-                resolved_params
+                self.compiled_dict['path_params'], 
+                resolved_params[0]
             )
 
+        # bind the parameters for execution with the resolved values
         if 'payload' in self.compiled_dict:
-            self.payload = self._bind_params(
-                    copy.deepcopy(self.compiled_dict['payload']),
-                    resolved_params
-            )
-            
+            template = self.compiled_dict["payload"]
 
-        if resolved_params:
-            raise ArgumentError(
-                f"Unused bind parameters: {', '.join(resolved_params.keys())}"
-            )
-        
-       # extract the query params
+            if self.execution_style == ExecutionStyle.INSERTMANYVALUES:
+                self.payload = [
+                    self._bind_params(template, param_set)
+                    for param_set in resolved_params
+                ]
+            else:
+                self.payload = self._bind_params(template, resolved_params[0])
+
+        self._assert_all_params_consumed(resolved_params)
+
+        # extract the query params
         if 'query_params' in self.compiled_dict:
             self.query_params = self.compiled_dict['query_params']
 
@@ -474,6 +509,14 @@ class ExecutionContext:
     
         self._cursor._inject_description(schema.as_sequence())
 
+    def _assert_all_params_consumed(self, resolved_params: list[dict]):
+        for i, param_set in enumerate(resolved_params):
+            if param_set:
+                raise ArgumentError(
+                    f"Unused bind parameters in parameter set {i}: "
+                    f"{', '.join(param_set.keys())}"
+                )
+                
     def post_exec(self) -> None:
         """Perform row counting preservation after execution.
         
@@ -491,49 +534,139 @@ class ExecutionContext:
         
         self._rowcount = -1
     
-    def _resolve_parameters(self, overrides: _CoreMultiExecuteParams) -> Mapping[str, BindParameter]:
+    def _is_no_params(self, distilled):
+        return distilled is None or distilled == [{}]
+    
+    def _resolve_parameters(
+        self, 
+        overrides: _CoreMultiExecuteParams
+    ) -> Sequence[Mapping[str, BindParameter]]:
         """Resolve binding parameters using the values passed as normalized parameters in the constructor.
+
+        Supports both single and multi-parameter execution.
         
+        .. versionchanged: 0.9.0
+            It uses :meth:`normlite.sql.compiler.NotionCompiler.construct_params` to resolve overrides.
+
         .. versionadded:: 0.8.0
         """
         
         from normlite.sql.elements import BindParameter
 
-        resolved_params: Mapping[str, Any] = dict(self.compiled.params)
-        distilled_params: Mapping[str, Any] = None
-        if len(overrides) == 1:
-            # distilled parameters contain 1 mapping only
-            distilled_params = overrides[0]
-        else:
-            NotImplementedError('Execution style executemanyvalues not implemented yet.')
+        param_sets: list[dict[str, Any]] = []
 
-        # override with distilled parameters 
-        for key in distilled_params.keys():
-            old_value: BindParameter = resolved_params[key]
-            new_value = BindParameter(
-                key=key,
-                value=distilled_params[key],
-                type_=old_value.type_,
-            )
-            new_value.role = old_value.role
-            resolved_params.update({key: new_value})
+        # resolve values
+        for override in overrides:
+            resolved = self.compiled._compiler.construct_params(override)
+            param_sets.append(resolved)
 
-        return resolved_params
+        # rebuild BindParameter objects
+        bind_template = self.compiled._compiler_state.execution_binds
+        bound_param_sets = []
 
-    def _validate_insert_values(self, resolved_parameters: dict[str, BindParameter]):
-        missing_cols = [
-            key
-            for key, bindparam in resolved_parameters.items()
-            if bindparam.value is VALUE_PLACEHOLDER
+        for resolved in param_sets:
+            bound = {}
+
+            for key, value in resolved.items():
+                template = bind_template[key]
+
+                bp = BindParameter(
+                    key=key,
+                    value=value,
+                    type_=template.type_,
+                )
+                bp.role = template.role
+
+                bound[key] = bp
+
+            bound_param_sets.append(bound)
+
+        return bound_param_sets
+
+    def _build_overrides_sets(self) -> list[Mapping[str, Any]]:
+        """Build the list of parameter dictionaries used for execution.
+
+        Returns a list of dictionaries, one per execution (even for single execution).
+        """
+        stmt = self.compiled._compiler_state.stmt
+        distilled = [] if self._is_no_params(self.distilled_params) else self.distilled_params
+
+        # INSERT LOGIC
+        if stmt.is_insert:
+
+            # CASE 1: bulk via .values([...])
+            if stmt._has_multi_parameters:
+                if distilled and distilled[0]:
+                    # bulk via .values([...]) and .execute(parameters=[...]) is not allowed
+                    raise StatementError(
+                        "Cannot combine execution parameters with bulk VALUES()"
+                    )
+                return stmt._multi_parameters
+
+            # CASE 2: execution-time bulk: INSERT+UPDATE
+            # .values() specifies values common to all rows
+            # .execute(stmt, parameters=[...]) specifies single row values
+            if len(distilled) > 1:
+                if stmt._single_parameters:
+                    return [
+                        {**stmt._single_parameters, **params}
+                        for params in distilled
+                    ]
+                return distilled
+
+            # CASE 3: single execution
+            if stmt._single_parameters:
+                if distilled:
+                    return [{**stmt._single_parameters, **distilled[0]}]
+                return [stmt._single_parameters]
+
+            # CASE 4: no statement values
+            if distilled:
+                return [distilled[0]]
+
+            return [{}]
+
+        # NON-INSERT LOGIC (DELETE / DDL / others)
+        # These statements do not support VALUES semantics
+
+        if len(distilled) > 1:
+            return distilled
+
+        if distilled:
+            return [distilled[0]]
+
+        return [{}]
+
+    def _validate_insert_values(
+        self,
+        resolved_parameters: Union[
+            dict[str, BindParameter],
+            list[dict[str, BindParameter]]
         ]
+    ):
+        # normalize to list
+        if isinstance(resolved_parameters, dict):
+            param_sets = [resolved_parameters]
+        else:
+            param_sets = resolved_parameters
 
-        if missing_cols:
-            table_name = self.compiled._compiler_state.stmt.get_table().name
-            cols_word = "column" if len(missing_cols) == 1 else "columns"
-            formatted = ", ".join(f"'{col}'" for col in missing_cols)
-            raise ArgumentError(
-                f"Missing values for {cols_word} {formatted} in INSERT into '{table_name}'."
-            )
+        for i, params in enumerate(param_sets):
+            missing_cols = [
+                key
+                for key, bindparam in params.items()
+                if bindparam.value is VALUE_PLACEHOLDER
+            ]
+
+            if missing_cols:
+                table_name = self.compiled._compiler_state.stmt.get_table().name
+                cols_word = "column" if len(missing_cols) == 1 else "columns"
+                formatted = ", ".join(f"'{col}'" for col in missing_cols)
+                group_info = f" in parameter set {i}" if len(param_sets) > 1 else ""
+
+                raise StatementError(
+                    f"Missing value for {cols_word} {missing_cols} {formatted} in INSERT into '{table_name}'"
+                    f"{group_info}"
+                )
 
     def _resolve_exec_options(self) -> None:
         opts = {}
@@ -551,9 +684,6 @@ class ExecutionContext:
 
         self.execution_options = frozendict(opts)
 
-    def setup(self) -> None:
-        raise NotImplementedError
-    
     def _resolve_bindparam(self, bindparam: BindParameter) -> dict:
         from normlite.sql.elements import _BindRole
 

@@ -25,7 +25,7 @@ import pdb
 from typing import Any, ClassVar, NoReturn, Optional, Protocol, TYPE_CHECKING, Self, Sequence, overload
 import copy
 
-from normlite.exceptions import ArgumentError, UnsupportedCompilationError
+from normlite.exceptions import ArgumentError, InvalidRequestError, UnsupportedCompilationError
 from normlite.utils import frozendict
 
 if TYPE_CHECKING:
@@ -167,6 +167,8 @@ class Executable(ClauseElement):
     
     .. versionadded:: 0.9.0
     """
+
+    is_insert: ClassVar[bool] = False
 
     _execution_options: Optional[ExecutionOptions] = None
     """per-statement execution options.
@@ -343,15 +345,14 @@ class Compiled:
     """
 
     def __init__(self, element: ClauseElement, compiled: dict, compiler: SQLCompiler):
+        self._compiler = compiler
+
         self._element = element
         """The compiled clause element."""
 
         self._compiled = compiled
         """The dictionary containing the compilation result."""
         
-        # IMPORTANT: The _compiler_state.execution_binds contains the mapping that associates
-        # a bind param key to a tuple[BindParameter, str], where str is the usage="value" | "filter"
-        # This is used by the ExecutionContext to choose the right bind processor (bind_processor | filter_processor)
         self._execution_binds = dict(compiler._compiler_state.execution_binds)
         """The bind parameters for this compiled object."""
 
@@ -377,9 +378,32 @@ class Compiled:
         return json.dumps(self._compiled, indent=2)
     
     @property
-    def params(self) -> dict[str, BindParameter]:
-        """Provide the bind parameters for this compiled object."""
-        return self._execution_binds
+    def params(self) -> dict[str, Any]:
+        """Provide the values for the bind parameters for this compiled object.
+
+        This attribute returns the column value bind parameters only.
+        Use :meth:`normlite.sql.NotionCompiler.construct_params()
+        
+        .. versionchanged: 0.9.0
+            In this version, the dictionary returned has the effective values as dictionary
+            values, instead of the bind parameters.
+
+        """
+        from normlite.sql.elements import _BindRole
+
+        statement = self._compiler_state.stmt
+        if statement.is_insert and statement._has_multi_parameters:
+            raise InvalidRequestError(
+                ".params is not defined for bulk statements"
+            )        
+
+        full = self._compiler.construct_params()
+
+        return {
+            key: value
+            for key, value in full.items()
+            if self._compiler_state.execution_binds[key].role == _BindRole.COLUMN_VALUE
+        }
     
     def as_dict(self) -> dict:
         """Return this compiled object in the original dictionary form."""
@@ -417,6 +441,23 @@ class SQLCompiler(Protocol):
 
     _compiler_state: CompilerState
 
+    def construct_params(
+        self, 
+        params: Optional[dict] = None, 
+        group: Optional[int] = None
+    ) -> dict[str, Any]:
+        """Return the bind params for this compiled object.
+
+        Args:
+            params (Optional[dict], optional): a dict of string/object pairs whose values will
+                override bind values compiled in to the statement. Defaults to None.
+            group (Optional[int], optional): The group number in a multi-parameter statement. 
+                Defaults to None.
+
+        Returns:
+            dict[str, Any]: The bind params for this compiled object.
+        """
+
     def process(self, element: ClauseElement, **kwargs: Any) -> dict:
         """Entry point for the compilation process.
 
@@ -435,7 +476,7 @@ class SQLCompiler(Protocol):
         """
         return element._compiler_dispatch(self, **kwargs)
 
-    def visit_create_table(self, table: CreateTable) -> dict:
+    def visit_create_table(self, ddl_stmt: CreateTable) -> dict:
         """Compile a table (DDL ``CREATE TABLE``)."""
         ...
 
@@ -443,7 +484,7 @@ class SQLCompiler(Protocol):
         """Compile the pseudo DDL statement for checking for table existence."""
         ...
 
-    def visit_reflect_table(self, reflect_table: ReflectTable) -> dict:
+    def visit_reflect_table(self, ddl_stmt: ReflectTable) -> dict:
         """Compile the DDL statement for reflecting an existing table."""
 
     def visit_insert(self, insert: Insert) -> dict:

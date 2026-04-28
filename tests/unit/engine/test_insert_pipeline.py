@@ -179,3 +179,18 @@ def test_returning_all_cols(
     ]
 
     assert_columns(row, columns)
+
+# ----------------------------------------------
+# Bulk insert tests
+# ----------------------------------------------
+def test_insert_with_exec_params(engine: Engine, students: Table):
+    students.create(bind=engine, checkfirst=True)
+    stmt = insert(students)
+    with engine.connect() as connection:
+        params = [
+            generate_values(),
+            generate_values()
+        ]
+        result_insert = connection.execute(stmt, parameters=params)
+        
+    assert result_insert.rowcount == 2
