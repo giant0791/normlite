@@ -88,10 +88,12 @@ class ExecutionStyle(Enum):
     """
 
     INSERTMANYVALUES = auto()
-    """The same operation is executed multiple on time with different parameters.
+    """The same operation is executed multiple times with different parameters.
     
     This execution style is used for INSERT statements that add multiple rows. The execution loop is
     driven by the parameters.
+
+    .. versionadded:: 0.9.0
     """
 
 class ExecutionContext:
@@ -238,7 +240,7 @@ class ExecutionContext:
     payload: Optional[list[dict]]
     """The payload parameter for the DBAPI operation.
     
-    ..versionadded:: 0.8.0
+    .. versionadded:: 0.8.0
     """
 
     execution_style: ExecutionStyle

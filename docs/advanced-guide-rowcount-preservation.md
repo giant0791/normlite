@@ -66,4 +66,3 @@ def rowcount(self) -> int:
 | `post_exec()`           | Memoize the DBAPI cursor.rowcounta |
 | `_finalize_execution()` | Do nothing                         |
 
-------------------------------------------------------------------------
