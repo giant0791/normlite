@@ -121,7 +121,7 @@ class TypeEngine(Protocol):
         
         The default implementation returns a dictionary as follows:
 
-        .. code:: python
+        .. code-block:: python
 
             {
                 self.get_col_spec(): {}
@@ -617,13 +617,16 @@ class DateTimeRange:
     def from_json(cls, value: Dict[str, Any]) -> DateTimeRange:
         """
         Expected format:
-        {
-            "date": {
-                "start": "...",
-                "end": "..." | None
-                "time_zone": "..." | None
+
+        .. code-block:: python
+
+            {
+                "date": {
+                    "start": "...",
+                    "end": "..." | None
+                    "time_zone": "..." | None
+                }
             }
-        }
         """
         date_obj = value["date"]
 

@@ -19,7 +19,7 @@
 
 Use ``enable_transactions=True`` as keyword paramater.
 
-.. code::
+.. code-block:: python
     # create an engine supporting transactions
     from normlite.future import TransactionalInMemoryNotionClient
 
