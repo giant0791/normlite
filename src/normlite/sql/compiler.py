@@ -231,8 +231,8 @@ class NotionCompiler(SQLCompiler):
 
         base: dict[str, Any] = {}
 
-        if statement.is_insert and not statement._has_multi_parameters:
-            base = statement._single_parameters
+        if (statement.is_insert or statement.is_update) and not statement._has_multi_parameters:
+            base = statement._single_parameters or {}
 
         if params:
             base = {**base, **params}

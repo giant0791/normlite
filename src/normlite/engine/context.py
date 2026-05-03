@@ -325,6 +325,7 @@ class ExecutionContext:
         self.bulk_parameters = None
         self._result_cursor = None
         self._staged_result_cursor = None
+        self.resolved_params: Optional[dict] = None
 
     @property
     def cursor(self) -> Optional[DBAPICursor]:
@@ -382,8 +383,8 @@ class ExecutionContext:
         if stmt.is_insert and stmt._has_multi_parameters:
             return ExecutionStyle.INSERTMANYVALUES
 
-        # delete or insert with single parameters
-        if stmt.is_delete:
+        # delete or update with single parameters
+        if stmt.is_delete or stmt.is_update:
             return ExecutionStyle.EXECUTEMANY
         
         # select or insert without returning
@@ -493,6 +494,9 @@ class ExecutionContext:
             else:
                 self.payload = self._bind_params(template, resolved_params[0])
 
+        if self.invoked_stmt.is_update:
+            self.resolved_params = dict(resolved_params[0])
+
         self._assert_all_params_consumed(resolved_params)
 
         # extract the query params
@@ -512,6 +516,8 @@ class ExecutionContext:
         self._cursor._inject_description(schema.as_sequence())
 
     def _assert_all_params_consumed(self, resolved_params: list[dict]):
+        if self.invoked_stmt.is_update:
+            return
         for i, param_set in enumerate(resolved_params):
             if param_set:
                 raise ArgumentError(
@@ -630,6 +636,12 @@ class ExecutionContext:
 
         # NON-INSERT LOGIC (DELETE / DDL / others)
         # These statements do not support VALUES semantics
+
+        if stmt.is_update and distilled:
+            raise ArgumentError(
+                "update() does not accept execution-time parameters; "
+                "use .values() to specify column values."
+            )
 
         if len(distilled) > 1:
             return distilled
