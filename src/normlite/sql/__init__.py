@@ -33,6 +33,8 @@ from .base import Compiled
 from .dml import insert
 from .dml import select
 from .dml import delete
+from .dml import update
+from .dml import Update
 from .schema import Column 
 from .schema import Table 
 from .schema import MetaData
@@ -56,6 +58,8 @@ __all__ = [
     "insert",
     "select",
     "delete",
+    "update",
+    "Update",
     "Column",
     "Table",
     "MetaData",

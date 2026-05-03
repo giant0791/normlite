@@ -26,7 +26,7 @@ from normlite.exceptions import CompileError, StatementError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
 from normlite.sql.base import _CompileState, SQLCompiler
-from normlite.sql.dml import Delete, OrderByClause
+from normlite.sql.dml import Delete, Update, OrderByClause
 from normlite.sql.elements import _BindRole, _NoArg, BooleanClauseList, Operator, OrderByExpression, ColumnElement
 from normlite.sql.elements import BindParameter
 from normlite.sql.schema import Column, ReadOnlyColumnCollection
@@ -638,6 +638,59 @@ class NotionCompiler(SQLCompiler):
             'payload': payload
         }
         return compiled_dict
+
+    def visit_update(self, update: Update) -> dict:
+        self._compiler_state.is_update = True
+        self._compiler_state.stmt = update
+
+        if update._values is None:
+            raise CompileError(
+                "update() requires .values() to be called before compilation"
+            )
+
+        self._compiler_state.result_columns = [
+            col.name for col in update._returning
+        ]
+
+        operation = dict(endpoint='databases', request='query')
+        path_params = {}
+        payload = {
+            'page_size': 100,
+            'in_trash': False,
+        }
+
+        table = update.get_table()
+        database_id = table.get_oid()
+        if database_id is None:
+            raise CompileError(f'Table: {table.name} has not been previously reflected.')
+
+        with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
+            db_id_key = self._add_bindparam(
+                BindParameter(key='database_id', value=database_id)
+            )
+            path_params['database_id'] = f':{db_id_key}'
+
+        if update._whereclause.has_expression():
+            with self._compiling(new_state=_CompileState.COMPILING_WHERE):
+                filter_obj = update._whereclause.expression._compiler_dispatch(self)
+                payload['filter'] = filter_obj
+
+        with self._compiling(new_state=_CompileState.COMPILING_VALUES):
+            update_payload = self._compile_update_values(update._values)
+
+        return {
+            'operation': operation,
+            'path_params': path_params,
+            'payload': payload,
+            'update_payload': update_payload,
+        }
+
+    def _compile_update_values(self, values: dict) -> dict:
+        properties = {}
+        for col_name, bindparam in values.items():
+            param_key = self._add_bindparam(bindparam, col_name)
+            properties[col_name] = f':{param_key}'
+        return properties
 
     def visit_binary_expression(self, expression: BinaryExpression) -> dict:
         return {

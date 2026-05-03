@@ -723,3 +723,29 @@ class Delete(UpdateBase):
 
 def delete(table: Table) -> Delete:
     return Delete(table)
+
+
+class Update(ValuesBase):
+    """Represent a SQL UPDATE statement."""
+
+    __visit_name__ = 'update'
+    is_update = True
+
+    def __init__(self, table: Table):
+        ValuesBase.__init__(self, table)
+        self._whereclause = WhereClause()
+
+    @generative
+    def where(self, expr: ColumnElement) -> Self:
+        self._whereclause = self._whereclause.where(expr)
+        return self
+
+    def _setup_execution(self, context: ExecutionContext) -> None:
+        pass
+
+    def _finalize_execution(self, context: ExecutionContext) -> None:
+        pass
+
+
+def update(table: Table) -> Update:
+    return Update(table)
