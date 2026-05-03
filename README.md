@@ -92,6 +92,7 @@ with engine.connect() as connection:
 # (123456, 'Galileo Galilei', 'A', False, datetime.datetime(1581, 9, 1, 0, 0))
 # (123457, 'Isaac Newton', 'B', False, datetime.datetime(1661, 9, 1, 0, 0))
 ```
+See the `examples/` directory in the repo for more example code. 
 
 # Why I Started This Project
 
@@ -130,11 +131,13 @@ a tool that lets developers query, model, and manipulate Notion data the same wa
 
 ## v1.0.0 — Internal Integrations
 
-* Full support for internal integrations ([Notion API version 2025-09-03](https://developers.notion.com/docs/upgrade-guide-2025-09-03))
+* Full support for server-side cursor (Notion pagination)
+
+* Full support for internal integrations ([Notion API version 2026-03-11](https://developers.notion.com/guides/get-started/upgrade-guide-2026-03-11))
 
 ## v2.0.0 — Transaction Management
 
-* Flask proxy to enable transactions for `normlite` apps
+* Client-side transactions for `normlite` apps
 
 * Support for isolation level "READ COMMITTED"
 

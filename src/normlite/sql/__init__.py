@@ -32,6 +32,7 @@ For DML statements, the main "entry point" is the :func:`normlite.sql.dml.insert
 from .base import Compiled
 from .dml import insert
 from .dml import select
+from .dml import delete
 from .schema import Column 
 from .schema import Table 
 from .schema import MetaData
@@ -48,11 +49,13 @@ from .type_api import Money
 from .type_api import String 
 from .type_api import Boolean 
 from .type_api import Date 
+from .type_api import DateTimeRange
 
 __all__ = [
     "Compiled",
     "insert",
     "select",
+    "delete",
     "Column",
     "Table",
     "MetaData",
@@ -69,4 +72,5 @@ __all__ = [
     "String",
     "Boolean",
     "Date",
+    "DateTimeRange"
 ]

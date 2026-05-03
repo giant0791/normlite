@@ -142,7 +142,7 @@ class CursorResult:
     
     @property
     def returned_primary_keys_rows(self) -> Optional[list[tuple]]:
-        """Return the value of :attr:`normlite.engine.context.ExecutionContext._returned_primary_keys_rows
+        """Return the value of :attr:`normlite.engine.context.ExecutionContext._returned_primary_keys_rows`
         as a list of tuples representing rows.
         
         .. versionadded:: 0.9.0

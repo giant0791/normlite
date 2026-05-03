@@ -30,6 +30,7 @@ from normlite.engine import RowMapping
 from normlite.sql import Compiled
 from normlite.sql import insert
 from normlite.sql import select
+from normlite.sql import delete
 from normlite.sql import Column 
 from normlite.sql import Table 
 from normlite.sql import MetaData
@@ -46,6 +47,7 @@ from normlite.sql import Boolean
 from normlite.sql import Date 
 from normlite.sql import ReflectedColumnInfo
 from normlite.sql import ReflectedTableInfo
+from normlite.sql import DateTimeRange
 
 from .exceptions import NormliteError
 from .exceptions import NoResultFound
@@ -58,6 +60,7 @@ from .exceptions import ResourceClosedError
 from .exceptions import CompileError
 from .exceptions import ObjectNotExecutableError
 from .exceptions import NoSuchTableError
+from .exceptions import StatementError
 
 
 __all__ = [
@@ -79,6 +82,7 @@ __all__ = [
     "Compiled",
     "insert",
     "select",
+    "delete",
     "Column",
     "Table",
     "MetaData",
@@ -93,6 +97,7 @@ __all__ = [
     "String",
     "Boolean",
     "Date",
+    "DateTimeRange",
 
     # exceptions
     "NormliteError",
@@ -106,4 +111,5 @@ __all__ = [
     "CompileError",
     "ObjectNotExecutableError",
     "NoSuchTableError",
+    "StatementError",
 ]
