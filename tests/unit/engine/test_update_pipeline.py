@@ -9,7 +9,7 @@ from tests.utils.db_helpers import (
     attach_table_oid,
     populate_students,
 )
-from tests.utils.assertions import assert_rowcount
+from tests.utils.assertions import assert_rowcount, assert_columns
 
 
 @pytest.fixture
@@ -94,6 +94,75 @@ def test_update_returns_cursor_result(engine, prepared_students):
     result = run_execute(engine, stmt)
 
     assert isinstance(result, CursorResult)
+
+
+# ── 10. No RETURNING: soft-closed, returned_primary_keys_rows is None ─────────
+
+def test_update_no_returning_soft_closes_cursor(engine, prepared_students):
+    stmt = update(prepared_students).values(grade='Z')
+
+    result = run_execute(engine, stmt)
+
+    assert not result.returns_rows
+    assert result.returned_primary_keys_rows is None
+
+
+# ── 11. RETURNING syscol: rows expose object_id, IDs match original ───────────
+
+def test_update_returning_syscol(engine, prepared_students):
+    sel = select(prepared_students.c.object_id)
+    with engine.connect() as conn:
+        original = conn.execute(sel).all()
+
+    stmt = (
+        update(prepared_students)
+        .values(grade='Z')
+        .returning(prepared_students.c.object_id)
+    )
+
+    result = run_execute(engine, stmt)
+    rows = result.all()
+
+    assert_rowcount(result, 10)
+    assert_columns(rows[0], ["object_id"])
+    assert [r.object_id for r in rows] == [r.object_id for r in original]
+
+
+# ── 12. RETURNING user + syscol: both columns present ─────────────────────────
+
+def test_update_returning_user_and_syscol(engine, prepared_students):
+    stmt = (
+        update(prepared_students)
+        .values(grade='Z')
+        .returning(prepared_students.c.name, prepared_students.c.object_id)
+    )
+
+    result = run_execute(engine, stmt)
+    rows = result.all()
+
+    assert_rowcount(result, 10)
+    assert_columns(rows[0], ["name", "object_id"])
+
+
+# ── 11. implicit_returning=True: returned_primary_keys_rows populated ─────────
+
+def test_update_implicit_returning_true(engine, prepared_students):
+    stmt = update(prepared_students).values(grade='Z')
+
+    sel = select(prepared_students.c.object_id)
+    with engine.connect() as conn:
+        original = conn.execute(sel).all()
+
+    result = run_execute(
+        engine,
+        stmt,
+        execution_options={"implicit_returning": True},
+    )
+
+    assert_rowcount(result, 10)
+    expected_ids = [(r.object_id,) for r in original]
+    assert result.returned_primary_keys_rows == expected_ids
+    assert not result.returns_rows
 
 
 # ── 9. parameters= raises ArgumentError ──────────────────────────────────────
