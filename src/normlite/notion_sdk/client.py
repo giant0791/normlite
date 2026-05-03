@@ -991,7 +991,18 @@ class InMemoryNotionClient(AbstractNotionClient):
         
         if "properties" in payload:
             for k, v in payload["properties"].items():
-                obj["properties"][k] = v
+                existing = obj["properties"].get(k)
+                if existing is not None and "type" in existing:
+                    prop_type = existing["type"]
+                    if prop_type in v:
+                        data = v[prop_type]
+                        if prop_type in ("rich_text", "title"):
+                            data = self._normalize_rich_text(data)
+                        existing[prop_type] = data
+                    else:
+                        obj["properties"][k] = v
+                else:
+                    obj["properties"][k] = v
 
         return copy.deepcopy(obj)
 

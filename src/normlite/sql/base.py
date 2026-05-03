@@ -164,11 +164,14 @@ class Executable(ClauseElement):
 
     is_delete: ClassVar[bool] = False
     """``True`` if executable is a DELETE statement.
-    
+
     .. versionadded:: 0.9.0
     """
 
     is_insert: ClassVar[bool] = False
+
+    is_update: ClassVar[bool] = False
+    """``True`` if executable is an UPDATE statement."""
 
     _execution_options: Optional[ExecutionOptions] = None
     """per-statement execution options.

@@ -31,6 +31,8 @@ from normlite.sql import Compiled
 from normlite.sql import insert
 from normlite.sql import select
 from normlite.sql import delete
+from normlite.sql import update
+from normlite.sql import Update
 from normlite.sql import Column 
 from normlite.sql import Table 
 from normlite.sql import MetaData
@@ -83,6 +85,8 @@ __all__ = [
     "insert",
     "select",
     "delete",
+    "update",
+    "Update",
     "Column",
     "Table",
     "MetaData",
