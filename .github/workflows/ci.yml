@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install deps
+        run: uv sync --all-extras
+
+      - name: Run tests with coverage
+        run: uv run pytest --cov --cov-report=xml --cov-report=term-missing | tee pytest-coverage.txt
+
+      - name: Post coverage comment
+        if: github.event_name == 'pull_request'
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-coverage-path: pytest-coverage.txt
+
+      # ── Future: Codecov upload + README badge (milestone v1.0.0) ──────────────
+      # Requires: CODECOV_TOKEN secret configured in repository settings.
+      # Add badge to README.md once token is set up:
+      #   [![codecov](https://codecov.io/gh/giant0791/normlite/graph/badge.svg)](https://codecov.io/gh/giant0791/normlite)
+      #
+      # - name: Upload coverage to Codecov
+      #   uses: codecov/codecov-action@v4
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     files: coverage.xml
+      #     fail_ci_if_error: true

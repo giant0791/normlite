@@ -56,7 +56,7 @@ addopts = [
     "-v",  
     "-s",  
 ] 
-testpaths = ["normlite/tests/unit"]
+testpaths = ["tests/unit"]
 
 [tool.coverage.run]
 branch = true

@@ -1,0 +1,67 @@
+name: Tag and Deploy
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  tag-and-deploy:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Re-point tag to merge commit
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          TAG=$(echo "$BRANCH" | sed 's|release/v||')
+          echo "Re-pointing tag ${TAG} to merge commit ${MERGE_SHA}"
+          git fetch --tags
+          git tag -d "$TAG" 2>/dev/null || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+          git tag "$TAG" "$MERGE_SHA"
+          git push origin "$TAG"
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install deps
+        run: uv sync --all-extras
+
+      - name: Build documentation
+        run: uv run sphinx-build -b html docs/ docs/_build/html --color
+
+      - name: Upload documentation artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_build/html
+
+  deploy-docs:
+    needs: tag-and-deploy
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
