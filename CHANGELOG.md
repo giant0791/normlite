@@ -1,3 +1,50 @@
+## 0.9.0 (2026-05-03)
+
+### Feat
+
+- **sql**: Add support for bulk statements ([#167](https://github.com/giant0791/normlite/issues/167)).
+- **sql**: Add bulk inserts.
+- **sql**: Add bulk inserts
+- **sql**: Design INSERT ... RETURNING as a post fetch operation ([#200](https://github.com/giant0791/normlite/issues/200)).
+- **transactions**: Initial exploration on transaction management.
+- **sql**: Add support for explicit returning to DELETE statement ([#224](https://github.com/giant0791/normlite/issues/224)).
+- **sql**: Add DELETE SQL statement execution ([#13](https://github.com/giant0791/normlite/issues/13)).
+- **sql**: Add `Delete` class and its compilation.
+- **notiondbapi**: Add execution of bulk operations to DBAPI cursor.
+- **sql**: Add filter for non deleted pages only in `NotionCompiler.visit_select()` ([#208](https://github.com/giant0791/normlite/issues/208)).
+- **notion_sdk**: Add support for `in_trash` parameter in `InMemoryNotionClient.databases_query` ([#207](https://github.com/giant0791/normlite/issues/207)).
+- **sql**: Add system columns
+- **engine**: Add row count preservation for INSERT and SELECT statements ([#194](https://github.com/giant0791/normlite/issues/194)).
+- **engine**: Add rowcount preservation for INSERT statement.
+
+### Fix
+
+- **sql**: Multiple tests fails with `AttributeError`((#234)[https://github.com/giant0791/normlite/issues/234]).
+- **notiondbapi**: Multiple test fails in `test_dbapi2_cursor.py`([#235](https://github.com/giant0791/normlite/issues/235)).
+- **engine**: Test `test_drop_table` fails with `TypeError` ([#236](https://github.com/giant0791/normlite/issues/236)).
+- **tests**: Multiple tests fail in `test_insert.py`([#238](https://github.com/giant0791/normlite/issues/238)).
+- **sql**: Passing a date formatted string as value in `Insert.values()` generates `None` bound parameter ([#220](https://github.com/giant0791/normlite/issues/220)).
+- **engine**: Missing values for columns in Insert.values() does not raise if values are missing in the binding parameters ([#228](https://github.com/giant0791/normlite/issues/228)).
+- **notiondbapi**: Fix result processing for created pages.
+- **notiondbapi**: `Cursor.rowcount` returns the size of the current result set only.
+- **notiondbapi**: Fix the `lastrowid` in the DBAPI cursor ([#171](https://github.com/giant0791/normlite/issues/171)).
+- **notiondbapi**: Fix the `lastrowid` in the DBAPI cursor.
+
+### Refactor
+
+- **sql**: Remove system column storing table name from `Table` ([#247](https://github.com/giant0791/normlite/issues/247)).
+- **test**: Refactor the overall test suite ([#237](https://github.com/giant0791/normlite/issues/237)).
+- **sql**: Add a public API to `Table` for obtaining user defined columns only ([#239](https://github.com/giant0791/normlite/issues/239)).
+- **sql**: use DateTimeRange in Date filter processor ([#232](https://github.com/giant0791/normlite/issues/232))
+- **sql**: Automatic system column management ([#155](https://github.com/giant0791/normlite/issues/155)).
+- **sql**: Add to `SchmaInfo` separate read-only attributes for projected user and system columns.
+- **sql**: Refactor result processing for numbers and text type engines ([#215](https://github.com/giant0791/normlite/issues/215)).
+- **sql**: Refactor table columns into user and system columns ([#202](https://github.com/giant0791/normlite/issues/202)).
+- **notiondbapi**: Refactor Notion object model in `notiondbapi` package ([#205](https://github.com/giant0791/normlite/issues/205)).
+- **notiondbapi**: Refactor `Cursor` to use new class `ResultSet`.
+- **notiondbapi**: Introduce `ResultSet` class for managing `Cursor` result sets.
+- **notiondbapi**: Refactor cursor description in DBAPI `Cursor` class ([#150](https://github.com/giant0791/normlite/issues/150)).
+
 ## 0.8.1 (2026-02-27)
 
 ### Fix
