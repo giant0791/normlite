@@ -204,6 +204,15 @@ class AbstractNotionClient(ABC):
         """
         return self._ischema_page_id 
 
+    def close(self) -> None:
+        """Release any resources held by this client.
+
+        The default implementation is a no-op. Subclasses with persistent
+        resources (e.g. open files) should override this method.
+
+        .. versionadded:: 0.10.0
+        """
+
     @abstractmethod
     def pages_create(
             self, 
@@ -1381,6 +1390,13 @@ class FileBasedNotionClient(InMemoryNotionClient):
             self.load()
         return self
         
+    def close(self) -> None:
+        """Flush the store to disk.
+
+        .. versionadded:: 0.10.0
+        """
+        self.flush()
+
     def __exit__(
         self,
         exctype: Optional[Type[BaseException]] = None,
@@ -1388,6 +1404,9 @@ class FileBasedNotionClient(InMemoryNotionClient):
         exctb: Optional[TracebackType] = None,
     ) -> Optional[bool]:
         """Dump the Notion stored to the file.
+
+        .. versionchanged:: 0.10.0
+            Delegates to :meth:`close` instead of calling :meth:`flush` directly.
 
         Args:
             exctype (Optional[Type[BaseException]]): The exception class. Defaults to ``None``.
@@ -1399,7 +1418,7 @@ class FileBasedNotionClient(InMemoryNotionClient):
         """
 
         if self._auto_flush:
-            self.flush()
+            self.close()
         return False  # never swallow exceptions
 
 #--------------------------------------------------
