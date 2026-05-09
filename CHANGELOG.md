@@ -1,3 +1,15 @@
+## 0.10.0 (2026-05-09)
+
+### Feat
+
+- **notiondbapi**: add close() to AbstractNotionClient and subclasses
+- **sql**: implement two-phase execution pipeline (#265)
+- **sql**: add Update AST node and compilation (#264)
+
+### Fix
+
+- remove leftover pdb debug imports from production source
+
 ## 0.9.0 (2026-05-03)
 
 ### Feat
