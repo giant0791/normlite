@@ -11,6 +11,8 @@ user-guide-working-with-crud-statements
 user-guide-table-reflection.md
 advanced-guide-reflection.md
 advanced-guide-execution-pipeline.md
+advanced-guide-dml-pipeline-crud.md
+advanced-guide-ddl-pipeline.md
 advanced-guide-rowcount-preservation.md
 autoapi/index
 ```
