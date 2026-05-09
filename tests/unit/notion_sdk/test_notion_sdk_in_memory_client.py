@@ -1268,3 +1268,8 @@ def test_search_filter_value_not_a_page_or_database_raises(client):
 
 def test_deleted_pages_have_in_trash_true(client):
     pass
+
+def test_close_is_noop(client):
+    client._store["abc"] = {"object": "page", "id": "abc"}
+    client.close()
+    assert "abc" in client._store

@@ -237,3 +237,28 @@ def test_context_manager_respects_auto_flush_false(tmp_path):
 
     data = json.loads(path.read_text())
     assert "abc" not in data["objects"]
+
+
+# ----------------------------------------------------------------------
+# close()
+# ----------------------------------------------------------------------
+
+def test_close_flushes_store_to_disk(tmp_path):
+    path = tmp_path / "store.json"
+    client = FileBasedNotionClient(path, auto_load=False)
+
+    client._store["abc"] = {"object": "page", "id": "abc"}
+    client.close()
+
+    data = json.loads(path.read_text())
+    assert "abc" in data["objects"]
+
+
+def test_close_is_noop_when_read_only(tmp_path):
+    path = tmp_path / "store.json"
+    client = FileBasedNotionClient(path, read_only=True, auto_load=False)
+
+    client._store["abc"] = {"object": "page", "id": "abc"}
+    client.close()
+
+    assert not path.exists()
