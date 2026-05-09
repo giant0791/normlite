@@ -31,6 +31,9 @@ jobs:
         with:
           pytest-coverage-path: pytest-coverage.txt
 
+      - name: Build documentation
+        run: uv run sphinx-build -b html docs/ docs/_build/html --color
+
       # ── Future: Codecov upload + README badge (milestone v1.0.0) ──────────────
       # Requires: CODECOV_TOKEN secret configured in repository settings.
       # Add badge to README.md once token is set up:
