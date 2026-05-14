@@ -889,6 +889,48 @@ class Date(TypeEngine):
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.DATE
 
+class Relation(TypeEngine):
+    """Convenient class for Notion "relation" objects
+
+    This class represents a Notion "relation" object and it enables to model inter-table links.
+    It is used by the construct FOREIGN KEY.
+
+    .. versionadded:: 0.11.0    
+    """
+
+    def get_col_spec(self) -> str:
+        return "relation"
+    
+    def get_notion_spec(self) -> dict:
+        return {"relation": {"single_property": {}}}
+    
+    def bind_processor(self):
+        def process(value: Union[list[str], None]) -> Optional[dict]:
+            if value is None:
+                return None
+            
+            return {
+                self.get_col_spec(): [
+                    {
+                        "id": page_id,
+                    }
+                    for page_id in value
+                ]
+            }
+        
+        return process
+    
+    def result_processor(self):
+        def process(value: Optional[dict]) -> Optional[list[str]]:
+            if value is None:
+                return None
+            
+            self._raise_if_val_not_dict(value)
+            return [d["id"] for d in value["relation"]]
+        
+        return process
+        
+
 class UUID(TypeEngine):
     """Base type engine class for UUID ids.
 

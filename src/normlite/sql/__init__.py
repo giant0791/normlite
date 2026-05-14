@@ -52,6 +52,7 @@ from .type_api import String
 from .type_api import Boolean 
 from .type_api import Date 
 from .type_api import DateTimeRange
+from .type_api import Relation
 
 __all__ = [
     "Compiled",
@@ -76,5 +77,6 @@ __all__ = [
     "String",
     "Boolean",
     "Date",
-    "DateTimeRange"
+    "DateTimeRange",
+    "Relation"
 ]

@@ -50,6 +50,7 @@ from normlite.sql import Date
 from normlite.sql import ReflectedColumnInfo
 from normlite.sql import ReflectedTableInfo
 from normlite.sql import DateTimeRange
+from normlite.sql import Relation
 
 from .exceptions import NormliteError
 from .exceptions import NoResultFound
@@ -102,6 +103,7 @@ __all__ = [
     "Boolean",
     "Date",
     "DateTimeRange",
+    "Relation",
 
     # exceptions
     "NormliteError",
