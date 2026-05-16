@@ -12,6 +12,7 @@ from normlite import (
 )
 from normlite._constants import SpecialColumns
 from normlite.engine.systemcatalog import TableState
+from normlite.exceptions import InvalidRequestError, NoReferencedTableError
 from normlite.notion_sdk.getters import get_object_id, get_object_type
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.sql.schema import MetaData, SystemColumn
@@ -912,3 +913,129 @@ def test_sorted_tables_orders_independent_and_dependent_tables():
     # Determinism: parent and standalone are both ready on pass 1;
     # alphabetical tie-break puts parent first
     assert result == [parent, standalone, child]
+
+def test_create_table_with_unresolved_fk_raises_no_referenced_table_error(engine: Engine):
+    from normlite import Relation
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    # courses has NOT been created — its oid is still None,
+    # so the FK target cannot be resolved at compile time
+    with pytest.raises(NoReferencedTableError, match="create_all"):
+        students.create(engine)
+
+def test_create_all_creates_tables_with_fk_dependencies(engine: Engine):
+    from normlite import Relation
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    metadata.create_all(engine)
+
+    assert courses.get_oid() is not None
+    assert students.get_oid() is not None
+
+    # Parent must be created strictly before child
+    courses_obj = engine._client._get_by_id(courses.get_oid())
+    students_obj = engine._client._get_by_id(students.get_oid())
+    assert courses_obj["created_time"] < students_obj["created_time"]
+
+def test_create_all_with_diamond_fk_schema(engine: Engine):
+    from normlite import Relation
+
+    metadata = MetaData()
+
+    projects = Table(
+        "projects",
+        metadata,
+        Column("name", String(is_title=True)),
+    )
+    sprints = Table(
+        "sprints",
+        metadata,
+        Column("name", String(is_title=True)),
+    )
+    devs = Table(
+        "devs",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("project", Relation(), ForeignKey("projects.object_id")),
+    )
+    tasks = Table(
+        "tasks",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("project", Relation(), ForeignKey("projects.object_id")),
+        Column("sprint", Relation(), ForeignKey("sprints.object_id")),
+    )
+
+    # Topological order: parents first, alphabetical tie-break among ready
+    sorted_names = [t.name for t in metadata.sorted_tables]
+    assert sorted_names == ["projects", "sprints", "devs", "tasks"]
+
+    metadata.create_all(engine)
+
+    # All tables physically created
+    for table in (projects, sprints, devs, tasks):
+        assert table.get_oid() is not None
+
+    # DDL payload: every Relation column resolved to the right database_id
+    tasks_obj = engine._client._get_by_id(tasks.get_oid())
+    assert tasks_obj["properties"]["project"]["relation"]["database_id"] == projects.get_oid()
+    assert tasks_obj["properties"]["sprint"]["relation"]["database_id"] == sprints.get_oid()
+
+    devs_obj = engine._client._get_by_id(devs.get_oid())
+    assert devs_obj["properties"]["project"]["relation"]["database_id"] == projects.get_oid()
+
+    # Verify creation sequence: parents strictly before any child that depends on them
+    objs = {t.name: engine._client._get_by_id(t.get_oid()) for t in (projects, sprints, devs, tasks)}
+    assert objs["projects"]["created_time"] < objs["devs"]["created_time"]
+    assert objs["projects"]["created_time"] < objs["tasks"]["created_time"]
+    assert objs["sprints"]["created_time"] < objs["tasks"]["created_time"]
+
+def test_create_all_is_idempotent(engine: Engine):
+    from normlite import Relation
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    metadata.create_all(engine)
+    courses_oid = courses.get_oid()
+    students_oid = students.get_oid()
+
+    # Second call must not raise and must not re-create
+    metadata.create_all(engine)
+
+    assert courses.get_oid() == courses_oid
+    assert students.get_oid() == students_oid

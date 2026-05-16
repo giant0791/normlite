@@ -708,6 +708,8 @@ class Table(HasIdentifier):
                 If ``True`` and this table exists, then do nothing.
 
         Raises:
+            NoReferencedTableError: If any foreign-key target table has not been created yet.
+                Call :meth:`MetaData.create_all` to create tables in dependency order.
             ProgrammingError: If the ``checkfirst == False`` and the table already exists or
                 if the table is dropped and the execution option ``restore_dropped`` is False.
 
@@ -716,6 +718,11 @@ class Table(HasIdentifier):
         .. seealso::
             :class:`normlite.sql.reflection.TableState` for better understanding table lifecycle and state resolution.
 
+        .. versionchanged:: 0.11.0
+            Raises :exc:`NoReferencedTableError` when an FK target table
+            has not been created yet, instead of letting compilation fail
+            with a misleading :exc:`CompileError`.
+
         .. versionchanged: 0.8.0
             This version provides full state-driven behavior.
 
@@ -723,6 +730,19 @@ class Table(HasIdentifier):
             Initial version, experimental not working code.
         """
         from normlite.sql.ddl import CreateTable
+
+        # guard against FK targets not yet created
+        unresolved = [
+            fkc.reftable.name
+            for fkc in self.foreign_keys
+            if fkc.reftable.get_oid() is None
+        ]
+        if unresolved:
+            raise NoReferencedTableError(
+                f"Cannot create table '{self.name}': foreign-key target "
+                f"table(s) {unresolved} have not been created yet. "
+                f"Call MetaData.create_all() to create tables in dependency order."
+            )
 
         catalog = bind._user_database_name
         execution_options = bind.get_execution_options()
@@ -1197,7 +1217,7 @@ class MetaData:
             for t in ready:
                 ordered.append(t)
                 remaining.remove(t)
-                
+
         return ordered    
 
     def _add_table(self, table: Table) -> None:
@@ -1218,6 +1238,16 @@ class MetaData:
         for table in self.tables.values():
             table.metadata = None
         self.tables.clear()
+
+    def create_all(self, engine: Engine) -> None:
+        """Create all tables stored in this metadata.
+        
+        It does this by traversing the registered tables in topological order.
+
+        .. versionadded:: 0.11.0
+        """
+        for t in self.sorted_tables:
+            t.create(engine, checkfirst=True)
 
     def reflect(self, engine: Engine) -> None:
         """Reflect all tables associated to this metadata object."""

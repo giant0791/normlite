@@ -118,8 +118,16 @@ class NoReferenceError(InvalidRequestError):
     """
 
 class NoReferencedTableError(NoReferenceError):
-    """Raised by ``ForeignKey`` when the referred ``Table`` cannot be
-    located.
+    """Raised when a referenced ``Table`` cannot be resolved.
+
+    Two cases:
+
+    - During ``ForeignKey`` resolution: the referred ``Table`` cannot be
+      located in the metadata.
+    - During ``Table.create()``: the referred ``Table`` exists but has
+      not been created yet (its object id is ``None``). The caller
+      should use :meth:`MetaData.create_all` to create tables in
+      dependency order.
 
     .. versionadded:: 0.11.0
     """
