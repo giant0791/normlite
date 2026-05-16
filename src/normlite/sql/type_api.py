@@ -70,7 +70,7 @@ Usage::
 """
 
 from __future__ import annotations
-from typing import Optional, Union, Any, Dict
+from typing import Optional, Union, Any, Dict, runtime_checkable
 from datetime import datetime, date, time, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from decimal import Decimal
@@ -82,11 +82,12 @@ import uuid
 from normlite.exceptions import ArgumentError, InvalidRequestError
 from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
-from normlite.sql.elements import Operator, BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, StringComparator, TimeStampStringISO8601Comparator
+from normlite.sql.elements import Operator, BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, RelationComparator, StringComparator, TimeStampStringISO8601Comparator
 
 DEFAULT_DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 DEFAULT_DATE_FORMAT = "%Y-%m-%d"
 
+@runtime_checkable
 class TypeEngine(Protocol):
     """Base class for all Notion/SQL datatypes.
 
@@ -889,6 +890,55 @@ class Date(TypeEngine):
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.DATE
 
+class Relation(TypeEngine):
+    """Convenient class for Notion "relation" objects
+
+    This class represents a Notion "relation" object and it enables to model inter-table links.
+    It is used by the construct FOREIGN KEY.
+
+    .. versionadded:: 0.11.0    
+    """
+
+    comparator_factory = RelationComparator
+    supported_ops = MappingProxyType({
+        Operator.CONTAINS: "contains",
+        Operator.DOES_NOT_CONTAIN: "does_not_contain",
+        Operator.IS_EMPTY: "is_empty",
+        Operator.IS_NOT_EMPTY: "is_not_empty",
+    })
+    def get_col_spec(self) -> str:
+        return "relation"
+    
+    def get_notion_spec(self) -> dict:
+        return {"relation": {"single_property": {}}}
+    
+    def bind_processor(self):
+        def process(value: Union[list[str], None]) -> Optional[dict]:
+            if value is None:
+                return None
+            
+            return {
+                self.get_col_spec(): [
+                    {
+                        "id": page_id,
+                    }
+                    for page_id in value
+                ]
+            }
+        
+        return process
+    
+    def result_processor(self):
+        def process(value: Optional[dict]) -> Optional[list[str]]:
+            if value is None:
+                return None
+            
+            self._raise_if_val_not_dict(value)
+            return [d["id"] for d in value["relation"]]
+        
+        return process
+        
+
 class UUID(TypeEngine):
     """Base type engine class for UUID ids.
 
@@ -1044,4 +1094,5 @@ type_mapper: dict[str, TypeEngine] = {
     DBAPITypeCode.DATE: Date(),
     DBAPITypeCode.ARCHIVAL_FLAG: ArchivalFlag(),
     DBAPITypeCode.TIMESTAMP: TimeStampStringISO8601(),
+    DBAPITypeCode.RELATION: Relation(),
 }

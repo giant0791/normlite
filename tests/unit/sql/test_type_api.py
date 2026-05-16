@@ -13,6 +13,7 @@ from normlite import (
     Money, 
     Numeric, 
     String, 
+    Relation,
     TypeEngine
 )
 
@@ -314,3 +315,36 @@ def test_filter_vs_bind_timezone_asymmetry():
     # -----------------------------------------
     assert "time_zone" not in filtered
     assert "+" in filtered or "-" in filtered[-6:]
+
+# ----------------------------------------------------
+# Relation
+# ----------------------------------------------------
+
+def test_relation_get_col_spec():
+    assert Relation().get_col_spec() == "relation"
+
+def test_relation_get_notion_spec():
+    assert Relation().get_notion_spec() == {"relation": {"single_property": {}}}
+
+def test_relation_bind_processor():
+    bind = Relation().bind_processor()
+    assert bind(["page-id-1", "page-id-2"]) == {
+        "relation": [{"id": "page-id-1"}, {"id": "page-id-2"}]
+    }
+
+def test_relation_result_processor():
+    result = Relation().result_processor()
+    assert result({"relation": [{"id": "page-id-1"}, {"id": "page-id-2"}]}) == [
+        "page-id-1", "page-id-2"
+    ]
+
+def test_relation_result_processor_ignores_extra_notion_fields():
+    result = Relation().result_processor()
+    notion_response = {
+        "relation": [
+            {"id": "page-id-1", "type": "page_id"},
+            {"id": "page-id-2", "type": "page_id"},
+        ]
+    }
+    assert result(notion_response) == ["page-id-1", "page-id-2"]
+

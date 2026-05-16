@@ -82,30 +82,51 @@ carries the column VALUES params deferred to `_setup_execution`. The `_assert_al
 guard is skipped for `is_update` statements.
 
 ### Relation
-A normlite `Relation` is a `TypeEngine` subclass for a column that stores links to rows in another
-`Table`. Maps to a Notion **relation property** (`single_property`, unidirectional in v1).
-Python value representation: `list[str]` (a list of Notion page ID strings).
-`bind_processor` wraps each string as `{"id": v}`; `result_processor` extracts the `"id"` from
-each dict. At DDL time, `get_notion_spec()` requires `_oid` to have been injected first via
-`Relation.set_oid(uuid)` (called by `ForeignKeyConstraint.resolve()`); raises `ArgumentError`
-if still `None`. Supported filter operators: `CONTAINS`, `DOES_NOT_CONTAIN`, `IS_EMPTY`,
-`IS_NOT_EMPTY`.
+A normlite `Relation` is a **stateless** `TypeEngine` subclass for a column that stores links to
+rows in another `Table`. Maps to a Notion **relation property** (`single_property`, unidirectional
+in v1). Its sole responsibility is value translation between Python and Notion JSON:
+- Python value representation: `list[str]` (a list of Notion page ID strings).
+- `bind_processor` converts `list[str]` → `{"relation": [{"id": v} for v in value]}`.
+- `result_processor` converts `{"relation": [{"id": "...", ...}]}` → `[d["id"] for d in value["relation"]]`.
+- `get_col_spec()` returns `"relation"`.
+- `get_notion_spec()` returns the partial DDL spec `{"relation": {"single_property": {}}}` —
+  without `database_id`, which is not available at TypeEngine level.
+`Relation` holds no mutable state. It has no `set_oid()` method and no `_oid` field.
+Supported filter operators: `CONTAINS`, `DOES_NOT_CONTAIN`, `IS_EMPTY`, `IS_NOT_EMPTY`.
 
 ### ForeignKey
 A constraint object passed alongside `Relation()` in `Column(...)`: e.g.
 `Column("students_oid", Relation(), ForeignKey("students.object_id"))`.
 Stores a string reference `"<table>.<column>"` parsed at construction into `fk.table_name` and
-`fk.column_name`. Always targets the `object_id` system column (`SpecialColumns.NO_ID`) of the
-referenced table; `ForeignKeyConstraint.resolve()` raises `ArgumentError` if `column_name` is
-anything else. Resolved at `MetaData.create_all()` time via `ForeignKeyConstraint.resolve()`.
+`fk.column_name`. Also holds `fk.database_id: str | None`, initially `None`.
+Always targets the `object_id` system column (`SpecialColumns.NO_ID`) of the referenced table;
+`ForeignKeyConstraint.resolve()` raises `ArgumentError` if `column_name` is anything else.
+`ForeignKeyConstraint.resolve()` sets `fk.database_id = target_table.get_oid()` — this is the
+Notion database UUID of the referenced table, read from its `object_id` system column.
+
+### Relation — DDL compilation
+`_compile_table_columns` assembles the full Notion property dict for each user column by calling
+`col.type_.get_notion_spec()`. For `Relation` columns it then merges `database_id` from the
+column's `ForeignKey` value object (`col.foreign_keys`):
+
+```python
+spec = col.type_.get_notion_spec()          # {"relation": {"single_property": {}}}
+fk = next(iter(col.foreign_keys))
+spec["relation"]["database_id"] = fk.database_id
+# result: {"relation": {"database_id": "...", "single_property": {}}}
+```
+
+`fk.database_id` is guaranteed non-`None` by the time the compiler runs because
+`MetaData.create_all()` calls `resolve()` before `table.create()`.
 
 ### Relation — Reflection
 During `Table._autoload(engine)`, a Notion relation property is reflected by:
 1. Extracting `database_id` from the Notion property spec.
 2. Calling `engine._catalog.find_sys_tables_row_by_table_id(database_id)` (a new `SystemCatalog`
    method filtering on the `table_id` rich_text field).
-3. If found: constructing `Column("<name>", Relation(), ForeignKey(f"{entry.name}.object_id"))`
-   and calling `col.type_.set_oid(database_id)` immediately — no deferred resolution needed.
+3. If found: constructing `Column("<name>", Relation(), ForeignKey(f"{entry.name}.object_id"))`,
+   then setting `fk.database_id = database_id` directly on the `ForeignKey` value object —
+   no deferred resolution needed.
 4. If not found: the related table was not created by normlite; emit a warning and skip the
    property (never silently).
 
@@ -114,7 +135,8 @@ A `Constraint` auto-generated during `Table.__init__` for every column that carr
 Mirrors how `PrimaryKeyConstraint` is auto-generated. Registered in `Table._constraints`.
 `ForeignKeyConstraint.resolve(metadata)` parses `fk.table_name` / `fk.column_name`, validates
 `column_name == SpecialColumns.NO_ID`, looks up the target table in `metadata.tables`, calls
-`target_table.get_oid()`, and injects via `col.type_.set_oid(uuid)`.
+`target_table.get_oid()`, and stores the result as `fk.database_id` on the `ForeignKey` value
+object. Does **not** mutate the `Relation` TypeEngine instance.
 `Table.foreign_keys` is a public property returning `Set[ForeignKeyConstraint]`.
 Invariants enforced at `Table.__init__` time: (1) every `Relation()` column must carry exactly one
 `ForeignKey` — raises `ArgumentError` if not; (2) cycles in the FK graph raise
@@ -130,11 +152,10 @@ is detected in the FK graph — same name and semantics as SQLAlchemy's `Circula
 ### MetaData.create_all()
 Creates all tables registered in the MetaData using `sorted_tables` order. Before creating each
 table, it resolves all `ForeignKeyConstraint` objects on that table by calling
-`fk_constraint.resolve(metadata)`, which injects the target table's `object_id` (now available
-because the target was created first) into the column's `Relation._database_id`. By the time the
-compiler runs for any table, the schema is fully resolved: all `Relation` instances hold a concrete
-`database_id`. Calling `Table.create()` directly on a table that has unresolved `Relation` columns
-raises `ArgumentError`.
+`fk_constraint.resolve(metadata)`, which sets `fk.database_id` on each `ForeignKey` value object
+(now available because the target table was created first and its `object_id` is known).
+`Calling `Table.create()` directly on a table that has unresolved `Relation` columns (i.e.
+`fk.database_id is None`) raises `ArgumentError`.
 
 ---
 

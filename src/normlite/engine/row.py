@@ -49,7 +49,11 @@ class Row:
         self._values[0] = col_name
         self._values[1] = type_factory
         self._values[2] = col_id
-        self._values[3] = result_proc(col_value) if is_system else None
+        column_value = None
+        if col_type == "relation":
+            column_value = col_value["database_id"]
+
+        self._values[3] = result_proc(col_value) if is_system else column_value
 
         # **new** in 0.9.0: _values now stores the is_system flag
         # this is used for proper reflection in sql/reflection.py

@@ -38,6 +38,8 @@ from normlite.sql import Table
 from normlite.sql import MetaData
 from normlite.sql import Constraint 
 from normlite.sql import PrimaryKeyConstraint
+from normlite.sql import ForeignKeyConstraint
+from normlite.sql import ForeignKey
 from normlite.sql import TypeEngine
 from normlite.sql import Currency 
 from normlite.sql import Number 
@@ -50,6 +52,7 @@ from normlite.sql import Date
 from normlite.sql import ReflectedColumnInfo
 from normlite.sql import ReflectedTableInfo
 from normlite.sql import DateTimeRange
+from normlite.sql import Relation
 
 from .exceptions import NormliteError
 from .exceptions import NoResultFound
@@ -63,6 +66,10 @@ from .exceptions import CompileError
 from .exceptions import ObjectNotExecutableError
 from .exceptions import NoSuchTableError
 from .exceptions import StatementError
+from .exceptions import NoReferenceError
+from .exceptions import NoReferencedTableError
+from .exceptions import NoReferencedColumnError
+from .exceptions import CircularDependencyError
 
 
 __all__ = [
@@ -92,6 +99,8 @@ __all__ = [
     "MetaData",
     "Constraint",
     "PrimaryKeyConstraint",
+    "ForeignKeyConstraint",
+    "ForeignKey",
     "TypeEngine",
     "Currency",
     "Number",
@@ -102,6 +111,7 @@ __all__ = [
     "Boolean",
     "Date",
     "DateTimeRange",
+    "Relation",
 
     # exceptions
     "NormliteError",
@@ -116,4 +126,8 @@ __all__ = [
     "ObjectNotExecutableError",
     "NoSuchTableError",
     "StatementError",
+    "NoReferenceError",
+    "NoReferencedTableError",
+    "NoReferencedColumnError",
+    "CircularDependencyError",
 ]

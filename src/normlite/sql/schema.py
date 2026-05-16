@@ -64,10 +64,10 @@ from typing import Any, ClassVar, Dict, Iterable, Iterator, List, NoReturn, Opti
 
 from normlite._constants import SpecialColumns
 from normlite.engine.systemcatalog import TableState
-from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError, NoSuchTableError
+from normlite.exceptions import ArgumentError, CircularDependencyError, DuplicateColumnError, InvalidRequestError, NoReferencedColumnError, NoReferencedTableError, NoSuchTableError
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.sql.elements import ColumnElement, ColumnOperators
-from normlite.sql.type_api import ArchivalFlag, ObjectId, String, TimeStampStringISO8601, TypeEngine
+from normlite.sql.type_api import ArchivalFlag, ObjectId, Relation, String, TimeStampStringISO8601, TypeEngine
 from normlite.utils import normlite_deprecated
 
 if TYPE_CHECKING:
@@ -117,7 +117,21 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
     .. versionadded:: 0.9.0
     """
 
-    def __init__(self, name: str, type_: TypeEngine, id_: str = None, primary_key: bool = False):
+    foreign_keys: Set[ForeignKey]
+    """The foreign keys for this column.
+    
+    .. versionadded:: 0.11.0
+    """
+
+    def __init__(
+        self, 
+        name: str, 
+        type_: TypeEngine, 
+        *args: ForeignKey,
+        id_: Optional[str] = None, 
+        primary_key: Optional[bool] = False
+    ):
+                
         self.name = name
         """The column name. This must be unique within the same table."""
 
@@ -139,9 +153,12 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
         .. versionadded: 0.8.0
         """
 
+        self.foreign_keys = set()
+        self._set_fks(*args)
+
         if primary_key and not self.is_system:
             raise ArgumentError(f"No user column may be a primary key, column name '{name}'")
-
+        
         self.primary_key = primary_key
         """Whether this column is a primary key or not."""
 
@@ -179,6 +196,17 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
         because it is automatically set by the :class:`Table`.
         """
         self.parent = parent
+
+    def _set_fks(self, *args: ForeignKey) -> None:
+        for fk in args:
+            if isinstance(fk, ForeignKey):
+                if not isinstance(self.type_, Relation):
+                    raise ArgumentError(f"Column {self.name} expected to be of type 'Relation', got: {self.type_.__class__.__name__}")
+
+                fk._set_parent(self)
+                self.foreign_keys.add(fk)
+            else:
+                raise ArgumentError(f"'ForeignKey' expected, got {fk.__class__.__name__}")
 
     def __repr__(self):
         kwarg = []
@@ -452,6 +480,9 @@ class Table(HasIdentifier):
                 raise ArgumentError('Columns cannot be specified when using "autoload_with" keyword argument')
             
             self._autoload(autoload_with)
+        else:
+            # declarative-path: generate FK constraints
+            self._create_fk_constraints()
 
         # ensure there is a Column of type String(is_title=True)
         self._ensure_title_column()
@@ -518,6 +549,16 @@ class Table(HasIdentifier):
         return self._primary_key
     
     @property
+    def foreign_keys(self) -> Set[ForeignKeyConstraint]:
+        """The set of all foreign keys collectively associated with the relation columns in this table.
+        
+        .. versionadded:: 0.11.0
+        """
+        fks = {fkc for fkc in self._constraints if isinstance(fkc, ForeignKeyConstraint)}
+        return fks
+        
+    
+    @property
     def created_at(self) -> Optional[str]:
         """Read-only table creation timestamp.
         
@@ -557,7 +598,8 @@ class Table(HasIdentifier):
         """Add a constraint to this table."""
         constraint._set_parent(self)
         self._constraints.add(constraint)
-
+        if isinstance(constraint, ForeignKeyConstraint):
+            self.foreign_keys.add(constraint)
 
     def append_column(self, column: Column):
         """Append a column to this table.
@@ -570,9 +612,19 @@ class Table(HasIdentifier):
             raise ArgumentError(
                 f"System column {column.name} cannot be redefined."
             )
+        
+        if isinstance(column.type_, Relation) and not column.foreign_keys:
+            raise ArgumentError(
+                f"Relation column '{column.name}' requires a ForeignKey argument"
+            )
 
         column._set_parent(self)
         self._usr_columns.add(column)
+        # Invalidate cached union view so later reads see the new column.
+        # Required by two-phase reflection (Table(..., metadata) then
+        # Inspector.reflect_table(t)), where _create_fk_constraints in
+        # __init__ already triggered an empty-user-cols snapshot.
+        self._all_columns = None
 
     def _ensure_title_column(self) -> None:
         if len(self._usr_columns) == 0:
@@ -622,6 +674,25 @@ class Table(HasIdentifier):
         # IMPORTANT: Here you have to unpack the table_pks list
         self._primary_key = PrimaryKeyConstraint(*table_pks)
 
+    def _create_fk_constraints(self) -> None:
+        """Create FK constraints for declarative path only; reflection wires FKs 
+        during column reflection (deferred)
+        
+        _create_fk_constraints() materializes FK constraints from constructor-supplied ForeignKey annotations.
+        """
+        for column in self.columns:
+            # construct a ForeignKeyConstraint if column has foreign keys
+            if column.foreign_keys:
+                fk = next(iter(column.foreign_keys))
+                target_table_name = fk.table_name
+                try:
+                    remote_table = self.metadata.tables[target_table_name]
+                except KeyError:
+                    raise ArgumentError(f"Referenced table '{target_table_name}' not found; ensure it's defined before the referencing table")
+                
+                constraint = ForeignKeyConstraint(column, remote_table)
+                self.add_constraint(constraint)
+
     def insert(self) -> Insert:
         """Generate a new SQL insert statement for this table."""
         
@@ -642,6 +713,8 @@ class Table(HasIdentifier):
                 If ``True`` and this table exists, then do nothing.
 
         Raises:
+            NoReferencedTableError: If any foreign-key target table has not been created yet.
+                Call :meth:`MetaData.create_all` to create tables in dependency order.
             ProgrammingError: If the ``checkfirst == False`` and the table already exists or
                 if the table is dropped and the execution option ``restore_dropped`` is False.
 
@@ -650,6 +723,11 @@ class Table(HasIdentifier):
         .. seealso::
             :class:`normlite.sql.reflection.TableState` for better understanding table lifecycle and state resolution.
 
+        .. versionchanged:: 0.11.0
+            Raises :exc:`NoReferencedTableError` when an FK target table
+            has not been created yet, instead of letting compilation fail
+            with a misleading :exc:`CompileError`.
+
         .. versionchanged: 0.8.0
             This version provides full state-driven behavior.
 
@@ -657,6 +735,19 @@ class Table(HasIdentifier):
             Initial version, experimental not working code.
         """
         from normlite.sql.ddl import CreateTable
+
+        # guard against FK targets not yet created
+        unresolved = [
+            fkc.reftable.name
+            for fkc in self.foreign_keys
+            if fkc.reftable.get_oid() is None
+        ]
+        if unresolved:
+            raise NoReferencedTableError(
+                f"Cannot create table '{self.name}': foreign-key target "
+                f"table(s) {unresolved} have not been created yet. "
+                f"Call MetaData.create_all() to create tables in dependency order."
+            )
 
         catalog = bind._user_database_name
         execution_options = bind.get_execution_options()
@@ -942,6 +1033,16 @@ class ColumnCollection:
         )
     
     @overload
+    def get(self, key: str, default: None = None) -> Optional[Column]:
+        ...
+
+    def get(self, key: str, default: Optional[Column] = None) -> Optional[Column]:
+        if key in self._index:
+            return self._index[key][1]
+        else:
+            return default
+    
+    @overload
     def __getitem__(self, key: Union[str, int]) -> Column:
         ...
 
@@ -1058,9 +1159,33 @@ class PrimaryKeyConstraint(Constraint):
     
     def __repr__(self): 
         return f"PrimaryKeyConstraint(name={self._name}, ({', '.join([repr(c) for c in self.columns])}))"
+    
+class ForeignKeyConstraint(Constraint):
+    """A table-level FOREIGN KEY constraint.
+    
+    :class:`ForeignKeyConstraint` defines a sigle column SQL FOREIGN KEY ... REFERENCES
+    constraint. 
+
+    .. note::
+        In the Notion's data model, a :class:`normlite.sql.type_api.Relation` propery always links to exactly one target database.
+        There is no concept of a multi-column composite relation in the Notion API.
+
+    .. versionadded:: 0.11.0 
+    """
+
+    def __init__(self, column: Column, reftable: Table, refcol_name: str = "object_id", name: Optional[str] = None) -> None:
+        super().__init__(name)
+
+        self.column = column
+        self.reftable = reftable
+        self.refcol_name = refcol_name
+
 
 class MetaData:
     """A central registry for Table objects.
+
+    .. versionchanged:: 0.11.0:
+        This version introduces dependency building among :attr:`tables`. 
     
     .. versionadded:: 0.7.0
     
@@ -1072,7 +1197,33 @@ class MetaData:
 
     @property
     def sorted_tables(self) -> List[Table]:
-        return sorted(self.tables.values(), key=lambda t: t.name)
+        ordered: List[Table] = []
+        remaining = list(self.tables.values())
+        while remaining:
+            # A table is ready if: ALL the tables it depends on are already in ordered
+            ready = [
+                t for t in remaining
+                if all(fk.reftable in ordered for fk in t.foreign_keys)
+            ]
+            ready.sort(key=lambda t: t.name)  # deterministic tie-break
+
+            if not ready:
+                # circular dependency detected
+                details = []
+                for t in remaining:
+                    deps = [fk.reftable.name for fk in t.foreign_keys]
+                    details.append(f"{t.name} -> {deps}")
+
+                raise CircularDependencyError(
+                    "Circular dependency detected:\n" +
+                    "\n".join(details)
+                )                
+            
+            for t in ready:
+                ordered.append(t)
+                remaining.remove(t)
+
+        return ordered    
 
     def _add_table(self, table: Table) -> None:
         """Register a new table with this MetaData."""
@@ -1092,6 +1243,16 @@ class MetaData:
         for table in self.tables.values():
             table.metadata = None
         self.tables.clear()
+
+    def create_all(self, engine: Engine) -> None:
+        """Create all tables stored in this metadata.
+        
+        It does this by traversing the registered tables in topological order.
+
+        .. versionadded:: 0.11.0
+        """
+        for t in self.sorted_tables:
+            t.create(engine, checkfirst=True)
 
     def reflect(self, engine: Engine) -> None:
         """Reflect all tables associated to this metadata object."""
@@ -1115,3 +1276,82 @@ class MetaData:
     def __repr__(self) -> str:
         tables = ", ".join(self.tables.keys()) or "no tables"
         return f"<MetaData({tables})>"
+    
+class ForeignKey:
+    """Define a dependency between two columns.
+
+    ``ForeignKey`` is specified as an argument to a :class:`normlite.sql.schema.Column`
+    object,
+
+    e.g.::
+
+        students = Table(
+            "students",
+            metadata,
+            Column("courses", Relation(), ForeignKey("courses.object_id")),
+        )
+
+    .. versionadded:: 0.11.0
+    
+    """
+
+    table_name: str
+    """Name of the parent table the column refers to."""
+
+    column_name: str
+    """Name of the column the relation links to, always ``"object_id"``. """
+
+    database_id: str = None
+    """The Notion object id for the database the column refers to."""
+
+    parent: Column = None
+    """The column this foreign key belongs to."""
+
+    def __init__(self, col_spec: str):
+        self.table_name, self.column_name = col_spec.split(".")
+
+    @property
+    def column(self) -> Optional[Column]:
+        """Return the target :class:`Column` referenced by this
+        :class:`ForeignKey`.
+
+        If no target column has been established, an exception
+        is raised.
+
+        .. versionadded:: 0.11.0
+        """
+        return self._resolve_column()
+
+    def _resolve_column(self) -> Optional[Column]:
+        parent_table = self.parent.parent
+        if self.table_name not in parent_table.metadata:
+            raise NoReferencedTableError(
+                f"Foreign key associated with column "
+                f"{self.parent} cound not find "
+                f"table '{self.table_name}' with which to generate a "
+                f"foreign key to target column '{self.column_name}'"
+            )
+
+        # get the referecing table
+        table = parent_table.metadata.tables[self.table_name]
+        column = table.c.get(self.column_name, None)
+        if column is None:
+            raise NoReferencedColumnError(
+                "Could not initialize target column "
+                f"for ForeignKey '{self._get_colspec()}' "
+                f"on table '{parent_table.name}': "
+                f"table '{parent_table.name}' has no column named '{self.column_name}'",
+            )
+        
+        return column
+
+    def _set_parent(self, parent: Column) -> None:
+        if self.parent is not None and self.parent is not parent:
+            raise InvalidRequestError("This ForeignKey already has a parent !")
+        
+        self.parent = parent
+
+    def _get_colspec(self) -> str:
+        return f"{self.table_name}.{self.column_name}"
+        
+

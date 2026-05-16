@@ -6,12 +6,13 @@ import pytest
 
 from normlite import (
     Engine, create_engine,
-    Column, PrimaryKeyConstraint, Table,
+    Column, PrimaryKeyConstraint, Table, ForeignKey,
     Date, Integer, String, Boolean,
     ArgumentError, CompileError, NoSuchTableError, DuplicateColumnError
 )
 from normlite._constants import SpecialColumns
 from normlite.engine.systemcatalog import TableState
+from normlite.exceptions import InvalidRequestError, NoReferencedTableError
 from normlite.notion_sdk.getters import get_object_id, get_object_type
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.sql.schema import MetaData, SystemColumn
@@ -715,3 +716,469 @@ def test_metadata_reflect(engine: Engine, metadata: MetaData):
     assert SpecialColumns.NO_ID in columns
     assert SpecialColumns.NO_ARCHIVED in columns
 
+# ---------------------------------------------------
+# ForeignKey
+# ---------------------------------------------------
+
+def test_foreignkey_parses_table_and_column_name():
+    fk = ForeignKey("students.object_id")
+    assert fk.table_name == "students"
+    assert fk.column_name == "object_id"
+
+def test_foreignkey_database_id_initially_none():
+    fk = ForeignKey("students.object_id")
+    assert fk.database_id is None
+
+def test_column_accepts_foreignkey_in_args():
+    from normlite import Relation
+    fk = ForeignKey("students.object_id")
+    col = Column("students_oid", Relation(), fk)
+    assert fk in col.foreign_keys
+
+def test_column_rejects_unknown_positional_arg():
+    from normlite import Relation
+    with pytest.raises(ArgumentError, match="ForeignKey"):
+        Column("students_oid", Relation(), "not-a-fk")
+
+def test_table_autowires_foreignkey_constraint_on_create(engine: Engine):
+    from normlite import Relation
+
+    # Arrange
+    metadata = MetaData()
+    courses = Table("courses", metadata, Column("title", String(is_title=True)))
+    courses.create(engine)
+
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    # Act — no add_constraint, no ForeignKeyConstraint in sight
+    students.create(engine)
+
+    # Assert
+    db_obj = engine._client._get_by_id(students.get_oid())
+    assert db_obj["properties"]["enrolled_in"]["relation"]["database_id"] == courses.get_oid()
+
+def test_table_rejects_relation_column_without_foreignkey():
+    from normlite import Relation
+
+    metadata = MetaData()
+
+    with pytest.raises(ArgumentError, match="enrolled_in"):
+        Table(
+            "students",
+            metadata,
+            Column("name", String(is_title=True)),
+            Column("enrolled_in", Relation()),   # no ForeignKey
+        )
+
+def test_foreignkey_column_resolves_to_referenced_column():
+    from normlite import Relation
+
+    metadata = MetaData()
+    courses = Table("courses", metadata, Column("title", String(is_title=True)))
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    fk = next(iter(students.c.enrolled_in.foreign_keys))
+    assert fk.column is courses._sys_columns["object_id"]
+
+def test_table_foreign_keys_exposes_autowired_constraints():
+    from normlite import Relation
+    from normlite.sql.schema import ForeignKeyConstraint
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    fks = students.foreign_keys
+
+    assert len(fks) == 1
+    constraint = next(iter(fks))
+    assert isinstance(constraint, ForeignKeyConstraint)
+    assert constraint.column is students.c.enrolled_in
+
+def test_sorted_tables_orders_by_fk_dependency():
+    from normlite import Relation
+
+    metadata = MetaData()
+    products = Table(
+        "products",
+        metadata,
+        Column("name", String(is_title=True)),
+    )
+    orders = Table(
+        "orders",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("product", Relation(), ForeignKey("products.object_id")),
+    )
+
+    assert metadata.sorted_tables == [products, orders]
+
+def test_sorted_tables_raises_on_circular_dependency():
+    from normlite import Relation, CircularDependencyError
+    from normlite.sql.schema import ForeignKeyConstraint
+
+    metadata = MetaData()
+    a = Table(
+        "a",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    b = Table(
+        "b",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("a_ref", Relation(), ForeignKey("a.object_id")),
+    )
+
+    # Inject the reverse edge a → b directly via add_constraint.
+    # The construction-time guard in _create_fk_constraints prevents
+    # declaring this cycle through the public Column/ForeignKey path.
+    b_ref = Column("b_ref", Relation(), ForeignKey("b.object_id"))
+    b_ref._set_parent(a)
+    a.add_constraint(ForeignKeyConstraint(b_ref, b))
+
+    with pytest.raises(CircularDependencyError):
+        metadata.sorted_tables
+
+def test_sorted_tables_orders_three_table_chain():
+    from normlite import Relation
+
+    metadata = MetaData()
+    a = Table(
+        "z_root",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    b = Table(
+        "m_middle",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("a_ref", Relation(), ForeignKey("z_root.object_id")),
+    )
+    c = Table(
+        "a_leaf",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("b_ref", Relation(), ForeignKey("m_middle.object_id")),
+    )
+
+    assert metadata.sorted_tables == [a, b, c]
+
+def test_sorted_tables_orders_independent_and_dependent_tables():
+    from normlite import Relation
+
+    metadata = MetaData()
+    standalone = Table(
+        "standalone",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    parent = Table(
+        "parent",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    child = Table(
+        "child",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("parent_ref", Relation(), ForeignKey("parent.object_id")),
+    )
+
+    result = metadata.sorted_tables
+
+    # parent must appear before child; standalone may appear anywhere
+    # but ordering must be deterministic (alphabetical tie-break among ready)
+    assert result.index(parent) < result.index(child)
+    assert set(result) == {parent, standalone, child}
+    # Determinism: parent and standalone are both ready on pass 1;
+    # alphabetical tie-break puts parent first
+    assert result == [parent, standalone, child]
+
+def test_create_table_with_unresolved_fk_raises_no_referenced_table_error(engine: Engine):
+    from normlite import Relation
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    # courses has NOT been created — its oid is still None,
+    # so the FK target cannot be resolved at compile time
+    with pytest.raises(NoReferencedTableError, match="create_all"):
+        students.create(engine)
+
+def test_create_all_creates_tables_with_fk_dependencies(engine: Engine):
+    from normlite import Relation
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    metadata.create_all(engine)
+
+    assert courses.get_oid() is not None
+    assert students.get_oid() is not None
+
+    # Parent must be created strictly before child
+    courses_obj = engine._client._get_by_id(courses.get_oid())
+    students_obj = engine._client._get_by_id(students.get_oid())
+    assert courses_obj["created_time"] < students_obj["created_time"]
+
+def test_create_all_with_diamond_fk_schema(engine: Engine):
+    from normlite import Relation
+
+    metadata = MetaData()
+
+    projects = Table(
+        "projects",
+        metadata,
+        Column("name", String(is_title=True)),
+    )
+    sprints = Table(
+        "sprints",
+        metadata,
+        Column("name", String(is_title=True)),
+    )
+    devs = Table(
+        "devs",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("project", Relation(), ForeignKey("projects.object_id")),
+    )
+    tasks = Table(
+        "tasks",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("project", Relation(), ForeignKey("projects.object_id")),
+        Column("sprint", Relation(), ForeignKey("sprints.object_id")),
+    )
+
+    # Topological order: parents first, alphabetical tie-break among ready
+    sorted_names = [t.name for t in metadata.sorted_tables]
+    assert sorted_names == ["projects", "sprints", "devs", "tasks"]
+
+    metadata.create_all(engine)
+
+    # All tables physically created
+    for table in (projects, sprints, devs, tasks):
+        assert table.get_oid() is not None
+
+    # DDL payload: every Relation column resolved to the right database_id
+    tasks_obj = engine._client._get_by_id(tasks.get_oid())
+    assert tasks_obj["properties"]["project"]["relation"]["database_id"] == projects.get_oid()
+    assert tasks_obj["properties"]["sprint"]["relation"]["database_id"] == sprints.get_oid()
+
+    devs_obj = engine._client._get_by_id(devs.get_oid())
+    assert devs_obj["properties"]["project"]["relation"]["database_id"] == projects.get_oid()
+
+    # Verify creation sequence: parents strictly before any child that depends on them
+    objs = {t.name: engine._client._get_by_id(t.get_oid()) for t in (projects, sprints, devs, tasks)}
+    assert objs["projects"]["created_time"] < objs["devs"]["created_time"]
+    assert objs["projects"]["created_time"] < objs["tasks"]["created_time"]
+    assert objs["sprints"]["created_time"] < objs["tasks"]["created_time"]
+
+def test_create_all_is_idempotent(engine: Engine):
+    from normlite import Relation
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    metadata.create_all(engine)
+    courses_oid = courses.get_oid()
+    students_oid = students.get_oid()
+
+    # Second call must not raise and must not re-create
+    metadata.create_all(engine)
+
+    assert courses.get_oid() == courses_oid
+    assert students.get_oid() == students_oid
+
+def test_autoload_reflects_relation_with_resolved_database_id(engine: Engine):
+    from normlite import Relation
+
+    # Setup: declare and create courses + students with a Relation FK
+    setup_meta = MetaData()
+    courses = Table(
+        "courses",
+        setup_meta,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        setup_meta,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    setup_meta.create_all(engine)
+    courses_oid = courses.get_oid()
+
+    # Reflect students into a fresh, independent MetaData
+    fresh_meta = MetaData()
+    reflected = Table("students", fresh_meta, autoload_with=engine)
+
+    enrolled_in = reflected.c.enrolled_in
+    assert isinstance(enrolled_in.type_, Relation)
+
+    fks = enrolled_in.foreign_keys
+    assert len(fks) == 1
+    fk = next(iter(fks))
+    assert fk.table_name == "courses"
+    assert fk.column_name == "object_id"
+    assert fk.database_id == courses_oid
+
+def test_autoload_warns_when_relation_target_not_in_catalog(engine: Engine):
+    client = engine._client
+    unknown_target_id = "deadbeef-1234-5678-9abc-deadbeefcafe"
+
+    # A Notion database whose relation property points to a database
+    # that exists in Notion but is NOT registered in our catalog
+    db = client._add('database', {
+        'parent': {'type': 'page_id', 'page_id': engine._user_tables_page_id},
+        'title': [{
+            'type': 'text',
+            'text': {'content': 'students', 'link': None},
+            'plain_text': 'students',
+            'href': None,
+        }],
+        'properties': {
+            'name': {'title': {}},
+            'enrolled_in': {
+                'relation': {
+                    'database_id': unknown_target_id,
+                    'single_property': {},
+                }
+            },
+        },
+    })
+
+    # Register only the students DB in the catalog so reflection can find it
+    client._add('page', {
+        'parent': {'type': 'database_id', 'database_id': engine._tables_id},
+        'properties': {
+            'table_name': {'title': [{'text': {'content': 'students'}}]},
+            'table_schema': {'rich_text': [{'text': {'content': ''}}]},
+            'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
+            'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]},
+        },
+    })
+
+    metadata = MetaData()
+    with pytest.warns(UserWarning, match="enrolled_in"):
+        reflected = Table('students', metadata, autoload_with=engine)
+
+    # The unresolvable relation column must not be present
+    assert 'enrolled_in' not in reflected.c
+    # But the rest of the schema reflects normally
+    assert 'name' in reflected.c
+
+def test_autoload_reflects_mixed_resolvable_and_unresolvable_relations(engine: Engine):
+    # Resolvable target: created via the normal path so it lands in the catalog
+    setup_meta = MetaData()
+    courses = Table("courses", setup_meta, Column("title", String(is_title=True)))
+    courses.create(engine)
+    courses_oid = courses.get_oid()
+
+    # Build a students DB with two relation properties:
+    # - enrolled_in → courses (resolvable)
+    # - favorite_topic → unknown uuid (NOT in catalog)
+    client = engine._client
+    unknown_target_id = "deadbeef-9999-9999-9999-deadbeef9999"
+    students_db = client._add('database', {
+        'parent': {'type': 'page_id', 'page_id': engine._user_tables_page_id},
+        'title': [{
+            'type': 'text',
+            'text': {'content': 'students', 'link': None},
+            'plain_text': 'students',
+            'href': None,
+        }],
+        'properties': {
+            'name': {'title': {}},
+            'enrolled_in': {
+                'relation': {
+                    'database_id': courses_oid,
+                    'single_property': {},
+                }
+            },
+            'favorite_topic': {
+                'relation': {
+                    'database_id': unknown_target_id,
+                    'single_property': {},
+                }
+            },
+        },
+    })
+
+    # Register students in the catalog
+    client._add('page', {
+        'parent': {'type': 'database_id', 'database_id': engine._tables_id},
+        'properties': {
+            'table_name': {'title': [{'text': {'content': 'students'}}]},
+            'table_schema': {'rich_text': [{'text': {'content': ''}}]},
+            'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
+            'table_id': {'rich_text': [{'text': {'content': students_db.get('id')}}]},
+        },
+    })
+
+    # Reflect: only the unresolvable column triggers a warning
+    fresh_meta = MetaData()
+    with pytest.warns(UserWarning, match="favorite_topic"):
+        reflected = Table('students', fresh_meta, autoload_with=engine)
+
+    # Resolvable relation column reflected with FK populated
+    assert 'enrolled_in' in reflected.c
+    fks = reflected.c.enrolled_in.foreign_keys
+    assert len(fks) == 1
+    fk = next(iter(fks))
+    assert fk.table_name == "courses"
+    assert fk.database_id == courses_oid
+
+    # Unresolvable column skipped, normal columns intact
+    assert 'favorite_topic' not in reflected.c
+    assert 'name' in reflected.c

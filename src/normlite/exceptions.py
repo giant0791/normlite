@@ -110,3 +110,36 @@ class StatementError(NormliteError):
     
     .. versionadded:: 0.9.0
     """
+
+class NoReferenceError(InvalidRequestError):
+    """Raised by ``ForeignKey`` to indicate a reference cannot be resolved.
+    
+    .. versionadded:: 0.11.0
+    """
+
+class NoReferencedTableError(NoReferenceError):
+    """Raised when a referenced ``Table`` cannot be resolved.
+
+    Two cases:
+
+    - During ``ForeignKey`` resolution: the referred ``Table`` cannot be
+      located in the metadata.
+    - During ``Table.create()``: the referred ``Table`` exists but has
+      not been created yet (its object id is ``None``). The caller
+      should use :meth:`MetaData.create_all` to create tables in
+      dependency order.
+
+    .. versionadded:: 0.11.0
+    """
+
+class NoReferencedColumnError(NoReferenceError):
+    """Raised by ``ForeignKey`` when the referred ``Column`` cannot be located.
+    
+    .. versionadded:: 0.11.0
+    """
+
+class CircularDependencyError(NormliteError):
+    """Raised by topological sorts when a circular dependency is detected.
+
+    .. versionadded:: 0.11.0
+    """
