@@ -38,6 +38,8 @@ from normlite.sql import Table
 from normlite.sql import MetaData
 from normlite.sql import Constraint 
 from normlite.sql import PrimaryKeyConstraint
+from normlite.sql import ForeignKeyConstraint
+from normlite.sql import ForeignKey
 from normlite.sql import TypeEngine
 from normlite.sql import Currency 
 from normlite.sql import Number 
@@ -93,6 +95,8 @@ __all__ = [
     "MetaData",
     "Constraint",
     "PrimaryKeyConstraint",
+    "ForeignKeyConstraint",
+    "ForeignKey",
     "TypeEngine",
     "Currency",
     "Number",

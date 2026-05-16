@@ -41,6 +41,7 @@ class DBAPITypeCode(StrEnum):
     DATE               = 'date'
     ARCHIVAL_FLAG      = 'boolean'
     TIMESTAMP          = 'string_iso_8601'
+    RELATION           = 'relation'
     META_COL_NAME      = 'column_name'
     META_COL_TYPE      = 'column_type'
     META_COL_ID        = 'column_id'

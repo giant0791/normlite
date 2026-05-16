@@ -6,7 +6,7 @@ import pytest
 
 from normlite import (
     Engine, create_engine,
-    Column, PrimaryKeyConstraint, Table,
+    Column, PrimaryKeyConstraint, Table, ForeignKey,
     Date, Integer, String, Boolean,
     ArgumentError, CompileError, NoSuchTableError, DuplicateColumnError
 )
@@ -714,4 +714,102 @@ def test_metadata_reflect(engine: Engine, metadata: MetaData):
     assert includes_all(columns, ['student_id', 'name', 'grade', 'is_active'])
     assert SpecialColumns.NO_ID in columns
     assert SpecialColumns.NO_ARCHIVED in columns
+
+# ---------------------------------------------------
+# ForeignKey
+# ---------------------------------------------------
+
+def test_foreignkey_parses_table_and_column_name():
+    fk = ForeignKey("students.object_id")
+    assert fk.table_name == "students"
+    assert fk.column_name == "object_id"
+
+def test_foreignkey_database_id_initially_none():
+    fk = ForeignKey("students.object_id")
+    assert fk.database_id is None
+
+def test_column_accepts_foreignkey_in_args():
+    from normlite import Relation
+    fk = ForeignKey("students.object_id")
+    col = Column("students_oid", Relation(), fk)
+    assert fk in col.foreign_keys
+
+def test_column_rejects_unknown_positional_arg():
+    from normlite import Relation
+    with pytest.raises(ArgumentError, match="ForeignKey"):
+        Column("students_oid", Relation(), "not-a-fk")
+
+def test_table_autowires_foreignkey_constraint_on_create(engine: Engine):
+    from normlite import Relation
+
+    # Arrange
+    metadata = MetaData()
+    courses = Table("courses", metadata, Column("title", String(is_title=True)))
+    courses.create(engine)
+
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    # Act — no add_constraint, no ForeignKeyConstraint in sight
+    students.create(engine)
+
+    # Assert
+    db_obj = engine._client._get_by_id(students.get_oid())
+    assert db_obj["properties"]["enrolled_in"]["relation"]["database_id"] == courses.get_oid()
+
+def test_table_rejects_relation_column_without_foreignkey():
+    from normlite import Relation
+
+    metadata = MetaData()
+
+    with pytest.raises(ArgumentError, match="enrolled_in"):
+        Table(
+            "students",
+            metadata,
+            Column("name", String(is_title=True)),
+            Column("enrolled_in", Relation()),   # no ForeignKey
+        )
+
+def test_foreignkey_column_resolves_to_referenced_column():
+    from normlite import Relation
+
+    metadata = MetaData()
+    courses = Table("courses", metadata, Column("title", String(is_title=True)))
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    fk = next(iter(students.c.enrolled_in.foreign_keys))
+    assert fk.column is courses._sys_columns["object_id"]
+
+def test_table_foreign_keys_exposes_autowired_constraints():
+    from normlite import Relation
+    from normlite.sql.schema import ForeignKeyConstraint
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    fks = students.foreign_keys
+
+    assert len(fks) == 1
+    constraint = next(iter(fks))
+    assert isinstance(constraint, ForeignKeyConstraint)
+    assert constraint.column is students.c.enrolled_in
 

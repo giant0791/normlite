@@ -70,7 +70,7 @@ Usage::
 """
 
 from __future__ import annotations
-from typing import Optional, Union, Any, Dict
+from typing import Optional, Union, Any, Dict, runtime_checkable
 from datetime import datetime, date, time, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from decimal import Decimal
@@ -82,11 +82,12 @@ import uuid
 from normlite.exceptions import ArgumentError, InvalidRequestError
 from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
-from normlite.sql.elements import Operator, BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, StringComparator, TimeStampStringISO8601Comparator
+from normlite.sql.elements import Operator, BooleanComparator, Comparator, NumberComparator, DateComparator, ObjectIdComparator, RelationComparator, StringComparator, TimeStampStringISO8601Comparator
 
 DEFAULT_DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 DEFAULT_DATE_FORMAT = "%Y-%m-%d"
 
+@runtime_checkable
 class TypeEngine(Protocol):
     """Base class for all Notion/SQL datatypes.
 
@@ -898,6 +899,8 @@ class Relation(TypeEngine):
     .. versionadded:: 0.11.0    
     """
 
+    comparator_factory = RelationComparator
+
     def get_col_spec(self) -> str:
         return "relation"
     
@@ -1086,4 +1089,5 @@ type_mapper: dict[str, TypeEngine] = {
     DBAPITypeCode.DATE: Date(),
     DBAPITypeCode.ARCHIVAL_FLAG: ArchivalFlag(),
     DBAPITypeCode.TIMESTAMP: TimeStampStringISO8601(),
+    DBAPITypeCode.RELATION: Relation(),
 }

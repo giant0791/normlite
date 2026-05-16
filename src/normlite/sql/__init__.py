@@ -40,6 +40,8 @@ from .schema import Table
 from .schema import MetaData
 from .schema import Constraint 
 from .schema import PrimaryKeyConstraint
+from .schema import ForeignKeyConstraint
+from .schema import ForeignKey
 from .reflection import ReflectedColumnInfo
 from .reflection import ReflectedTableInfo
 from .type_api import TypeEngine
@@ -66,6 +68,8 @@ __all__ = [
     "MetaData",
     "Constraint",
     "PrimaryKeyConstraint",
+    "ForeignKeyConstraint",
+    "ForeignKey",
     "ReflectedColumnInfo",
     "ReflectedTableInfo",
     "TypeEngine",

@@ -110,3 +110,22 @@ class StatementError(NormliteError):
     
     .. versionadded:: 0.9.0
     """
+
+class NoReferenceError(InvalidRequestError):
+    """Raised by ``ForeignKey`` to indicate a reference cannot be resolved.
+    
+    .. versionadded:: 0.11.0
+    """
+
+class NoReferencedTableError(NoReferenceError):
+    """Raised by ``ForeignKey`` when the referred ``Table`` cannot be
+    located.
+
+    .. versionadded:: 0.11.0
+    """
+
+class NoReferencedColumnError(NoReferenceError):
+    """Raised by ``ForeignKey`` when the referred ``Column`` cannot be located.
+    
+    .. versionadded:: 0.11.0
+    """

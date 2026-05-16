@@ -878,10 +878,29 @@ class NotionCompiler(SQLCompiler):
         return properties
     
     def _compile_table_columns(self, user_cols: ReadOnlyColumnCollection) -> dict:
-        properties = {
-            col.name: col.type_.get_notion_spec()
-            for col in user_cols
+        from normlite.sql.type_api import Relation
+        from normlite.sql.schema import ForeignKeyConstraint
+
+        # resolve oids for the all referenced columns         
+        stmt_table = self._compiler_state.stmt._table
+        referenced_ids = {
+            c.column.name: c.reftable.get_oid()
+            for c in stmt_table.foreign_keys
         }
+
+        # construct the properties payload
+        properties = {}
+        for col in user_cols:
+            prop_val = col.type_.get_notion_spec()
+            if isinstance(col.type_, Relation):
+                # inject the database_id into the Notion spec for Relation objects
+                ref_oid = referenced_ids.get(col.name)
+                if ref_oid is None:
+                    raise CompileError(f"Relation column '{col.name}' on table '{stmt_table.name}' has no ForeignKeyConstraint registered")
+                
+                prop_val["relation"]["database_id"] = referenced_ids[col.name]
+
+            properties[col.name] = prop_val    
 
         return properties
     
