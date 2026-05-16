@@ -140,6 +140,10 @@ class Operator(Enum):
     IS_EMPTY = auto()
     IS_NOT_EMPTY = auto()
 
+    # relation-specific
+    CONTAINS = auto()
+    DOES_NOT_CONTAIN = auto()
+
 class Modifier(Enum):
     ORDER_BY    = "order_by"
     NULLS_FIRST = "nulls_first"
@@ -200,6 +204,12 @@ class ColumnOperators:
     
     def is_not(self, other):
         return self.operate(Operator.NE, other)
+    
+    def contains(self, other):
+        return self.operate(Operator.CONTAINS, other)
+    
+    def does_not_contain(self, other):
+        return self.operate(Operator.DOES_NOT_CONTAIN, other)
     
     def asc(self) -> ModifierExpression:
         return self.comparator.modify(Modifier.ORDER_BY, direction='asc')

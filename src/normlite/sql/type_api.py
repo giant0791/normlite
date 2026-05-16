@@ -900,7 +900,12 @@ class Relation(TypeEngine):
     """
 
     comparator_factory = RelationComparator
-
+    supported_ops = MappingProxyType({
+        Operator.CONTAINS: "contains",
+        Operator.DOES_NOT_CONTAIN: "does_not_contain",
+        Operator.IS_EMPTY: "is_empty",
+        Operator.IS_NOT_EMPTY: "is_not_empty",
+    })
     def get_col_spec(self) -> str:
         return "relation"
     

@@ -415,3 +415,100 @@ def test_full_select(students: Table):
         },
     ]
 
+# --------------------------------------------
+# Relation
+# --------------------------------------------
+
+def test_relation_contains_compiles_to_relation_filter():
+    from normlite import Relation, ForeignKey
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    page_id = "12345678-1234-1234-1234-123456789012"
+    exp = students.c.enrolled_in.contains(page_id)
+
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        compiled = exp._compiler_dispatch(nc)
+
+    assert isinstance(exp, BinaryExpression)
+    assert compiled["property"] == "enrolled_in"
+    assert compiled["relation"] == {"contains": ":param_0"}
+
+def test_relation_does_not_contain_compiles_to_relation_filter():
+    from normlite import Relation, ForeignKey
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    page_id = "12345678-1234-1234-1234-123456789012"
+    exp = students.c.enrolled_in.does_not_contain(page_id)
+
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        compiled = exp._compiler_dispatch(nc)
+
+    assert isinstance(exp, BinaryExpression)
+    assert compiled["property"] == "enrolled_in"
+    assert compiled["relation"] == {"does_not_contain": ":param_0"}
+
+def test_relation_is_empty_and_is_not_empty_compile_to_relation_filter():
+    from normlite import Relation, ForeignKey
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    # is_empty
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    exp_empty = students.c.enrolled_in.is_empty()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        compiled_empty = exp_empty._compiler_dispatch(nc)
+
+    assert isinstance(exp_empty, BinaryExpression)
+    assert compiled_empty["property"] == "enrolled_in"
+    assert compiled_empty["relation"] == {"is_empty": ":param_0"}
+
+    # is_not_empty (fresh compiler state so param counter resets)
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    exp_not_empty = students.c.enrolled_in.is_not_empty()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        compiled_not_empty = exp_not_empty._compiler_dispatch(nc)
+
+    assert isinstance(exp_not_empty, BinaryExpression)
+    assert compiled_not_empty["property"] == "enrolled_in"
+    assert compiled_not_empty["relation"] == {"is_not_empty": ":param_0"}
