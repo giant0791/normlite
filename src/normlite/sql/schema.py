@@ -1254,6 +1254,10 @@ class MetaData:
         for table in self.tables.values():
             table._autoload(engine)        
 
+    def __getitem__(self, name: str) -> Table:
+        """Lookup a table by name."""
+        return self.tables[name]
+
     def __iter__(self) -> Iterator[Table]:
         """Iterate over all tables."""
         return iter(self.tables.values())
