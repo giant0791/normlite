@@ -237,14 +237,14 @@ class SystemCatalog:
         """Return the tables row (Notion page object) for a table or None if it does not exist.
 
         Args:
-            table_name (str): _description_
-            table_catalog (Optional[str], optional): _description_. Defaults to None.
+            table_name (str): The name of the table being searched for.
+            table_catalog (Optional[str], optional): The table catalog. Defaults to None.
 
         Raises:
-            InternalError: _description_
+            InternalError: If more than one table found.
 
         Returns:
-            Optional[SystemTablesEntry]: _description_
+            Optional[SystemTablesEntry]: The sys catalog entry datastructure for the found table.
         """
 
         catalog = table_catalog or self._default_catalog
@@ -277,6 +277,48 @@ class SystemCatalog:
             raise InternalError(
                 f"Catalog invariant violated: multiple tables named "
                 f"'{table_name}' in catalog '{catalog}'"
+            )
+
+        return SystemTablesEntry.from_dict(results[0]) if results else None
+    
+    def find_sys_tables_row_by_table_id(
+        self,
+        table_id: str
+    ) -> Optional[SystemTablesEntry]:
+        """Return the tables row (Notion page object) for a table with the given id or None if it does not exist.
+
+        Args:
+            table_id (str): The database id of the table being searched for.
+
+        Raises:
+            InternalError: If more than one table found.
+                    
+        Returns:
+            Optional[SystemTablesEntry]: The sys catalog entry datastructure for the found table.
+
+        .. versionadded:: 0.11.0 
+        """
+        response = self._client.databases_query(
+            path_params={
+                "database_id": self._tables_id,
+            },
+
+            payload={
+                "filter": {
+                    "property": "table_id",
+                    "rich_text": {"equals": table_id},
+                },
+                "in_trash": True,
+            }
+        )
+
+        results = response.get("results", [])
+
+        if len(results) > 1:
+            # catalog corruption invariant.
+            raise InternalError(
+                f"Catalog invariant violated: multiple tables with id "
+                f"'{table_id}' found"
             )
 
         return SystemTablesEntry.from_dict(results[0]) if results else None

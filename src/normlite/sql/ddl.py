@@ -19,13 +19,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 import pdb
 from typing import TYPE_CHECKING, Any, NoReturn, Optional
+import warnings
 
 from normlite._constants import SpecialColumns
 from normlite.engine.context import ExecutionContext
 from normlite.exceptions import NoSuchTableError
 from normlite.sql.reflection import ReflectedTableInfo
 from normlite.sql.base import Executable
-from normlite.sql.type_api import type_mapper
+from normlite.sql.schema import ForeignKey
+from normlite.sql.type_api import Relation, type_mapper
 from normlite.notiondbapi.dbapi2 import Error, ProgrammingError
 
 if TYPE_CHECKING:
@@ -253,14 +255,34 @@ class ReflectTable(ExecutableDDLStatement):
            
             else:
                 # assign user column ids
-                new_col = Column(
-                    name=colmeta.name,
-                    type_=colmeta.type,
-                    id_=colmeta.id,
-                )
+                if isinstance(colmeta.type, Relation):
+                    # retrieve the table name via sys catalog:
+                    database_id = colmeta.value
+                    entry = context.engine._catalog.find_sys_tables_row_by_table_id(database_id)
+                    if entry is None:
+                        warnings.warn(
+                            f"Relation column '{colmeta.name}' "
+                            f"references database_id '{database_id}' "
+                            f"which is not registered in system tables catalog; "
+                            f"skipping."
+                        )
+                        continue
+
+                    # construct the foreign key
+                    fk = ForeignKey(f"{entry.name}.object_id")
+                    fk.database_id = database_id
+
+                    #construct the new column
+                    new_col = Column(colmeta.name, colmeta.type, fk, id_=colmeta.id)
+
+                else:
+                    new_col = Column(
+                        name=colmeta.name,
+                        type_=colmeta.type,
+                        id_=colmeta.id,
+                    )
                 new_col._set_parent(self._reflected_table)
                 self._reflected_table.append_column(new_col)
-        
 
     def _as_info(self) -> ReflectedTableInfo:
         return self._reflected_table_info

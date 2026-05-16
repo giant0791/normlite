@@ -1039,3 +1039,146 @@ def test_create_all_is_idempotent(engine: Engine):
 
     assert courses.get_oid() == courses_oid
     assert students.get_oid() == students_oid
+
+def test_autoload_reflects_relation_with_resolved_database_id(engine: Engine):
+    from normlite import Relation
+
+    # Setup: declare and create courses + students with a Relation FK
+    setup_meta = MetaData()
+    courses = Table(
+        "courses",
+        setup_meta,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        setup_meta,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    setup_meta.create_all(engine)
+    courses_oid = courses.get_oid()
+
+    # Reflect students into a fresh, independent MetaData
+    fresh_meta = MetaData()
+    reflected = Table("students", fresh_meta, autoload_with=engine)
+
+    enrolled_in = reflected.c.enrolled_in
+    assert isinstance(enrolled_in.type_, Relation)
+
+    fks = enrolled_in.foreign_keys
+    assert len(fks) == 1
+    fk = next(iter(fks))
+    assert fk.table_name == "courses"
+    assert fk.column_name == "object_id"
+    assert fk.database_id == courses_oid
+
+def test_autoload_warns_when_relation_target_not_in_catalog(engine: Engine):
+    client = engine._client
+    unknown_target_id = "deadbeef-1234-5678-9abc-deadbeefcafe"
+
+    # A Notion database whose relation property points to a database
+    # that exists in Notion but is NOT registered in our catalog
+    db = client._add('database', {
+        'parent': {'type': 'page_id', 'page_id': engine._user_tables_page_id},
+        'title': [{
+            'type': 'text',
+            'text': {'content': 'students', 'link': None},
+            'plain_text': 'students',
+            'href': None,
+        }],
+        'properties': {
+            'name': {'title': {}},
+            'enrolled_in': {
+                'relation': {
+                    'database_id': unknown_target_id,
+                    'single_property': {},
+                }
+            },
+        },
+    })
+
+    # Register only the students DB in the catalog so reflection can find it
+    client._add('page', {
+        'parent': {'type': 'database_id', 'database_id': engine._tables_id},
+        'properties': {
+            'table_name': {'title': [{'text': {'content': 'students'}}]},
+            'table_schema': {'rich_text': [{'text': {'content': ''}}]},
+            'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
+            'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]},
+        },
+    })
+
+    metadata = MetaData()
+    with pytest.warns(UserWarning, match="enrolled_in"):
+        reflected = Table('students', metadata, autoload_with=engine)
+
+    # The unresolvable relation column must not be present
+    assert 'enrolled_in' not in reflected.c
+    # But the rest of the schema reflects normally
+    assert 'name' in reflected.c
+
+def test_autoload_reflects_mixed_resolvable_and_unresolvable_relations(engine: Engine):
+    # Resolvable target: created via the normal path so it lands in the catalog
+    setup_meta = MetaData()
+    courses = Table("courses", setup_meta, Column("title", String(is_title=True)))
+    courses.create(engine)
+    courses_oid = courses.get_oid()
+
+    # Build a students DB with two relation properties:
+    # - enrolled_in → courses (resolvable)
+    # - favorite_topic → unknown uuid (NOT in catalog)
+    client = engine._client
+    unknown_target_id = "deadbeef-9999-9999-9999-deadbeef9999"
+    students_db = client._add('database', {
+        'parent': {'type': 'page_id', 'page_id': engine._user_tables_page_id},
+        'title': [{
+            'type': 'text',
+            'text': {'content': 'students', 'link': None},
+            'plain_text': 'students',
+            'href': None,
+        }],
+        'properties': {
+            'name': {'title': {}},
+            'enrolled_in': {
+                'relation': {
+                    'database_id': courses_oid,
+                    'single_property': {},
+                }
+            },
+            'favorite_topic': {
+                'relation': {
+                    'database_id': unknown_target_id,
+                    'single_property': {},
+                }
+            },
+        },
+    })
+
+    # Register students in the catalog
+    client._add('page', {
+        'parent': {'type': 'database_id', 'database_id': engine._tables_id},
+        'properties': {
+            'table_name': {'title': [{'text': {'content': 'students'}}]},
+            'table_schema': {'rich_text': [{'text': {'content': ''}}]},
+            'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
+            'table_id': {'rich_text': [{'text': {'content': students_db.get('id')}}]},
+        },
+    })
+
+    # Reflect: only the unresolvable column triggers a warning
+    fresh_meta = MetaData()
+    with pytest.warns(UserWarning, match="favorite_topic"):
+        reflected = Table('students', fresh_meta, autoload_with=engine)
+
+    # Resolvable relation column reflected with FK populated
+    assert 'enrolled_in' in reflected.c
+    fks = reflected.c.enrolled_in.foreign_keys
+    assert len(fks) == 1
+    fk = next(iter(fks))
+    assert fk.table_name == "courses"
+    assert fk.database_id == courses_oid
+
+    # Unresolvable column skipped, normal columns intact
+    assert 'favorite_topic' not in reflected.c
+    assert 'name' in reflected.c
