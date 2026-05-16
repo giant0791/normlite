@@ -620,6 +620,11 @@ class Table(HasIdentifier):
 
         column._set_parent(self)
         self._usr_columns.add(column)
+        # Invalidate cached union view so later reads see the new column.
+        # Required by two-phase reflection (Table(..., metadata) then
+        # Inspector.reflect_table(t)), where _create_fk_constraints in
+        # __init__ already triggered an empty-user-cols snapshot.
+        self._all_columns = None
 
     def _ensure_title_column(self) -> None:
         if len(self._usr_columns) == 0:
