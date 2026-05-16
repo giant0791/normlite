@@ -66,6 +66,10 @@ from .exceptions import CompileError
 from .exceptions import ObjectNotExecutableError
 from .exceptions import NoSuchTableError
 from .exceptions import StatementError
+from .exceptions import NoReferenceError
+from .exceptions import NoReferencedTableError
+from .exceptions import NoReferencedColumnError
+from .exceptions import CircularDependencyError
 
 
 __all__ = [
@@ -122,4 +126,8 @@ __all__ = [
     "ObjectNotExecutableError",
     "NoSuchTableError",
     "StatementError",
+    "NoReferenceError",
+    "NoReferencedTableError",
+    "NoReferencedColumnError",
+    "CircularDependencyError",
 ]

@@ -813,3 +813,102 @@ def test_table_foreign_keys_exposes_autowired_constraints():
     assert isinstance(constraint, ForeignKeyConstraint)
     assert constraint.column is students.c.enrolled_in
 
+def test_sorted_tables_orders_by_fk_dependency():
+    from normlite import Relation
+
+    metadata = MetaData()
+    products = Table(
+        "products",
+        metadata,
+        Column("name", String(is_title=True)),
+    )
+    orders = Table(
+        "orders",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("product", Relation(), ForeignKey("products.object_id")),
+    )
+
+    assert metadata.sorted_tables == [products, orders]
+
+def test_sorted_tables_raises_on_circular_dependency():
+    from normlite import Relation, CircularDependencyError
+    from normlite.sql.schema import ForeignKeyConstraint
+
+    metadata = MetaData()
+    a = Table(
+        "a",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    b = Table(
+        "b",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("a_ref", Relation(), ForeignKey("a.object_id")),
+    )
+
+    # Inject the reverse edge a → b directly via add_constraint.
+    # The construction-time guard in _create_fk_constraints prevents
+    # declaring this cycle through the public Column/ForeignKey path.
+    b_ref = Column("b_ref", Relation(), ForeignKey("b.object_id"))
+    b_ref._set_parent(a)
+    a.add_constraint(ForeignKeyConstraint(b_ref, b))
+
+    with pytest.raises(CircularDependencyError):
+        metadata.sorted_tables
+
+def test_sorted_tables_orders_three_table_chain():
+    from normlite import Relation
+
+    metadata = MetaData()
+    a = Table(
+        "z_root",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    b = Table(
+        "m_middle",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("a_ref", Relation(), ForeignKey("z_root.object_id")),
+    )
+    c = Table(
+        "a_leaf",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("b_ref", Relation(), ForeignKey("m_middle.object_id")),
+    )
+
+    assert metadata.sorted_tables == [a, b, c]
+
+def test_sorted_tables_orders_independent_and_dependent_tables():
+    from normlite import Relation
+
+    metadata = MetaData()
+    standalone = Table(
+        "standalone",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    parent = Table(
+        "parent",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    child = Table(
+        "child",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("parent_ref", Relation(), ForeignKey("parent.object_id")),
+    )
+
+    result = metadata.sorted_tables
+
+    # parent must appear before child; standalone may appear anywhere
+    # but ordering must be deterministic (alphabetical tie-break among ready)
+    assert result.index(parent) < result.index(child)
+    assert set(result) == {parent, standalone, child}
+    # Determinism: parent and standalone are both ready on pass 1;
+    # alphabetical tie-break puts parent first
+    assert result == [parent, standalone, child]

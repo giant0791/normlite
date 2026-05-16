@@ -64,7 +64,7 @@ from typing import Any, ClassVar, Dict, Iterable, Iterator, List, NoReturn, Opti
 
 from normlite._constants import SpecialColumns
 from normlite.engine.systemcatalog import TableState
-from normlite.exceptions import ArgumentError, DuplicateColumnError, InvalidRequestError, NoReferencedColumnError, NoReferencedTableError, NoSuchTableError
+from normlite.exceptions import ArgumentError, CircularDependencyError, DuplicateColumnError, InvalidRequestError, NoReferencedColumnError, NoReferencedTableError, NoSuchTableError
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.sql.elements import ColumnElement, ColumnOperators
 from normlite.sql.type_api import ArchivalFlag, ObjectId, Relation, String, TimeStampStringISO8601, TypeEngine
@@ -1158,6 +1158,9 @@ class ForeignKeyConstraint(Constraint):
 
 class MetaData:
     """A central registry for Table objects.
+
+    .. versionchanged:: 0.11.0:
+        This version introduces dependency building among :attr:`tables`. 
     
     .. versionadded:: 0.7.0
     
@@ -1169,7 +1172,33 @@ class MetaData:
 
     @property
     def sorted_tables(self) -> List[Table]:
-        return sorted(self.tables.values(), key=lambda t: t.name)
+        ordered: List[Table] = []
+        remaining = list(self.tables.values())
+        while remaining:
+            # A table is ready if: ALL the tables it depends on are already in ordered
+            ready = [
+                t for t in remaining
+                if all(fk.reftable in ordered for fk in t.foreign_keys)
+            ]
+            ready.sort(key=lambda t: t.name)  # deterministic tie-break
+
+            if not ready:
+                # circular dependency detected
+                details = []
+                for t in remaining:
+                    deps = [fk.reftable.name for fk in t.foreign_keys]
+                    details.append(f"{t.name} -> {deps}")
+
+                raise CircularDependencyError(
+                    "Circular dependency detected:\n" +
+                    "\n".join(details)
+                )                
+            
+            for t in ready:
+                ordered.append(t)
+                remaining.remove(t)
+                
+        return ordered    
 
     def _add_table(self, table: Table) -> None:
         """Register a new table with this MetaData."""

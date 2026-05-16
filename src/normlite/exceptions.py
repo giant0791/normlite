@@ -129,3 +129,9 @@ class NoReferencedColumnError(NoReferenceError):
     
     .. versionadded:: 0.11.0
     """
+
+class CircularDependencyError(NormliteError):
+    """Raised by topological sorts when a circular dependency is detected.
+
+    .. versionadded:: 0.11.0
+    """
