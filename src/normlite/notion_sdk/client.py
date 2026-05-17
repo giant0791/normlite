@@ -29,6 +29,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+import pdb
 from typing import List, Optional, Self, Set, Type
 from types import TracebackType
 from abc import ABC, abstractmethod
@@ -584,7 +585,7 @@ class InMemoryNotionClient(AbstractNotionClient):
             raise NotionError(
                 "Body failed validation: body.properties should be defined, instead was undefined."
             )
-
+        
     def _resolve_parent(self, payload: dict) -> tuple[str, dict]:
         parent = payload["parent"]
         if parent["type"] == "page_id":
@@ -675,6 +676,23 @@ class InMemoryNotionClient(AbstractNotionClient):
     # Normalization helpers
     # ------------------------------------------------------------------
 
+    def _is_valid_uuid(self, oid: str) -> bool:
+        if oid is None:
+            return False
+        
+        if not isinstance(oid, str):
+            return False
+
+        try:
+            # If the string is not a valid UUIDv4, this will raise a ValueError
+            val = uuid.UUID(oid, version=4)
+        except ValueError:
+            return False
+        
+        # Ensure the string is in the standard canonical form
+        return str(val) == oid       
+
+
     def _normalize_rich_text_item(self, rt: dict) -> dict:
         """
         Normalize a single rich-text item to Notion canonical form.
@@ -721,21 +739,24 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         return [self._normalize_rich_text_item(rt) for rt in value]
 
-    def _normalize_property(self, prop: dict) -> dict:
+    def _normalize_property(self, name: str, prop: dict) -> dict:
         prop_type = prop.get("type")
         if not prop_type:
-            raise NotionError("Property missing 'type'")
+            raise NotionError(f"Property '{name} 'missing 'type'")
 
         if prop_type == "title":
             if "title" not in prop:
-                raise NotionError("Title property missing 'title' field")
+                raise NotionError(f"title property '{name}' missing 'title' field")
             prop["title"] = self._normalize_rich_text(prop["title"])
 
         elif prop_type == "rich_text":
             if "rich_text" not in prop:
-                raise NotionError("rich_text property missing 'rich_text' field")
+                raise NotionError(f"rich_text property '{name}' missing 'rich_text' field")
             prop["rich_text"] = self._normalize_rich_text(prop["rich_text"])
 
+        elif prop_type == "relation":
+            self._normalize_relation(name, prop["relation"])
+                                   
         return prop
 
     def _normalize_properties(self, obj: dict) -> None:
@@ -744,7 +765,7 @@ class InMemoryNotionClient(AbstractNotionClient):
             raise NotionError("Object missing properties")
 
         for name, prop in props.items():
-            props[name] = self._normalize_property(prop)
+            props[name] = self._normalize_property(name, prop)
 
     def _normalize_database_title(self, db: dict) -> None:
         title = db.get("title")
@@ -752,6 +773,26 @@ class InMemoryNotionClient(AbstractNotionClient):
             raise NotionError("Database title must be a rich_text list")
 
         db["title"] = self._normalize_rich_text(title)
+
+    def _normalize_relation(self, name: str, value: list[dict]) -> list[dict]:
+            if not isinstance(value, list):
+                raise NotionError(f"relation property '{name}' must be a list of dictionaries containing object ids")
+            
+            is_list_of_dicts = all(isinstance(item, dict) for item in value)
+            if  not is_list_of_dicts:
+                raise NotionError(f"relation property '{name}' must be a list of dictionaries containing object ids")
+            
+            all_dicts_contain_oids = all(item.get("id") is not None for item in value)
+            if not all_dicts_contain_oids:
+                raise NotionError(f"relation property '{name}' contains some invalid object ids (missing 'id' key)")
+            
+            all_dicts_contain_valid_oids = all(self._is_valid_uuid(item.get("id")) for item in value)
+            if not all_dicts_contain_valid_oids:
+                raise NotionError(f"relation property '{name}' contains some invalid object ids (not a UUIDv4)")
+            
+            # Returns the (possibly transformed) list.
+            # Today the return is identical to the input — validation-only, no real canonicalisation.
+            return value
 
     def _update_database_properties(
         self,
@@ -1006,6 +1047,10 @@ class InMemoryNotionClient(AbstractNotionClient):
                         data = v[prop_type]
                         if prop_type in ("rich_text", "title"):
                             data = self._normalize_rich_text(data)
+
+                        if prop_type == "relation":
+                            data = self._normalize_relation(k, data)
+
                         existing[prop_type] = data
                     else:
                         obj["properties"][k] = v
@@ -1461,6 +1506,7 @@ class _Condition(_Expression):
         "number":    {"equals", "greater_than", "less_than"},
         "date":      {"after", "before", "equals", "does_not_equal", "is_empty", "is_not_empty"},
         "checkbox":  {"equals", "does_not_equal"},
+        "relation":  {"contains", "does_not_contain", "is_empty", "is_not_empty"},
     }
 
     _op_map = {
@@ -1505,9 +1551,14 @@ class _Condition(_Expression):
 
         # checkbox
         "checkbox.equals":              lambda a, b: a is b,
-        "checkbox.does_not_equal":      lambda a, b: a is not b,       
-    }
+        "checkbox.does_not_equal":      lambda a, b: a is not b,     
 
+        # relation
+        "relation.contains":            lambda a, b: b in [i["id"] for i in a],
+        "relation.does_not_contain":    lambda a, b: b not in [i["id"] for i in a],
+        "relation.is_empty":            lambda a, _: len(a) == 0,
+        "relation.is_not_empty":        lambda a, _: len(a) > 0, 
+    }
 
     def __init__(self, page: dict, condition: dict):
         self.page = page

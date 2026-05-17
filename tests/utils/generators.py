@@ -69,6 +69,7 @@ class ReferenceGenerator:
         "number",
         "date",
         "checkbox",
+        "relation",
     }
 
     OPERATORS = {
@@ -114,6 +115,12 @@ class ReferenceGenerator:
         "checkbox": {
             "equals",
         },
+        "relation": {
+            "contains",
+            "does_not_contain",
+            "is_empty",
+            "is_not_empty"
+        },
     }
 
     def __init__(self, seed: int | None = None):
@@ -123,10 +130,14 @@ class ReferenceGenerator:
             self.faker.seed_instance(seed)
 
         self.metadata = MetaData()
+        self._relation_id_pool: list[str] = []
 
     def gen_schema(self, min_props=1, max_props=6) -> dict:
         schema = {}
         n = self.rng.randint(min_props, max_props)
+
+        # Per-schema relation ID pool — shared between gen_page and gen_filter for this schema
+        self._relation_id_pool = [self.faker.uuid4() for _ in range(8)]
 
         for i in range(n):
             name = f"prop_{i}"
@@ -202,6 +213,16 @@ class ReferenceGenerator:
                     "end": None
                 }
             }
+        
+        if typ == "relation":
+            k = self.rng.randint(0, 3)
+            return {
+                "type": "relation",
+                "relation": [
+                    {"id": id_} 
+                    for id_ in self.rng.sample(self._relation_id_pool, k)
+                ],
+            }
 
         raise ValueError(f"Unsupported property type: {typ}")
 
@@ -259,8 +280,12 @@ class ReferenceGenerator:
                 return self.rng.choice(["true", "false"])
             return self._gen_iso_date()
 
-        raise ValueError(f"Unsupported type/operator: {typ}/{op}")
+        if typ == "relation":
+            if op in ("is_empty", "is_not_empty"):
+                return True
+            return self.rng.choice(self._relation_id_pool)
 
+        raise ValueError(f"Unsupported type/operator: {typ}/{op}")
 
 # ------------------------------------------------------------------------------
 # Generator Protocol (public abstraction)

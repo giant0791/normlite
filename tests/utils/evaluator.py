@@ -99,6 +99,18 @@ def reference_eval(page: dict, filt: dict) -> bool:
                 and page_date["start"] < filter_date["start"]
             )
 
+    # --- RELATION HANDLING ---
+    if typ == "relation":
+        rel = page_val or []
+        if op == "is_empty":
+            return len(rel) == 0
+        if op == "is_not_empty":
+            return len(rel) > 0
+        if op == "contains":
+            return any(item["id"] == val for item in rel)
+        if op == "does_not_contain":
+            return not any(item["id"] == val for item in rel)
+
     # --- OTHER TYPES ---
     if op == "equals":
         return page_val == val
