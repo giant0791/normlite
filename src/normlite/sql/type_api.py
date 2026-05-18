@@ -935,8 +935,16 @@ class Relation(TypeEngine):
         def process(value: Any) -> Optional[list[str]]:
             if value is None:
                 return None
-            
-            return [d["id"] for d in value]
+            if isinstance(value, dict):
+                ids = value["relation"]
+            elif isinstance(value,  list):
+                ids = value
+            else:
+                raise ValueError(
+                    f"{self.get_col_spec()} value must be a list of ids. "
+                    f"Received: {value} ({type(value).__name__})"
+                )
+            return [d["id"] for d in ids]
         
         return process
         
