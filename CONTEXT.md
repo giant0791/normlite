@@ -159,6 +159,37 @@ table, it resolves all `ForeignKeyConstraint` objects on that table by calling
 
 ---
 
+## Fake Client (InMemoryNotionClient)
+
+### Fake client — Relation property support
+`InMemoryNotionClient` stores and filters Notion `relation` properties so DML against
+FK-bearing tables can round-trip without hitting the real Notion API.
+
+**Storage (`pages_create` / `pages_update`).** The generic property-writing path already
+accepts relation arrays (no special-casing). `_normalize_property` validates the *shape*
+of a relation value: `prop["relation"]` must be a list, each item must be a dict with a
+string `"id"`. Malformed shapes raise `NotionError`. Update semantics are **full
+replacement** — sending `{"relation": []}` clears the link, mirroring real Notion.
+
+**Filtering (`databases_query`).** `_Condition` is extended in place: `"relation"` is
+added to `_allowed_ops` with `{contains, does_not_contain, is_empty, is_not_empty}`, and
+the matching `_op_map` entries operate on the stored `list[{"id": ...}]` shape. `eval()`
+gains a `relation` branch that extracts `self.property_obj["relation"]` as the operand.
+
+**Lax FK-target validation.** The fake does **not** verify that page IDs in a relation
+property point to existing pages, nor that they belong to the FK-target database. This
+matches real Notion's lazy behaviour: invalid IDs surface as empty join results, not as
+errors. See [[adr-0002-fake-client-lax-fk-validation]].
+
+**Deferred — `has_more` truncation.** Real Notion truncates relation property arrays past
+~25 entries on page retrieval and exposes `has_more: true` with a separate
+`properties_retrieve` pagination endpoint. The fake currently returns the full list with
+no truncation. This is a known divergence to revisit when `Select.join()` is implemented;
+joins that paginate large relations in production must not silently rely on the fake's
+non-truncating behaviour.
+
+---
+
 ## DML Construct Decisions
 
 ### Update — partial VALUES

@@ -915,7 +915,7 @@ def test_get_title_raises_on_invalid_object(client):
 
     # normalization invariant broken → accessor must fail
     with pytest.raises(NotionError):
-        norm_obj = client._normalize_property(bad_obj)
+        norm_obj = client._normalize_property("fake", bad_obj)
         get_title(norm_obj)
 
 def test_rich_text_normalization_uses_text_content(client):
@@ -1273,3 +1273,379 @@ def test_close_is_noop(client):
     client._store["abc"] = {"object": "page", "id": "abc"}
     client.close()
     assert "abc" in client._store
+
+# ---------------------------------------------------------
+# "relation" object behavior
+# ---------------------------------------------------------
+
+def test_pages_create_rejects_relation_value_that_is_not_a_list(client):
+    # Arrange — two databases linked by a relation column
+    courses = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Courses"}}],
+            "properties": {"Title": {"title": {}}},
+        }
+    )
+    students = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Students"}}],
+            "properties": {
+                "Name": {"title": {}},
+                "enrolled_in": {
+                    "relation": {
+                        "database_id": courses["id"],
+                        "single_property": {},
+                    },
+                },
+            },
+        }
+    )
+
+
+    malformed_page = {
+        "parent": {"type": "database_id", "database_id": students["id"]},
+        "properties": {
+            "Name": {"title": [{"text": {"content": "Alice"}}]},
+            "enrolled_in": {"relation": "not-a-list"},
+        },
+    }
+
+    # Act + Assert
+    with pytest.raises(NotionError):
+        client.pages_create(payload=malformed_page)
+
+def test_pages_create_rejects_relation_item_that_is_not_a_dict(client):
+    # Arrange — two databases linked by a relation column
+    courses = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Courses"}}],
+            "properties": {"Title": {"title": {}}},
+        }
+    )
+    students = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Students"}}],
+            "properties": {
+                "Name": {"title": {}},
+                "enrolled_in": {
+                    "relation": {
+                        "database_id": courses["id"],
+                        "single_property": {},
+                    },
+                },
+            },
+        }
+    )
+
+    malformed_page = {
+        "parent": {"type": "database_id", "database_id": students["id"]},
+        "properties": {
+            "Name": {"title": [{"text": {"content": "Alice"}}]},
+            "enrolled_in": {"relation": ["not-a-dict-just-a-string"]},
+        },
+    }
+
+    # Act + Assert
+    with pytest.raises(NotionError):
+        client.pages_create(payload=malformed_page)
+
+def test_pages_create_rejects_relation_item_dict_without_id(client):
+    # Arrange — two databases linked by a relation column
+    courses = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Courses"}}],
+            "properties": {"Title": {"title": {}}},
+        }
+    )
+    students = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Students"}}],
+            "properties": {
+                "Name": {"title": {}},
+                "enrolled_in": {
+                    "relation": {
+                        "database_id": courses["id"],
+                        "single_property": {},
+                    },
+                },
+            },
+        }
+    )
+
+    malformed_page = {
+        "parent": {"type": "database_id", "database_id": students["id"]},
+        "properties": {
+            "Name": {"title": [{"text": {"content": "Alice"}}]},
+            "enrolled_in": {"relation": [{"name": "Math 101"}]},
+        },
+    }
+
+    # Act + Assert
+    with pytest.raises(NotionError):
+        client.pages_create(payload=malformed_page)
+
+def test_pages_create_rejects_relation_item_id_that_is_not_a_string(client):
+    # Arrange — two databases linked by a relation column
+    courses = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Courses"}}],
+            "properties": {"Title": {"title": {}}},
+        }
+    )
+    students = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Students"}}],
+            "properties": {
+                "Name": {"title": {}},
+                "enrolled_in": {
+                    "relation": {
+                        "database_id": courses["id"],
+                        "single_property": {},
+                    },
+                },
+            },
+        }
+    )
+
+    malformed_page = {
+        "parent": {"type": "database_id", "database_id": students["id"]},
+        "properties": {
+            "Name": {"title": [{"text": {"content": "Alice"}}]},
+            "enrolled_in": {"relation": [{"id": 12345}]},
+        },
+    }
+
+    # Act + Assert
+    with pytest.raises(NotionError):
+        client.pages_create(payload=malformed_page)
+
+def test_pages_create_preserves_relation_property_on_retrieve(client):
+    # Arrange — two databases linked by a relation column
+    courses = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Courses"}}],
+            "properties": {"Title": {"title": {}}},
+        }
+    )
+    students = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Students"}}],
+            "properties": {
+                "Name": {"title": {}},
+                "enrolled_in": {
+                    "relation": {
+                        "database_id": courses["id"],
+                        "single_property": {},
+                    },
+                },
+            },
+        }
+    )
+
+    course = client.pages_create(
+        payload={
+            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "properties": {
+                "Title": {"title": [{"text": {"content": "Math 101"}}]},
+            },
+        }
+    )
+
+    student = client.pages_create(
+        payload={
+            "parent": {"type": "database_id", "database_id": students["id"]},
+            "properties": {
+                "Name": {"title": [{"text": {"content": "Alice"}}]},
+                "enrolled_in": {"relation": [{"id": course["id"]}]},
+            },
+        }
+    )
+
+    # Act
+    retrieved = client.pages_retrieve(path_params={"page_id": student["id"]})
+
+    # Assert
+    enrolled_in = retrieved["properties"]["enrolled_in"]
+    assert enrolled_in["type"] == "relation"
+    assert enrolled_in["relation"] == [{"id": course["id"]}]
+
+def test_pages_update_replaces_relation_property(client):
+    # Arrange — two databases linked by a relation column
+    courses = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Courses"}}],
+            "properties": {"Title": {"title": {}}},
+        }
+    )
+    students = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Students"}}],
+            "properties": {
+                "Name": {"title": {}},
+                "enrolled_in": {
+                    "relation": {
+                        "database_id": courses["id"],
+                        "single_property": {},
+                    },
+                },
+            },
+        }
+    )
+
+    math = client.pages_create(
+        payload={
+            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "properties": {"Title": {"title": [{"text": {"content": "Math 101"}}]}},
+        }
+    )
+    history = client.pages_create(
+        payload={
+            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "properties": {"Title": {"title": [{"text": {"content": "History 101"}}]}},
+        }
+    )
+
+    student = client.pages_create(
+        payload={
+            "parent": {"type": "database_id", "database_id": students["id"]},
+            "properties": {
+                "Name": {"title": [{"text": {"content": "Alice"}}]},
+                "enrolled_in": {"relation": [{"id": math["id"]}]},
+            },
+        }
+    )
+
+    # Act — replace [Math] with [History]
+    client.pages_update(
+        path_params={"page_id": student["id"]},
+        payload={
+            "properties": {
+                "enrolled_in": {"relation": [{"id": history["id"]}]},
+            }
+        },
+    )
+
+    # Assert — only History remains, Math is gone
+    retrieved = client.pages_retrieve(path_params={"page_id": student["id"]})
+    assert retrieved["properties"]["enrolled_in"]["relation"] == [{"id": history["id"]}]
+
+def test_pages_update_clears_relation_property_with_empty_list(client):
+    # Arrange — two databases linked by a relation column
+    courses = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Courses"}}],
+            "properties": {"Title": {"title": {}}},
+        }
+    )
+    students = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Students"}}],
+            "properties": {
+                "Name": {"title": {}},
+                "enrolled_in": {
+                    "relation": {
+                        "database_id": courses["id"],
+                        "single_property": {},
+                    },
+                },
+            },
+        }
+    )
+
+    math = client.pages_create(
+        payload={
+            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "properties": {"Title": {"title": [{"text": {"content": "Math 101"}}]}},
+        }
+    )
+
+    student = client.pages_create(
+        payload={
+            "parent": {"type": "database_id", "database_id": students["id"]},
+            "properties": {
+                "Name": {"title": [{"text": {"content": "Alice"}}]},
+                "enrolled_in": {"relation": [{"id": math["id"]}]},
+            },
+        }
+    )
+
+    # Act — clear the relation
+    client.pages_update(
+        path_params={"page_id": student["id"]},
+        payload={
+            "properties": {
+                "enrolled_in": {"relation": []},
+            }
+        },
+    )
+
+    # Assert — relation is empty
+    retrieved = client.pages_retrieve(path_params={"page_id": student["id"]})
+    assert retrieved["properties"]["enrolled_in"]["relation"] == []
+
+def test_pages_update_rejects_relation_value_that_is_not_a_list(client):
+    # Arrange — two databases linked by a relation column, and a valid student
+    courses = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Courses"}}],
+            "properties": {"Title": {"title": {}}},
+        }
+    )
+    students = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "Students"}}],
+            "properties": {
+                "Name": {"title": {}},
+                "enrolled_in": {
+                    "relation": {
+                        "database_id": courses["id"],
+                        "single_property": {},
+                    },
+                },
+            },
+        }
+    )
+
+    math = client.pages_create(
+        payload={
+            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "properties": {"Title": {"title": [{"text": {"content": "Math 101"}}]}},
+        }
+    )
+
+    student = client.pages_create(
+        payload={
+            "parent": {"type": "database_id", "database_id": students["id"]},
+            "properties": {
+                "Name": {"title": [{"text": {"content": "Alice"}}]},
+                "enrolled_in": {"relation": [{"id": math["id"]}]},
+            },
+        }
+    )
+
+    # Act + Assert — pages_update with malformed relation value must reject
+    with pytest.raises(NotionError):
+        client.pages_update(
+            path_params={"page_id": student["id"]},
+            payload={
+                "properties": {
+                    "enrolled_in": {"relation": "not-a-list"},
+                }
+            },
+        )

@@ -162,17 +162,17 @@ class TypeEngine(Protocol):
     
     def get_dbapi_type(self) -> DBAPITypeCode:
         """ Return the DBAPI type code corresponding to this type engine instance."""
-        raise NotImplemented
+        raise NotImplementedError
 
     def __repr__(self):
         return self.__class__.__name__
     
     def _raise_if_val_not_dict(self, value: dict) -> NoReturn:
         if not isinstance(value, dict):
-                raise ValueError(
-                    f'{self.get_col_spec()} value must be a dict. '
-                    f'Value type is: {value.__class__.__name__}'
-                )
+            raise ValueError(
+                f'{self.get_col_spec()} value must be a dict. '
+                f'Value type is: {value.__class__.__name__}'
+            )
     
 _NumericType: TypeAlias = Union[int, Decimal]
 """Type alias for numeric datatypes. It is not part of the public API."""
@@ -912,6 +912,9 @@ class Relation(TypeEngine):
     def get_notion_spec(self) -> dict:
         return {"relation": {"single_property": {}}}
     
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        return DBAPITypeCode.RELATION
+        
     def bind_processor(self):
         def process(value: Union[list[str], None]) -> Optional[dict]:
             if value is None:
@@ -929,12 +932,19 @@ class Relation(TypeEngine):
         return process
     
     def result_processor(self):
-        def process(value: Optional[dict]) -> Optional[list[str]]:
+        def process(value: Any) -> Optional[list[str]]:
             if value is None:
                 return None
-            
-            self._raise_if_val_not_dict(value)
-            return [d["id"] for d in value["relation"]]
+            if isinstance(value, dict):
+                ids = value["relation"]
+            elif isinstance(value,  list):
+                ids = value
+            else:
+                raise ValueError(
+                    f"{self.get_col_spec()} value must be a list of ids. "
+                    f"Received: {value} ({type(value).__name__})"
+                )
+            return [d["id"] for d in ids]
         
         return process
         

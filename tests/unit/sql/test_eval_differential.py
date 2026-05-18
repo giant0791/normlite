@@ -157,7 +157,7 @@ def test_schema_skewness():
         schema = refgen.gen_schema(min_props=3, max_props=30)
         counters.append(debug_schema(schema))
 
-    #print(f'\nSchema property types stats: \n  {pretty_print(describe(counters))}')
+    print(f'\nSchema property types stats: \n  {pretty_print(describe(counters))}')
 
 def test_condition_skewness():
     refgen = ReferenceGenerator(seed=28)
@@ -166,4 +166,4 @@ def test_condition_skewness():
         schema = refgen.gen_schema(min_props=3, max_props=30)
         counters.append(debug_condition(refgen, schema))
 
-    #print(f'\nFilter condition types stats: \n  {pretty_print(describe(counters))}')
+    print(f'\nFilter condition types stats: \n  {pretty_print(describe(counters))}')
