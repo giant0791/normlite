@@ -262,3 +262,22 @@ def test_close_is_noop_when_read_only(tmp_path):
     client.close()
 
     assert not path.exists()
+
+def test_file_based_client_rejects_missing_path_in_read_only_mode(tmp_path):
+    # Arrange: a file path inside tmp_path that we deliberately never create
+    missing_path = tmp_path / "does-not-exist.json"
+    assert not missing_path.exists()  # sanity check on the fixture
+
+    # Act + Assert: construction must fail immediately — no broken-state client
+    with pytest.raises(NotionError) as exc_info:
+        FileBasedNotionClient(str(missing_path), read_only=True)
+
+    # The exception must carry Notion's `invalid_request_url` vocabulary so callers
+    # (and downstream tests that catch on .code) can react to it the same way they
+    # would to a real Notion error.
+    exc = exc_info.value
+    assert exc.status_code == 400
+    assert exc.code == "invalid_request_url"
+
+    # The message must include the offending path so the user can act on it.
+    assert str(missing_path) in exc.message

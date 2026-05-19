@@ -428,3 +428,7 @@ def test_search_does_not_match_exactly_titles(
 
     assert state is TableState.MISSING
 
+def test_bootstrap_is_idempotent(engine: Engine):
+    catalog = SystemCatalog(engine._client, "db", engine._root_page_id, "db")
+    catalog.bootstrap()
+    catalog.bootstrap()  # must not raise

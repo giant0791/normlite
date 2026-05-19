@@ -67,7 +67,8 @@ Here a quick example of how to use :class:`Engine` and :class:`Connection`.
 from __future__ import annotations
 from pathlib import Path
 import pdb
-from typing import Any, Mapping, Optional, Sequence, TypeAlias, TYPE_CHECKING, overload
+from types import TracebackType
+from typing import Any, Mapping, Optional, Self, Sequence, Type, TypeAlias, TYPE_CHECKING, overload
 from dataclasses import dataclass
 from typing import Optional, Literal, Union
 from urllib.parse import urlparse, parse_qs, unquote
@@ -76,9 +77,9 @@ from normlite.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import _distill_params, IsolationLevel
 from normlite.engine.systemcatalog import SystemCatalog, SystemTablesEntry, TableState
-from normlite.exceptions import ArgumentError, ObjectNotExecutableError
+from normlite.exceptions import ArgumentError, InvalidRequestError, ObjectNotExecutableError
 from normlite.sql.reflection import ReflectedColumnInfo
-from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
+from normlite.notion_sdk.client import FileBasedNotionClient, InMemoryNotionClient, NotionError
 from normlite.sql.compiler import NotionCompiler
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, Error, InternalError, ProgrammingError
 from normlite.utils import frozendict
@@ -498,6 +499,16 @@ class Engine:
             Renamed to make the intend clearer.
         """
 
+        self._read_only: bool = kwargs.get("read_only", False)
+        """Whether the integration's store is read_only.
+        
+        It applies to file based Notion simulated clients.
+
+        .. versionadded:: 0.11.0
+        """
+        if self._read_only and uri.mode == "memory":
+            raise ArgumentError("read_only is only valid for file-based URIs")
+        
         self._database: Optional[str] = None
         """The database name.
         
@@ -518,6 +529,13 @@ class Engine:
         """The information schema system catalog.
         
         .. versionadded:: 0.8.0
+        """
+
+        self._is_disposed: bool = False
+        """Whether this engine has been previously disposed.
+        
+        
+        .. versionadded:: 0.11.0
         """
 
         self._create_client(uri)
@@ -574,6 +592,25 @@ class Engine:
         """
         return self._execution_options
     
+    def dispose(self) -> None:
+        """Dispose this engine and closes the underlying client.
+        
+        Public API for engine disposal.
+
+        A disposed engine raises :exc:`normlite.execeptions.InvalidRequestError` if
+        :meth:`Engine.connect` is called.
+
+
+        .. versionadded:: 0.11.0.
+        """
+        if self._is_disposed:
+            return
+        
+        try:
+            self._client.close()
+        finally:
+            self._is_disposed = True
+
     @property
     def _tables_id(self) -> str:
         """Database id for the Notion database tables.
@@ -590,6 +627,17 @@ class Engine:
         """
         return self._catalog._user_tables_page_id
 
+    @property
+    def disposed(self) -> bool:
+        """Provide disposal status for this engine.
+        
+        This is the public API to inspect the disposal status of an engine.
+        
+
+        .. versionadded:: 0.11.0
+        """
+        return self._is_disposed
+
     # -------------------------------------------------
     # Client creation + bootstrap
     # -------------------------------------------------
@@ -598,20 +646,22 @@ class Engine:
         if uri.mode not in ("memory", "file"):
             raise NotImplementedError
 
-        self._client = InMemoryNotionClient()
-
         # Resolve database name
         if uri.mode == "memory":
+            self._client = InMemoryNotionClient()
             self._database = "memory"
             self._user_database_name = self._user_database_name or "memory"
-            self._root_page_id = self._root_page_id or self._client._ROOT_PAGE_ID_
         else:
+            self._client = FileBasedNotionClient(
+                uri.path, 
+                read_only=self._read_only
+            )
             self._database = Path(uri.file).stem
             self._user_database_name = (
                 self._user_database_name or self._database
             )
-            if not self._root_page_id:
-                raise ArgumentError("root_page_id is required for file-based engines")
+
+        self._root_page_id = self._root_page_id or self._client._ROOT_PAGE_ID_
 
         if uri.mode in ("memory", "file"):
             # root page is required for simulated clients
@@ -875,6 +925,27 @@ class Engine:
     # Public API
     # -------------------------------------------------
 
+    def __enter__(self) -> Self:
+        """Initialize the engine's resources.
+
+        When the context manager is entered, the Notion store is read in memory, if the corresponding
+        file existes. Otherwise, the store in memory is initialized with an empty list.
+
+        Returns:
+            Self: This instance as required by the context manager protocol.
+        """
+        return self
+    
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> Optional[bool]:
+        self.dispose()
+        return None
+
+
     def inspect(self) -> Inspector:
         """Return an inspector object.
 
@@ -886,11 +957,32 @@ class Engine:
         return Inspector(self)
     
     def connect(self) -> Connection:
-        """Procure a new :class:`Connection` object."""
+        """Procure a new :class:`Connection` object.
+
+        Raises:
+            InvalidRequestError: If the engine has been previously disposed with :meth:`Engine.dispose`.
+
+        Returns:
+            Connection: The new connection object.
+        """
+        if self._is_disposed:
+            raise InvalidRequestError("Engine has been disposed")
         return Connection(self)
 
     def raw_connection(self) -> DBAPIConnection:
-        """Provide the underlying DBAPI connection."""
+        """Provide the underlying DBAPI connection.
+
+        Raises:
+            InvalidRequestError: If the engine has been previously disposed with :meth:`Engine.dispose`.
+
+        Returns:
+            DBAPIConnection: The underlying DBAPI connection associated with this engine.
+
+        .. versionchanged:: 0.11.0
+        """
+        if self._is_disposed:
+            raise InvalidRequestError("Engine has been disposed")
+
         return self._dbapi_connection
     
     #----------------------------------------------------

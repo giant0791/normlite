@@ -1373,6 +1373,14 @@ class FileBasedNotionClient(InMemoryNotionClient):
 
         self._auto_flush = auto_flush
         """Automatic flush """
+
+        if self._auto_load and self._read_only and not self._path.exists():
+            raise NotionError(
+                f"Invalid request URL: {str(self._path)} not found",
+                status_code=400,
+                code="invalid_request_url"
+            )
+
         if self._auto_load:
             self.load()
 

@@ -582,7 +582,8 @@ class SystemCatalog:
             table_name='tables',
             table_schema='information_schema',
             table_catalog=self._user_database_name,
-            table_id=self._tables_id 
+            table_id=self._tables_id,
+            if_not_exists=True          # IMPORTANT: This ensure idempotency, either create it or use it
         )
 
     def _delete_restore_table(

@@ -190,6 +190,81 @@ non-truncating behaviour.
 
 ---
 
+## Engine Setup
+
+### root_page_id
+The Notion-side identifier of the top-most parent under which the engine's `information_schema`
+page and user databases are anchored. Every page/database in normlite needs a parent; this is the
+ultimate ancestor of the tree.
+
+The semantics differ by integration kind:
+- **Simulated integrations** (`InMemoryNotionClient`, `FileBasedNotionClient`): the client mints
+  its own synthetic root page (`_ROOT_PAGE_ID_`). The engine defaults
+  `self._root_page_id` to that constant when the user does not supply one. **Not required** from
+  `create_engine` callers.
+- **Real Notion integrations** (`normlite+auth://internal`, when implemented): the root must be a
+  real Notion workspace page the integration was granted access to. The client cannot invent it.
+  **Required** from `create_engine` callers, and validated at engine construction.
+
+Both memory- and file-mode simulated engines apply the same fallback symmetrically — `root_page_id`
+is never *required* for simulated URIs, only optional. An earlier inconsistency where file-mode
+demanded a user-supplied `root_page_id` was a latent bug; both simulated branches now share the
+"default to the client's `_ROOT_PAGE_ID_`" rule.
+
+---
+
+## Engine Lifecycle
+
+### Engine.dispose()
+Terminal disposal of an `Engine`. Releases backend resources by calling `self._client.close()`
+— a no-op for `InMemoryNotionClient` and a flush-to-disk for `FileBasedNotionClient`.
+After `dispose()` has been *called* (whether it returned cleanly or raised), the engine is
+**terminal**: `engine.connect()` and `engine.raw_connection()` raise
+`InvalidRequestError("Engine has been disposed")`. User-held `Connection` objects are not
+tracked; they fail at their next `execute()` because the path goes through
+`Engine.raw_connection()`.
+Idempotent: calling `dispose()` on an already-disposed engine is a silent no-op.
+Cascade is minimal — only `self._client` is closed; `self._dbapi_connection` and `self._catalog`
+hold no I/O state of their own and are not given a `close()` method.
+
+**Error handling.** `self._client.close()` is wrapped in `try / finally`. If close raises
+(e.g. `OSError` from a failed `FileBasedNotionClient.flush()`), the exception propagates
+unchanged and `self._is_disposed` is still flipped to `True` in the `finally` block. The
+engine cannot be reused or retried after a failed close — retry can't recover the partially
+written file anyway, and continuing to mutate an unsynced in-memory store is the worse trap.
+
+A read-only `engine.disposed` property exposes the state for tests and user code.
+
+**Context-manager support.** `Engine` implements `__enter__` / `__exit__`. `__enter__` returns
+`self`; `__exit__` calls `self.dispose()` unconditionally and returns `None` (never swallows
+exceptions). Idempotency keeps an explicit `engine.dispose()` inside a `with` block safe.
+Mirrors the CM idiom already present on `FileBasedNotionClient`.
+
+See [[adr-0003-engine-dispose-semantics]] for the architectural rationale.
+
+### read_only (engine kwarg)
+A flat top-level kwarg on `create_engine`, plumbed through `Engine.__init__(**kwargs)` to
+`FileBasedNotionClient(path, read_only=True)`. Enables test fixtures that read a saved
+store from disk without mutating the file on exit.
+Valid only for file-mode URIs; supplying `read_only=True` together with a `:memory:` URI raises
+`ArgumentError("read_only is only valid for file-based URIs")`.
+
+If `read_only=True` **and** `auto_load=True` (the default) are both supplied but the target file
+does not exist, `FileBasedNotionClient.__init__` raises
+`NotionError("Invalid request URL: <path>", status_code=400, code="invalid_request_url")`.
+This treats the file path as the client's effective request URL and mirrors Notion's real
+`invalid_request_url` error code. Rationale: the whole point of `read_only` + `auto_load` is to
+read an existing fixture; silently producing an empty in-memory store from a mistyped path turns
+the feature into a footgun.
+
+The gating is the **intersection** of both flags, not `read_only` alone — `read_only=True` +
+`auto_load=False` is a legitimate in-memory-scratchpad pattern (used internally by tests that
+exercise flush/close no-op semantics) and must continue to construct successfully against a
+missing path. The converse case (`read_only=False` + non-existent path) is also unchanged — it
+remains the "create a new file-backed engine" path regardless of `auto_load`.
+
+---
+
 ## DML Construct Decisions
 
 ### Update — partial VALUES
