@@ -143,7 +143,10 @@ class ResultSet:
             else:
                 prop = properties.get(str(col))
                 typ = prop.get("type")
-                row.append(prop.get(typ) if typ else None)
+                row.append(
+                    {typ: prop[typ]}       # new contract as per issue [#290](https://github.com/giant0791/normlite/issues/290) 
+                    if typ else None
+                )
 
         return tuple(row)    
     
@@ -153,19 +156,20 @@ class ResultSet:
 
         rows = []
 
-        # system columns
+        # Notion object properties are system columns
         for colname, coltype, field in cls._SYSTEM_COLUMNS_DATABASE:
             rows.append(
                 (
                     colname,
                     coltype,
                     None,
-                    database[field],
+                    # result processors expects new contract for "title" objects (issue #290)
+                    {"title": database[field]} if field == "title" else database[field],
                     True,               # is system column
                 )
             )
 
-        # user defined columns
+        # "properties" object bears user defined columns
         for name, prop in database["properties"].items():
             typ = prop["type"]
             rows.append(
@@ -173,7 +177,8 @@ class ResultSet:
                     name,
                     typ,
                     prop["id"],
-                    prop[typ],
+                    # result processors expects new contract for "title" objects (issue #290)
+                    {typ: prop[typ]},
                     False,              # is user defined
                 )
             )

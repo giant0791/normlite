@@ -425,14 +425,14 @@ def test_resultset_fetch_first(prefilled_client: InMemoryNotionClient, database_
     get_col_name = row_getters.getter("name")
 
     assert not get_in_trash(first)
-    assert rich_text_to_plain_text(get_col_name(first)) == "Galileo Galilei"
+    assert rich_text_to_plain_text(get_col_name(first)["title"]) == "Galileo Galilei"
 
 def test_resultset_fetchall(prefilled_client: InMemoryNotionClient, database_id: str, row_description: tuple[tuple, ...]):
     results = prefilled_client.databases_query({"database_id": database_id})
     resultset = ResultSet.from_json(row_description, results)
     row_getters = _RowGetter(row_description)
     get_col_name = row_getters.getter("name")   
-    all = [rich_text_to_plain_text(get_col_name(row)) for row in resultset]
+    all = [rich_text_to_plain_text(get_col_name(row)["title"]) for row in resultset]
 
     assert ["Galileo Galilei", "Isaac Newton", "Ada Lovelace"] == all
 
@@ -497,7 +497,7 @@ def test_resultset_database_cols_from_json_extract_table_name(
     table_name_metadata_row = get_table_name_metadata(resultset._rows)
     table_name = get_table_name(table_name_metadata_row)
 
-    assert rich_text_to_plain_text(table_name) == "students"
+    assert rich_text_to_plain_text(table_name["title"]) == "students"
 
 def test_resultset_last_inserted_rowids_from_pages(
     prefilled_client: InMemoryNotionClient, #

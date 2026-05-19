@@ -348,3 +348,6 @@ def test_relation_result_processor_ignores_extra_notion_fields():
     }
     assert result(notion_response) == ["page-id-1", "page-id-2"]
 
+def test_relation_result_processor_rejects_unwrapped_list():
+    with pytest.raises(ValueError):
+        Relation().result_processor()([{"id": "p1"}])

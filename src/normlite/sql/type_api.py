@@ -91,6 +91,9 @@ DEFAULT_DATE_FORMAT = "%Y-%m-%d"
 class TypeEngine(Protocol):
     """Base class for all Notion/SQL datatypes.
 
+    .. versionchanged:: 0.11.0
+        The class is runtime checkable.
+    
     .. versionchanged:: 0.8.0
         :class:`TypeEngine` now defines a new processor API for processing filter values.
         Notion requires this additional processor API as filter values used in queries
@@ -107,7 +110,19 @@ class TypeEngine(Protocol):
         return None
 
     def result_processor(self) -> Optional[Callable[[Any], Any]]:
-        """SQL/Notion → Python (process values after fetching)."""
+        """SQL/Notion → Python (process values after fetching).
+        
+        Provide a result processor function.
+        It expects Notion objects as dictionaries: ``{"type": property["type"]}``, where ``property`` is 
+        one of the keys in the object's "properties" dictionary.
+
+        .. versionchanged:: 0.11.0
+            From this version on, the new contract provided by the DBAPI layer is implemented.
+
+        .. selalso::
+            :meth:`normlite.notiondbapi.resultset.ResultSet._process_page`
+
+        """
         return None
     
     def filter_value_processor(self) -> Optional[Callable[[Any], Any]]:
@@ -171,7 +186,7 @@ class TypeEngine(Protocol):
         if not isinstance(value, dict):
             raise ValueError(
                 f'{self.get_col_spec()} value must be a dict. '
-                f'Value type is: {value.__class__.__name__}'
+                f'Value type is: {type(value).__name__}'
             )
     
 _NumericType: TypeAlias = Union[int, Decimal]
@@ -230,29 +245,18 @@ class Number(TypeEngine):
         def process(value: Optional[Union[_NumericType, str]]) -> Optional[dict]:
             if value is None:
                 return None
-            return {self.get_col_spec(): value}
+            return {
+                self.get_col_spec(): 
+                float(value) if isinstance(value, Decimal) 
+                else value
+            }
         return process
     
-    def _normalize_value_for_result_processing(self, value: Union[int, float, dict]) -> dict[Union[int, float]]:
-        if isinstance(value, (int, float)):
-            return {
-                self.get_col_spec(): value
-            }
-        
-        if isinstance(value, dict):
-            return value
-        
-        raise ValueError(
-            'Number value can be either float, int, or dict. '
-            f'Value type is: {value.__class__.__name__}'
-        )
-
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[_NumericType]:
             if value is None:
                 return None
             
-            value = self._normalize_value_for_result_processing(value)
             self._raise_if_val_not_dict(value)
             num_value = value.get(self.get_col_spec())
             if isinstance(num_value, Decimal):
@@ -364,31 +368,16 @@ class String(TypeEngine):
                 return None
             return {self.get_col_spec(): [{'text': {'content': str(value)}}]}
         return process
-    
-    def _normalize_value_for_result_processing(self, value: Union[dict, list]) -> dict:
-            if isinstance(value, list):
-                return {
-                    self.get_col_spec(): value
-                }
-
-            if isinstance(value, dict):
-                return value
-            
-            raise ValueError(
-                'String value must be either a dict or list. '
-                f'Value type is: {value.__class__.__name__}'
-            )
-    
+        
     def result_processor(self):
-        def process(value: Optional[Union[dict, list]]) -> Optional[str]:
+        def process(value: Optional[dict]) -> Optional[str]:
             if value is None:
                 return None
-        
-            # **new** in 0.9.0: both dict and list values supported
-            text_value = self._normalize_value_for_result_processing(value)
-            
+
+            self._raise_if_val_not_dict(value)
+
             # Notion rich_text is a list of text objects → extract 'text'
-            return rich_text_to_plain_text(text_value.get(self.get_col_spec(), []))
+            return rich_text_to_plain_text(value.get(self.get_col_spec(), []))
         
         return process
 
@@ -438,33 +427,13 @@ class Boolean(TypeEngine):
             return {self.get_col_spec(): bool(value)}
         return process
     
-    def _normalize_value_for_result_processing(self, value: Union[bool, dict]) -> dict:
-        if isinstance(value, dict):
-            return value
-        
-        if isinstance(value, bool):
-            return {
-                self.get_col_spec(): value
-            }
-        
-        raise ValueError(
-            f"""
-                Boolean value must be either a bool or a dict.
-                Type of value argument: {value.__class__.__name__}
-            """
-        )
-
     def result_processor(self):
-        def process(value: Optional[Union[bool, dict]]) -> Optional[bool]:
+        def process(value: Optional[dict]) -> Optional[bool]:
             if value is None:
                 return None
             
-            value = self._normalize_value_for_result_processing(value)
-            bool_value = value.get(self.get_col_spec())
-            if bool_value is None:
-                raise TypeError('Boolean value must have "checkbox" object')
-            
-            return bool_value
+            self._raise_if_val_not_dict(value)
+            return value.get(self.get_col_spec())
             
         return process
     
@@ -816,10 +785,7 @@ class Date(TypeEngine):
             if value is None:
                 return None
 
-            self._raise_if_val_not_dict(value)
-            if value.get("date") is None:
-                value = {self.get_col_spec(): value}
-                
+            self._raise_if_val_not_dict(value)                
             return DateTimeRange.from_json(value)
 
         return process
@@ -932,19 +898,13 @@ class Relation(TypeEngine):
         return process
     
     def result_processor(self):
-        def process(value: Any) -> Optional[list[str]]:
+        def process(value: Optional[dict]) -> Optional[list[str]]:
             if value is None:
                 return None
-            if isinstance(value, dict):
-                ids = value["relation"]
-            elif isinstance(value,  list):
-                ids = value
-            else:
-                raise ValueError(
-                    f"{self.get_col_spec()} value must be a list of ids. "
-                    f"Received: {value} ({type(value).__name__})"
-                )
-            return [d["id"] for d in ids]
+            
+            self._raise_if_val_not_dict(value)
+
+            return [d["id"] for d in value["relation"]]
         
         return process
         
