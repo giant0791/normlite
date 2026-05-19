@@ -1,15 +1,17 @@
 from collections import namedtuple
+import json
 import pdb
 import pytest
 
-from normlite.engine.base import Engine, Inspector, NotionAuthURI, NotionURI, _parse_uri, NotionSimulatedURI, Connection
+from normlite.engine.base import Engine, Inspector, NotionAuthURI, NotionURI, _parse_uri, NotionSimulatedURI, Connection, create_engine
 from normlite.engine.systemcatalog import TableState
-from normlite.exceptions import ArgumentError
-from normlite.notion_sdk.client import InMemoryNotionClient
+from normlite.exceptions import ArgumentError, InvalidRequestError
+from normlite.notion_sdk.client import FileBasedNotionClient, InMemoryNotionClient
 from normlite.notion_sdk.getters import get_object_id, get_parent_id, get_property, get_rich_text_property_value, get_title
 from normlite.notiondbapi.dbapi2 import Cursor
+from normlite.sql.dml import insert, select
 from normlite.sql.reflection import ReflectedColumnInfo
-from normlite.sql.schema import MetaData, Table
+from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Number, String
 from tests.utils.assertions import assert_is_valid_uuid4, is_valid_uuid4
 from tests.utils.db_helpers import create_students_db
@@ -215,13 +217,194 @@ def test_engine_inspector_reflect_user_table(engine: Engine, inspector: Inspecto
     assert 'is_active' in students.c
     assert isinstance(students.c.is_active.type_, Boolean)
         
+# -----------------------------------------------
+# Engine disposal
+# -----------------------------------------------
+
+def test_connect_after_dispose_raises_invalid_request_error():
+    # Arrange: a freshly constructed in-memory engine that we then dispose
+    engine = create_engine("normlite:///:memory:")
+    engine.dispose()
+
+    # Act + Assert: any further attempt to obtain a Connection must be rejected
+    with pytest.raises(InvalidRequestError, match="Engine has been disposed"):
+        engine.connect()
 
 
+def test_raw_connection_after_dispose_raises_invalid_request_error():
+    # Arrange: a freshly constructed in-memory engine that we then dispose
+    engine = create_engine("normlite:///:memory:")
+    engine.dispose()
 
+    # Act + Assert: the lower-level DBAPI handle must also reject use after disposal
+    with pytest.raises(InvalidRequestError, match="Engine has been disposed"):
+        engine.raw_connection()
 
+def test_disposed_property_reflects_engine_lifecycle_state():
+    # Arrange: a freshly constructed in-memory engine
+    engine = create_engine("normlite:///:memory:")
 
+    # Assert (pre): a brand-new engine is not disposed
+    assert engine.disposed is False
 
+    # Act: dispose the engine
+    engine.dispose()
 
+    # Assert (post): the engine now reports itself as disposed
+    assert engine.disposed is True
 
+def test_dispose_calls_underlying_client_close(monkeypatch):
+    # Arrange: a freshly constructed in-memory engine
+    engine = create_engine("normlite:///:memory:")
 
+    # Instrument the engine's collaborator so we can observe the disposal-time interaction.
+    # InMemoryNotionClient.close() is a no-op, so without instrumentation the cascade
+    # would have no observable side effect — the acceptance criterion would be untestable.
+    close_calls = []
+    monkeypatch.setattr(
+        engine._client,
+        "close",
+        lambda: close_calls.append("called"),
+    )
 
+    # Act
+    engine.dispose()
+
+    # Assert: dispose() delegated termination to the client exactly once
+    assert close_calls == ["called"]
+
+def test_dispose_is_idempotent_and_does_not_double_call_close(monkeypatch):
+    # Arrange: a freshly constructed in-memory engine, with the client's close()
+    # instrumented so we can count invocations
+    engine = create_engine("normlite:///:memory:")
+    close_calls = []
+    monkeypatch.setattr(
+        engine._client,
+        "close",
+        lambda: close_calls.append("called"),
+    )
+
+    # Act: dispose twice in succession; the second call must not raise
+    engine.dispose()
+    engine.dispose()
+
+    # Assert: close() was delegated to the client exactly once across both dispose() calls,
+    # and the engine remains in its terminal state
+    assert close_calls == ["called"]
+    assert engine.disposed is True
+
+def test_dispose_marks_engine_terminal_even_when_client_close_raises(monkeypatch):
+    # Arrange: a freshly constructed in-memory engine whose client.close()
+    # will raise a real I/O error
+    engine = create_engine("normlite:///:memory:")
+
+    def failing_close():
+        raise OSError("disk full")
+
+    monkeypatch.setattr(engine._client, "close", failing_close)
+
+    # Act + Assert (propagation): dispose() must surface the underlying I/O exception
+    # unchanged — no wrapping, no swallowing
+    with pytest.raises(OSError, match="disk full"):
+        engine.dispose()
+
+    # Assert (terminal-state invariant): even though close() raised, the engine has
+    # committed to its disposed state. "After dispose has been called, the engine is
+    # over" — whether it returned cleanly or not.
+    assert engine.disposed is True
+
+def test_with_block_disposes_engine_on_clean_exit():
+    # Arrange + Act: open the engine in a with-statement and let it exit cleanly
+    with create_engine("normlite:///:memory:") as engine:
+        # Inside the block, the `as` target points at a live engine — not yet disposed
+        assert engine.disposed is False
+
+    # After the with-block exits, the engine is in its terminal state
+    assert engine.disposed is True
+
+def test_with_block_propagates_exception_and_still_disposes_engine():
+    # Act + Assert (propagation): the RuntimeError raised inside the inner with-block
+    # must escape — the context manager must not swallow it
+    with pytest.raises(RuntimeError, match="boom"):
+        with create_engine("normlite:///:memory:") as engine:
+            raise RuntimeError("boom")
+
+    # Assert (cleanup-on-error): even though the block exited via an exception,
+    # __exit__ disposed the engine
+    assert engine.disposed is True
+
+def test_create_engine_with_file_uri_constructs_file_based_client(tmp_path):
+    # Arrange: a file URI pointing into a per-test tmp directory.
+    # The path does not need to pre-exist — without read_only=True, the create-new
+    # path is legitimate (see slice #296).
+    store_path = tmp_path / "store.json"
+    file_uri = f"normlite:{store_path}"
+
+    # Act: build the engine. root_page_id is required for file URIs (existing contract).
+    engine = create_engine(file_uri)
+
+    # Assert: the engine constructed a file-backed client...
+    assert isinstance(engine._client, FileBasedNotionClient)
+
+    # ...and the client points at the path encoded in the URI.
+    assert engine._client._path == store_path
+
+def test_create_engine_rejects_read_only_with_memory_uri():
+    # Act + Assert: read_only is meaningless against a :memory: URI — there is no
+    # file to read from and no file to protect from writes — so the engine must
+    # reject the misuse at construction time.
+    with pytest.raises(ArgumentError, match="read_only is only valid for file-based URIs"):
+        create_engine("normlite:///:memory:", read_only=True)
+
+def test_create_engine_passes_read_only_through_to_file_based_client(tmp_path):
+    # Arrange: a minimal valid store on disk. With read_only=True and the default
+    # auto_load=True, the client requires the file to exist (slice #296's check),
+    # so we seed an empty-but-versioned store.
+    store_path = tmp_path / "fixture.json"
+    store_path.write_text(json.dumps({"version": 1, "objects": {}}))
+    file_uri = f"normlite:{store_path}"
+
+    # Act: build the engine with read_only=True
+    engine = create_engine(file_uri, read_only=True)
+
+    # Assert: the kwarg traveled all the way through Engine.__init__ and
+    # _create_client into the FileBasedNotionClient constructor.
+    assert isinstance(engine._client, FileBasedNotionClient)
+    assert engine._client._read_only is True
+
+def test_file_engine_round_trip_persists_data_and_preserves_file_under_read_only(tmp_path):
+    # Arrange: a file URI pointing into tmp_path; the file does not yet exist
+    store_path = tmp_path / "store.json"
+    file_uri = f"normlite:{store_path}"
+
+    # --- Phase 1: write a row through a file-backed engine ---
+    with create_engine(file_uri) as engine:
+        metadata = MetaData()
+        students = Table(
+            "students",
+            metadata,
+            Column("name", String(is_title=True)),
+        )
+        metadata.create_all(engine)
+        with engine.connect() as connection:
+            connection.execute(insert(students).values(name="Galileo"))
+
+    # After the write block exits, the store has been flushed to disk
+    assert store_path.exists()
+    bytes_after_write = store_path.read_bytes()
+
+    # --- Phase 2: reopen read-only, REFLECT the table (no writes), query ---
+    with create_engine(file_uri, read_only=True) as engine:
+        metadata = MetaData()
+        students = Table("students", metadata)                 # empty — reflection fills it
+        engine.inspect().reflect_table(students)
+        with engine.connect() as connection:
+            result = connection.execute(select(students))
+            rows = result.all()
+
+    # The inserted row survived the dispose → reopen round-trip
+    assert len(rows) == 1
+    assert rows[0].name == "Galileo"
+
+    # The read-only session did not modify the file on disk
+    assert store_path.read_bytes() == bytes_after_write
