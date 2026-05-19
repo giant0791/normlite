@@ -68,7 +68,6 @@ def test_update_bulk_parameters_structure(engine, prepared_students):
     assert ctx.bulk_parameters is not None
     assert len(ctx.bulk_parameters) == 5
     first = ctx.bulk_parameters[0]
-    print("bulk_params[0]:", first)
     assert 'path_params' in first
     assert 'payload' in first
     assert 'properties' in first['payload']

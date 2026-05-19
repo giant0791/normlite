@@ -51,7 +51,7 @@ class Row:
         self._values[2] = col_id
         column_value = None
         if col_type == "relation":
-            column_value = col_value["database_id"]
+            column_value = col_value["relation"]["database_id"]
 
         self._values[3] = result_proc(col_value) if is_system else column_value
 

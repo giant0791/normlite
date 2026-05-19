@@ -278,7 +278,7 @@ def test_fetchone_returns_first_row_found(
     first_page = client("pages", "retrieve", path_params={"page_id": pages[0]["id"]})
     first = cursor.fetchone()
 
-    assert rich_text_to_plain_text(get_name(first)) == rich_text_to_plain_text(
+    assert rich_text_to_plain_text(get_name(first)["title"]) == rich_text_to_plain_text(
         first_page["properties"]["name"]["title"]
     )
     assert not cursor.closed
@@ -300,13 +300,13 @@ def test_fetchone_consumes_cursor(
 
     should_be_none = cursor.fetchone()
 
-    assert rich_text_to_plain_text(get_name(first)) == rich_text_to_plain_text(
+    assert rich_text_to_plain_text(get_name(first)["title"]) == rich_text_to_plain_text(
         first_page["properties"]["name"]["title"]
     )
-    assert rich_text_to_plain_text(get_name(second)) == rich_text_to_plain_text(
+    assert rich_text_to_plain_text(get_name(second)["title"]) == rich_text_to_plain_text(
         second_page["properties"]["name"]["title"]
     )
-    assert rich_text_to_plain_text(get_name(third)) == rich_text_to_plain_text(
+    assert rich_text_to_plain_text(get_name(third)["title"]) == rich_text_to_plain_text(
         third_page["properties"]["name"]["title"]
     )
     assert should_be_none is None
@@ -350,10 +350,10 @@ def test_fetchall_returns_all_rows_found(
     should_be_none = cursor.fetchone()
 
     assert len(rows) == 100
-    assert rich_text_to_plain_text(get_name(rows[0])) == rich_text_to_plain_text(
+    assert rich_text_to_plain_text(get_name(rows[0])["title"]) == rich_text_to_plain_text(
         first_page["properties"]["name"]["title"]
     )
-    assert rich_text_to_plain_text(get_name(rows[-1])) == rich_text_to_plain_text(
+    assert rich_text_to_plain_text(get_name(rows[-1])["title"]) == rich_text_to_plain_text(
         last_page["properties"]["name"]["title"]
     )
     assert should_be_none is None
