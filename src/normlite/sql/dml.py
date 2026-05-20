@@ -28,11 +28,13 @@ import collections.abc as collections_abc
 import warnings
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable, ClauseElement, generative
-from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElement
+from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement
 from normlite.sql.resultschema import SchemaInfo
+from normlite.sql.type_api import Relation
+from normlite.sql.schema import Column
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
+    from normlite.sql.schema import Table, ReadOnlyColumnCollection
     from normlite.engine.interfaces import _CoreAnyExecuteParams
     from normlite.engine.cursor import CursorResult
     from normlite.engine.base import Connection
@@ -556,6 +558,8 @@ class Select(HasTable, ExecutableClauseElement):
     _projection: ReadOnlyColumnCollection
     """The column names to be projected in this select statement."""
 
+    _right: Optional[Table] = None
+
     def __init__(self, *entities: Union[Table, Column]):
         from normlite.sql.schema import Column, Table
 
@@ -570,6 +574,10 @@ class Select(HasTable, ExecutableClauseElement):
         self._whereclause = WhereClause()
         self._order_by = OrderByClause()
 
+        # a tuple is than a list because it forces rebind-not-mutate discipline
+        # see how WhereClause and OrderByClause both encapsulate a tuple of clauses
+        self._joins: tuple[Join] = ()
+
         if len(entities) == 1 and isinstance(entities[0], Table):
             # a Table object has been provided
             table = entities[0]
@@ -578,6 +586,14 @@ class Select(HasTable, ExecutableClauseElement):
             # project all columns
             self._projection = self._table.c
             return
+        
+        if len(entities) == 2:
+            if isinstance(entities[0], Table) and isinstance(entities[1], Table):
+                # select columns from multiple tables: join case
+                self._table = entities[0]
+                self._right = entities[1]
+                self._projection = ColumnCollection().as_readonly()
+                return 
 
         # A list of columns has been provided
         tables = set()
@@ -626,8 +642,53 @@ class Select(HasTable, ExecutableClauseElement):
         self._order_by = self._order_by.add(*clauses)
         return self
 
+    @generative
+    def join(self, onclause: ColumnElement) -> Self:
+        if isinstance(onclause, BinaryExpression):
+            inner_col = onclause.column
+            if not isinstance(inner_col.type_, Relation):
+                raise ArgumentError(
+                    f"join() onclause must be a BinaryExpression with a Relation column, got '{inner_col.name}' "
+                    f"(type: {type(inner_col.type_).__name__})"
+                )
+    
+            if inner_col.parent is not self._table:
+                message = f"""
+                    join() onclause must a BinaryExpression and its column '{inner_col.name}' 
+                    must belong to left table '{self._table.name}',
+                    got column '{inner_col.name}' on table '{inner_col.parent.name}'
+                """
+                raise ArgumentError(message)
+        elif isinstance(onclause, Column):
+            if not isinstance(onclause.type_, Relation):
+                    raise ArgumentError(
+                        f"join() onclause must be a Relation column, got '{onclause.name}' "
+                        f"(type: {type(onclause.type_).__name__})"
+                    )
+        
+            if onclause.parent is not self._table:
+                message = f"""
+                    join() onclause must belong to left table '{self._table.name}',
+                    got column '{onclause.name}' on table '{onclause.parent.name}'
+                """
+                raise ArgumentError(message)
+        
+        else: 
+            raise ArgumentError(
+                f"join() onclause must be a Column "
+                f"or BinaryExpression, got {type(onclause).__name__}"
+            )
+
+        # mutate-vs-rebind: here you create a new tuple
+        self._joins = (*self._joins, Join(self._table, self._right, onclause))
+        return self
+
     def _setup_execution(self, context: ExecutionContext) -> None:
-        # nothing to be setup
+        # guard against execution if joins are non-empty
+        if self._joins:
+            raise NotImplementedError("Join-clause implemented in future slice: #304")
+        
+        # nothing to do for select without join clause
         pass
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
@@ -804,3 +865,34 @@ class Update(ValuesBase):
 
 def update(table: Table) -> Update:
     return Update(table)
+
+class Join(ClauseElement):
+    """Represent a ``JOIN`` construct between two tables.
+    
+    .. versionadded:: 0.11.0
+    """
+    __visit_name__ = "join"
+    
+    left: Table
+    """Left side of the ``JOIN``"""
+
+    right: Table
+    """Right side of the ``JOIN``"""
+
+    onclause: Column
+    """The column representing the ``ON`` clause of the join"""
+
+    isouter: bool
+    """if True, render a ``LEFT OUTER JOIN``, instead of ``JOIN``"""
+
+    def __init__(
+        self,
+        left: Table,
+        right: Table,
+        onclause: Column,
+        isouter: bool = False
+    ):
+        self.left = left
+        self.right = right
+        self.onclause = onclause
+        self.isouter = isouter

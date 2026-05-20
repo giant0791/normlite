@@ -33,7 +33,7 @@ from normlite.sql.schema import Column, ReadOnlyColumnCollection
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
-    from normlite.sql.dml import Insert, Select
+    from normlite.sql.dml import Insert, Select, Join
     from normlite.sql.elements import UnaryExpression, BinaryExpression, BindParameter
 
 class NotionCompiler(SQLCompiler):
@@ -519,6 +519,14 @@ class NotionCompiler(SQLCompiler):
             'direction': expr.direction
         }
 
+    def visit_join(self, join: Join) -> dict:
+        return {
+            "left": join.left.name,
+            "right": join.right.name,
+            "onclause": join.onclause.name,
+            "isouter": join.isouter
+        }
+
     def visit_select(self, select: Select) -> dict:
         self._compiler_state.is_select = select.is_select
         self._compiler_state.stmt = select
@@ -588,6 +596,12 @@ class NotionCompiler(SQLCompiler):
             'path_params': path_params, 
             'payload': payload
         }
+
+        # add a new top-level 'joins' key to store the joins, if any
+        joins = [j.compile(self).as_dict() for j in select._joins]
+        if joins:
+            # emit only when non-empty
+            compiled_dict["joins"] = joins
 
         if query_params:           
             compiled_dict['query_params'] = query_params
