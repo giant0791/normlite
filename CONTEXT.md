@@ -33,6 +33,26 @@ Translates a DML/DDL AST into a `compiled_dict` — a JSON-like dict with keys `
 `path_params`, `payload`, and (for UPDATE) `update_payload`. Named placeholders (`:param`) are
 resolved at execution time by `ExecutionContext`.
 
+### Compiler entry points: `.compile()` vs `._compiler_dispatch()`
+Every `ClauseElement` exposes two compilation entry points with **different lifecycle
+semantics**. Confusing them is a real footgun.
+
+- **`.compile(compiler)`** — public, top-level entry. **Resets `compiler._compiler_state`
+  to a fresh `CompilerState()`** before dispatch, and wraps the result in a `Compiled`
+  (or `DDLCompiled`) object. Use this only when compiling a *statement* from outside
+  the compiler (e.g. `stmt.compile(NotionCompiler())` in tests, or from
+  `Connection._execute_context`).
+- **`._compiler_dispatch(compiler)`** — internal, recursive visitor dispatch.
+  **Preserves `_compiler_state`** and returns the raw dict produced by the matching
+  `visit_*` method. Use this from any `visit_*` method when descending into sub-nodes
+  (`whereclause`, `order_by` clauses, `joins`, expressions).
+
+**The trap**: calling `.compile()` from inside a `visit_*` method (e.g.
+`[j.compile(self) for j in select._joins]`) silently clobbers the in-flight
+`_compiler_state` for every sub-node and leaves `_compiler_state.stmt = None` by the
+time the outer `visit_select` returns. Use `_compiler_dispatch` for sub-node descent;
+reserve `compile` for the outermost call.
+
 ### Execution Pipeline
 The sequence: compile → `pre_exec` (bind params) → `_setup_execution` (Notion API call(s)) →
 `_execute_*` → `post_exec` → `_finalize_execution` (cursor routing).
