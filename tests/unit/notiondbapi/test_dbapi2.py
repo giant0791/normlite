@@ -7,7 +7,7 @@ from faker import Faker
 
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.notion_sdk.getters import rich_text_to_plain_text
-from normlite.notiondbapi.dbapi2 import Cursor, ProgrammingError
+from normlite.notiondbapi.dbapi2 import Connection, Cursor, ProgrammingError
 
 @pytest.fixture
 def client() -> InMemoryNotionClient:
@@ -226,7 +226,7 @@ get_name = itemgetter(4)
 #----------------------------------------------------------------
 
 def test_description_none_if_no_execute(client: InMemoryNotionClient):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
 
     assert cursor.description is None
 
@@ -234,7 +234,7 @@ def test_description_none_if_no_rows(
     client: InMemoryNotionClient, 
     row_description: tuple[tuple, ...],
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, pages = generate_pages(client, n=10)
     execute_query_returns_no_rows(cursor, row_description, database_id)
 
@@ -244,7 +244,7 @@ def test_description_none_on_closed_cursor(
     client: InMemoryNotionClient, 
     row_description: tuple[tuple, ...],
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, pages = generate_pages(client, n=10)
     execute_query_returns_all_rows(cursor, row_description, database_id)
     cursor.close()
@@ -259,7 +259,7 @@ def test_fetchone_returns_none_if_no_rows_found(
     client: InMemoryNotionClient, 
     row_description: tuple[tuple, ...],
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, pages = generate_pages(client, n=10)
     cursor._inject_description(row_description)
     execute_query_returns_no_rows(cursor, row_description, database_id)
@@ -271,7 +271,7 @@ def test_fetchone_returns_first_row_found(
     client: InMemoryNotionClient, 
     row_description: tuple[tuple, ...],
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, pages = generate_pages(client, n=10)
     cursor._inject_description(row_description)
     execute_query_returns_all_rows(cursor, row_description, database_id)
@@ -287,7 +287,7 @@ def test_fetchone_consumes_cursor(
     client: InMemoryNotionClient, 
     row_description: tuple[tuple, ...],
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, pages = generate_pages(client, n=3)
     cursor._inject_description(row_description)
     execute_query_returns_all_rows(cursor, row_description, database_id)
@@ -316,7 +316,7 @@ def test_fetchone_raises_on_closed_cursor(
     client: InMemoryNotionClient, 
     row_description: tuple[tuple, ...],
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, _ = generate_pages(client, n=3)
     cursor._inject_description(row_description)
     execute_query_returns_all_rows(cursor, row_description, database_id)
@@ -328,7 +328,7 @@ def test_fetchone_raises_on_closed_cursor(
 def test_fetchone_raises_if_no_execute(
     client: InMemoryNotionClient, 
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     with pytest.raises(ProgrammingError):
         _ = cursor.fetchone()
 
@@ -340,7 +340,7 @@ def test_fetchall_returns_all_rows_found(
     client: InMemoryNotionClient, 
     row_description: tuple[tuple, ...],
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, pages = generate_pages(client, n=100)
     cursor._inject_description(row_description)
     execute_query_returns_all_rows(cursor, row_description, database_id)
@@ -362,14 +362,14 @@ def test_fetchall_returns_all_rows_found(
 def test_fetchall_raises_if_no_execute(
     client: InMemoryNotionClient, 
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     with pytest.raises(ProgrammingError):
         _ = cursor.fetchall()
 
 def test_fetchall_raises_on_closed_cursor(
     client: InMemoryNotionClient, 
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     cursor.close()
     with pytest.raises(ProgrammingError):
         _ = cursor.fetchall()
@@ -383,7 +383,7 @@ def test_fetch_many_returns_arrasize_multiples_of_rows(
     client: InMemoryNotionClient,
     row_description: tuple[tuple, ...]
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, inserted_rows = generate_pages(client, 16)
     execute_query_returns_all_rows(cursor, row_description, database_id)
     cursor.arraysize = 8
@@ -399,14 +399,14 @@ def test_fetch_many_returns_arrasize_multiples_of_rows(
 def test_fetchmany_raises_if_no_execute(
     client: InMemoryNotionClient, 
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     with pytest.raises(ProgrammingError):
         _ = cursor.fetchmany()
 
 def test_fetchmany_raises_on_closed_cursor(
     client: InMemoryNotionClient, 
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     cursor.close()
     with pytest.raises(ProgrammingError):
         _ = cursor.fetchmany()
@@ -416,14 +416,14 @@ def test_fetchmany_raises_on_closed_cursor(
 #----------------------------------------------------------------
 
 def test_rowcount_returns_minus_one_if_no_execute(client):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     assert cursor.rowcount == -1
 
 def test_rowcount_returns_zero_if_no_rows_found(        
     client: InMemoryNotionClient,
     row_description: tuple[tuple, ...]
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, inserted_rows = generate_pages(client, 1000)
     execute_query_returns_no_rows(cursor, row_description, database_id)
     
@@ -434,7 +434,7 @@ def test_rowcount_returns_count_of_all_rows_found(
     row_description: tuple[tuple, ...]
 ):
     n_pages = 100
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, _ = generate_pages(client, n_pages)
     execute_query_returns_all_rows(cursor, row_description, database_id)
 
@@ -449,7 +449,7 @@ def test_lastrowid_returns_last_inserted_id(
     row_description: tuple[tuple, ...]
 ):
     n_pages = 100
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, inserted_rows = generate_pages(client, n_pages)
     execute_query_returns_all_rows(cursor, row_description, database_id)
     # check generate_pages() for how inserted rows are returned
@@ -460,7 +460,7 @@ def test_lastrowid_returns_last_inserted_id(
 def test_lastrowid_returns_none_if_table_metadata_retrieved(
     client: InMemoryNotionClient,
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, inserted_rows = generate_pages(client, n=10)
     # retrieve "students" database
     cursor.execute(
@@ -476,7 +476,7 @@ def test_lastrowid_returns_none_if_no_rows_modified(
     client: InMemoryNotionClient,
     row_description: tuple[tuple, ...]
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, inserted_rows = generate_pages(client, n=10)
     execute_query_returns_no_rows(cursor, row_description, database_id)
     assert len(cursor.fetchall()) == 0
@@ -508,7 +508,7 @@ def test_executemany_executes_all_operations(
     """
 
     # pre-fill the client
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, _ = generate_pages(client, n=10)
     
     # get all pages belonging to the database
@@ -540,7 +540,7 @@ def test_executemany_produces_multiple_result_sets(
     """
 
     # pre-fill the client
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, _ = generate_pages(client, n=10)
     
     pages = return_all_pages_in_database(client, database_id)
@@ -562,6 +562,31 @@ def test_executemany_produces_multiple_result_sets(
     assert len(rows) == 1
 
 
+def test_executemany_default_errorhandler_raises_translated_notion_error(
+    client: InMemoryNotionClient,
+):
+    """A NotionError during executemany must route through the cursor's default
+    errorhandler (inherited from the connection) and surface as the translated
+    DBAPI error.
+
+    Regression for the ``Cursor(connection)`` refactor: the cursor never
+    initialised ``_errorhandler`` (the getter would raise AttributeError) and
+    the getter read the connection's misspelled ``error_handler`` attribute.
+    With no per-cursor handler set, ``cursor.errorhandler`` must fall back to
+    ``connection.errorhandler`` (the default), which re-raises ``errorvalue``.
+    """
+    # no per-cursor errorhandler override -> must use the connection's default
+    cursor = Cursor(Connection(client))
+
+    # retrieving a non-existent page makes the client raise a
+    # NotionError(code="object_not_found"), translated to ProgrammingError
+    with pytest.raises(ProgrammingError):
+        cursor.executemany(
+            operation={"endpoint": "pages", "request": "retrieve"},
+            parameters=[{"path_params": {"page_id": "does-not-exist"}}],
+        )
+
+
 def test_next_moves_to_next_result_set(
     client: InMemoryNotionClient,
     row_description: tuple[tuple, ...]
@@ -570,7 +595,7 @@ def test_next_moves_to_next_result_set(
     next() should move the cursor to the next result set.
     """
 
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, _ = generate_pages(client, n=10)
     pages = return_all_pages_in_database(client, database_id)
     params = [build_trash_operation(p["id"]) for p in pages]
@@ -602,7 +627,7 @@ def test_next_allows_iterating_all_result_sets(
     All result sets should be reachable through next().
     """
 
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, _ = generate_pages(client, n=100)
     pages = return_all_pages_in_database(client, database_id)
     params = [build_trash_operation(p["id"]) for p in pages]
@@ -635,7 +660,7 @@ def test_next_on_last_result_set_exhausts_results(
     Calling next() after the last result set should exhaust the cursor.
     """
 
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, _ = generate_pages(client, n=100)
     pages = return_all_pages_in_database(client, database_id)
     params = [build_trash_operation(p["id"]) for p in pages]
@@ -661,7 +686,7 @@ def test_rowcount_returns_sum_of_resultsets(
     client: InMemoryNotionClient,
     row_description: tuple[tuple, ...]
 ):
-    cursor = Cursor(client)
+    cursor = Cursor(Connection(client))
     database_id, _ = generate_pages(client, n=100)
     pages = return_all_pages_in_database(client, database_id)
     params = [build_trash_operation(p["id"]) for p in pages]

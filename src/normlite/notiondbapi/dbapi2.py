@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 from operator import itemgetter
-from typing import Any, Dict, Iterator, List, Literal, NoReturn, Optional, Self, Sequence, Tuple, TypeAlias, Union
+from typing import Any, Callable, Dict, Iterator, List, Literal, NoReturn, Optional, Self, Sequence, Tuple, Type, TypeAlias, Union
 from itertools import islice
 import uuid
 from flask.testing import FlaskClient
@@ -39,6 +39,28 @@ DBAPIParamStyle = Literal[
 
 DBAPIExecuteParameters: TypeAlias = dict     # in future, Union[dict, Sequence[dict]] for multi execute params
 """Type for parameters passed to for SQL statement execution."""
+
+type DBAPIErrorHandlerType = Callable[[Connection, Cursor, Type[BaseException], BaseException], None]
+"""Type alias for PEP 249 ``errorhandler`` to call in case of error conditions.
+
+    .. versionadded:: 0.11.0
+ """
+
+def _default_errorhandler(
+    connection: Connection, 
+    cursor: Cursor, 
+    errorclass: Type[BaseException],
+    errorvalue: BaseException
+) -> None:
+                          
+    """Default PEP 249 error handler.
+    
+    The default error handler simply raises the ``errorvalue``.
+
+    .. versionadded:: 0.11.0
+    """
+    raise errorvalue
+
 
 class Error(Exception):
     """Base class of all other error exceptions.
@@ -121,8 +143,27 @@ class Cursor:
     .. versionadded:: 0.7.0
 
     """
-    def __init__(self, client: AbstractNotionClient):
-        self._client = client
+
+    _errorhandler: DBAPIErrorHandlerType
+    """Read/write attribute which references an error handler to call in case an error condition is met.
+    
+    .. versionadded:: 0.11.0
+    """
+    
+    def __init__(self, connection: Connection) -> None:
+        self._connection = connection
+        """The DBAPI connection this cursor refers to.
+
+        .. versionadded::0.11.0
+        """
+
+        self._errorhandler: Optional[DBAPIErrorHandlerType] = None
+        """Per-cursor error handler; falls back to the connection's when unset.
+
+        .. versionadded:: 0.11.0
+        """
+
+        self._client = connection._client
         """The client implementing the Notion API."""
 
         self._result_sets: list[ResultSet] = []
@@ -173,6 +214,14 @@ class Cursor:
         
         .. versionadded:: 0.9.0
         """
+
+    @property
+    def errorhandler(self) -> DBAPIErrorHandlerType:
+        return self._errorhandler or self._connection.errorhandler
+    
+    @errorhandler.setter
+    def errorhandler(self, fn: DBAPIErrorHandlerType) -> None:
+        self._errorhandler = fn
 
     @property
     def _current_result_set(self) -> Optional[ResultSet]:
@@ -685,39 +734,51 @@ class Cursor:
                 ) from ke
 
             except NotionError as ne:
-                # --- Database object does not exist -----------------------------
-                if ne.code == "object_not_found":
-                    raise ProgrammingError(
-                        f'NotionError("Object not found: {ne}'
-                    ) from ne
+                errorclass, errorvalue = self._translate_notion_error(ne)
+                self.errorhandler(self._connection, self, errorclass, errorvalue)
+                continue            # IMPORTANT: error is handled, do not abort the loop
 
-                # --- Authentication / authorization -----------------------------
-                if ne.code in {"unauthorized", "forbidden"}:
-                    raise OperationalError(
-                        f'Authentication/authorization failure: {ne}'
-                    ) from ne
-
-                # --- Rate limiting / availability -------------------------------
-                if ne.code in {"rate_limited", "service_unavailable"}:
-                    raise OperationalError(
-                        f'Backend temporarily unavailable: {ne}'
-                    ) from ne
-
-                # --- Malformed request / client misuse --------------------------
-                if ne.code in {"invalid_request", "validation_error"}:
-                    raise InterfaceError(
-                        f'Invalid request sent to backend: {ne}'
-                    ) from ne
-
-                # --- Fallback: backend rejected operation -----------------------
-                raise DatabaseError(
-                    f'Unhandled NotionError("{self._client.__class__.__name__}"): {ne}'
-                ) from ne
-            
             self._append_result_set(object_)
         
         return self
-        
+    
+    def _translate_notion_error(self, ne: NotionError) -> tuple[Type[Error], Error]:
+        """Map a NotionError to a DBAPI 2.0 (errorclass, errorvalue) pair.
+
+        Centralises the wrapping logic previously duplicated across
+        .execute() and .executemany(). Returns the pair rather than
+        raising so the caller can route through .errorhandler.
+
+        The returned errorvalue has ``__cause__`` set to the original
+        NotionError, matching what ``raise X(...) from ne`` would produce.
+        """
+        # --- Database object does not exist -----------------------------
+        if ne.code == "object_not_found":
+            exc = ProgrammingError(f'NotionError("Object not found: {ne}') 
+
+        # --- Authentication / authorization -----------------------------
+        elif ne.code in {"unauthorized", "forbidden"}:
+            exc = OperationalError(f'Authentication/authorization failure: {ne}')
+
+        # --- Rate limiting / availability -------------------------------
+        elif ne.code in {"rate_limited", "service_unavailable"}:
+            exc = OperationalError(f'Backend temporarily unavailable: {ne}')
+
+        # --- Malformed request / client misuse --------------------------
+        elif ne.code in {"invalid_request", "validation_error"}:
+            exc = InterfaceError(f'Invalid request sent to backend: {ne}')
+
+        else:
+        # --- Fallback: backend rejected operation -----------------------
+            exc = DatabaseError(
+                f'Unhandled NotionError("{self._client.__class__.__name__}"): {ne}'
+            )
+
+        # Mirror `raise X(...) from ne` semantics manually
+        exc.__cause__ = ne
+        exc.__suppress_context__ = True
+        return type(exc), exc
+            
     def nextset(self) -> bool:
         """Advance to the next available result set.
         
@@ -781,6 +842,12 @@ class Connection:
 
     """
 
+    errorhandler: DBAPIErrorHandlerType
+    """Read/write attribute which references an error handler to call in case an error condition is met.
+
+    .. versionadded:: 0.11.0
+    """
+
     def __init__(self, client: AbstractNotionClient, isolation_level: Optional[IsolationLevel] = 'AUTOCOMMIT'):
         self._isolation_level = isolation_level
         """The isolation level set for this database connection."""
@@ -790,6 +857,8 @@ class Connection:
 
         self._cursor: Cursor = None
         """Classic DBAPI cursor to execute operations and fetch rows."""
+
+        self.errorhandler = _default_errorhandler
 
     @property
     def autocommit(self) -> bool:
@@ -818,9 +887,8 @@ class Connection:
         """
  
         # IMPORTANT: The DBAPI connection must always procure a new cursor because this has a per-operation lifecyle
-        return Cursor(self._client)
-    
-    
+        return Cursor(self)
+        
     def _begin_transaction(self) -> None:
         """Begin a new transaction."""
 
