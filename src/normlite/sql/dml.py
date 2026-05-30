@@ -17,19 +17,21 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
+from normlite.notion_sdk.client import NotionError
 from normlite.notiondbapi import Error
+from normlite.notiondbapi.resultset import ResultSet
 from normlite.sql.schema import ColumnCollection
 
 import pdb
 from types import MappingProxyType
-from typing import Any, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING, Tuple
+from typing import Any, Callable, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Type, Union, TYPE_CHECKING, Tuple
 import collections.abc as collections_abc
 
 import warnings
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable, ClauseElement, generative
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement
-from normlite.sql.resultschema import SchemaInfo
+from normlite.sql.resultschema import ResultColumn, SchemaInfo
 from normlite.sql.type_api import Relation
 from normlite.sql.schema import Column
 
@@ -39,6 +41,97 @@ if TYPE_CHECKING:
     from normlite.engine.cursor import CursorResult
     from normlite.engine.base import Connection
     from normlite.engine.context import ExecutionContext
+    from normlite.notiondbapi.dbapi2 import DBAPIErrorHandlerType
+    from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
+    from normlite.notiondbapi.dbapi2 import Cursor as DBAPICursor 
+
+def build_phase_two_batch(
+    left_schema: SchemaInfo,
+    onclause_column: Column,
+    left_rows: list[tuple],
+) -> list[dict]:
+    """Return deduplicated `pages.retrieve` path_params for phase 2."""
+
+    # build the bulk parameters
+    # one parameter for each page_id contained in the FK relation column stored in
+    # each page returned by the databases.query
+    # REMEMBER: A Relation column stores non-scalar values -> list[str]
+    seen: set[str] = set()
+    bulk_params: list[dict] = []
+
+    get_fk_col = left_schema.column_getter(onclause_column.name)
+    for row in left_rows:
+        oids = onclause_column.type_.result_processor()(get_fk_col(row)) or []
+        for oid in oids:
+            if oid not in seen:
+                seen.add(oid)
+                bulk_params.append({"path_params": {"page_id": oid}})
+
+    return bulk_params
+
+def merge_inner_join_rows(
+    left_schema: SchemaInfo,
+    right_schema: SchemaInfo,
+    onclause_column: Column,
+    left_rows: list[tuple],
+    right_rows: list[tuple],
+) -> list[tuple]:
+    """Cross-product left rows with right rows whose object_id matches the
+    decoded relation list on each left row. Drops left rows whose relation
+    resolves to zero matching right rows (inner-join semantics)."""
+
+    merged_rows = []
+
+    # prepare the getters
+    relation_proc = onclause_column.type_.result_processor()
+    get_oids = left_schema.column_getter(onclause_column.name)
+    get_right_oid =  right_schema.column_getter("object_id")
+
+    # construct a helper dictionary to contain {"id": <right_row>}
+    # then the check whether to merge the right row is o(1) (dictionary lookup)
+    right_by_oid = {get_right_oid(rr): rr for rr in right_rows}
+
+    # build the cross-product
+    for left_row in left_rows:
+        fk_oids = relation_proc(get_oids(left_row)) or []
+        for fk_oid in fk_oids:
+            right_row = right_by_oid.get(fk_oid)
+            if right_row is None:
+                continue
+
+            merged_rows.append(
+                _project_inner_join(
+                    left_schema,
+                    right_schema,
+                    left_row, 
+                    right_row
+                )
+            )
+
+    return merged_rows
+
+def _project_inner_join(
+    left_schema: SchemaInfo,
+    right_schema: SchemaInfo,
+    left_row: tuple, 
+    right_row: tuple
+) -> tuple:
+    left_projected = tuple(
+        [
+            left_row[left_schema.column_index(lc.name)] 
+            for lc in left_schema.columns 
+            if lc.name != "object_id"
+        ]
+    )
+    right_projected = tuple(
+        [
+            right_row[right_schema.column_index(rc.name)] 
+            for rc in right_schema.columns 
+            if rc.name != "object_id"
+        ]
+    )
+
+    return (*left_projected, *right_projected)
 
 
 class HasTable(Protocol):
@@ -553,6 +646,7 @@ class OrderByClause(HasExpression, ClauseElement):
 
 class Select(HasTable, ExecutableClauseElement):
     __visit_name__ = 'select'
+    
     is_select = True
 
     _projection: ReadOnlyColumnCollection
@@ -682,19 +776,112 @@ class Select(HasTable, ExecutableClauseElement):
         # mutate-vs-rebind: here you create a new tuple
         self._joins = (*self._joins, Join(self._table, self._right, onclause))
         return self
-
+    
     def _setup_execution(self, context: ExecutionContext) -> None:
-        # guard against execution if joins are non-empty
-        if self._joins:
-            raise NotImplementedError("Join-clause implemented in future slice: #304")
+        # guard against execution if joins are empty
+        if not self._joins:
+            return
         
-        # nothing to do for select without join clause
-        pass
+        # phase 1: Retrieve all rows of the left table in the join
+        elem = context.invoked_stmt
+
+        # 1. prepare schema for compiled query
+        context._join = self._joins[0]
+        context._join_left_schema = SchemaInfo.from_table(
+            context._join.left,
+            execution_names=context.compiled.fetch_columns(),
+            projected_names=[c.name for c in context._join.left.uc]  
+        )
+        context._cursor._inject_description(
+            context._join_left_schema.as_sequence()
+        )
+
+        # execute the compiled query
+        context.engine.do_execute(
+            context._cursor,
+            context.operation,
+            context.parameters
+        )
+
+        context._join_left_rows = context._cursor.fetchall()
+
+        # prepare phase 2: retrieve left table rows 
+        # build parameters for pages.retrieve
+        result_cursor = context.connection._engine.raw_connection().cursor()
+        right_schema: SchemaInfo = SchemaInfo.from_table(
+            context._join.right,
+            execution_names=context.compiled.fetch_columns(),
+            projected_names=[c.name for c in context._join.right.uc]    
+        )
+        result_cursor._inject_description(right_schema.as_sequence())
+        result_cursor.errorhandler = _join_errorhandler
+        context._join_right_schema = right_schema
+
+        # build the bulk parameters
+        # one parameter for each page_id contained in the FK relation column stored in
+        # each page returned by the databases.query
+        # REMEMBER: A Relation column stores non-scalar values -> list[str]
+        onclause_column = context._join.onclause
+        bulk_params = build_phase_two_batch(
+            context._join_left_schema,
+            onclause_column,
+            context._join_left_rows
+        )
+
+        # staged cursor will contain 1 result set for each retrieved row
+        context._staged_result_cursor = result_cursor
+        context.bulk_operation = {
+            "endpoint": "pages",
+            "request": "retrieve"
+        }
+
+        context.bulk_parameters = bulk_params
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
-        # nothing to be finalized
-        pass
+        # guard against execution if joins are empty
+        if not self._joins:
+            return
 
+        # context._result_cursor will hold the joined rows
+        joined = self._build_joined_schema(context)
+        context._result_cursor = context.engine.raw_connection().cursor()
+
+        # merge left rows with the corresponding right rows
+        # _staged_cursor has multiple result sets, one for each retrieved right row
+        right_rows = [r for r in context._staged_result_cursor._iter_all()]
+        
+        # construct the inner join and add the result to the cursor
+        merged_rows = merge_inner_join_rows(
+            context._join_left_schema,
+            context._join_right_schema,
+            context._join.onclause, 
+            context._join_left_rows, 
+            right_rows
+        )
+        context._result_cursor._result_sets.append(
+            ResultSet(
+                joined.as_sequence(),
+                "page",
+                merged_rows
+            )
+        )
+
+    def _build_joined_schema(self, context: ExecutionContext) -> SchemaInfo:
+        # the result cursor has the schema of a joined table
+        # the joined table has all left and right table's columns 
+        left = context._join.left
+        right = context._join.right
+        joined_table_cols = [*left.uc, *right.uc]
+        result_cols = [
+            ResultColumn(
+                rc.name, 
+                type_code=rc.type_.get_dbapi_type(), 
+                nullable=False
+            )
+            for rc in joined_table_cols
+        ]
+        return SchemaInfo(result_cols)
+    
 def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)
         
@@ -896,3 +1083,27 @@ class Join(ClauseElement):
         self.right = right
         self.onclause = onclause
         self.isouter = isouter
+
+
+def _join_errorhandler(
+    connection: DBAPIConnection, 
+    cursor: DBAPICursor, 
+    errorclass: Type[BaseException],
+    errorvalue: BaseException
+) -> None:
+    """Errorhandler for the inner-join staged result cursor.
+
+    Silences `object_not_found` from `pages.retrieve` (ADR-0002 lax-FK semantics:
+    a dangling relation entry is an absent reference, not an error). All other
+    errors propagate via the default DBAPI raise path.
+    """
+    cause = errorvalue.__cause__
+    if isinstance(cause, NotionError) and cause.code == "object_not_found":
+        # Dangling-FK / lax-reference semantics (ADR-0002):
+        # missing pages are treated as absent references
+        # INNER JOIN silently drops left rows whose relation list resolves 
+        # to zero existing right rows
+        return                       
+
+    raise errorvalue                 # propagate everything else
+

@@ -1,3 +1,4 @@
+import pdb
 import uuid
 
 import pytest
@@ -85,6 +86,9 @@ def test_select_with_join_emits_join_metadata_in_compiled_dict(
     compiled = stmt.compile(nc)
     asdict = compiled.as_dict()
 
+    # bug: this shall not fail
+    assert nc._compiler_state.stmt is not None
+
     # phase-1 portion: same shape as a plain select(students) would produce
     assert asdict['operation'] == {'endpoint': 'databases', 'request': 'query'}
     assert asdict['payload']['page_size'] == 100
@@ -99,18 +103,6 @@ def test_select_with_join_emits_join_metadata_in_compiled_dict(
     assert j['right'] == 'courses'
     assert j['onclause'] == 'enrolled_in'
     assert j['isouter'] is False
-
-def test_execute_with_join_raises_notimplementederror_until_slice_2(
-    students: Table, courses: Table
-):
-    # plain select must remain executable (no-op setup)
-    plain = select(students)
-    plain._setup_execution(None)  # no raise
-
-    # select with a join must fail loudly with a pointer to slice 2 / #304
-    joined = select(students, courses).join(students.c.enrolled_in)
-    with pytest.raises(NotImplementedError, match=r"slice 2|#304"):
-        joined._setup_execution(None)
 
 def test_join_with_non_relation_column_raises_argument_error(
     students: Table, courses: Table

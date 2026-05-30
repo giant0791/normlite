@@ -62,6 +62,7 @@ if TYPE_CHECKING:
     from normlite.notiondbapi.dbapi2 import Cursor as DBAPICursor
     from normlite.sql.base import Executable
     from normlite.sql.elements import BindParameter
+    from normlite.sql.dml import Join
 
 class ExecutionStyle(Enum):
     """Define the execution style for a context.
@@ -297,6 +298,18 @@ class ExecutionContext:
     .. versionadded:: 0.9.0
     """
 
+    _join: Optional[Join] = None
+    """Gives onclause + left/right tables"""
+
+    _join_left_rows: Optional[list[tuple]] = None
+    """drained left pages"""
+
+    _join_left_schema: Optional[SchemaInfo] = None
+    """to resolve FK column index"""
+
+    _join_right_schema: Optional[SchemaInfo] = None
+    """to read object_id from the right rows"""
+
     def __init__(
             self,
             engine: Engine,
@@ -385,6 +398,11 @@ class ExecutionContext:
 
         # delete or update with single parameters
         if stmt.is_delete or stmt.is_update:
+            return ExecutionStyle.EXECUTEMANY
+        
+        # NEW: Select with joins is two-phase — phase-1 databases.query,
+        # phase-2 bulk pages.retrieve (Select.join, slice 2 of #302)
+        if stmt.is_select and stmt._joins:
             return ExecutionStyle.EXECUTEMANY
         
         # select or insert without returning

@@ -169,9 +169,16 @@ class Executable(ClauseElement):
     """
 
     is_insert: ClassVar[bool] = False
+    """``True`` if executable is an INSERT statement."""
 
     is_update: ClassVar[bool] = False
     """``True`` if executable is an UPDATE statement."""
+
+    is_select: ClassVar[bool] = False
+    """``True`` if executable is a SELECT statement.
+    
+    .. versionadded:: 0.11.0
+    """
 
     _execution_options: Optional[ExecutionOptions] = None
     """per-statement execution options.
@@ -284,9 +291,9 @@ class Executable(ClauseElement):
             context (ExecutionContext): The execution context in which this executables is running.
 
         Returns:
-            Optional[NoReturn]: Nothin
+            Optional[NoReturn]: Nothing
         """
-        raise NotImplementedError
+        raise exc
 
 class _CompileState(Enum):
     """Helper class used internally during compilation.

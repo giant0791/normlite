@@ -598,7 +598,7 @@ class NotionCompiler(SQLCompiler):
         }
 
         # add a new top-level 'joins' key to store the joins, if any
-        joins = [j.compile(self).as_dict() for j in select._joins]
+        joins = [j._compiler_dispatch(self) for j in select._joins]
         if joins:
             # emit only when non-empty
             compiled_dict["joins"] = joins
