@@ -4,9 +4,10 @@ import uuid
 import pytest
 
 from normlite import Relation, ForeignKey
-from normlite.exceptions import ArgumentError
+from normlite.exceptions import ArgumentError, CompileError
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Join, select
+from normlite.sql.elements import ColumnElement
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import String
 
@@ -197,3 +198,50 @@ def test_two_relations_to_same_target_table_raise_naming_both_columns(
             Column("primary_course", Relation(), ForeignKey("courses.object_id")),
             Column("backup_course", Relation(), ForeignKey("courses.object_id")),
         )
+
+def test_right_side_where_filter_stays_out_of_phase_one_query_payload(
+    students: Table, courses: Table
+):
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+
+    # A filter on the RIGHT table (courses). Notion's databases.query can only
+    # filter the left table's properties, so this condition must NOT ride along
+    # in the phase-1 query payload — it has to be answered client-side instead.
+    stmt = (
+        select(students, courses)
+        .join(students.c.enrolled_in)
+        .where(courses.c.title == "Astronomy")
+    )
+
+    asdict = stmt.compile(NotionCompiler()).as_dict()
+
+    # phase-1 payload must carry no filter built from a right-table column
+    assert "filter" not in asdict["payload"]
+
+def test_mixed_left_right_where_compound_stays_out_of_phase_one_regardless_of_order(
+    students: Table, courses: Table
+):
+    # Compound WHERE touching BOTH sides; a right-table column is involved, so the
+    # whole compound must stay out of phase-1, and routing must NOT depend on order.
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    left_then_right = (
+        select(students, courses).join(students.c.enrolled_in)
+        .where(students.c.name == "Galileo").where(courses.c.title == "Astronomy")
+        .compile(NotionCompiler()).as_dict()
+    )
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    right_then_left = (
+        select(students, courses).join(students.c.enrolled_in)
+        .where(courses.c.title == "Astronomy").where(students.c.name == "Galileo")
+        .compile(NotionCompiler()).as_dict()
+    )
+    assert "filter" not in left_then_right["payload"]
+    assert "filter" not in right_then_left["payload"]
+
+def test_where_expression_with_no_source_table_raises_compile_error(students: Table):
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    class _UnknownExpr(ColumnElement):
+        __visit_name__ = "unknown_expr"
+    stmt = select(students).where(_UnknownExpr())
+    with pytest.raises(CompileError, match=r"route WHERE expression"):
+        stmt.compile(NotionCompiler())

@@ -17,9 +17,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from contextlib import contextmanager
-import copy
 import pdb
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Set
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError, StatementError
@@ -27,14 +26,44 @@ from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
 from normlite.sql.base import _CompileState, SQLCompiler
 from normlite.sql.dml import Delete, Update, OrderByClause
-from normlite.sql.elements import _BindRole, _NoArg, BooleanClauseList, Operator, OrderByExpression, ColumnElement
+from normlite.sql.elements import _BindRole, Operator, OrderByExpression, ColumnElement, BinaryExpression
+from normlite.sql.elements import _NoArg
+from normlite.sql.elements import BooleanClauseList, UnaryExpression   
 from normlite.sql.elements import BindParameter
-from normlite.sql.schema import Column, ReadOnlyColumnCollection
+from normlite.sql.schema import ReadOnlyColumnCollection, Column
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
     from normlite.sql.dml import Insert, Select, Join
-    from normlite.sql.elements import UnaryExpression, BinaryExpression, BindParameter
+    from normlite.sql.elements import UnaryExpression, BindParameter
+    from normlite.sql.schema import Table
+
+def _get_expression_parent_tables(expression: ColumnElement) -> Set[Table]:
+    """Helper to recursively collect all parent tables corresponding to 
+    the columns involved in the expression.
+    
+    .. note::
+        Unrecognized nodes contribute no tables; the top-level guard in visit_select catches 
+        only a fully-unattributable expression. 
+        A new WHERE node type must extend this fold or it routes silently.
+    """
+
+    parents = set()
+
+    if isinstance(expression, Column):
+        parents.add(expression.parent)
+    
+    elif isinstance(expression, BinaryExpression):
+        parents |= _get_expression_parent_tables(expression.column)
+    
+    elif isinstance(expression, UnaryExpression):
+        parents |= _get_expression_parent_tables(expression.element)
+
+    elif isinstance(expression, BooleanClauseList):
+        for clause in expression.clauses:
+            parents |= _get_expression_parent_tables(clause)
+    
+    return parents
 
 class NotionCompiler(SQLCompiler):
     """Notion compiler for SQL statements.
@@ -533,13 +562,23 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state.result_columns = []
 
         operation = dict(endpoint='databases', request='query')
+        compiled_dict = {
+            'operation': operation, 
+        }
+
         path_params = {}
         query_params = {}
         payload = {
             'page_size': 100,        # Notion imposed max page size
             'in_trash': False,       # Always return non deleted pages only
         }
-        
+
+        # add a new top-level 'joins' key to store the joins, if any
+        joins = [j._compiler_dispatch(self) for j in select._joins]
+        if joins:
+            # emit only when non-empty
+            compiled_dict["joins"] = joins
+
         table = select.get_table()
         database_id = table.get_oid()
         if database_id is None:
@@ -553,13 +592,28 @@ class NotionCompiler(SQLCompiler):
                 )
             )
             path_params['database_id'] = f':{db_id_key}'
+            compiled_dict["path_params"] = path_params 
+
      
         if select._whereclause.has_expression():
-            with self._compiling(new_state=_CompileState.COMPILING_WHERE):
-                # emit the JSON code for the filter object of the query
-                # in the right context
-                filter_obj = select._whereclause.expression._compiler_dispatch(self)
-                payload['filter'] = filter_obj
+            expression = select._whereclause.expression
+            parent_tables = list(_get_expression_parent_tables(expression))
+            if not parent_tables:
+                # A WHERE expression is present but the router could attribute it
+                # to no source table. This is not a routing outcome but a failure
+                # to route — most likely an unsupported expression node type.
+                # Fail loudly at compile time rather than silently dropping the
+                # filter (which would return wrong rows with no error).
+                raise CompileError(
+                    f"Cannot route WHERE expression: no source table could be "
+                    f"determined for {type(expression).__name__}."
+                )
+            if len(parent_tables) == 1 and parent_tables[0] is select._table:
+                with self._compiling(new_state=_CompileState.COMPILING_WHERE):
+                    # emit the JSON code for the filter object of the query
+                    # in the right context
+                    filter_obj = select._whereclause.expression._compiler_dispatch(self)
+                    payload['filter'] = filter_obj
 
         projection = self._compiler_state.stmt._projection
 
@@ -591,18 +645,8 @@ class NotionCompiler(SQLCompiler):
             sorts_obj = select._order_by._compiler_dispatch(self)
             payload['sorts'] = sorts_obj
 
-        compiled_dict = {
-            'operation': operation, 
-            'path_params': path_params, 
-            'payload': payload
-        }
-
-        # add a new top-level 'joins' key to store the joins, if any
-        joins = [j._compiler_dispatch(self) for j in select._joins]
-        if joins:
-            # emit only when non-empty
-            compiled_dict["joins"] = joins
-
+        compiled_dict ["payload"] = payload
+        
         if query_params:           
             compiled_dict['query_params'] = query_params
 
