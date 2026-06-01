@@ -18,13 +18,13 @@
 from __future__ import annotations
 from contextlib import contextmanager
 import pdb
-from typing import TYPE_CHECKING, Any, Optional, Set
+from typing import TYPE_CHECKING, Any, Optional, Set, Union
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError, StatementError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
-from normlite.sql.base import _CompileState, SQLCompiler
+from normlite.sql.base import _CompileState, ClauseElement, SQLCompiler
 from normlite.sql.dml import Delete, Update, OrderByClause
 from normlite.sql.elements import _BindRole, Operator, OrderByExpression, ColumnElement, BinaryExpression
 from normlite.sql.elements import _NoArg
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from normlite.sql.elements import UnaryExpression, BindParameter
     from normlite.sql.schema import Table
 
-def _get_expression_parent_tables(expression: ColumnElement) -> Set[Table]:
+def _get_expression_parent_tables(expression: ClauseElement) -> Set[Table]:
     """Helper to recursively collect all parent tables corresponding to 
     the columns involved in the expression.
     
@@ -62,6 +62,13 @@ def _get_expression_parent_tables(expression: ColumnElement) -> Set[Table]:
     elif isinstance(expression, BooleanClauseList):
         for clause in expression.clauses:
             parents |= _get_expression_parent_tables(clause)
+    
+    elif isinstance(expression, OrderByClause):
+        for clause in expression.clauses:
+            parents |= _get_expression_parent_tables(clause)
+
+    elif isinstance(expression, OrderByExpression):
+        parents |= _get_expression_parent_tables(expression.column)
     
     return parents
 
@@ -597,7 +604,7 @@ class NotionCompiler(SQLCompiler):
      
         if select._whereclause.has_expression():
             expression = select._whereclause.expression
-            parent_tables = list(_get_expression_parent_tables(expression))
+            parent_tables = _get_expression_parent_tables(expression)
             if not parent_tables:
                 # A WHERE expression is present but the router could attribute it
                 # to no source table. This is not a routing outcome but a failure
@@ -608,7 +615,7 @@ class NotionCompiler(SQLCompiler):
                     f"Cannot route WHERE expression: no source table could be "
                     f"determined for {type(expression).__name__}."
                 )
-            if len(parent_tables) == 1 and parent_tables[0] is select._table:
+            if parent_tables == {select._table}:
                 with self._compiling(new_state=_CompileState.COMPILING_WHERE):
                     # emit the JSON code for the filter object of the query
                     # in the right context
@@ -642,8 +649,22 @@ class NotionCompiler(SQLCompiler):
                 query_params['filter_properties'] = self._compiler_state.result_columns
 
         if select._order_by.has_expression():
-            sorts_obj = select._order_by._compiler_dispatch(self)
-            payload['sorts'] = sorts_obj
+            order_by_clause = select._order_by
+            parent_tables = _get_expression_parent_tables(order_by_clause)
+            if not parent_tables:
+                # An ORDER BY expression is present but the router could attribute it
+                # to no source table. This is not a routing outcome but a failure
+                # to route — most likely an unsupported expression node type.
+                # Fail loudly at compile time rather than silently dropping the
+                # sort (which would return rows in the wrong order with no error).
+                raise CompileError(
+                    f"Cannot route ORDER BY expression: no source table could be "
+                    f"determined for {type(order_by_clause).__name__}."
+                )
+ 
+            if parent_tables == {select._table}:
+                sorts_obj = select._order_by._compiler_dispatch(self)
+                payload['sorts'] = sorts_obj
 
         compiled_dict ["payload"] = payload
         

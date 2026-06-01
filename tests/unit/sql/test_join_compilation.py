@@ -7,7 +7,7 @@ from normlite import Relation, ForeignKey
 from normlite.exceptions import ArgumentError, CompileError
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Join, select
-from normlite.sql.elements import ColumnElement
+from normlite.sql.elements import ColumnElement, OrderByExpression
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import String
 
@@ -244,4 +244,53 @@ def test_where_expression_with_no_source_table_raises_compile_error(students: Ta
         __visit_name__ = "unknown_expr"
     stmt = select(students).where(_UnknownExpr())
     with pytest.raises(CompileError, match=r"route WHERE expression"):
+        stmt.compile(NotionCompiler())
+
+def test_right_side_order_by_stays_out_of_phase_one_query_payload(
+    students: Table, courses: Table
+):
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+
+    # An ORDER BY on the RIGHT table (courses). Notion's databases.query can only
+    # sort by the left table's properties, so this sort must NOT ride along in the
+    # phase-1 query payload — it has to be applied client-side after the join.
+    stmt = (
+        select(students, courses)
+        .join(students.c.enrolled_in)
+        .order_by(courses.c.title.asc())
+    )
+
+    asdict = stmt.compile(NotionCompiler()).as_dict()
+
+    # phase-1 payload must carry no sort built from a right-table column
+    assert "sorts" not in asdict["payload"]
+
+def test_mixed_left_right_order_by_stays_out_of_phase_one_regardless_of_order(
+    students: Table, courses: Table
+):
+    # Compound ORDER BY touching BOTH sides; a right-table column is involved, so the
+    # whole sort must stay out of phase-1, and routing must NOT depend on clause order.
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    left_then_right = (
+        select(students, courses).join(students.c.enrolled_in)
+        .order_by(students.c.name.asc(), courses.c.title.asc())
+        .compile(NotionCompiler()).as_dict()
+    )
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    right_then_left = (
+        select(students, courses).join(students.c.enrolled_in)
+        .order_by(courses.c.title.asc(), students.c.name.asc())
+        .compile(NotionCompiler()).as_dict()
+    )
+    assert "sorts" not in left_then_right["payload"]
+    assert "sorts" not in right_then_left["payload"]
+
+def test_order_by_expression_with_no_source_table_raises_compile_error(students: Table):
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    class _UnknownExpr(ColumnElement):
+        __visit_name__ = "unknown_expr"
+    # An ORDER BY clause whose sort key is an unattributable node: the router can
+    # reach no source table, so it must fail loudly rather than drop the sort.
+    stmt = select(students).order_by(OrderByExpression(_UnknownExpr(), "asc"))
+    with pytest.raises(CompileError, match=r"route ORDER BY expression"):
         stmt.compile(NotionCompiler())
