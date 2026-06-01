@@ -104,6 +104,49 @@ def test_select_with_join_emits_join_metadata_in_compiled_dict(
     assert j['onclause'] == 'enrolled_in'
     assert j['isouter'] is False
 
+def test_join_target_table_auto_resolves_single_fk_to_same_compiled_output(
+    students: Table, courses: Table
+):
+    # Seed object_id so phase-1 compiles deterministically
+    # (mirrors test_select_with_join_emits_join_metadata_in_compiled_dict).
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+
+    # explicit-column form (the canonical slice-1 contract)
+    explicit = (
+        select(students, courses)
+        .join(students.c.enrolled_in)
+        .compile(NotionCompiler())
+        .as_dict()
+    )
+
+    # sugar form: hand .join() the target table instead of the column
+    sugar = (
+        select(students, courses)
+        .join(courses)
+        .compile(NotionCompiler())
+        .as_dict()
+    )
+
+    # the sugar must rewrite to the same join and compile identically
+    assert sugar == explicit
+
+def test_join_unreferenced_table_raises_argument_error_not_index_error(
+    students: Table,
+):
+    # A table the left table has no foreign key to, built under a SEPARATE
+    # MetaData so its name isn't even present in students' metadata. The sugar
+    # form must reject it with a clear ArgumentError — not crash with IndexError
+    # from indexing an empty relation-column list.
+    other_meta = MetaData()
+    workshops = Table(
+        "workshops",
+        other_meta,
+        Column("title", String(is_title=True)),
+    )
+
+    with pytest.raises(ArgumentError, match=r"not a referenced table"):
+        select(students).join(workshops)
+
 def test_join_with_non_relation_column_raises_argument_error(
     students: Table, courses: Table
 ):
@@ -139,3 +182,18 @@ def test_join_explicit_onclause_with_non_relation_left_raises_argument_error(
 
     with pytest.raises(ArgumentError, match=r"Relation"):
         select(students, courses).join(bad_expr)
+
+def test_two_relations_to_same_target_table_raise_naming_both_columns(
+    metadata: MetaData, courses: Table
+):
+    # Notion's data model forbids two relation properties pointing at the same
+    # database. When a schema author declares two such columns, the error must
+    # name BOTH colliding columns — otherwise they can't tell which to fix.
+    with pytest.raises(ArgumentError, match=r"already has a relation.*courses"):
+        Table(
+            "enrollments",
+            metadata,
+            Column("title", String(is_title=True)),
+            Column("primary_course", Relation(), ForeignKey("courses.object_id")),
+            Column("backup_course", Relation(), ForeignKey("courses.object_id")),
+        )

@@ -24,7 +24,7 @@ from normlite.sql.schema import ColumnCollection
 
 import pdb
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Type, Union, TYPE_CHECKING, Tuple
+from typing import Any, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Type, Union, TYPE_CHECKING
 import collections.abc as collections_abc
 
 import warnings
@@ -33,17 +33,29 @@ from normlite.sql.base import Executable, ClauseElement, generative
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
 from normlite.sql.type_api import Relation
-from normlite.sql.schema import Column
+from normlite.sql.schema import Column, Table
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import Table, ReadOnlyColumnCollection
+    from normlite.sql.schema import ReadOnlyColumnCollection
     from normlite.engine.interfaces import _CoreAnyExecuteParams
     from normlite.engine.cursor import CursorResult
     from normlite.engine.base import Connection
     from normlite.engine.context import ExecutionContext
-    from normlite.notiondbapi.dbapi2 import DBAPIErrorHandlerType
     from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
     from normlite.notiondbapi.dbapi2 import Cursor as DBAPICursor 
+
+ColumnExpressionArgument = Union[
+    BinaryExpression,
+    ColumnElement,
+    Table,
+]
+"""Column expression argument for :meth:`Select.join`.
+
+This type represents the options for the ``onclause`` argument in a JOIN ON clause.
+It enables to implement syntactic surgar expressions for the :meth:`Select.join` method.
+
+.. versionadded:: 0.11.0
+"""
 
 def build_phase_two_batch(
     left_schema: SchemaInfo,
@@ -737,7 +749,27 @@ class Select(HasTable, ExecutableClauseElement):
         return self
 
     @generative
-    def join(self, onclause: ColumnElement) -> Self:
+    def join(self, onclause: ColumnExpressionArgument) -> Self:
+        if isinstance(onclause, Table):
+            # syntactic sugar: search the left tables's column that has a relation to
+            # this onclause table
+            reftable = onclause
+            fkcs = self._table.foreign_keys
+            relation_cols = [fk.column for fk in fkcs if fk.reftable is reftable]
+            if not relation_cols:
+                # the table supplied in onclause must be a referenced table in the left table's foreign keys
+                hint = ""
+                if reftable.name in self._table.metadata:
+                    hint = (f" (a table named '{reftable.name}' exists in metadata, "
+                            f"but the instance you passed is a different object — "
+                            f"was it built under another MetaData?)")
+                raise ArgumentError(
+                    f"Table '{reftable.name}' is not a referenced table in "
+                    f"'{self._table.name}' foreign keys.{hint}"
+                )
+
+            onclause = relation_cols[0]
+
         if isinstance(onclause, BinaryExpression):
             inner_col = onclause.column
             if not isinstance(inner_col.type_, Relation):
