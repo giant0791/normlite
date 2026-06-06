@@ -22,7 +22,6 @@ from normlite.notiondbapi import Error
 from normlite.notiondbapi.resultset import ResultSet
 from normlite.sql.schema import ColumnCollection
 
-import pdb
 from types import MappingProxyType
 from typing import Any, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Type, Union, TYPE_CHECKING
 import collections.abc as collections_abc

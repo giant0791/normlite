@@ -17,8 +17,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from contextlib import contextmanager
-import pdb
-from typing import TYPE_CHECKING, Any, Optional, Set, Union
+from typing import TYPE_CHECKING, Any, Optional, Set
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError, StatementError
