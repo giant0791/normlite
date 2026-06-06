@@ -87,42 +87,81 @@ def merge_inner_join_rows(
     onclause_column: Column,
     left_rows: list[tuple],
     right_rows: list[tuple],
+    isouter: bool = False
 ) -> list[tuple]:
     """Cross-product left rows with right rows whose object_id matches the
-    decoded relation list on each left row. Drops left rows whose relation
-    resolves to zero matching right rows (inner-join semantics)."""
+    decoded relation list on each left row.
+
+    Inner vs outer differ in exactly ONE place: what to do with a left row
+    that matched zero right rows. Inner drops it; outer rescues it with a
+    single None-filled row. Every left row that matched at least once is
+    treated identically by both kinds. So `isouter` is consulted at one site
+    only -- the per-row fallback below -- and nowhere else.
+
+    INVARIANT (per left row, not across the batch): a given left row
+    contributes exactly one None-filled row iff THAT row's foreign keys
+    matched zero right rows. This single predicate subsumes all three
+    zero-match shapes -- empty relation, all-dangling ids, and a lone
+    dangling id -- so none of them needs its own branch.
+    """
 
     merged_rows = []
 
     # prepare the getters
     relation_proc = onclause_column.type_.result_processor()
     get_oids = left_schema.column_getter(onclause_column.name)
+    get_left_oid = left_schema.column_getter("object_id")
     get_right_oid =  right_schema.column_getter("object_id")
 
     # construct a helper dictionary to contain {"id": <right_row>}
-    # then the check whether to merge the right row is o(1) (dictionary lookup)
+    # the dict answers "does THIS oid resolve?" in O(1). It does NOT answer
+    # "did this left row match anything?" -- that is a per-row aggregate
+    # (see `matched` below) and can only be known after the oid loop finishes.
     right_by_oid = {get_right_oid(rr): rr for rr in right_rows}
 
     # build the cross-product
     for left_row in left_rows:
         fk_oids = relation_proc(get_oids(left_row)) or []
+
+        # `matched` is reset per left row: it tracks whether THIS row found
+        # any partner. Truthiness is all we read -- a bool flag would do.
+        matched = []
         for fk_oid in fk_oids:
             right_row = right_by_oid.get(fk_oid)
             if right_row is None:
+                # dangling id: contributes no row of its own. Whether the row
+                # gets rescued is decided once, after the loop -- never here,
+                # because a later oid in this same row may still match.
                 continue
 
             merged_rows.append(
-                _project_inner_join(
+                _project_join_row(
                     left_schema,
                     right_schema,
-                    left_row, 
+                    left_row,
                     right_row
+                )
+            )
+
+            matched.append(get_left_oid(left_row))
+
+        # The ONLY place inner and outer diverge. Gated on `isouter`: under
+        # inner join a zero-match row is simply dropped (no fallback). Without
+        # this guard, None-fill would leak into inner join and break its
+        # drop-the-unmatched contract.
+        if not matched and isouter:
+            merged_rows.append(
+                _project_join_row(
+                    left_schema,
+                    right_schema,
+                    left_row,
+                    None
                 )
             )
 
     return merged_rows
 
-def _project_inner_join(
+def _project_join_row(
     left_schema: SchemaInfo,
     right_schema: SchemaInfo,
     left_row: tuple, 
@@ -135,16 +174,59 @@ def _project_inner_join(
             if lc.name != "object_id"
         ]
     )
-    right_projected = tuple(
-        [
-            right_row[right_schema.column_index(rc.name)] 
-            for rc in right_schema.columns 
-            if rc.name != "object_id"
-        ]
-    )
+    if right_row is not None:
+        right_projected = tuple(
+            [
+                right_row[right_schema.column_index(rc.name)] 
+                for rc in right_schema.columns 
+                if rc.name != "object_id"
+            ]
+        )
+    else:
+        right_projected = tuple(
+            [
+                None 
+                for rc in right_schema.columns 
+                if rc.name != "object_id"
+            ]
+        )
 
     return (*left_projected, *right_projected)
 
+def _right_side_passes(
+    merged_row, 
+    right_filter, 
+    left_width, 
+    right_cols: list[ResultColumn]
+) -> bool:
+    """Shape adapter to apply ``_Filter`` predicate coming from WHERE clause on right columns."""
+
+    from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+    from normlite.notion_sdk.client import _Filter
+
+    type_mapper = {
+        DBAPITypeCode.NUMBER: "number",
+        DBAPITypeCode.NUMBER_WITH_COMMAS: "number",
+        DBAPITypeCode.NUMBER_DOLLAR: "number",
+        DBAPITypeCode.TITLE: "title",
+        DBAPITypeCode.RICH_TEXT: "rich_text",
+        DBAPITypeCode.CHECKBOX: "checkbox",
+        DBAPITypeCode.DATE: "date",
+        DBAPITypeCode.RELATION: "relation"
+    }
+
+    right_slice = merged_row[left_width:]
+    if all(c is None for c in right_slice):
+        return False        # phantom: NULL fails every right-side predicate
+
+    properties = {}
+
+    for col, cell in zip(right_cols, right_slice):
+        typ = type_mapper[col.type_code]
+        properties[col.name] = {"type": typ, **cell}
+    
+    page = {"properties": properties}
+    return _Filter(page, {"filter": right_filter}).eval()
 
 class HasTable(Protocol):
     """Mixin for DML statements"""
@@ -680,7 +762,7 @@ class Select(HasTable, ExecutableClauseElement):
         self._whereclause = WhereClause()
         self._order_by = OrderByClause()
 
-        # a tuple is than a list because it forces rebind-not-mutate discipline
+        # a tuple is better than a list because it forces rebind-not-mutate discipline
         # see how WhereClause and OrderByClause both encapsulate a tuple of clauses
         self._joins: tuple[Join] = ()
 
@@ -747,9 +829,11 @@ class Select(HasTable, ExecutableClauseElement):
 
         self._order_by = self._order_by.add(*clauses)
         return self
-
-    @generative
-    def join(self, onclause: ColumnExpressionArgument) -> Self:
+    
+    def _create_join(
+        self, onclause: ColumnExpressionArgument, 
+        isouter: bool = False
+    ) -> Join:
         if isinstance(onclause, Table):
             # syntactic sugar: search the left tables's column that has a relation to
             # this onclause table
@@ -805,8 +889,18 @@ class Select(HasTable, ExecutableClauseElement):
                 f"or BinaryExpression, got {type(onclause).__name__}"
             )
 
+        return Join(self._table, self._right, onclause, isouter)    
+
+    @generative
+    def join(self, onclause: ColumnExpressionArgument) -> Self:
         # mutate-vs-rebind: here you create a new tuple
-        self._joins = (*self._joins, Join(self._table, self._right, onclause))
+        self._joins = (*self._joins, self._create_join(onclause))
+        return self
+    
+    @generative
+    def outerjoin(self, onclause: ColumnExpressionArgument) -> Self:
+        # mutate-vs-rebind: here you create a new tuple
+        self._joins = (*self._joins, self._create_join(onclause, isouter=True))
         return self
     
     def _setup_execution(self, context: ExecutionContext) -> None:
@@ -888,8 +982,27 @@ class Select(HasTable, ExecutableClauseElement):
             context._join_right_schema,
             context._join.onclause, 
             context._join_left_rows, 
-            right_rows
+            right_rows,
+            isouter=context._join.isouter
         )
+
+        # filter the right rows if WHERE clause contains a condition on right columns
+        join_right_filter = context.join_right_filter
+        left_width = len([c for c in context._join_left_schema.columns if c.name != "object_id"])
+        right_cols = [c for c in context._join_right_schema.columns if c.name != "object_id"]
+        if join_right_filter is not None:
+            merged_rows = [
+                r
+                for r in merged_rows
+                if _right_side_passes(
+                    r,
+                    join_right_filter,
+                    left_width,
+                    right_cols
+                )
+            ]
+
+        # fill in the result cursor's result set    
         context._result_cursor._result_sets.append(
             ResultSet(
                 joined.as_sequence(),

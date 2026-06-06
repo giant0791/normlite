@@ -244,6 +244,12 @@ class ExecutionContext:
     .. versionadded:: 0.8.0
     """
 
+    join_right_filter: Optional[dict]
+    """The optional filter expression for WHERE clauses with right columns expressions
+    
+    .. versionadded:: 0.11.0
+    """
+
     execution_style: ExecutionStyle
     """The style of DBAPI cursor method that will be used to execute a statement.
 
@@ -331,6 +337,7 @@ class ExecutionContext:
         self.path_params = None
         self.query_params = None
         self.payload = None
+        self.join_right_filter = None
         self._result = None
         self._rowcount = None
         self._returned_primary_keys_rows = None
@@ -511,6 +518,10 @@ class ExecutionContext:
                 ]
             else:
                 self.payload = self._bind_params(template, resolved_params[0])
+
+        if 'join_right_filter' in self.compiled_dict:
+            template = self.compiled_dict['join_right_filter']
+            self.join_right_filter = self._bind_params(template, resolved_params[0])
 
         if self.invoked_stmt.is_update:
             self.resolved_params = dict(resolved_params[0])

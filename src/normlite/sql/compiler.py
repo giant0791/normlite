@@ -615,12 +615,17 @@ class NotionCompiler(SQLCompiler):
                     f"Cannot route WHERE expression: no source table could be "
                     f"determined for {type(expression).__name__}."
                 )
-            if parent_tables == {select._table}:
+            if parent_tables <= {select._table, select._right}:
                 with self._compiling(new_state=_CompileState.COMPILING_WHERE):
                     # emit the JSON code for the filter object of the query
                     # in the right context
                     filter_obj = select._whereclause.expression._compiler_dispatch(self)
-                    payload['filter'] = filter_obj
+                    if parent_tables == {select._table}:
+                        # for the left table, add "filter" to the payload for the databases.query
+                        payload['filter'] = filter_obj
+                    else:
+                        # for the right table, stash the filter for filtering after merging
+                        compiled_dict["join_right_filter"] = filter_obj
 
         projection = self._compiler_state.stmt._projection
 
