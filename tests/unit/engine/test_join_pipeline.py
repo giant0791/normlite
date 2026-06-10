@@ -425,3 +425,110 @@ def test_join_propagates_non_404_retrieve_error(engine: Engine, monkeypatch):
     assert isinstance(cause, NotionError)
     assert cause.code == "internal_server_error"
     assert cause.status_code == 500
+
+def test_join_qualifies_colliding_column_names_by_table(engine: Engine):
+    # Arrange: two tables that BOTH declare a `name` column, FK-linked.
+    # `students.advisor` points at an `instructors` row. A bare merged schema
+    # would emit two columns both literally named "name" — and because the
+    # cursor metadata keys columns by name, the right side would silently
+    # clobber the left. The join must instead disambiguate on collision using
+    # each table's public name.
+    metadata = MetaData()
+    instructors = Table(
+        "instructors",
+        metadata,
+        Column("name", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("advisor", Relation(), ForeignKey("instructors.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        advisor_oid = (
+            connection.execute(
+                insert(instructors)
+                .values(name="Vincenzo Galilei")
+                .returning(instructors.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                name="Galileo Galilei",
+                advisor=[advisor_oid],
+            )
+        )
+
+        # Act: join the two tables, both of which carry a `name`.
+        result = connection.execute(
+            select(students, instructors).join(students.c.advisor)
+        )
+        row = result.fetchall()[0]
+
+    # Assert: both `name`s are reachable under table-qualified keys, with no
+    # bare-`name` shadow collapsing the two into one.
+    keys = set(row.keys())
+    assert "students.name" in keys
+    assert "instructors.name" in keys
+    assert "name" not in keys
+
+    m = row.mapping()
+    assert m["students.name"] == "Galileo Galilei"
+    assert m["instructors.name"] == "Vincenzo Galilei"
+
+
+def test_join_projects_columns_from_both_tables(engine: Engine):
+    # Arrange: an FK-linked pair with DISTINCT column names, so qualification
+    # never enters the picture. The point of this behavior is narrower: a SELECT
+    # that lists columns drawn from BOTH joined tables must be expressible and
+    # must surface every projected column, each carrying its own side's value.
+    metadata = MetaData()
+    instructors = Table(
+        "instructors",
+        metadata,
+        Column("director", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("advisor", Relation(), ForeignKey("instructors.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        advisor_oid = (
+            connection.execute(
+                insert(instructors)
+                .values(director="Vincenzo Galilei")
+                .returning(instructors.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                name="Galileo Galilei",
+                advisor=[advisor_oid],
+            )
+        )
+
+        # Act: project one column from each side of the join.
+        result = connection.execute(
+            select(students.c.name, instructors.c.director).join(students.c.advisor)
+        )
+        row = result.fetchall()[0]
+
+    # Assert: both projected columns are reachable, each with its own table's value.
+    keys = set(row.keys())
+    assert "name" in keys
+    assert "director" in keys
+
+    m = row.mapping()
+    assert m["name"] == "Galileo Galilei"
+    assert m["director"] == "Vincenzo Galilei"

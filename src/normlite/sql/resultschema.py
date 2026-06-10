@@ -40,7 +40,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 from normlite._constants import SpecialColumns
 from normlite.exceptions import InvalidRequestError, NoSuchColumnError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
-from normlite.sql.schema import Table
+from normlite.sql.schema import Column, Table
 
 def _merge_names(
     execution_names: Optional[Sequence[str]],
@@ -107,7 +107,7 @@ class SchemaInfo:
         Args:
             table (Table): The table representive the authoritative source of the schema.
             execution_names (Optional[Sequence[str]]): The ordered projection list of system columns (Notion key values) required for statement execution.
-            projected_names (Optional[Sequence[str]]): The ordered projection list of columns (Notion key valuses **and** properties) the user wants to have in the returned rows.
+            projected_names (Optional[Sequence[str]]): The ordered projection list of columns (Notion key values **and** properties) the user wants to have in the returned rows.
 
         Raises:
             NoSuchColumnError: If any of the column names in ``projection_names`` could not be found in the table.
@@ -143,6 +143,34 @@ class SchemaInfo:
 
         return cls(tuple(result_columns))
     
+    @classmethod
+    def from_join(
+        cls,
+        left: Table,
+        right: Table,        
+    ) -> SchemaInfo:
+        
+        fqname_by_col: dict[Column, str] = {}
+        for lc in left.uc:
+            if lc.name in right.uc:
+                # colliding column names: add both left and right columns
+                # with fully qualified names
+                fqname_by_col[lc] = f"{lc.parent.name}.{lc.name}"
+                rc = right.uc[lc.name]
+                fqname_by_col[rc] = f"{rc.parent.name}.{rc.name}"
+
+        joined_table_cols = [*left.uc, *right.uc]
+        result_cols = [
+            ResultColumn(
+                # take the FQ-name if it's a colliding column
+                fqname_by_col.get(rc, rc.name), 
+                type_code=rc.type_.get_dbapi_type(), 
+                nullable=False
+            )
+            for rc in joined_table_cols
+        ]
+        return SchemaInfo(result_cols)
+        
     def as_sequence(self) -> Sequence[tuple]:
         """Provide the description for DBAPI cursors.
         

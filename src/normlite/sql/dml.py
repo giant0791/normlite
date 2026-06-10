@@ -783,7 +783,7 @@ class Select(HasTable, ExecutableClauseElement):
                 return 
 
         # A list of columns has been provided
-        tables = set()
+        tables = []
         columns: list[tuple[str, Column]] = []
 
         for ent in entities:
@@ -791,24 +791,37 @@ class Select(HasTable, ExecutableClauseElement):
                 raise ArgumentError(
                     "select() arguments must be either a Table or Column objects"
                 )
-            tables.add(ent.parent)
+            tables.append(ent.parent)
             columns.append((ent.name, ent))
 
-        if len(tables) != 1:
+        dedup_tables = list(dict.fromkeys(tables))
+
+        if len(dedup_tables) > 2:
             raise ArgumentError(
-                "All selected columns must belong to the same table"
+                f"All selected columns must either belong to the same table or "
+                f"belong to max. 2 tables (left and right tables for JOIN clause). "
+                f"You supplied columns from {len(dedup_tables)} tables."
             )
 
-        self._table: Table = tables.pop()
-        # --- SAFEGUARD: column names must exist on the table ---
+        self._table: Table = dedup_tables[0]
+        self._right = dedup_tables[1] if len(dedup_tables) == 2 else None
+        # --- SAFEGUARD: column names must exist on each table ---
         table_columns: ReadOnlyColumnCollection = self._table.columns
 
         for column in columns:
             _, col = column
-            if col.name not in table_columns:
+            if (
+                col.name not in table_columns 
+                and 
+                self._right is not None
+                and
+                col.name not in self._right.columns
+            ):
                 raise ArgumentError(
-                    f'Column: {col.name} does not belong to table: {self._table.name}'
+                    f"Column: {col.name} must either belong to '{self._table.name}' or "
+                    f"to {self._right.name}"
                 )
+
         self._projection = ColumnCollection(columns).as_readonly()
 
     @generative
@@ -914,7 +927,7 @@ class Select(HasTable, ExecutableClauseElement):
         context._join = self._joins[0]
         context._join_left_schema = SchemaInfo.from_table(
             context._join.left,
-            execution_names=context.compiled.fetch_columns(),
+            execution_names=[context._join.left.c.object_id.name],
             projected_names=[c.name for c in context._join.left.uc]  
         )
         context._cursor._inject_description(
@@ -935,7 +948,7 @@ class Select(HasTable, ExecutableClauseElement):
         result_cursor = context.connection._engine.raw_connection().cursor()
         right_schema: SchemaInfo = SchemaInfo.from_table(
             context._join.right,
-            execution_names=context.compiled.fetch_columns(),
+            execution_names=[context._join.right.c.object_id.name],
             projected_names=[c.name for c in context._join.right.uc]    
         )
         result_cursor._inject_description(right_schema.as_sequence())
@@ -1015,16 +1028,7 @@ class Select(HasTable, ExecutableClauseElement):
         # the joined table has all left and right table's columns 
         left = context._join.left
         right = context._join.right
-        joined_table_cols = [*left.uc, *right.uc]
-        result_cols = [
-            ResultColumn(
-                rc.name, 
-                type_code=rc.type_.get_dbapi_type(), 
-                nullable=False
-            )
-            for rc in joined_table_cols
-        ]
-        return SchemaInfo(result_cols)
+        return SchemaInfo.from_join(left, right)
     
 def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)

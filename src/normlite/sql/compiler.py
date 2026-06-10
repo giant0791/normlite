@@ -633,7 +633,15 @@ class NotionCompiler(SQLCompiler):
             self._compiler_state.fetch_columns = [
                 col.name
                 for col in projection
+                if col.name in select._table.c  # join path supplies only its left-owned projection
             ]
+
+            if select._joins:
+                # add the onclause column name to the set of columns to be fetched
+                # this ensures it is encoded in the filter properties
+                self._compiler_state.fetch_columns.append(
+                    compiled_dict["joins"][0]["onclause"]
+                )
 
             self._compiler_state.result_columns = [
                 col 
