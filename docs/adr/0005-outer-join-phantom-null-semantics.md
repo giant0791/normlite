@@ -67,6 +67,14 @@ fabricating per-type Notion-empty values.**
   # else: real right row, concrete on-wire shapes — hand to _Filter unchanged
   ```
 
+  > **Update (2026-06-13, #309).** The right slice is no longer extracted via
+  > `merged_row[left_width:]`; that count-from-the-full-left-schema slice broke under a
+  > narrowed projection. It is now built from joined-schema getters
+  > (`merged_schema.column_getter(name)`, in projection order) — see
+  > [ADR-0006](./0006-join-result-row-shape.md). **The decision in this ADR is unchanged:**
+  > the all-None right slice still *is* the phantom and is still dropped structurally before
+  > `_Filter` is invoked.
+
 - This rests on the invariant that **a Python `None` cell in a merged tuple originates only
   from the phantom None-fill** — real right rows carry concrete on-wire dicts
   (`{"title": []}`, `{"checkbox": false}`), never `None`. So `all(None)` ⟺ phantom ⟺

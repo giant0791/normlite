@@ -20,7 +20,13 @@ levels of validation are plausible for the fake at `pages_create` / `pages_updat
    store and that its parent database matches the relation's declared `database_id`.
 
 This decision shapes how dangling-FK bugs surface in tests built on top of the fake, and
-sets the boundary the upcoming `Select.join()` work will be tested against.
+set the boundary the `Select.join()` work was tested against. That work has since shipped
+(slices 4–7, #306–#309): the lax-FK contract below is what makes a dangling reference
+resolve to "no matching right row" at join time. How that propagates — silently dropped by
+an inner join, preserved as a None-filled phantom by an outer join — is fixed in
+[ADR-0007](./0007-join-dangling-fk-propagation.md), and the predicate-against-a-phantom
+rule in [ADR-0005](./0005-outer-join-phantom-null-semantics.md). The joined result-set
+shape is fixed in [ADR-0006](./0006-join-result-row-shape.md).
 
 ## Decision
 

@@ -204,9 +204,11 @@ errors. See [[adr-0002-fake-client-lax-fk-validation]].
 **Deferred — `has_more` truncation.** Real Notion truncates relation property arrays past
 ~25 entries on page retrieval and exposes `has_more: true` with a separate
 `properties_retrieve` pagination endpoint. The fake currently returns the full list with
-no truncation. This is a known divergence to revisit when `Select.join()` is implemented;
-joins that paginate large relations in production must not silently rely on the fake's
-non-truncating behaviour.
+no truncation. `Select.join()` v1 (PRD #302) ships **against in-memory clients only**, so
+this divergence is deferred **until a real Notion integration is built** — not resolved by
+the join work. Joins that paginate large relations in production must not silently rely on
+the fake's non-truncating behaviour. See [[adr-0007-join-dangling-fk-propagation]] for the
+shipped join FK-resolution contract and PRD #302 for the integration deferral.
 
 ---
 
