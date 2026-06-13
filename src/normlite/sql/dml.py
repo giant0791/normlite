@@ -23,11 +23,11 @@ from normlite.notiondbapi.resultset import ResultSet
 from normlite.sql.schema import ColumnCollection
 
 from types import MappingProxyType
-from typing import Any, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Type, Union, TYPE_CHECKING
+from typing import Any, Callable, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Type, Union, TYPE_CHECKING
 import collections.abc as collections_abc
 
 import warnings
-from normlite.exceptions import ArgumentError
+from normlite.exceptions import ArgumentError, NoSuchColumnError
 from normlite.sql.base import Executable, ClauseElement, generative
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
@@ -86,7 +86,8 @@ def merge_inner_join_rows(
     onclause_column: Column,
     left_rows: list[tuple],
     right_rows: list[tuple],
-    isouter: bool = False
+    isouter: bool = False,
+    projection: Optional[ReadOnlyColumnCollection] = None,
 ) -> list[tuple]:
     """Cross-product left rows with right rows whose object_id matches the
     decoded relation list on each left row.
@@ -138,7 +139,9 @@ def merge_inner_join_rows(
                     left_schema,
                     right_schema,
                     left_row,
-                    right_row
+                    right_row,
+                    projection=projection,
+                    left_table=onclause_column.parent
                 )
             )
 
@@ -154,7 +157,9 @@ def merge_inner_join_rows(
                     left_schema,
                     right_schema,
                     left_row,
-                    None
+                    None,
+                    projection=projection,
+                    left_table=onclause_column.parent
                 )
             )
 
@@ -163,40 +168,99 @@ def merge_inner_join_rows(
 def _project_join_row(
     left_schema: SchemaInfo,
     right_schema: SchemaInfo,
-    left_row: tuple, 
-    right_row: tuple
+    left_row: tuple,
+    right_row: Optional[tuple],
+    projection: Optional[ReadOnlyColumnCollection] = None,
+    left_table: Optional[Table] = None,
 ) -> tuple:
-    left_projected = tuple(
-        [
-            left_row[left_schema.column_index(lc.name)] 
-            for lc in left_schema.columns 
-            if lc.name != "object_id"
-        ]
-    )
+    """Construct the row resulting from the join merging the left and the right row.
+
+    Args:
+        left_schema (SchemaInfo): Schema for the left row
+        right_schema (SchemaInfo): Schema for the right row
+        left_row (tuple): Left row as a tuple of values
+        right_row (Optional[tuple]): right row as a tuple of values.
+        It can be None (no matching row in outer join).
+        projection (Optional[ReadOnlyColumnCollection], optional): A collection of columns to be projected. Defaults to None.
+        left_table (Optional[Table], optional): The left table of the join. Used to decide,
+        for each projected column, whether it is owned by the left or the right side. Required
+        whenever ``projection`` is given. Defaults to None.
+
+    Returns:
+        tuple: The resulting row as a tuple of values.
+    """
+
+    if projection is not None:
+        # Project in PROJECTION ORDER, exactly one value per projected column,
+        # sourced from the column's OWNING table. Ownership is decided by
+        # identity (col.parent is left_table), NOT by name membership in a
+        # schema: under a name collision both schemas contain the name, so name
+        # membership is ambiguous -- it would emit the wrong side's value and
+        # double-count the column.
+        projected = tuple()
+        for col in projection:
+            if col.parent is left_table:
+                # left-owned column: take its value from the left row
+                getter = left_schema.column_getter(col.name)
+                projected += (getter(left_row),)
+            elif right_row is not None:
+                # right-owned column with a matching right row
+                getter = right_schema.column_getter(col.name)
+                projected += (getter(right_row),)
+            else:
+                # right-owned column with no right row (outer-join phantom)
+                projected += (None,)
+
+        return projected
+
+    # No projection given: project ALL user columns from both sides
+    # (left then right), skipping object_id. Right side is None-filled when
+    # there is no matching right row.
+    left_projected = tuple([
+        left_row[left_schema.column_index(lc.name)]
+        for lc in left_schema.columns
+        if lc.name != "object_id"
+    ])
+
     if right_row is not None:
-        right_projected = tuple(
-            [
-                right_row[right_schema.column_index(rc.name)] 
-                for rc in right_schema.columns 
-                if rc.name != "object_id"
-            ]
-        )
+        right_projected = tuple([
+            right_row[right_schema.column_index(rc.name)]
+            for rc in right_schema.columns
+            if rc.name != "object_id"
+        ])
     else:
-        right_projected = tuple(
-            [
-                None 
-                for rc in right_schema.columns 
-                if rc.name != "object_id"
-            ]
-        )
+        right_projected = tuple([
+            None
+            for rc in right_schema.columns
+            if rc.name != "object_id"
+        ])
 
     return (*left_projected, *right_projected)
 
+def _merge_rows_with_right_side_filter(
+    context: ExecutionContext,
+    merged_rows: Sequence[tuple],
+    *, 
+    projection: Optional[ReadOnlyColumnCollection]
+) -> Sequence[tuple]:
+    right_schema = context._join_right_schema
+    # full right user columns, in merged-row right-part order
+    right_cols = [c for c in right_schema.columns if c.name != "object_id"]
+    left_width = len([c for c in context._join_left_schema.columns if c.name != "object_id"])
+
+    join_right_filter = context.join_right_filter
+    if join_right_filter is not None:
+        merged_rows = [
+            r for r in merged_rows
+            if _right_side_passes(r, join_right_filter, left_width, right_cols)
+        ]
+    return merged_rows
+
 def _right_side_passes(
-    merged_row, 
-    right_filter, 
-    left_width, 
-    right_cols: list[ResultColumn]
+    merged_row: tuple[Any, ...],
+    right_filter: str,
+    left_width: int, 
+    right_cols: Sequence[ResultColumn]
 ) -> bool:
     """Shape adapter to apply ``_Filter`` predicate coming from WHERE clause on right columns."""
 
@@ -779,7 +843,7 @@ class Select(HasTable, ExecutableClauseElement):
                 # select columns from multiple tables: join case
                 self._table = entities[0]
                 self._right = entities[1]
-                self._projection = ColumnCollection().as_readonly()
+                self._projection = [*self._table.uc, *self._right.uc]
                 return 
 
         # A list of columns has been provided
@@ -995,31 +1059,23 @@ class Select(HasTable, ExecutableClauseElement):
             context._join.onclause, 
             context._join_left_rows, 
             right_rows,
-            isouter=context._join.isouter
+            isouter=context._join.isouter,
+            projection=self._projection
         )
 
         # filter the right rows if WHERE clause contains a condition on right columns
-        join_right_filter = context.join_right_filter
-        left_width = len([c for c in context._join_left_schema.columns if c.name != "object_id"])
-        right_cols = [c for c in context._join_right_schema.columns if c.name != "object_id"]
-        if join_right_filter is not None:
-            merged_rows = [
-                r
-                for r in merged_rows
-                if _right_side_passes(
-                    r,
-                    join_right_filter,
-                    left_width,
-                    right_cols
-                )
-            ]
+        filtered_rows = _merge_rows_with_right_side_filter(
+            context,
+            merged_rows,
+            projection=self._projection
+        )
 
         # fill in the result cursor's result set    
         context._result_cursor._result_sets.append(
             ResultSet(
                 joined.as_sequence(),
                 "page",
-                merged_rows
+                filtered_rows
             )
         )
 
@@ -1028,11 +1084,10 @@ class Select(HasTable, ExecutableClauseElement):
         # the joined table has all left and right table's columns 
         left = context._join.left
         right = context._join.right
-        return SchemaInfo.from_join(left, right)
+        return SchemaInfo.from_join(left, right, *self._projection)
     
 def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)
-        
 
 class Delete(UpdateBase):
     """Represent a SQL DELETE statement."""

@@ -36,7 +36,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence
-
 from normlite._constants import SpecialColumns
 from normlite.exceptions import InvalidRequestError, NoSuchColumnError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
@@ -91,7 +90,6 @@ class SchemaInfo:
         compare=False,
     )
 
-
     @classmethod
     def from_table(
         cls,
@@ -145,21 +143,32 @@ class SchemaInfo:
     
     @classmethod
     def from_join(
-        cls,
+        cls, 
         left: Table,
-        right: Table,        
+        right: Table,
+        *entities: Column
     ) -> SchemaInfo:
-        
         fqname_by_col: dict[Column, str] = {}
-        for lc in left.uc:
-            if lc.name in right.uc:
-                # colliding column names: add both left and right columns
-                # with fully qualified names
-                fqname_by_col[lc] = f"{lc.parent.name}.{lc.name}"
-                rc = right.uc[lc.name]
-                fqname_by_col[rc] = f"{rc.parent.name}.{rc.name}"
 
-        joined_table_cols = [*left.uc, *right.uc]
+        # find colliding column names:
+        # same name in entities
+        seen = set()
+        colliding: dict[str, list[Column]] = {}
+        for ent in entities:
+            if ent.name not in colliding:
+                colliding[ent.name] = [ent]
+            else:
+                colliding[ent.name].append(ent)
+
+        # fully qualify names for colliding only
+        for cols in colliding.values():
+            if len(cols) == 1:
+                # skip, only column only does not need qualification
+                continue
+
+            for ent in cols:
+                fqname_by_col[ent] = f"{ent.parent.name}.{ent.name}"
+
         result_cols = [
             ResultColumn(
                 # take the FQ-name if it's a colliding column
@@ -167,7 +176,7 @@ class SchemaInfo:
                 type_code=rc.type_.get_dbapi_type(), 
                 nullable=False
             )
-            for rc in joined_table_cols
+            for rc in entities
         ]
         return SchemaInfo(result_cols)
         
@@ -221,3 +230,14 @@ class SchemaInfo:
             return row[idx]
 
         return getter
+    
+    def __contains__(self, key: str) -> bool:
+        if not isinstance(key, str):
+            raise ArgumentError(
+                "__contains__ requires a string argument"
+            )
+        
+        if key not in self._index_map:
+            return False
+        
+        return True

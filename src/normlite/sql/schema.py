@@ -921,7 +921,6 @@ class Table(HasIdentifier):
         return "Table(%s)" % ", ".join(
             [repr(self.name)]
             + [repr(x) for x in self.columns]
-            + [repr(x) for x in self._sys_columns]
         )
     
 class ColumnCollection:

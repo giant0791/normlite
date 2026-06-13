@@ -1,3 +1,4 @@
+import pdb
 import uuid
 
 import pytest
@@ -527,6 +528,64 @@ def test_join_projects_columns_from_both_tables(engine: Engine):
     # Assert: both projected columns are reachable, each with its own table's value.
     keys = set(row.keys())
     assert "name" in keys
+    assert "director" in keys
+
+    m = row.mapping()
+    assert m["name"] == "Galileo Galilei"
+    assert m["director"] == "Vincenzo Galilei"
+
+def test_join_keeps_projected_name_bare_when_collision_is_unprojected(engine: Engine):
+    # Arrange: `name` exists on BOTH tables, but only as a TABLE-level
+    # coincidence -- on `instructors` it is a plain (non-title) property that
+    # the query never asks for. The SELECT projects `students.name` and
+    # `instructors.director`; `instructors.name` is NOT projected. There is
+    # therefore no collision *in the projection*, so the surviving `name` key
+    # must stay BARE. Qualifying it (`students.name`) would be over-
+    # qualification driven by the table schemas rather than by what was asked.
+    metadata = MetaData()
+    instructors = Table(
+        "instructors",
+        metadata,
+        Column("director", String(is_title=True)),
+        Column("name", String()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("advisor", Relation(), ForeignKey("instructors.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        advisor_oid = (
+            connection.execute(
+                insert(instructors)
+                .values(director="Vincenzo Galilei", name="Pisa Cathedral")
+                .returning(instructors.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                name="Galileo Galilei",
+                advisor=[advisor_oid],
+            )
+        )
+
+        # Act: project `name` from ONE side only, alongside the other side's
+        # `director`. The unprojected `instructors.name` is the collision bait.
+        result = connection.execute(
+            select(students.c.name, instructors.c.director).join(students.c.advisor)
+        )
+        row = result.fetchall()[0]
+
+    # Assert: the projected `name` surfaces under its BARE key (no ambiguity to
+    # resolve), and is NOT over-qualified to `students.name`.
+    keys = set(row.keys())
+    assert "name" in keys
+    assert "students.name" not in keys
     assert "director" in keys
 
     m = row.mapping()
