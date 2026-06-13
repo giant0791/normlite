@@ -705,7 +705,6 @@ class DateTimeRange:
         # Case 3: datetime
         # -----------------------------------------
         if isinstance(other, datetime):
-            pdb.set_trace()
             try:
                 other_dtr = DateTimeRange(other)
             except Exception:

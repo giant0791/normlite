@@ -595,11 +595,25 @@ class Table(HasIdentifier):
         self._sys_columns["object_id"]._value = id_
     
     def add_constraint(self, constraint: Constraint) -> None:
-        """Add a constraint to this table."""
+        """Add a constraint to this table.
+        
+        .. versionchanged:: 0.11.0
+            This method now enforces the Notion's data model invariant: 
+            No two relation properties pointing to the same database. 
+        """
         constraint._set_parent(self)
-        self._constraints.add(constraint)
         if isinstance(constraint, ForeignKeyConstraint):
-            self.foreign_keys.add(constraint)
+            existing = [
+                fk 
+                for fk in self.foreign_keys 
+                if fk.reftable is constraint.reftable
+            ]
+            if existing:
+                raise ArgumentError(
+                    f"Table '{self.name}' already has a relation to "
+                    f"'{constraint.reftable.name}'; Notion forbids two."
+                )
+        self._constraints.add(constraint)
 
     def append_column(self, column: Column):
         """Append a column to this table.
@@ -907,7 +921,6 @@ class Table(HasIdentifier):
         return "Table(%s)" % ", ".join(
             [repr(self.name)]
             + [repr(x) for x in self.columns]
-            + [repr(x) for x in self._sys_columns]
         )
     
 class ColumnCollection:
@@ -1167,7 +1180,7 @@ class ForeignKeyConstraint(Constraint):
     constraint. 
 
     .. note::
-        In the Notion's data model, a :class:`normlite.sql.type_api.Relation` propery always links to exactly one target database.
+        In the Notion's data model, a :class:`normlite.sql.type_api.Relation` property always links to exactly one target database.
         There is no concept of a multi-column composite relation in the Notion API.
 
     .. versionadded:: 0.11.0 

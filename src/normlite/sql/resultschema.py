@@ -36,11 +36,10 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence
-
 from normlite._constants import SpecialColumns
 from normlite.exceptions import InvalidRequestError, NoSuchColumnError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
-from normlite.sql.schema import Table
+from normlite.sql.schema import Column, Table
 
 def _merge_names(
     execution_names: Optional[Sequence[str]],
@@ -91,7 +90,6 @@ class SchemaInfo:
         compare=False,
     )
 
-
     @classmethod
     def from_table(
         cls,
@@ -107,7 +105,7 @@ class SchemaInfo:
         Args:
             table (Table): The table representive the authoritative source of the schema.
             execution_names (Optional[Sequence[str]]): The ordered projection list of system columns (Notion key values) required for statement execution.
-            projected_names (Optional[Sequence[str]]): The ordered projection list of columns (Notion key valuses **and** properties) the user wants to have in the returned rows.
+            projected_names (Optional[Sequence[str]]): The ordered projection list of columns (Notion key values **and** properties) the user wants to have in the returned rows.
 
         Raises:
             NoSuchColumnError: If any of the column names in ``projection_names`` could not be found in the table.
@@ -143,6 +141,45 @@ class SchemaInfo:
 
         return cls(tuple(result_columns))
     
+    @classmethod
+    def from_join(
+        cls, 
+        left: Table,
+        right: Table,
+        *entities: Column
+    ) -> SchemaInfo:
+        fqname_by_col: dict[Column, str] = {}
+
+        # find colliding column names:
+        # same name in entities
+        seen = set()
+        colliding: dict[str, list[Column]] = {}
+        for ent in entities:
+            if ent.name not in colliding:
+                colliding[ent.name] = [ent]
+            else:
+                colliding[ent.name].append(ent)
+
+        # fully qualify names for colliding only
+        for cols in colliding.values():
+            if len(cols) == 1:
+                # skip, only column only does not need qualification
+                continue
+
+            for ent in cols:
+                fqname_by_col[ent] = f"{ent.parent.name}.{ent.name}"
+
+        result_cols = [
+            ResultColumn(
+                # take the FQ-name if it's a colliding column
+                fqname_by_col.get(rc, rc.name), 
+                type_code=rc.type_.get_dbapi_type(), 
+                nullable=False
+            )
+            for rc in entities
+        ]
+        return SchemaInfo(result_cols)
+        
     def as_sequence(self) -> Sequence[tuple]:
         """Provide the description for DBAPI cursors.
         
@@ -193,3 +230,14 @@ class SchemaInfo:
             return row[idx]
 
         return getter
+    
+    def __contains__(self, key: str) -> bool:
+        if not isinstance(key, str):
+            raise ArgumentError(
+                "__contains__ requires a string argument"
+            )
+        
+        if key not in self._index_map:
+            return False
+        
+        return True

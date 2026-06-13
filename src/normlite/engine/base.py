@@ -195,14 +195,14 @@ class Connection:
         """
         
         # delegate to statement execution trigger
-        try:
-            exec_method = stmt._execute_on_connection(
-                self, 
-                parameters, 
-                execution_options=execution_options
-            )
-        except AttributeError as ae:
-            raise ObjectNotExecutableError(stmt) from ae 
+        if not stmt.supports_execution:
+            raise ObjectNotExecutableError(stmt)
+    
+        exec_method = stmt._execute_on_connection(
+            self, 
+            parameters, 
+            execution_options=execution_options
+        )
         
         return exec_method
     
@@ -264,14 +264,11 @@ class Connection:
         elem = context.invoked_stmt
         
         # 6. side effects happen (HTTP)
-        try:
-            self._engine.do_execute(
-                context._get_exec_cursor(), 
-                context.operation, 
-                context.parameters
-            )
-        except Error as exc:
-            elem._handle_dbapi_error(exc, context)
+        self._engine.do_execute(
+            context._get_exec_cursor(), 
+            context.operation, 
+            context.parameters
+        )
 
     
     def _execute_many(self, context: ExecutionContext) -> None:
@@ -280,28 +277,22 @@ class Connection:
         # 6. side effects happen (HTTP)
         #    execute_many uses the bulk_* attributes which have been prepared in the 
         #    invoked statement's _finilize_execution() hook
-        try:
-            self._engine.do_executemany(
-                context._get_exec_cursor(), 
-                context.bulk_operation, 
-                context.bulk_parameters
-            )
-        except Error as exc:
-            elem._handle_dbapi_error(exc, context)
+        self._engine.do_executemany(
+            context._get_exec_cursor(), 
+            context.bulk_operation, 
+            context.bulk_parameters
+        )
 
     def _execute_insert_many(self, context: ExecutionContext) -> None:
         elem = context.invoked_stmt
 
         # 6. side effects happen (HTTP)
         #    insert_many expects a multi-payload in parameters
-        try:
-            self._engine.do_executemany(
-                context._get_exec_cursor(), 
-                context.operation, 
-                context.parameters
-            )
-        except Error as exc:
-            elem._handle_dbapi_error(exc, context)
+        self._engine.do_executemany(
+            context._get_exec_cursor(), 
+            context.operation, 
+            context.parameters
+        )
 
     def _resolve_execution_options(self, stmt_execution_options: ExecutionOptions) -> ExecutionOptions:
         """Resolve the connection's execution options with the statement's ones."""

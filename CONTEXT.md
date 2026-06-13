@@ -33,6 +33,26 @@ Translates a DML/DDL AST into a `compiled_dict` — a JSON-like dict with keys `
 `path_params`, `payload`, and (for UPDATE) `update_payload`. Named placeholders (`:param`) are
 resolved at execution time by `ExecutionContext`.
 
+### Compiler entry points: `.compile()` vs `._compiler_dispatch()`
+Every `ClauseElement` exposes two compilation entry points with **different lifecycle
+semantics**. Confusing them is a real footgun.
+
+- **`.compile(compiler)`** — public, top-level entry. **Resets `compiler._compiler_state`
+  to a fresh `CompilerState()`** before dispatch, and wraps the result in a `Compiled`
+  (or `DDLCompiled`) object. Use this only when compiling a *statement* from outside
+  the compiler (e.g. `stmt.compile(NotionCompiler())` in tests, or from
+  `Connection._execute_context`).
+- **`._compiler_dispatch(compiler)`** — internal, recursive visitor dispatch.
+  **Preserves `_compiler_state`** and returns the raw dict produced by the matching
+  `visit_*` method. Use this from any `visit_*` method when descending into sub-nodes
+  (`whereclause`, `order_by` clauses, `joins`, expressions).
+
+**The trap**: calling `.compile()` from inside a `visit_*` method (e.g.
+`[j.compile(self) for j in select._joins]`) silently clobbers the in-flight
+`_compiler_state` for every sub-node and leaves `_compiler_state.stmt = None` by the
+time the outer `visit_select` returns. Use `_compiler_dispatch` for sub-node descent;
+reserve `compile` for the outermost call.
+
 ### Execution Pipeline
 The sequence: compile → `pre_exec` (bind params) → `_setup_execution` (Notion API call(s)) →
 `_execute_*` → `post_exec` → `_finalize_execution` (cursor routing).
@@ -184,9 +204,11 @@ errors. See [[adr-0002-fake-client-lax-fk-validation]].
 **Deferred — `has_more` truncation.** Real Notion truncates relation property arrays past
 ~25 entries on page retrieval and exposes `has_more: true` with a separate
 `properties_retrieve` pagination endpoint. The fake currently returns the full list with
-no truncation. This is a known divergence to revisit when `Select.join()` is implemented;
-joins that paginate large relations in production must not silently rely on the fake's
-non-truncating behaviour.
+no truncation. `Select.join()` v1 (PRD #302) ships **against in-memory clients only**, so
+this divergence is deferred **until a real Notion integration is built** — not resolved by
+the join work. Joins that paginate large relations in production must not silently rely on
+the fake's non-truncating behaviour. See [[adr-0007-join-dangling-fk-propagation]] for the
+shipped join FK-resolution contract and PRD #302 for the integration deferral.
 
 ---
 

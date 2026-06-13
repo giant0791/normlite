@@ -45,9 +45,7 @@ The design of SQL statement execution separates responsibilities cleanly using t
 """
 from __future__ import annotations
 from enum import Enum, auto
-import pdb
 from typing import TYPE_CHECKING, Any, Mapping, Optional, Union, Sequence
-import copy
 
 from normlite.exceptions import ArgumentError, StatementError
 from normlite.engine.interfaces import _CoreMultiExecuteParams, ExecutionOptions
@@ -62,6 +60,7 @@ if TYPE_CHECKING:
     from normlite.notiondbapi.dbapi2 import Cursor as DBAPICursor
     from normlite.sql.base import Executable
     from normlite.sql.elements import BindParameter
+    from normlite.sql.dml import Join
 
 class ExecutionStyle(Enum):
     """Define the execution style for a context.
@@ -243,6 +242,12 @@ class ExecutionContext:
     .. versionadded:: 0.8.0
     """
 
+    join_right_filter: Optional[dict]
+    """The optional filter expression for WHERE clauses with right columns expressions
+    
+    .. versionadded:: 0.11.0
+    """
+
     execution_style: ExecutionStyle
     """The style of DBAPI cursor method that will be used to execute a statement.
 
@@ -297,6 +302,18 @@ class ExecutionContext:
     .. versionadded:: 0.9.0
     """
 
+    _join: Optional[Join] = None
+    """Gives onclause + left/right tables"""
+
+    _join_left_rows: Optional[list[tuple]] = None
+    """drained left pages"""
+
+    _join_left_schema: Optional[SchemaInfo] = None
+    """to resolve FK column index"""
+
+    _join_right_schema: Optional[SchemaInfo] = None
+    """to read object_id from the right rows"""
+
     def __init__(
             self,
             engine: Engine,
@@ -318,6 +335,7 @@ class ExecutionContext:
         self.path_params = None
         self.query_params = None
         self.payload = None
+        self.join_right_filter = None
         self._result = None
         self._rowcount = None
         self._returned_primary_keys_rows = None
@@ -385,6 +403,11 @@ class ExecutionContext:
 
         # delete or update with single parameters
         if stmt.is_delete or stmt.is_update:
+            return ExecutionStyle.EXECUTEMANY
+        
+        # NEW: Select with joins is two-phase — phase-1 databases.query,
+        # phase-2 bulk pages.retrieve (Select.join, slice 2 of #302)
+        if stmt.is_select and stmt._joins:
             return ExecutionStyle.EXECUTEMANY
         
         # select or insert without returning
@@ -493,6 +516,10 @@ class ExecutionContext:
                 ]
             else:
                 self.payload = self._bind_params(template, resolved_params[0])
+
+        if 'join_right_filter' in self.compiled_dict:
+            template = self.compiled_dict['join_right_filter']
+            self.join_right_filter = self._bind_params(template, resolved_params[0])
 
         if self.invoked_stmt.is_update:
             self.resolved_params = dict(resolved_params[0])

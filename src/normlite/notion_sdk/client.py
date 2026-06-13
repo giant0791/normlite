@@ -1004,7 +1004,9 @@ class InMemoryNotionClient(AbstractNotionClient):
         if not obj:
             raise NotionError(
                 f"Could not find page with ID: {page_id}. "
-                "Make sure the relevant pages and databases are shared with your integration."
+                "Make sure the relevant pages and databases are shared with your integration.",
+                status_code=404,
+                code="object_not_found"
             )
         return copy.deepcopy(obj)
 

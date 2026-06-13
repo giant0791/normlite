@@ -17,27 +17,283 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
+from normlite.notion_sdk.client import NotionError
 from normlite.notiondbapi import Error
+from normlite.notiondbapi.resultset import ResultSet
 from normlite.sql.schema import ColumnCollection
 
-import pdb
 from types import MappingProxyType
-from typing import Any, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING, Tuple
+from typing import Any, Callable, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Type, Union, TYPE_CHECKING
 import collections.abc as collections_abc
 
 import warnings
-from normlite.exceptions import ArgumentError
+from normlite.exceptions import ArgumentError, NoSuchColumnError
 from normlite.sql.base import Executable, ClauseElement, generative
-from normlite.sql.elements import BindParameter, BooleanClauseList, ColumnElement
-from normlite.sql.resultschema import SchemaInfo
+from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement
+from normlite.sql.resultschema import ResultColumn, SchemaInfo
+from normlite.sql.type_api import Relation
+from normlite.sql.schema import Column, Table
 
 if TYPE_CHECKING:
-    from normlite.sql.schema import Column, Table, ReadOnlyColumnCollection
+    from normlite.sql.schema import ReadOnlyColumnCollection
     from normlite.engine.interfaces import _CoreAnyExecuteParams
     from normlite.engine.cursor import CursorResult
     from normlite.engine.base import Connection
     from normlite.engine.context import ExecutionContext
+    from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
+    from normlite.notiondbapi.dbapi2 import Cursor as DBAPICursor 
 
+ColumnExpressionArgument = Union[
+    BinaryExpression,
+    ColumnElement,
+    Table,
+]
+"""Column expression argument for :meth:`Select.join`.
+
+This type represents the options for the ``onclause`` argument in a JOIN ON clause.
+It enables to implement syntactic surgar expressions for the :meth:`Select.join` method.
+
+.. versionadded:: 0.11.0
+"""
+
+def build_phase_two_batch(
+    left_schema: SchemaInfo,
+    onclause_column: Column,
+    left_rows: list[tuple],
+) -> list[dict]:
+    """Return deduplicated `pages.retrieve` path_params for phase 2."""
+
+    # build the bulk parameters
+    # one parameter for each page_id contained in the FK relation column stored in
+    # each page returned by the databases.query
+    # REMEMBER: A Relation column stores non-scalar values -> list[str]
+    seen: set[str] = set()
+    bulk_params: list[dict] = []
+
+    get_fk_col = left_schema.column_getter(onclause_column.name)
+    for row in left_rows:
+        oids = onclause_column.type_.result_processor()(get_fk_col(row)) or []
+        for oid in oids:
+            if oid not in seen:
+                seen.add(oid)
+                bulk_params.append({"path_params": {"page_id": oid}})
+
+    return bulk_params
+
+def merge_inner_join_rows(
+    left_schema: SchemaInfo,
+    right_schema: SchemaInfo,
+    onclause_column: Column,
+    left_rows: list[tuple],
+    right_rows: list[tuple],
+    isouter: bool = False,
+    projection: Optional[ReadOnlyColumnCollection] = None,
+) -> list[tuple]:
+    """Cross-product left rows with right rows whose object_id matches the
+    decoded relation list on each left row.
+
+    Inner vs outer differ in exactly ONE place: what to do with a left row
+    that matched zero right rows. Inner drops it; outer rescues it with a
+    single None-filled row. Every left row that matched at least once is
+    treated identically by both kinds. So `isouter` is consulted at one site
+    only -- the per-row fallback below -- and nowhere else.
+
+    INVARIANT (per left row, not across the batch): a given left row
+    contributes exactly one None-filled row iff THAT row's foreign keys
+    matched zero right rows. This single predicate subsumes all three
+    zero-match shapes -- empty relation, all-dangling ids, and a lone
+    dangling id -- so none of them needs its own branch.
+    """
+
+    merged_rows = []
+
+    # prepare the getters
+    relation_proc = onclause_column.type_.result_processor()
+    get_oids = left_schema.column_getter(onclause_column.name)
+    get_left_oid = left_schema.column_getter("object_id")
+    get_right_oid =  right_schema.column_getter("object_id")
+
+    # construct a helper dictionary to contain {"id": <right_row>}
+    # the dict answers "does THIS oid resolve?" in O(1). It does NOT answer
+    # "did this left row match anything?" -- that is a per-row aggregate
+    # (see `matched` below) and can only be known after the oid loop finishes.
+    right_by_oid = {get_right_oid(rr): rr for rr in right_rows}
+
+    # build the cross-product
+    for left_row in left_rows:
+        fk_oids = relation_proc(get_oids(left_row)) or []
+
+        # `matched` is reset per left row: it tracks whether THIS row found
+        # any partner. Truthiness is all we read -- a bool flag would do.
+        matched = []
+        for fk_oid in fk_oids:
+            right_row = right_by_oid.get(fk_oid)
+            if right_row is None:
+                # dangling id: contributes no row of its own. Whether the row
+                # gets rescued is decided once, after the loop -- never here,
+                # because a later oid in this same row may still match.
+                continue
+
+            merged_rows.append(
+                _project_join_row(
+                    left_schema,
+                    right_schema,
+                    left_row,
+                    right_row,
+                    projection=projection,
+                    left_table=onclause_column.parent
+                )
+            )
+
+            matched.append(get_left_oid(left_row))
+
+        # The ONLY place inner and outer diverge. Gated on `isouter`: under
+        # inner join a zero-match row is simply dropped (no fallback). Without
+        # this guard, None-fill would leak into inner join and break its
+        # drop-the-unmatched contract.
+        if not matched and isouter:
+            merged_rows.append(
+                _project_join_row(
+                    left_schema,
+                    right_schema,
+                    left_row,
+                    None,
+                    projection=projection,
+                    left_table=onclause_column.parent
+                )
+            )
+
+    return merged_rows
+
+def _project_join_row(
+    left_schema: SchemaInfo,
+    right_schema: SchemaInfo,
+    left_row: tuple,
+    right_row: Optional[tuple],
+    projection: Optional[ReadOnlyColumnCollection] = None,
+    left_table: Optional[Table] = None,
+) -> tuple:
+    """Construct the row resulting from the join merging the left and the right row.
+
+    Args:
+        left_schema (SchemaInfo): Schema for the left row
+        right_schema (SchemaInfo): Schema for the right row
+        left_row (tuple): Left row as a tuple of values
+        right_row (Optional[tuple]): right row as a tuple of values.
+        It can be None (no matching row in outer join).
+        projection (Optional[ReadOnlyColumnCollection], optional): A collection of columns to be projected. Defaults to None.
+        left_table (Optional[Table], optional): The left table of the join. Used to decide,
+        for each projected column, whether it is owned by the left or the right side. Required
+        whenever ``projection`` is given. Defaults to None.
+
+    Returns:
+        tuple: The resulting row as a tuple of values.
+    """
+
+    if projection is not None:
+        # Project in PROJECTION ORDER, exactly one value per projected column,
+        # sourced from the column's OWNING table. Ownership is decided by
+        # identity (col.parent is left_table), NOT by name membership in a
+        # schema: under a name collision both schemas contain the name, so name
+        # membership is ambiguous -- it would emit the wrong side's value and
+        # double-count the column.
+        projected = tuple()
+        for col in projection:
+            if col.parent is left_table:
+                # left-owned column: take its value from the left row
+                getter = left_schema.column_getter(col.name)
+                projected += (getter(left_row),)
+            elif right_row is not None:
+                # right-owned column with a matching right row
+                getter = right_schema.column_getter(col.name)
+                projected += (getter(right_row),)
+            else:
+                # right-owned column with no right row (outer-join phantom)
+                projected += (None,)
+
+        return projected
+
+    # No projection given: project ALL user columns from both sides
+    # (left then right), skipping object_id. Right side is None-filled when
+    # there is no matching right row.
+    left_projected = tuple([
+        left_row[left_schema.column_index(lc.name)]
+        for lc in left_schema.columns
+        if lc.name != "object_id"
+    ])
+
+    if right_row is not None:
+        right_projected = tuple([
+            right_row[right_schema.column_index(rc.name)]
+            for rc in right_schema.columns
+            if rc.name != "object_id"
+        ])
+    else:
+        right_projected = tuple([
+            None
+            for rc in right_schema.columns
+            if rc.name != "object_id"
+        ])
+
+    return (*left_projected, *right_projected)
+
+def _merge_rows_with_right_side_filter(
+    context: ExecutionContext,
+    merged_rows: Sequence[tuple],
+    *,
+    merged_schema: Optional[SchemaInfo], 
+) -> Sequence[tuple]:
+    join_right_filter = context.join_right_filter
+    if join_right_filter is not None:
+        # build the getters from the merged_schema
+        right = context._join.right
+        right_cols = [c for c in merged_schema.columns if c.name in right.uc]
+        right_getters = [merged_schema.column_getter(c.name) for c in right_cols]
+        merged_rows = [
+            r for r in merged_rows
+            if _right_side_passes(r, join_right_filter, right_getters, right_cols)
+        ]
+
+    return merged_rows
+
+def _right_side_passes(
+    merged_row: tuple[Any, ...],
+    right_filter: str,
+    row_getters: list[Callable[[Sequence[Any]], Any]], 
+    right_cols: Sequence[ResultColumn]
+) -> bool:
+    """Shape adapter to apply ``_Filter`` predicate coming from WHERE clause on right columns."""
+
+    from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+    from normlite.notion_sdk.client import _Filter
+
+    type_mapper = {
+        DBAPITypeCode.NUMBER: "number",
+        DBAPITypeCode.NUMBER_WITH_COMMAS: "number",
+        DBAPITypeCode.NUMBER_DOLLAR: "number",
+        DBAPITypeCode.TITLE: "title",
+        DBAPITypeCode.RICH_TEXT: "rich_text",
+        DBAPITypeCode.CHECKBOX: "checkbox",
+        DBAPITypeCode.DATE: "date",
+        DBAPITypeCode.RELATION: "relation"
+    }
+
+    right_slice = tuple([
+        getter(merged_row)
+        for getter in row_getters
+    ])
+
+    if all(c is None for c in right_slice):
+        return False        # phantom: NULL fails every right-side predicate
+
+    properties = {}
+
+    for col, cell in zip(right_cols, right_slice):
+        typ = type_mapper[col.type_code]
+        properties[col.name] = {"type": typ, **cell}
+    
+    page = {"properties": properties}
+    return _Filter(page, {"filter": right_filter}).eval()
 
 class HasTable(Protocol):
     """Mixin for DML statements"""
@@ -551,10 +807,13 @@ class OrderByClause(HasExpression, ClauseElement):
 
 class Select(HasTable, ExecutableClauseElement):
     __visit_name__ = 'select'
+    
     is_select = True
 
     _projection: ReadOnlyColumnCollection
     """The column names to be projected in this select statement."""
+
+    _right: Optional[Table] = None
 
     def __init__(self, *entities: Union[Table, Column]):
         from normlite.sql.schema import Column, Table
@@ -570,6 +829,10 @@ class Select(HasTable, ExecutableClauseElement):
         self._whereclause = WhereClause()
         self._order_by = OrderByClause()
 
+        # a tuple is better than a list because it forces rebind-not-mutate discipline
+        # see how WhereClause and OrderByClause both encapsulate a tuple of clauses
+        self._joins: tuple[Join] = ()
+
         if len(entities) == 1 and isinstance(entities[0], Table):
             # a Table object has been provided
             table = entities[0]
@@ -578,9 +841,17 @@ class Select(HasTable, ExecutableClauseElement):
             # project all columns
             self._projection = self._table.c
             return
+        
+        if len(entities) == 2:
+            if isinstance(entities[0], Table) and isinstance(entities[1], Table):
+                # select columns from multiple tables: join case
+                self._table = entities[0]
+                self._right = entities[1]
+                self._projection = [*self._table.uc, *self._right.uc]
+                return 
 
         # A list of columns has been provided
-        tables = set()
+        tables = []
         columns: list[tuple[str, Column]] = []
 
         for ent in entities:
@@ -588,24 +859,37 @@ class Select(HasTable, ExecutableClauseElement):
                 raise ArgumentError(
                     "select() arguments must be either a Table or Column objects"
                 )
-            tables.add(ent.parent)
+            tables.append(ent.parent)
             columns.append((ent.name, ent))
 
-        if len(tables) != 1:
+        dedup_tables = list(dict.fromkeys(tables))
+
+        if len(dedup_tables) > 2:
             raise ArgumentError(
-                "All selected columns must belong to the same table"
+                f"All selected columns must either belong to the same table or "
+                f"belong to max. 2 tables (left and right tables for JOIN clause). "
+                f"You supplied columns from {len(dedup_tables)} tables."
             )
 
-        self._table: Table = tables.pop()
-        # --- SAFEGUARD: column names must exist on the table ---
+        self._table: Table = dedup_tables[0]
+        self._right = dedup_tables[1] if len(dedup_tables) == 2 else None
+        # --- SAFEGUARD: column names must exist on each table ---
         table_columns: ReadOnlyColumnCollection = self._table.columns
 
         for column in columns:
             _, col = column
-            if col.name not in table_columns:
+            if (
+                col.name not in table_columns 
+                and 
+                self._right is not None
+                and
+                col.name not in self._right.columns
+            ):
                 raise ArgumentError(
-                    f'Column: {col.name} does not belong to table: {self._table.name}'
+                    f"Column: {col.name} must either belong to '{self._table.name}' or "
+                    f"to {self._right.name}"
                 )
+
         self._projection = ColumnCollection(columns).as_readonly()
 
     @generative
@@ -625,18 +909,189 @@ class Select(HasTable, ExecutableClauseElement):
 
         self._order_by = self._order_by.add(*clauses)
         return self
+    
+    def _create_join(
+        self, onclause: ColumnExpressionArgument, 
+        isouter: bool = False
+    ) -> Join:
+        if isinstance(onclause, Table):
+            # syntactic sugar: search the left tables's column that has a relation to
+            # this onclause table
+            reftable = onclause
+            fkcs = self._table.foreign_keys
+            relation_cols = [fk.column for fk in fkcs if fk.reftable is reftable]
+            if not relation_cols:
+                # the table supplied in onclause must be a referenced table in the left table's foreign keys
+                hint = ""
+                if reftable.name in self._table.metadata:
+                    hint = (f" (a table named '{reftable.name}' exists in metadata, "
+                            f"but the instance you passed is a different object — "
+                            f"was it built under another MetaData?)")
+                raise ArgumentError(
+                    f"Table '{reftable.name}' is not a referenced table in "
+                    f"'{self._table.name}' foreign keys.{hint}"
+                )
 
+            onclause = relation_cols[0]
+
+        if isinstance(onclause, BinaryExpression):
+            inner_col = onclause.column
+            if not isinstance(inner_col.type_, Relation):
+                raise ArgumentError(
+                    f"join() onclause must be a BinaryExpression with a Relation column, got '{inner_col.name}' "
+                    f"(type: {type(inner_col.type_).__name__})"
+                )
+    
+            if inner_col.parent is not self._table:
+                message = f"""
+                    join() onclause must a BinaryExpression and its column '{inner_col.name}' 
+                    must belong to left table '{self._table.name}',
+                    got column '{inner_col.name}' on table '{inner_col.parent.name}'
+                """
+                raise ArgumentError(message)
+        elif isinstance(onclause, Column):
+            if not isinstance(onclause.type_, Relation):
+                    raise ArgumentError(
+                        f"join() onclause must be a Relation column, got '{onclause.name}' "
+                        f"(type: {type(onclause.type_).__name__})"
+                    )
+        
+            if onclause.parent is not self._table:
+                message = f"""
+                    join() onclause must belong to left table '{self._table.name}',
+                    got column '{onclause.name}' on table '{onclause.parent.name}'
+                """
+                raise ArgumentError(message)
+        
+        else: 
+            raise ArgumentError(
+                f"join() onclause must be a Column "
+                f"or BinaryExpression, got {type(onclause).__name__}"
+            )
+
+        return Join(self._table, self._right, onclause, isouter)    
+
+    @generative
+    def join(self, onclause: ColumnExpressionArgument) -> Self:
+        # mutate-vs-rebind: here you create a new tuple
+        self._joins = (*self._joins, self._create_join(onclause))
+        return self
+    
+    @generative
+    def outerjoin(self, onclause: ColumnExpressionArgument) -> Self:
+        # mutate-vs-rebind: here you create a new tuple
+        self._joins = (*self._joins, self._create_join(onclause, isouter=True))
+        return self
+    
     def _setup_execution(self, context: ExecutionContext) -> None:
-        # nothing to be setup
-        pass
+        # guard against execution if joins are empty
+        if not self._joins:
+            return
+        
+        # phase 1: Retrieve all rows of the left table in the join
+        elem = context.invoked_stmt
+
+        # 1. prepare schema for compiled query
+        context._join = self._joins[0]
+        context._join_left_schema = SchemaInfo.from_table(
+            context._join.left,
+            execution_names=[context._join.left.c.object_id.name],
+            projected_names=[c.name for c in context._join.left.uc]  
+        )
+        context._cursor._inject_description(
+            context._join_left_schema.as_sequence()
+        )
+
+        # execute the compiled query
+        context.engine.do_execute(
+            context._cursor,
+            context.operation,
+            context.parameters
+        )
+
+        context._join_left_rows = context._cursor.fetchall()
+
+        # prepare phase 2: retrieve left table rows 
+        # build parameters for pages.retrieve
+        result_cursor = context.connection._engine.raw_connection().cursor()
+        right_schema: SchemaInfo = SchemaInfo.from_table(
+            context._join.right,
+            execution_names=[context._join.right.c.object_id.name],
+            projected_names=[c.name for c in context._join.right.uc]    
+        )
+        result_cursor._inject_description(right_schema.as_sequence())
+        result_cursor.errorhandler = _join_errorhandler
+        context._join_right_schema = right_schema
+
+        # build the bulk parameters
+        # one parameter for each page_id contained in the FK relation column stored in
+        # each page returned by the databases.query
+        # REMEMBER: A Relation column stores non-scalar values -> list[str]
+        onclause_column = context._join.onclause
+        bulk_params = build_phase_two_batch(
+            context._join_left_schema,
+            onclause_column,
+            context._join_left_rows
+        )
+
+        # staged cursor will contain 1 result set for each retrieved row
+        context._staged_result_cursor = result_cursor
+        context.bulk_operation = {
+            "endpoint": "pages",
+            "request": "retrieve"
+        }
+
+        context.bulk_parameters = bulk_params
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
-        # nothing to be finalized
-        pass
+        # guard against execution if joins are empty
+        if not self._joins:
+            return
 
+        # context._result_cursor will hold the joined rows
+        joined = self._build_joined_schema(context)
+        context._result_cursor = context.engine.raw_connection().cursor()
+
+        # merge left rows with the corresponding right rows
+        # _staged_cursor has multiple result sets, one for each retrieved right row
+        right_rows = [r for r in context._staged_result_cursor._iter_all()]
+        
+        # construct the inner join and add the result to the cursor
+        merged_rows = merge_inner_join_rows(
+            context._join_left_schema,
+            context._join_right_schema,
+            context._join.onclause, 
+            context._join_left_rows, 
+            right_rows,
+            isouter=context._join.isouter,
+            projection=self._projection
+        )
+
+        # filter the right rows if WHERE clause contains a condition on right columns
+        filtered_rows = _merge_rows_with_right_side_filter(
+            context,
+            merged_rows,
+            merged_schema=joined,
+        )
+
+        # fill in the result cursor's result set    
+        context._result_cursor._result_sets.append(
+            ResultSet(
+                joined.as_sequence(),
+                "page",
+                filtered_rows
+            )
+        )
+
+    def _build_joined_schema(self, context: ExecutionContext) -> SchemaInfo:
+        # the result cursor has the schema of a joined table
+        # the joined table has all left and right table's columns 
+        left = context._join.left
+        right = context._join.right
+        return SchemaInfo.from_join(left, right, *self._projection)
+    
 def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)
-        
 
 class Delete(UpdateBase):
     """Represent a SQL DELETE statement."""
@@ -804,3 +1259,58 @@ class Update(ValuesBase):
 
 def update(table: Table) -> Update:
     return Update(table)
+
+class Join(ClauseElement):
+    """Represent a ``JOIN`` construct between two tables.
+    
+    .. versionadded:: 0.11.0
+    """
+    __visit_name__ = "join"
+    
+    left: Table
+    """Left side of the ``JOIN``"""
+
+    right: Table
+    """Right side of the ``JOIN``"""
+
+    onclause: Column
+    """The column representing the ``ON`` clause of the join"""
+
+    isouter: bool
+    """if True, render a ``LEFT OUTER JOIN``, instead of ``JOIN``"""
+
+    def __init__(
+        self,
+        left: Table,
+        right: Table,
+        onclause: Column,
+        isouter: bool = False
+    ):
+        self.left = left
+        self.right = right
+        self.onclause = onclause
+        self.isouter = isouter
+
+
+def _join_errorhandler(
+    connection: DBAPIConnection, 
+    cursor: DBAPICursor, 
+    errorclass: Type[BaseException],
+    errorvalue: BaseException
+) -> None:
+    """Errorhandler for the inner-join staged result cursor.
+
+    Silences `object_not_found` from `pages.retrieve` (ADR-0002 lax-FK semantics:
+    a dangling relation entry is an absent reference, not an error). All other
+    errors propagate via the default DBAPI raise path.
+    """
+    cause = errorvalue.__cause__
+    if isinstance(cause, NotionError) and cause.code == "object_not_found":
+        # Dangling-FK / lax-reference semantics (ADR-0002):
+        # missing pages are treated as absent references
+        # INNER JOIN silently drops left rows whose relation list resolves 
+        # to zero existing right rows
+        return                       
+
+    raise errorvalue                 # propagate everything else
+
