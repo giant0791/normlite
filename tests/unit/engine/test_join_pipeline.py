@@ -362,6 +362,68 @@ def test_right_side_is_empty_drops_absent_entity(engine: Engine):
     no_pairs = {(row.name, row.title) for row in no_rows}
     assert no_pairs == set()
 
+def test_right_side_filter_under_narrowed_projection_keeps_genuine_match(engine: Engine):
+    # Arrange: same FK-linked two-table fixture as the full-projection
+    # right-side-filter test — Galileo enrolled in a real course, Phantom
+    # Student pointing at a dangling id. The ONLY difference here is the
+    # projection: instead of select(students, courses) we narrow to a
+    # column list (one left col, one right col) and THEN layer the same
+    # right-side WHERE on courses.title. The genuine match (Galileo →
+    # Astronomy) satisfies is_not_empty(), so a correct filter must KEEP it.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    bogus_course_oid = str(uuid.uuid4())  # never inserted -> dangling reference
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Astronomy")
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+
+        connection.execute(
+            insert(students).values(
+                name="Phantom Student",
+                enrolled_in=[bogus_course_oid],
+            )
+        )
+        connection.execute(
+            insert(students).values(
+                name="Galileo Galilei",
+                enrolled_in=[astronomy_oid],
+            )
+        )
+
+        # Act: NARROWED projection (column list, not whole tables) + the
+        # right-side filter on courses.title.
+        result = connection.execute(
+            select(students.c.name, courses.c.title)
+            .outerjoin(students.c.enrolled_in)
+            .where(courses.c.title.is_not_empty())
+        )
+        rows = result.fetchall()
+
+    # Assert: the genuine match survives. (Phantom's dangling row is
+    # None-filled and correctly fails the right-side filter.)
+    pairs = {(row.name, row.title) for row in rows}
+    assert pairs == {("Galileo Galilei", "Astronomy")}
+
 
 def test_join_propagates_non_404_retrieve_error(engine: Engine, monkeypatch):
     # Differential to the dangling-reference tests above: a phase-2

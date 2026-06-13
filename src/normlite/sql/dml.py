@@ -240,26 +240,26 @@ def _project_join_row(
 def _merge_rows_with_right_side_filter(
     context: ExecutionContext,
     merged_rows: Sequence[tuple],
-    *, 
-    projection: Optional[ReadOnlyColumnCollection]
+    *,
+    merged_schema: Optional[SchemaInfo], 
 ) -> Sequence[tuple]:
-    right_schema = context._join_right_schema
-    # full right user columns, in merged-row right-part order
-    right_cols = [c for c in right_schema.columns if c.name != "object_id"]
-    left_width = len([c for c in context._join_left_schema.columns if c.name != "object_id"])
-
     join_right_filter = context.join_right_filter
     if join_right_filter is not None:
+        # build the getters from the merged_schema
+        right = context._join.right
+        right_cols = [c for c in merged_schema.columns if c.name in right.uc]
+        right_getters = [merged_schema.column_getter(c.name) for c in right_cols]
         merged_rows = [
             r for r in merged_rows
-            if _right_side_passes(r, join_right_filter, left_width, right_cols)
+            if _right_side_passes(r, join_right_filter, right_getters, right_cols)
         ]
+
     return merged_rows
 
 def _right_side_passes(
     merged_row: tuple[Any, ...],
     right_filter: str,
-    left_width: int, 
+    row_getters: list[Callable[[Sequence[Any]], Any]], 
     right_cols: Sequence[ResultColumn]
 ) -> bool:
     """Shape adapter to apply ``_Filter`` predicate coming from WHERE clause on right columns."""
@@ -278,7 +278,11 @@ def _right_side_passes(
         DBAPITypeCode.RELATION: "relation"
     }
 
-    right_slice = merged_row[left_width:]
+    right_slice = tuple([
+        getter(merged_row)
+        for getter in row_getters
+    ])
+
     if all(c is None for c in right_slice):
         return False        # phantom: NULL fails every right-side predicate
 
@@ -1067,7 +1071,7 @@ class Select(HasTable, ExecutableClauseElement):
         filtered_rows = _merge_rows_with_right_side_filter(
             context,
             merged_rows,
-            projection=self._projection
+            merged_schema=joined,
         )
 
         # fill in the result cursor's result set    
