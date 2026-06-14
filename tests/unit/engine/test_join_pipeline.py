@@ -425,6 +425,66 @@ def test_right_side_filter_under_narrowed_projection_keeps_genuine_match(engine:
     assert pairs == {("Galileo Galilei", "Astronomy")}
 
 
+def test_right_side_filter_on_colliding_column_keeps_genuine_match(engine: Engine):
+    # Arrange: two FK-linked tables that BOTH declare a `title` column -- the
+    # name collision. `students.enrolled_in` points at a `courses` row. Seed a
+    # single genuine match: Galileo's student row links to the Astronomy course.
+    # Then layer a right-side WHERE on the COLLIDING column courses.title.
+    #
+    # Today this returns [] (the all-None phantom guard over-drops because the
+    # right-side filter selects its getters by bare name -- `title` -- which is
+    # qualified to `courses.title` in the merged schema and so never matches;
+    # the synthetic page is keyed by the qualified name while the compiled
+    # filter references the bare `title`). See ADR-0009: provenance + identity
+    # selection fixes it. The genuine match satisfies is_not_empty(), so a
+    # correct filter MUST keep it.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Astronomy")
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                title="Galileo Galilei",
+                enrolled_in=[astronomy_oid],
+            )
+        )
+
+        # Act: inner join, then a right-side filter on the colliding courses.title.
+        result = connection.execute(
+            select(students, courses)
+            .join(students.c.enrolled_in)
+            .where(courses.c.title.is_not_empty())
+        )
+        rows = result.fetchall()
+
+    # Assert: the genuine match survives, with both titles reachable under their
+    # table-qualified keys.
+    assert len(rows) == 1
+    m = rows[0].mapping()
+    assert m["students.title"] == "Galileo Galilei"
+    assert m["courses.title"] == "Astronomy"
+
+
 def test_join_propagates_non_404_retrieve_error(engine: Engine, monkeypatch):
     # Differential to the dangling-reference tests above: a phase-2
     # `pages.retrieve` that 404s (`object_not_found`) is benign and silenced

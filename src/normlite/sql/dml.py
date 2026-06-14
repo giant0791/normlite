@@ -1106,8 +1106,12 @@ class JoinExecution:
             # right-side WHERE is answered client-side, AFTER the join
             # (ADR-0005): build getters from the merged schema and keep only
             # rows whose right slice passes the predicate.
-            right = self._join.right
-            right_cols = [c for c in merged_schema.columns if c.name in right.uc]
+            # Select the right-side result columns by IDENTITY (provenance),
+            # not by name: under a collision the right column is keyed
+            # fully-qualified (`courses.title`) and would never match
+            # `c.name in right.uc`. The getter is taken at the merged
+            # (qualified) name via the existing index. See ADR-0009.
+            right_cols = [c for c in merged_schema.columns if c.table is self._join.right]
             right_getters = [merged_schema.column_getter(c.name) for c in right_cols]
             merged_rows = [
                 r for r in merged_rows
@@ -1258,10 +1262,14 @@ class JoinExecution:
         if all(c is None for c in right_slice):
             return False        # phantom: NULL fails every right-side predicate
 
+        # Key the synthetic page by the BARE name: the compiled Notion filter
+        # references the unqualified property (`title`, emitted by
+        # visit_binary_expression), and the page is right-only so bare names
+        # are unambiguous within it. See ADR-0009.
         properties = {}
         for col, cell in zip(right_cols, right_slice):
             typ = type_mapper[col.type_code]
-            properties[col.name] = {"type": typ, **cell}
+            properties[col.bare_name] = {"type": typ, **cell}
 
         page = {"properties": properties}
         return _Filter(page, {"filter": self._right_filter}).eval()
