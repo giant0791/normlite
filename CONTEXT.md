@@ -24,6 +24,15 @@ subclass that maps to the Notion property type and owns the bind/filter value pr
 A column explicitly declared by the user in `Table(...)`. Distinct from **system columns** (e.g.
 `object_id`, `_no_id`) which are injected by normlite and carry Notion metadata.
 
+### Projected column name (collision qualification)
+A `select(...)` projection preserves the order in which columns are listed. When the projection
+spans two joined tables and a **column name is shared** by both (e.g. both `students` and
+`courses` declare `title`), each colliding column surfaces **fully qualified** as
+`table.column` (`students.title`, `courses.title`) in `keys()` / `mappings()`; non-colliding
+names stay **bare**. Selecting the **same column twice** (`select(students.c.title,
+students.c.title)`) is an **error**, while the same bare name from two different tables
+(`select(students.c.title, courses.c.title)`) is allowed and qualified as above.
+
 ### DML Statement
 One of `Insert`, `Delete`, `Update`, `Select` — the four DML constructs. Each produces a compiled
 payload and follows the two-phase or single-phase execution pipeline below.
