@@ -1179,7 +1179,6 @@ class Delete(UpdateBase):
 def delete(table: Table) -> Delete:
     return Delete(table)
 
-
 class Update(ValuesBase):
     """Represent a SQL UPDATE statement."""
 
@@ -1291,7 +1290,6 @@ class Join(ClauseElement):
         self.onclause = onclause
         self.isouter = isouter
 
-
 class JoinExecution:
     """Stateful seam owning join-domain state across the two-phase dispatch.
 
@@ -1299,9 +1297,11 @@ class JoinExecution:
     the statement-level ``projection``, and the bound ``right_filter``); the two
     phase methods carry only row data. See ADR-0008.
 
-    This is the #314 tracer bullet: it owns building ``left_schema`` from
-    ``join.left`` and delegates the phase-1 dedup to :func:`build_phase_two_batch`.
-    ``assemble`` and the free-function fold-in are later slices (#315-#317).
+    This is the #314 tracer bullet: it owns building ``left_schema`` /
+    ``right_schema`` from the join sides, delegates the phase-1 dedup to
+    :func:`build_phase_two_batch` (in :meth:`prepare`) and the phase-2 merge to
+    :func:`merge_inner_join_rows` (in :meth:`assemble`). Right-side filtering and
+    the free-function fold-in are later slices (#316-#317).
     """
 
     def __init__(
@@ -1319,6 +1319,14 @@ class JoinExecution:
             projected_names=[c.name for c in join.left.uc],
         )
 
+        self._right_schema = SchemaInfo.from_table(
+            self._join.right,
+            execution_names=[self._join.right.c.object_id.name],
+            projected_names=[c.name for c in self._join.right.uc]    
+        )
+
+        self._left_rows = None
+
     @property
     def left_schema(self) -> SchemaInfo:
         """Read-only left :class:`SchemaInfo`, derived from ``join.left``."""
@@ -1326,12 +1334,44 @@ class JoinExecution:
 
     def prepare(self, left_rows: list[tuple]) -> list[dict]:
         """Turn phase-1 left rows into the deduplicated ``pages.retrieve`` batch."""
+
+        # store left_rows for use in the assemble() method
+        self._left_rows = left_rows
+
         return build_phase_two_batch(
             self._left_schema,
             self._join.onclause,
             left_rows,
         )
+    
+    def assemble(self, right_rows: list[tuple]) -> tuple[SchemaInfo, list[tuple]]:
+        """Build the inner join and assemble the left and right rows.
 
+        Args:
+            right_rows (list[tuple]): The rows resulting from the EXECUTEMANY phase
+
+        Returns:
+            tuple[SchemaInfo, list[tuple]]: Schema and rows for the merged join
+
+        .. versionadded:: 0.11.0
+        """
+        merged_schema = SchemaInfo.from_join(
+            self._join.left, 
+            self._join.right, 
+            *self._projection
+        )
+
+        merged_rows = merge_inner_join_rows(
+            self._left_schema,
+            self._right_schema,
+            self._join.onclause,
+            self._left_rows,
+            right_rows,
+            self._join.isouter,
+            self._projection
+        )
+
+        return (merged_schema, merged_rows)
 
 def _join_errorhandler(
     connection: DBAPIConnection, 
