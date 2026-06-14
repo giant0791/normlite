@@ -5,8 +5,10 @@ These exercise JoinExecution through its public interface only:
         .prepare(left_rows)   -> bulk_params
         .assemble(right_rows) -> (merged_schema, merged_rows)
 
-The existing free-function tests (test_join_strategy.py) and the full
-pipeline tests stay green and act as the characterization baseline.
+These are the unit-level coverage for join merge/dedup/filter semantics
+(formerly in test_join_strategy.py, retired in #317 once the free functions
+were folded into JoinExecution). The full pipeline tests
+(test_join_pipeline.py) remain the end-to-end characterization baseline.
 """
 
 import pytest
@@ -217,3 +219,118 @@ def test_assemble_applies_right_filter_dropping_rows_whose_right_side_fails():
     assert len(merged_rows) == 1
     assert {"title": "Galileo Galilei"} in merged_rows[0]
     assert all({"title": "Phantom Student"} not in row for row in merged_rows)
+
+
+def _students_courses(isouter: bool):
+    """Build the standard students->courses join plus the schemas and raw-row
+    builders shared by the outer-join assemble tests below."""
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    join = Join(students, courses, students.c.enrolled_in, isouter=isouter)
+    projection = [*students.uc, *courses.uc]
+
+    left_schema = SchemaInfo.from_table(
+        students,
+        execution_names=[students.c.object_id.name],
+        projected_names=[c.name for c in students.uc],
+    )
+    right_schema = SchemaInfo.from_table(
+        courses,
+        execution_names=[courses.c.object_id.name],
+        projected_names=[c.name for c in courses.uc],
+    )
+
+    def left_row(name: str, oids: list[str], oid: str) -> tuple:
+        cells = [None] * len(left_schema.columns)
+        cells[left_schema.column_index("name")] = {"title": name}
+        cells[left_schema.column_index("enrolled_in")] = {
+            "relation": [{"id": o} for o in oids]
+        }
+        cells[left_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    def right_row(title: str, oid: str) -> tuple:
+        cells = [None] * len(right_schema.columns)
+        cells[right_schema.column_index("title")] = title
+        cells[right_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    return join, projection, left_row, right_row
+
+
+def test_assemble_outer_join_none_fills_a_dangling_left_row_that_inner_drops():
+    # Arrange: an OUTER join. "Galileo" resolves to a real course; "Phantom"
+    # points at a dangling id. Inner would drop Phantom; outer must keep it with
+    # the right side None-filled (ADR-0007 lax-FK / ADR-0005 phantom).
+    join, projection, left_row, right_row = _students_courses(isouter=True)
+    left_rows = [
+        left_row("Galileo Galilei", ["c-astro"], "s-1"),
+        left_row("Phantom Student", ["c-ghost"], "s-2"),  # dangling FK
+    ]
+    right_rows = [right_row("Astronomy", "c-astro")]
+
+    # Act
+    je = JoinExecution(join, projection=projection, right_filter=None)
+    je.prepare(left_rows)
+    _, merged_rows = je.assemble(right_rows)
+
+    # Assert: both left rows survive; the dangling one is None-filled on the
+    # right, not dropped and not left-filled.
+    assert len(merged_rows) == 2
+    matched = [r for r in merged_rows if "Astronomy" in r]
+    assert len(matched) == 1
+    assert {"title": "Galileo Galilei"} in matched[0]
+    phantom = [r for r in merged_rows if {"title": "Phantom Student"} in r]
+    assert len(phantom) == 1
+    assert "Astronomy" not in phantom[0]
+    assert None in phantom[0]
+
+
+def test_assemble_outer_join_none_fills_a_left_row_with_an_empty_relation():
+    # Arrange: an OUTER join with a left row enrolled in NOTHING (empty
+    # relation, zero oids). Not a dangling FK -- there is no id to resolve --
+    # but outer semantics must still preserve it, right side None-filled.
+    join, projection, left_row, right_row = _students_courses(isouter=True)
+    left_rows = [left_row("Hermit Student", [], "s-1")]
+    right_rows = [right_row("Astronomy", "c-astro")]
+
+    # Act
+    je = JoinExecution(join, projection=projection, right_filter=None)
+    je.prepare(left_rows)
+    _, merged_rows = je.assemble(right_rows)
+
+    # Assert: exactly one row, left intact, right None-filled.
+    assert len(merged_rows) == 1
+    assert {"title": "Hermit Student"} in merged_rows[0]
+    assert "Astronomy" not in merged_rows[0]
+    assert None in merged_rows[0]
+
+
+def test_assemble_outer_join_does_not_none_fill_a_row_that_already_matched():
+    # Arrange: ONE left row with two oids -- one real ("c-astro") and one
+    # dangling ("c-ghost"). The row already matched, so outer must NOT bolt on a
+    # None-filled row for the unmatched id: None-fill is a whole-row fallback.
+    join, projection, left_row, right_row = _students_courses(isouter=True)
+    left_rows = [left_row("Galileo Galilei", ["c-astro", "c-ghost"], "s-1")]
+    right_rows = [right_row("Astronomy", "c-astro")]
+
+    # Act
+    je = JoinExecution(join, projection=projection, right_filter=None)
+    je.prepare(left_rows)
+    _, merged_rows = je.assemble(right_rows)
+
+    # Assert: exactly one row -- the real match, with no None-fill anywhere.
+    assert len(merged_rows) == 1
+    assert {"title": "Galileo Galilei"} in merged_rows[0]
+    assert "Astronomy" in merged_rows[0]
+    assert None not in merged_rows[0]
