@@ -987,52 +987,37 @@ class Select(HasTable, ExecutableClauseElement):
         # guard against execution if joins are empty
         if not self._joins:
             return
-        
-        # phase 1: Retrieve all rows of the left table in the join
-        elem = context.invoked_stmt
 
-        # 1. prepare schema for compiled query
-        context._join = self._joins[0]
-        context._join_left_schema = SchemaInfo.from_table(
-            context._join.left,
-            execution_names=[context._join.left.c.object_id.name],
-            projected_names=[c.name for c in context._join.left.uc]  
+        # Stand up the join-execution seam: it owns all join-domain state and
+        # computation across both phases (ADR-0008). Config enters via the
+        # constructor; the hook drives I/O only.
+        join_execution = JoinExecution(
+            self._joins[0],
+            self._projection,
+            context.join_right_filter,
         )
+        context._join_execution = join_execution
+
+        # phase 1: run the left-side query and drain the left rows
         context._cursor._inject_description(
-            context._join_left_schema.as_sequence()
+            join_execution.left_schema.as_sequence()
         )
-
-        # execute the compiled query
         context.engine.do_execute(
             context._cursor,
             context.operation,
             context.parameters
         )
+        left_rows = context._cursor.fetchall()
 
-        context._join_left_rows = context._cursor.fetchall()
+        # phase 2 prep: the seam turns the left rows into the deduplicated
+        # pages.retrieve batch; the hook wires it onto the EXECUTEMANY channel.
+        bulk_params = join_execution.prepare(left_rows)
 
-        # prepare phase 2: retrieve left table rows 
-        # build parameters for pages.retrieve
         result_cursor = context.connection._engine.raw_connection().cursor()
-        right_schema: SchemaInfo = SchemaInfo.from_table(
-            context._join.right,
-            execution_names=[context._join.right.c.object_id.name],
-            projected_names=[c.name for c in context._join.right.uc]    
+        result_cursor._inject_description(
+            join_execution.right_schema.as_sequence()
         )
-        result_cursor._inject_description(right_schema.as_sequence())
         result_cursor.errorhandler = _join_errorhandler
-        context._join_right_schema = right_schema
-
-        # build the bulk parameters
-        # one parameter for each page_id contained in the FK relation column stored in
-        # each page returned by the databases.query
-        # REMEMBER: A Relation column stores non-scalar values -> list[str]
-        onclause_column = context._join.onclause
-        bulk_params = build_phase_two_batch(
-            context._join_left_schema,
-            onclause_column,
-            context._join_left_rows
-        )
 
         # staged cursor will contain 1 result set for each retrieved row
         context._staged_result_cursor = result_cursor
@@ -1048,47 +1033,22 @@ class Select(HasTable, ExecutableClauseElement):
         if not self._joins:
             return
 
-        # context._result_cursor will hold the joined rows
-        joined = self._build_joined_schema(context)
-        context._result_cursor = context.engine.raw_connection().cursor()
+        join_execution = context._join_execution
 
-        # merge left rows with the corresponding right rows
-        # _staged_cursor has multiple result sets, one for each retrieved right row
+        # drain the retrieved right rows (one result set per retrieved page)
+        # and hand them to the seam, which merges + filters them.
         right_rows = [r for r in context._staged_result_cursor._iter_all()]
-        
-        # construct the inner join and add the result to the cursor
-        merged_rows = merge_inner_join_rows(
-            context._join_left_schema,
-            context._join_right_schema,
-            context._join.onclause, 
-            context._join_left_rows, 
-            right_rows,
-            isouter=context._join.isouter,
-            projection=self._projection
-        )
+        merged_schema, merged_rows = join_execution.assemble(right_rows)
 
-        # filter the right rows if WHERE clause contains a condition on right columns
-        filtered_rows = _merge_rows_with_right_side_filter(
-            context,
-            merged_rows,
-            merged_schema=joined,
-        )
-
-        # fill in the result cursor's result set    
+        # fill in the result cursor's result set
+        context._result_cursor = context.engine.raw_connection().cursor()
         context._result_cursor._result_sets.append(
             ResultSet(
-                joined.as_sequence(),
+                merged_schema.as_sequence(),
                 "page",
-                filtered_rows
+                merged_rows
             )
         )
-
-    def _build_joined_schema(self, context: ExecutionContext) -> SchemaInfo:
-        # the result cursor has the schema of a joined table
-        # the joined table has all left and right table's columns 
-        left = context._join.left
-        right = context._join.right
-        return SchemaInfo.from_join(left, right, *self._projection)
     
 def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)
@@ -1308,7 +1268,7 @@ class JoinExecution:
         self,
         join: Join,
         projection: Optional[ReadOnlyColumnCollection],
-        right_filter: Optional[ColumnElement],
+        right_filter: Optional[dict],
     ):
         self._join = join
         self._projection = projection
@@ -1331,6 +1291,11 @@ class JoinExecution:
     def left_schema(self) -> SchemaInfo:
         """Read-only left :class:`SchemaInfo`, derived from ``join.left``."""
         return self._left_schema
+
+    @property
+    def right_schema(self) -> SchemaInfo:
+        """Read-only right :class:`SchemaInfo`, derived from ``join.right``."""
+        return self._right_schema
 
     def prepare(self, left_rows: list[tuple]) -> list[dict]:
         """Turn phase-1 left rows into the deduplicated ``pages.retrieve`` batch."""
@@ -1370,6 +1335,16 @@ class JoinExecution:
             self._join.isouter,
             self._projection
         )
+        
+        if self._right_filter is not None:
+            # build the getters from the merged_schema
+            right = self._join.right
+            right_cols = [c for c in merged_schema.columns if c.name in right.uc]
+            right_getters = [merged_schema.column_getter(c.name) for c in right_cols]
+            merged_rows = [
+                r for r in merged_rows
+                if _right_side_passes(r, self._right_filter, right_getters, right_cols)
+            ]
 
         return (merged_schema, merged_rows)
 

@@ -143,3 +143,77 @@ def test_assemble_merges_the_prepared_left_rows_with_the_retrieved_right_rows():
     assert len(merged_rows) == 1
     assert {"title": "Galileo Galilei"} in merged_rows[0]
     assert "Astronomy" in merged_rows[0]
+
+
+def test_assemble_applies_right_filter_dropping_rows_whose_right_side_fails():
+    # Arrange: a students->courses OUTER join. "Galileo" resolves to a real
+    # course; "Phantom" points at a dangling id. A bare outer join keeps BOTH
+    # (Phantom None-filled). Layering a right-side WHERE on courses.title
+    # (is_not_empty) must drop the None-filled phantom — its right slice is all
+    # None and fails the predicate — while the genuine match survives.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    join = Join(students, courses, students.c.enrolled_in, isouter=True)
+
+    projection = [*students.uc, *courses.uc]
+
+    left_schema = SchemaInfo.from_table(
+        students,
+        execution_names=[students.c.object_id.name],
+        projected_names=[c.name for c in students.uc],
+    )
+    right_schema = SchemaInfo.from_table(
+        courses,
+        execution_names=[courses.c.object_id.name],
+        projected_names=[c.name for c in courses.uc],
+    )
+
+    def left_row(name: str, oids: list[str], oid: str) -> tuple:
+        cells = [None] * len(left_schema.columns)
+        cells[left_schema.column_index("name")] = {"title": name}
+        cells[left_schema.column_index("enrolled_in")] = {
+            "relation": [{"id": o} for o in oids]
+        }
+        cells[left_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    def right_row(title: str, oid: str) -> tuple:
+        cells = [None] * len(right_schema.columns)
+        # raw phase-2 retrieve shape for a title property
+        cells[right_schema.column_index("title")] = {
+            "title": [{"text": {"content": title}}]
+        }
+        cells[right_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    left_rows = [
+        left_row("Galileo Galilei", ["c-astro"], "s-1"),
+        left_row("Phantom Student", ["c-ghost"], "s-2"),  # dangling FK
+    ]
+    right_rows = [
+        right_row("Astronomy", "c-astro"),
+    ]
+
+    # The bound Notion filter dict for `courses.c.title.is_not_empty()`.
+    right_filter = {"property": "title", "title": {"is_not_empty": True}}
+
+    # Act
+    join_execution = JoinExecution(join, projection=projection, right_filter=right_filter)
+    join_execution.prepare(left_rows)
+    _, merged_rows = join_execution.assemble(right_rows)
+
+    # Assert: the None-filled phantom is filtered out; only the genuine match
+    # survives the right-side predicate.
+    assert len(merged_rows) == 1
+    assert {"title": "Galileo Galilei"} in merged_rows[0]
+    assert all({"title": "Phantom Student"} not in row for row in merged_rows)
