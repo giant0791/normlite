@@ -1292,6 +1292,47 @@ class Join(ClauseElement):
         self.isouter = isouter
 
 
+class JoinExecution:
+    """Stateful seam owning join-domain state across the two-phase dispatch.
+
+    Constructed once per execution from configuration (the :class:`Join` node,
+    the statement-level ``projection``, and the bound ``right_filter``); the two
+    phase methods carry only row data. See ADR-0008.
+
+    This is the #314 tracer bullet: it owns building ``left_schema`` from
+    ``join.left`` and delegates the phase-1 dedup to :func:`build_phase_two_batch`.
+    ``assemble`` and the free-function fold-in are later slices (#315-#317).
+    """
+
+    def __init__(
+        self,
+        join: Join,
+        projection: Optional[ReadOnlyColumnCollection],
+        right_filter: Optional[ColumnElement],
+    ):
+        self._join = join
+        self._projection = projection
+        self._right_filter = right_filter
+        self._left_schema = SchemaInfo.from_table(
+            join.left,
+            execution_names=[join.left.c.object_id.name],
+            projected_names=[c.name for c in join.left.uc],
+        )
+
+    @property
+    def left_schema(self) -> SchemaInfo:
+        """Read-only left :class:`SchemaInfo`, derived from ``join.left``."""
+        return self._left_schema
+
+    def prepare(self, left_rows: list[tuple]) -> list[dict]:
+        """Turn phase-1 left rows into the deduplicated ``pages.retrieve`` batch."""
+        return build_phase_two_batch(
+            self._left_schema,
+            self._join.onclause,
+            left_rows,
+        )
+
+
 def _join_errorhandler(
     connection: DBAPIConnection, 
     cursor: DBAPICursor, 
