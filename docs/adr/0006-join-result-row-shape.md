@@ -78,14 +78,18 @@ the wire, and makes `filter_properties` dead weight.
   qualified keys on collision with no shadowing.
 - The merged-column order is deterministic (projection order, left before right), so
   repeated runs and `mappings()` lookups are stable.
-- **Known limitation — right-side `WHERE` on a colliding column is unsupported in v1.** The
-  post-merge right-side filter looks its getters up by the bare right-table column name,
-  while a colliding right column is keyed fully-qualified in the joined schema — so a
-  `WHERE` on that exact column is silently ignored, or (if it is the only projected right
-  column) drops every row via the all-None phantom guard. Workaround: qualify or rename.
-  A real fix must look the getter up by the joined (qualified) name and needs its own slice
-  with a red test. See issue #309 / #310 discussion. The all-None phantom-drop rule
-  ([ADR-0005](./0005-outer-join-phantom-null-semantics.md)) is unaffected.
+- **Right-side `WHERE` on a colliding column — RESOLVED by
+  [ADR-0009](./0009-result-schema-provenance.md).** The post-merge right-side filter looked
+  its getters up by the bare right-table column name, while a colliding right column is keyed
+  fully-qualified in the joined schema. The original failure was **two** distinct outcomes
+  (the prior text saying "silently ignored" was inaccurate): if the colliding column was the
+  **only** projected right column, the all-None phantom guard silently dropped every row; if
+  another non-colliding right column was present, `_Filter` **raised**
+  `ValueError: Property '<name>' not found on page`. ADR-0009 fixes both by giving
+  `ResultColumn` provenance and selecting the right-side getters by **table identity**, not
+  name (keying the synthetic page by the bare name the filter references). The all-None
+  phantom-drop rule ([ADR-0005](./0005-outer-join-phantom-null-semantics.md)) is preserved.
+  See issue #309 / #310 discussion.
 - Filtering on a **non-projected** right column is likewise unreconstructable from the merged
   tuple and is out of scope here (it needs evaluation against the raw phase-2 page).
 - `SchemaInfo.from_join` does not yet compose `from_table`; that consolidation is deferred.
