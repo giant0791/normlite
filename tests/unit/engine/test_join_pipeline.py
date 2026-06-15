@@ -485,6 +485,54 @@ def test_right_side_filter_on_colliding_column_keeps_genuine_match(engine: Engin
     assert m["courses.title"] == "Astronomy"
 
 
+def test_join_projects_explicit_colliding_columns_from_both_tables(engine: Engine):
+    # Arrange: two FK-linked tables that BOTH declare `title`. Unlike the
+    # full-table-expansion collision test, here the collision is asked for
+    # EXPLICITLY in the projection -- select(students.c.title, courses.c.title).
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Astronomy")
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                title="Galileo Galilei",
+                enrolled_in=[astronomy_oid],
+            )
+        )
+
+        # Act: explicitly project the colliding `title` from each side.
+        result = connection.execute(
+            select(students.c.title, courses.c.title).join(students.c.enrolled_in)
+        )
+        row = result.fetchall()[0]
+
+    # Assert: both projected `title`s are reachable under table-qualified keys,
+    # each carrying its own side's value -- no bare-`title` shadow collapse.
+    m = row.mapping()
+    assert m["students.title"] == "Galileo Galilei"
+    assert m["courses.title"] == "Astronomy"
+
+
 def test_join_propagates_non_404_retrieve_error(engine: Engine, monkeypatch):
     # Differential to the dangling-reference tests above: a phase-2
     # `pages.retrieve` that 404s (`object_not_found`) is benign and silenced

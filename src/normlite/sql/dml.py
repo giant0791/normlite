@@ -571,8 +571,12 @@ class Select(HasTable, ExecutableClauseElement):
     
     is_select = True
 
-    _projection: ReadOnlyColumnCollection
-    """The column names to be projected in this select statement."""
+    _projection: tuple[Column, ...]
+    """The column names to be projected in this select statement.
+
+    .. versionchanged:: 0.11.0
+        The projection is now a tuple of columns to support colliding column names.
+    """
 
     _right: Optional[Table] = None
 
@@ -613,7 +617,7 @@ class Select(HasTable, ExecutableClauseElement):
 
         # A list of columns has been provided
         tables = []
-        columns: list[tuple[str, Column]] = []
+        columns: tuple[Column] = tuple()
 
         for ent in entities:
             if not isinstance(ent, Column):
@@ -621,7 +625,7 @@ class Select(HasTable, ExecutableClauseElement):
                     "select() arguments must be either a Table or Column objects"
                 )
             tables.append(ent.parent)
-            columns.append((ent.name, ent))
+            columns += (ent, )
 
         dedup_tables = list(dict.fromkeys(tables))
 
@@ -637,10 +641,9 @@ class Select(HasTable, ExecutableClauseElement):
         # --- SAFEGUARD: column names must exist on each table ---
         table_columns: ReadOnlyColumnCollection = self._table.columns
 
-        for column in columns:
-            _, col = column
+        for col in columns:
             if (
-                col.name not in table_columns 
+                col.name not in table_columns
                 and 
                 self._right is not None
                 and
@@ -651,7 +654,7 @@ class Select(HasTable, ExecutableClauseElement):
                     f"to {self._right.name}"
                 )
 
-        self._projection = ColumnCollection(columns).as_readonly()
+        self._projection = columns
 
     @generative
     def where(self, expr: ColumnElement) -> Self:
@@ -1033,16 +1036,34 @@ class JoinExecution:
         self._join = join
         self._projection = projection
         self._right_filter = right_filter
+
+        # ``projection`` is None only for low-level callers that mean "project
+        # everything" (e.g. JoinExecution unit tests). Fall back to all user
+        # columns of both sides so schema construction stays projection-
+        # independent in that case; the per-side filters below then split them.
+        schema_projection = (
+            projection if projection is not None
+            else (*join.left.uc, *join.right.uc)
+        )
+
         self._left_schema = SchemaInfo.from_table(
             join.left,
             execution_names=[join.left.c.object_id.name],
-            projected_names=[c.name for c in join.left.uc],
+            projected_names=[
+                c.name
+                for c in schema_projection
+                if c.parent is self._join.left
+            ] + [self._join.onclause.name],     # the onclause column must always be included for the join to work
         )
 
         self._right_schema = SchemaInfo.from_table(
             self._join.right,
             execution_names=[self._join.right.c.object_id.name],
-            projected_names=[c.name for c in self._join.right.uc]    
+            projected_names=[
+                c.name
+                for c in schema_projection
+                if c.parent is self._join.right
+            ]
         )
 
         self._left_rows = None

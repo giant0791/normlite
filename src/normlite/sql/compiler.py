@@ -633,7 +633,7 @@ class NotionCompiler(SQLCompiler):
             self._compiler_state.fetch_columns = [
                 col.name
                 for col in projection
-                if col.name in select._table.c  # join path supplies only its left-owned projection
+                if col.parent is select._table  # join path supplies only its left-owned projection
             ]
 
             if select._joins:
