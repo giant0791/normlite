@@ -89,7 +89,8 @@ the wire, and makes `filter_properties` dead weight.
   `ResultColumn` provenance and selecting the right-side getters by **table identity**, not
   name (keying the synthetic page by the bare name the filter references). The all-None
   phantom-drop rule ([ADR-0005](./0005-outer-join-phantom-null-semantics.md)) is preserved.
-  See issue #309 / #310 discussion.
+  Shipped in [PR #321](https://github.com/giant0791/normlite/pull/321) (issue #319); see also
+  issue #309 / #310 discussion.
 - Filtering on a **non-projected** right column is likewise unreconstructable from the merged
   tuple and is out of scope here (it needs evaluation against the raw phase-2 page).
 - `SchemaInfo.from_join` does not yet compose `from_table`; that consolidation is deferred.
