@@ -616,6 +616,7 @@ class Select(HasTable, ExecutableClauseElement):
                 return 
 
         # A list of columns has been provided
+        seen = set()
         tables = []
         columns: tuple[Column] = tuple()
 
@@ -624,6 +625,11 @@ class Select(HasTable, ExecutableClauseElement):
                 raise ArgumentError(
                     "select() arguments must be either a Table or Column objects"
                 )
+            if (ent.name, ent.parent) in seen:
+                raise ArgumentError(
+                    f"Column '{ent.name}' specified twice in select() statement."
+                )
+            seen.add((ent.name, ent.parent, ))
             tables.append(ent.parent)
             columns += (ent, )
 
