@@ -571,8 +571,12 @@ class Select(HasTable, ExecutableClauseElement):
     
     is_select = True
 
-    _projection: ReadOnlyColumnCollection
-    """The column names to be projected in this select statement."""
+    _projection: tuple[Column, ...]
+    """The column names to be projected in this select statement.
+
+    .. versionchanged:: 0.11.0
+        The projection is now a tuple of columns to support colliding column names.
+    """
 
     _right: Optional[Table] = None
 
@@ -612,16 +616,22 @@ class Select(HasTable, ExecutableClauseElement):
                 return 
 
         # A list of columns has been provided
+        seen = set()
         tables = []
-        columns: list[tuple[str, Column]] = []
+        columns: tuple[Column] = tuple()
 
         for ent in entities:
             if not isinstance(ent, Column):
                 raise ArgumentError(
                     "select() arguments must be either a Table or Column objects"
                 )
+            if (ent.name, ent.parent) in seen:
+                raise ArgumentError(
+                    f"Column '{ent.name}' specified twice in select() statement."
+                )
+            seen.add((ent.name, ent.parent, ))
             tables.append(ent.parent)
-            columns.append((ent.name, ent))
+            columns += (ent, )
 
         dedup_tables = list(dict.fromkeys(tables))
 
@@ -637,10 +647,9 @@ class Select(HasTable, ExecutableClauseElement):
         # --- SAFEGUARD: column names must exist on each table ---
         table_columns: ReadOnlyColumnCollection = self._table.columns
 
-        for column in columns:
-            _, col = column
+        for col in columns:
             if (
-                col.name not in table_columns 
+                col.name not in table_columns
                 and 
                 self._right is not None
                 and
@@ -651,7 +660,7 @@ class Select(HasTable, ExecutableClauseElement):
                     f"to {self._right.name}"
                 )
 
-        self._projection = ColumnCollection(columns).as_readonly()
+        self._projection = columns
 
     @generative
     def where(self, expr: ColumnElement) -> Self:
@@ -1033,16 +1042,34 @@ class JoinExecution:
         self._join = join
         self._projection = projection
         self._right_filter = right_filter
+
+        # ``projection`` is None only for low-level callers that mean "project
+        # everything" (e.g. JoinExecution unit tests). Fall back to all user
+        # columns of both sides so schema construction stays projection-
+        # independent in that case; the per-side filters below then split them.
+        schema_projection = (
+            projection if projection is not None
+            else (*join.left.uc, *join.right.uc)
+        )
+
         self._left_schema = SchemaInfo.from_table(
             join.left,
             execution_names=[join.left.c.object_id.name],
-            projected_names=[c.name for c in join.left.uc],
+            projected_names=[
+                c.name
+                for c in schema_projection
+                if c.parent is self._join.left
+            ] + [self._join.onclause.name],     # the onclause column must always be included for the join to work
         )
 
         self._right_schema = SchemaInfo.from_table(
             self._join.right,
             execution_names=[self._join.right.c.object_id.name],
-            projected_names=[c.name for c in self._join.right.uc]    
+            projected_names=[
+                c.name
+                for c in schema_projection
+                if c.parent is self._join.right
+            ]
         )
 
         self._left_rows = None
@@ -1106,8 +1133,12 @@ class JoinExecution:
             # right-side WHERE is answered client-side, AFTER the join
             # (ADR-0005): build getters from the merged schema and keep only
             # rows whose right slice passes the predicate.
-            right = self._join.right
-            right_cols = [c for c in merged_schema.columns if c.name in right.uc]
+            # Select the right-side result columns by IDENTITY (provenance),
+            # not by name: under a collision the right column is keyed
+            # fully-qualified (`courses.title`) and would never match
+            # `c.name in right.uc`. The getter is taken at the merged
+            # (qualified) name via the existing index. See ADR-0009.
+            right_cols = [c for c in merged_schema.columns if c.table is self._join.right]
             right_getters = [merged_schema.column_getter(c.name) for c in right_cols]
             merged_rows = [
                 r for r in merged_rows
@@ -1258,10 +1289,14 @@ class JoinExecution:
         if all(c is None for c in right_slice):
             return False        # phantom: NULL fails every right-side predicate
 
+        # Key the synthetic page by the BARE name: the compiled Notion filter
+        # references the unqualified property (`title`, emitted by
+        # visit_binary_expression), and the page is right-only so bare names
+        # are unambiguous within it. See ADR-0009.
         properties = {}
         for col, cell in zip(right_cols, right_slice):
             typ = type_mapper[col.type_code]
-            properties[col.name] = {"type": typ, **cell}
+            properties[col.bare_name] = {"type": typ, **cell}
 
         page = {"properties": properties}
         return _Filter(page, {"filter": self._right_filter}).eval()

@@ -199,6 +199,24 @@ def test_two_relations_to_same_target_table_raise_naming_both_columns(
             Column("backup_course", Relation(), ForeignKey("courses.object_id")),
         )
 
+def test_projecting_same_column_twice_raises_argument_error(metadata: MetaData):
+    # ADR-0009: slice 2 dropped the name-keyed ColumnCollection so duplicate
+    # *names* across tables are constructable (select(a.c.title, b.c.title) is
+    # valid and gets qualified by from_join). That reopened a different hole:
+    # the SAME (parent, name) projected twice would be qualified into two
+    # IDENTICAL keys and silently collapse. So the same column twice is a hard
+    # error -- keyed on (parent, name), not on bare name (the cross-table same
+    # name must stay legal, slice 2).
+    students = Table(
+        "students",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+
+    with pytest.raises(ArgumentError):
+        select(students.c.title, students.c.title)
+
+
 def test_right_side_where_filter_stays_out_of_phase_one_query_payload(
     students: Table, courses: Table
 ):

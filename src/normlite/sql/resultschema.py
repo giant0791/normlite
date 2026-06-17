@@ -73,10 +73,22 @@ def _merge_names(
 
 @dataclass(frozen=True)
 class ResultColumn:
-    """Represent one column in the result set."""
+    """Represent one column in the result set.
+
+    ``name`` is the merged result key (qualified on a join collision, e.g.
+    ``courses.title``). ``table`` and ``bare_name`` carry the column's
+    *provenance* -- the owning table and its original, unqualified name --
+    so the join pipeline can select columns by identity rather than by name,
+    which is exactly what collisions break (see ADR-0009). Provenance is an
+    invariant set by both :meth:`SchemaInfo.from_table` and
+    :meth:`SchemaInfo.from_join`; it is excluded from equality and ``repr`` so
+    the DBAPI ``description`` (:meth:`SchemaInfo.as_sequence`) is unchanged.
+    """
     name: str
     type_code: DBAPITypeCode
     nullable: bool
+    table: Table = field(compare=False, repr=False)
+    bare_name: str = field(compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -136,6 +148,8 @@ class SchemaInfo:
                     name=name,
                     type_code=column.type_.get_dbapi_type(),
                     nullable=None,
+                    table=table,
+                    bare_name=name,
                 )
             )
 
@@ -172,9 +186,11 @@ class SchemaInfo:
         result_cols = [
             ResultColumn(
                 # take the FQ-name if it's a colliding column
-                fqname_by_col.get(rc, rc.name), 
-                type_code=rc.type_.get_dbapi_type(), 
-                nullable=False
+                fqname_by_col.get(rc, rc.name),
+                type_code=rc.type_.get_dbapi_type(),
+                nullable=False,
+                table=rc.parent,
+                bare_name=rc.name,
             )
             for rc in entities
         ]
