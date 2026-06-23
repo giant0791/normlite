@@ -1,7 +1,7 @@
 """Seam-level tests for the JoinExecution object (issue #314, ADR-0008).
 
 These exercise JoinExecution through its public interface only:
-    JoinExecution(join, projection, right_filter)
+    JoinExecution(join, projection, right_filter, right_sorts)
         .prepare(left_rows)   -> bulk_params
         .assemble(right_rows) -> (merged_schema, merged_rows)
 
@@ -60,7 +60,7 @@ def test_prepare_turns_left_rows_into_deduplicated_retrieve_batch():
     ]
 
     # Act: build the seam object from config only, then feed it phase-1 rows.
-    join_execution = JoinExecution(join, projection=None, right_filter=None)
+    join_execution = JoinExecution(join, projection=None, right_filter=None, right_sorts=None)
     bulk_params = join_execution.prepare(left_rows)
 
     # Assert: each distinct target id appears exactly once, in first-seen
@@ -128,7 +128,7 @@ def test_assemble_merges_the_prepared_left_rows_with_the_retrieved_right_rows():
 
     # Act: prepare seeds the phase-1 state; assemble takes ONLY the phase-2
     # rows and must reuse the left rows captured across the dispatch boundary.
-    join_execution = JoinExecution(join, projection=projection, right_filter=None)
+    join_execution = JoinExecution(join, projection=projection, right_filter=None, right_sorts=None)
     join_execution.prepare(left_rows)
     merged_schema, merged_rows = join_execution.assemble(right_rows)
 
@@ -210,7 +210,7 @@ def test_assemble_applies_right_filter_dropping_rows_whose_right_side_fails():
     right_filter = {"property": "title", "title": {"is_not_empty": True}}
 
     # Act
-    join_execution = JoinExecution(join, projection=projection, right_filter=right_filter)
+    join_execution = JoinExecution(join, projection=projection, right_filter=right_filter, right_sorts=None)
     join_execution.prepare(left_rows)
     _, merged_rows = join_execution.assemble(right_rows)
 
@@ -280,7 +280,7 @@ def test_assemble_outer_join_none_fills_a_dangling_left_row_that_inner_drops():
     right_rows = [right_row("Astronomy", "c-astro")]
 
     # Act
-    je = JoinExecution(join, projection=projection, right_filter=None)
+    je = JoinExecution(join, projection=projection, right_filter=None, right_sorts=None)
     je.prepare(left_rows)
     _, merged_rows = je.assemble(right_rows)
 
@@ -305,7 +305,7 @@ def test_assemble_outer_join_none_fills_a_left_row_with_an_empty_relation():
     right_rows = [right_row("Astronomy", "c-astro")]
 
     # Act
-    je = JoinExecution(join, projection=projection, right_filter=None)
+    je = JoinExecution(join, projection=projection, right_filter=None, right_sorts=None)
     je.prepare(left_rows)
     _, merged_rows = je.assemble(right_rows)
 
@@ -325,7 +325,7 @@ def test_assemble_outer_join_does_not_none_fill_a_row_that_already_matched():
     right_rows = [right_row("Astronomy", "c-astro")]
 
     # Act
-    je = JoinExecution(join, projection=projection, right_filter=None)
+    je = JoinExecution(join, projection=projection, right_filter=None, right_sorts=None)
     je.prepare(left_rows)
     _, merged_rows = je.assemble(right_rows)
 

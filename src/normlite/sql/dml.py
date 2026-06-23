@@ -27,7 +27,7 @@ from typing import Any, Callable, Mapping, NoReturn, Optional, Protocol, Self, S
 import collections.abc as collections_abc
 
 import warnings
-from normlite.exceptions import ArgumentError, NoSuchColumnError
+from normlite.exceptions import ArgumentError
 from normlite.sql.base import Executable, ClauseElement, generative
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
@@ -765,6 +765,7 @@ class Select(HasTable, ExecutableClauseElement):
             self._joins[0],
             self._projection,
             context.join_right_filter,
+            context.join_right_sorts
         )
         context._join_execution = join_execution
 
@@ -1038,10 +1039,12 @@ class JoinExecution:
         join: Join,
         projection: Optional[ReadOnlyColumnCollection],
         right_filter: Optional[dict],
+        right_sorts: Optional[list[dict]]
     ):
         self._join = join
         self._projection = projection
         self._right_filter = right_filter
+        self._right_sorts = right_sorts
 
         # ``projection`` is None only for low-level callers that mean "project
         # everything" (e.g. JoinExecution unit tests). Fall back to all user
@@ -1121,6 +1124,9 @@ class JoinExecution:
 
         .. versionadded:: 0.11.0
         """
+        from normlite.notion_sdk.client import EMPTY_TEXT, EMPTY_NUMBER
+        from normlite.sql.type_api import type_mapper
+
         merged_schema = SchemaInfo.from_join(
             self._join.left,
             self._join.right,
@@ -1144,6 +1150,43 @@ class JoinExecution:
                 r for r in merged_rows
                 if self._right_side_passes(r, right_getters, right_cols)
             ]
+
+        if self._right_sorts is not None:
+            # apply sorting using the held-back right ORDER BY keys
+            # the sort key is obtained with the getters using the merged_schema
+            right_cols = [c for c in merged_schema.columns if c.table is self._join.right]
+            by_bare = {c.bare_name: c for c in right_cols}
+            for sort in reversed(self._right_sorts):
+                 # identity, keyed by the sort's own property
+                col = by_bare[sort["property"]]
+
+                # merged name — survives collision
+                getter = merged_schema.column_getter(col.name)
+                
+                direction = sort.get("direction", "ascending")
+                reverse = direction == "descending"
+
+                
+                def sort_key(row: tuple[dict]) -> tuple[bool, Any]:
+                    result_processor = type_mapper[col.type_code].result_processor()
+                    value = getter(row)
+
+                    # result processor needs the property value
+                    value = result_processor(value)
+                    # Empties-first/last sentinel, inherited from
+                    # _extract_sort_value. For a right-side TITLE key this branch
+                    # is currently UNREACHABLE: an empty/None right title is
+                    # unconstructable through the public interface (insert
+                    # title=None is rejected by the client; title="" yields a
+                    # non-empty list). Kept for parity with the shared sort-value
+                    # semantics and for nullable types if they become sortable
+                    # right-side keys. See ADR-0005 / the unreachable-empty-title
+                    # boundary; not covered by a test because the input can't be
+                    # built.
+                    is_empty = value in (None, EMPTY_TEXT, EMPTY_NUMBER)
+                    return (is_empty, value)
+
+                merged_rows.sort(key=sort_key, reverse=reverse)
 
         return (merged_schema, merged_rows)
 
@@ -1322,4 +1365,3 @@ def _join_errorhandler(
         return                       
 
     raise errorvalue                 # propagate everything else
-

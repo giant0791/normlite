@@ -618,13 +618,45 @@ class NotionCompiler(SQLCompiler):
                 with self._compiling(new_state=_CompileState.COMPILING_WHERE):
                     # emit the JSON code for the filter object of the query
                     # in the right context
-                    filter_obj = select._whereclause.expression._compiler_dispatch(self)
-                    if parent_tables == {select._table}:
-                        # for the left table, add "filter" to the payload for the databases.query
-                        payload['filter'] = filter_obj
+                    if (
+                        select._joins
+                        and isinstance(expression, BooleanClauseList)
+                        and expression.operator == "and"
+                        and parent_tables == {select._table, select._right}
+                    ):
+                        # Compound AND spanning both join sides: split per-clause.
+                        # Left-only conjuncts narrow phase-1 to a SUPERSET of the
+                        # answer, so push them into payload['filter']; the remaining
+                        # conjuncts are held back in join_right_filter for client-side
+                        # evaluation after the merge. (See #311.)
+                        left_conjuncts = [
+                            clause._compiler_dispatch(self)
+                            for clause in expression.clauses
+                            if _get_expression_parent_tables(clause) == {select._table}
+                        ]
+                        right_conjuncts = [
+                            clause._compiler_dispatch(self)
+                            for clause in expression.clauses
+                            if _get_expression_parent_tables(clause) != {select._table}
+                        ]
+                        if left_conjuncts:
+                            payload['filter'] = (
+                                left_conjuncts[0] if len(left_conjuncts) == 1
+                                else {"and": left_conjuncts}
+                            )
+                        if right_conjuncts:
+                            compiled_dict["join_right_filter"] = (
+                                right_conjuncts[0] if len(right_conjuncts) == 1
+                                else {"and": right_conjuncts}
+                            )
                     else:
-                        # for the right table, stash the filter for filtering after merging
-                        compiled_dict["join_right_filter"] = filter_obj
+                        filter_obj = expression._compiler_dispatch(self)
+                        if parent_tables == {select._table}:
+                            # for the left table, add "filter" to the payload for the databases.query
+                            payload['filter'] = filter_obj
+                        else:
+                            # for the right table, stash the filter for filtering after merging
+                            compiled_dict["join_right_filter"] = filter_obj
 
         projection = self._compiler_state.stmt._projection
 
@@ -673,9 +705,26 @@ class NotionCompiler(SQLCompiler):
                     f"Cannot route ORDER BY expression: no source table could be "
                     f"determined for {type(order_by_clause).__name__}."
                 )
- 
-            if parent_tables == {select._table}:
-                sorts_obj = select._order_by._compiler_dispatch(self)
+            
+            # Sort pushability is POSITIONAL: only the LEADING RUN of left-table
+            # keys can ride in phase-1 (databases.query sorts by left-table
+            # properties only). Stop the prefix at the first key that isn't purely
+            # left-table — a right-side (or mixed) primary key makes the remaining
+            # sort a client-side concern. This unifies the single-table case (every
+            # key is left-table, so the whole sort is pushed) with the join case.
+            sorts_obj = []
+            for clause in order_by_clause.clauses:
+                if _get_expression_parent_tables(clause) != {select._table}:
+                    break
+                sorts_obj.append(clause._compiler_dispatch(self))
+
+            compiled_dict["join_right_sorts"] = [
+                clause._compiler_dispatch(self)
+                for clause in order_by_clause.clauses
+                if _get_expression_parent_tables(clause) != {select._table}
+            ]
+
+            if sorts_obj:
                 payload['sorts'] = sorts_obj
 
         compiled_dict ["payload"] = payload
@@ -970,7 +1019,6 @@ class NotionCompiler(SQLCompiler):
     
     def _compile_table_columns(self, user_cols: ReadOnlyColumnCollection) -> dict:
         from normlite.sql.type_api import Relation
-        from normlite.sql.schema import ForeignKeyConstraint
 
         # resolve oids for the all referenced columns         
         stmt_table = self._compiler_state.stmt._table
