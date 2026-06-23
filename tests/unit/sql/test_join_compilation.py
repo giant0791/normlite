@@ -1,3 +1,4 @@
+import json
 import pdb
 import uuid
 
@@ -7,7 +8,7 @@ from normlite import Relation, ForeignKey
 from normlite.exceptions import ArgumentError, CompileError
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Join, select
-from normlite.sql.elements import ColumnElement, OrderByExpression
+from normlite.sql.elements import ColumnElement, OrderByExpression, or_
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import String
 
@@ -236,26 +237,6 @@ def test_right_side_where_filter_stays_out_of_phase_one_query_payload(
     # phase-1 payload must carry no filter built from a right-table column
     assert "filter" not in asdict["payload"]
 
-def test_mixed_left_right_where_compound_stays_out_of_phase_one_regardless_of_order(
-    students: Table, courses: Table
-):
-    # Compound WHERE touching BOTH sides; a right-table column is involved, so the
-    # whole compound must stay out of phase-1, and routing must NOT depend on order.
-    students._sys_columns["object_id"]._value = str(uuid.uuid4())
-    left_then_right = (
-        select(students, courses).join(students.c.enrolled_in)
-        .where(students.c.name == "Galileo").where(courses.c.title == "Astronomy")
-        .compile(NotionCompiler()).as_dict()
-    )
-    students._sys_columns["object_id"]._value = str(uuid.uuid4())
-    right_then_left = (
-        select(students, courses).join(students.c.enrolled_in)
-        .where(courses.c.title == "Astronomy").where(students.c.name == "Galileo")
-        .compile(NotionCompiler()).as_dict()
-    )
-    assert "filter" not in left_then_right["payload"]
-    assert "filter" not in right_then_left["payload"]
-
 def test_where_expression_with_no_source_table_raises_compile_error(students: Table):
     students._sys_columns["object_id"]._value = str(uuid.uuid4())
     class _UnknownExpr(ColumnElement):
@@ -283,25 +264,24 @@ def test_right_side_order_by_stays_out_of_phase_one_query_payload(
     # phase-1 payload must carry no sort built from a right-table column
     assert "sorts" not in asdict["payload"]
 
-def test_mixed_left_right_order_by_stays_out_of_phase_one_regardless_of_order(
+def test_order_by_right_then_left_pushes_nothing_into_phase_one(
     students: Table, courses: Table
 ):
-    # Compound ORDER BY touching BOTH sides; a right-table column is involved, so the
-    # whole sort must stay out of phase-1, and routing must NOT depend on clause order.
+    # ORDER BY with a RIGHT key FIRST. The primary sort key is a right-table
+    # property databases.query cannot sort by, so the leading run is empty and
+    # NOTHING is pushable. The trailing left key is only a secondary tie-break
+    # under a client-side primary, so it cannot ride in phase-1 either. This is
+    # the mirror of `ORDER BY left, right` (which pushes the left prefix) — sort
+    # routing is positional, NOT set-membership.
     students._sys_columns["object_id"]._value = str(uuid.uuid4())
-    left_then_right = (
-        select(students, courses).join(students.c.enrolled_in)
-        .order_by(students.c.name.asc(), courses.c.title.asc())
-        .compile(NotionCompiler()).as_dict()
-    )
-    students._sys_columns["object_id"]._value = str(uuid.uuid4())
-    right_then_left = (
+    asdict = (
         select(students, courses).join(students.c.enrolled_in)
         .order_by(courses.c.title.asc(), students.c.name.asc())
         .compile(NotionCompiler()).as_dict()
     )
-    assert "sorts" not in left_then_right["payload"]
-    assert "sorts" not in right_then_left["payload"]
+
+    # a leading right-table key stops the prefix immediately: no sorts in phase-1
+    assert "sorts" not in asdict["payload"]
 
 def test_order_by_expression_with_no_source_table_raises_compile_error(students: Table):
     students._sys_columns["object_id"]._value = str(uuid.uuid4())
@@ -312,3 +292,83 @@ def test_order_by_expression_with_no_source_table_raises_compile_error(students:
     stmt = select(students).order_by(OrderByExpression(_UnknownExpr(), "asc"))
     with pytest.raises(CompileError, match=r"route ORDER BY expression"):
         stmt.compile(NotionCompiler())
+
+def test_compound_and_where_pushes_only_left_conjunct_into_phase_one(
+      students: Table, courses: Table
+  ):
+      students._sys_columns["object_id"]._value = str(uuid.uuid4())
+
+      # Compound WHERE = a LEFT (students) conjunct AND a RIGHT (courses) conjunct.
+      # The left conjunct only narrows the phase-1 candidate set to a SUPERSET of the
+      # final answer, so databases.query may safely carry it; the right conjunct must
+      # be answered client-side after the join.
+      stmt = (
+          select(students, courses)
+          .join(students.c.enrolled_in)
+          .where(students.c.name == "Galileo")      # LEFT  — pushable
+          .where(courses.c.title == "Astronomy")    # RIGHT — client-side only
+      )
+
+      asdict = stmt.compile(NotionCompiler()).as_dict()
+
+      phase_one_filter = json.dumps(asdict["payload"].get("filter"))
+      held_back = json.dumps(asdict.get("join_right_filter"))
+
+      # phase-1 query carries the left (students.name) condition ...
+      assert '"property": "name"' in phase_one_filter
+      # ... but NOT the right (courses.title) condition.
+      assert '"property": "title"' not in phase_one_filter
+
+      # the right (courses.title) condition is held back for client-side evaluation.
+      assert '"property": "title"' in held_back
+
+def test_compound_or_spanning_both_sides_pushes_nothing_into_phase_one(
+    students: Table, courses: Table
+):
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+
+    # Compound OR spanning BOTH sides. A row qualifies if EITHER side holds, so
+    # narrowing phase-1 to just the left disjunct would silently drop rows that
+    # match only the right one — wrong answer, no error. Unlike AND, an OR that
+    # touches the right table must stay WHOLLY client-side: push nothing.
+    stmt = (
+        select(students, courses)
+        .join(students.c.enrolled_in)
+        .where(or_(students.c.name == "Galileo", courses.c.title == "Astronomy"))
+    )
+
+    asdict = stmt.compile(NotionCompiler()).as_dict()
+
+    # phase-1 query carries NO filter at all ...
+    assert "filter" not in asdict["payload"]
+
+    # ... and the whole OR is held back for client-side eval, with BOTH disjuncts
+    # still present and joined by "or" — i.e. the connective was never split.
+    held_back = asdict["join_right_filter"]
+    assert "or" in held_back
+    assert '"property": "name"' in json.dumps(held_back)
+    assert '"property": "title"' in json.dumps(held_back)
+
+def test_order_by_left_then_right_pushes_only_left_prefix_into_phase_one(
+    students: Table, courses: Table
+):
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+
+    # ORDER BY with a LEFT key first, a RIGHT key second. Sort pushability is
+    # POSITIONAL, not set-membership: only the LEADING RUN of left-table keys can
+    # ride in phase-1 (databases.query sorts by left properties only). The primary
+    # left key is pushable; the trailing right key must STOP the prefix and be left
+    # for a client-side stable sort after the join.
+    stmt = (
+        select(students, courses)
+        .join(students.c.enrolled_in)
+        .order_by(students.c.name.asc(), courses.c.title.asc())
+    )
+
+    asdict = stmt.compile(NotionCompiler()).as_dict()
+
+    # phase-1 sorts carry EXACTLY the leading left (students.name) key — the
+    # right (courses.title) key is NOT pushed.
+    assert asdict["payload"].get("sorts") == [
+        {"property": "name", "direction": "ascending"}
+    ]

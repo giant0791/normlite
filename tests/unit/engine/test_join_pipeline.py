@@ -927,3 +927,114 @@ def test_join_keeps_projected_name_bare_when_collision_is_unprojected(engine: En
     m = row.mapping()
     assert m["name"] == "Galileo Galilei"
     assert m["director"] == "Vincenzo Galilei"
+
+
+def test_inner_join_order_by_left_then_right_breaks_ties_by_right_key(engine: Engine):
+    # ORDER BY students.name, courses.title. The LEFT key is primary (pushed to
+    # phase-1); the RIGHT key is the tie-break, which can only be applied
+    # client-side AFTER the join. One student enrolled in two courses yields two
+    # same-name pairs, so the trailing right key alone decides their order.
+    #
+    # The relation list is seeded in the REVERSE of title order, so the correct
+    # result cannot be the incidental retrieval/merge order — it must be ACTIVELY
+    # ordered by the trailing right key.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            ).first().object_id
+        )
+        astronomy_oid = (
+            connection.execute(
+                insert(courses).values(title="Astronomy").returning(courses.c.object_id)
+            ).first().object_id
+        )
+
+        # relation list deliberately in REVERSE title order: Physics before Astronomy
+        connection.execute(
+            insert(students).values(
+                name="Galileo",
+                enrolled_in=[physics_oid, astronomy_oid],
+            )
+        )
+
+        result = connection.execute(
+            select(students, courses)
+            .join(students.c.enrolled_in)
+            .order_by(students.c.name.asc(), courses.c.title.asc())
+        )
+        rows = result.fetchall()
+
+    # both pairs share the name, so the trailing right key (title) orders them:
+    # Astronomy precedes Physics ascending.
+    assert [r.title for r in rows] == ["Astronomy", "Physics"]
+
+
+def test_inner_join_order_by_left_then_right_breaks_ties_by_right_key_descending(engine: Engine):
+    # Same shape as the ascending tie-break above, but the trailing right key is
+    # DESCENDING. The held-back right key is applied client-side AFTER the join,
+    # so this pins that the client-side sort honors direction (reverse), not just
+    # that it sorts at all. Empties placement is NOT asserted here: an empty/None
+    # right-side title is unconstructable through the public interface (insert
+    # title=None is rejected by the client; title="" is non-empty), so there is
+    # no black-box input to exercise it. See ADR-0005 / the unreachable-empty-
+    # title boundary.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            ).first().object_id
+        )
+        astronomy_oid = (
+            connection.execute(
+                insert(courses).values(title="Astronomy").returning(courses.c.object_id)
+            ).first().object_id
+        )
+
+        # relation list seeded in ASCENDING title order, so the DESC result
+        # cannot be the incidental retrieval/merge order.
+        connection.execute(
+            insert(students).values(
+                name="Galileo",
+                enrolled_in=[astronomy_oid, physics_oid],
+            )
+        )
+
+        result = connection.execute(
+            select(students, courses)
+            .join(students.c.enrolled_in)
+            .order_by(students.c.name.asc(), courses.c.title.desc())
+        )
+        rows = result.fetchall()
+
+    # both pairs share the name, so the trailing right key (title) orders them:
+    # Physics precedes Astronomy descending.
+    assert [r.title for r in rows] == ["Physics", "Astronomy"]
