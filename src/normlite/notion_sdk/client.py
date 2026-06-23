@@ -29,7 +29,6 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
-import pdb
 from typing import List, Optional, Self, Set, Type
 from types import TracebackType
 from abc import ABC, abstractmethod
@@ -108,12 +107,49 @@ class NotionError(Exception):
             f"message={self.message!r})"
         )
 
+# Namespace UUID used to generate deterministic UUIDs
+# Using the standard DNS namespace as a base
+NAMESPACE_UUID = uuid.NAMESPACE_DNS
+
+def encode_cursor(index: int) -> str:
+    """Encodes an integer index into a valid, opaque UUID4 string."""
+    # Step 1: Create a deterministic base UUID from the index to ensure uniqueness
+    base_uuid = uuid.uuid5(NAMESPACE_UUID, f"cursor-{index}")
+    
+    # Step 2: Extract the raw bytes
+    uuid_bytes = bytearray(base_uuid.bytes)
+    
+    # Step 3: Embed the integer into the last 4 bytes (supports up to 4.2 billion)
+    # This keeps the integer safe inside the node payload of the UUID
+    uuid_bytes[12:16] = index.to_bytes(4, byteorder='big')
+    
+    # Step 4: Enforce RFC 4122 UUID Version 4 variant and version bits
+    uuid_bytes[6] = (uuid_bytes[6] & 0x0f) | 0x40  # Set version to 4
+    uuid_bytes[8] = (uuid_bytes[8] & 0x3f) | 0x80  # Set variant to RFC 4122
+    
+    return str(uuid.UUID(bytes=bytes(uuid_bytes)))
+
+def decode_cursor(cursor_str: str) -> int:
+    """Decodes the opaque UUID4 string back into the original integer index."""
+    try:
+        # Convert string back to UUID object
+        parsed_uuid = uuid.UUID(cursor_str)
+        uuid_bytes = parsed_uuid.bytes
+        
+        # Extract the integer from the last 4 bytes of the payload
+        index = int.from_bytes(uuid_bytes[12:16], byteorder='big')
+        return index
+    except ValueError as e:
+        raise ValueError(f"Invalid or corrupted cursor string: {cursor_str}") from e
+
 class AbstractNotionClient(ABC):
     """Base class for a Notion API client.
 
     """
     allowed_operations: Set[str] = set()
     """The set of Notion API calls."""
+
+    NOTION_MAX_PAGE_SIZE = 100
 
     def __init__(self):
         self._ischema_page_id = None
@@ -1098,6 +1134,8 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         if not self._store_len():
             return query_result_object
+        
+        payload = payload or {}
 
         database_id = path_params.get('database_id') if path_params else None
         if database_id is None:
@@ -1166,15 +1204,29 @@ class InMemoryNotionClient(AbstractNotionClient):
                 pages.sort(key=sort_key, reverse=reverse)
 
         # --------------------
+        # Pagination
+        # --------------------
+        # recompute the view at every request
+        requested_page_size = payload.get("page_size") or InMemoryNotionClient.NOTION_MAX_PAGE_SIZE
+        page_size = min(requested_page_size, InMemoryNotionClient.NOTION_MAX_PAGE_SIZE)
+        start_cursor = payload.get("start_cursor")
+        offset = decode_cursor(start_cursor) if start_cursor is not None else 0
+        end = offset + page_size
+
+        # --------------------
         # Projection phase
         # --------------------
-        for page in pages:
+        for page in pages[offset:end]:
             if filter_properties:
                 query_results.append(
                     self._filter_properties(page, filter_properties)
                 )
             else:
                 query_results.append(page)
+
+        if end < len(pages):
+            query_result_object["has_more"] = True
+            query_result_object["next_cursor"] = encode_cursor(end)
 
         return query_result_object
 
