@@ -114,6 +114,13 @@ silently clamp.
   as a side effect of drain-all-by-default — independently of whether anyone uses streaming.
 - **`ResultSet` is no longer a frozen `list[tuple]`** — it holds page-fetch state. Its
   equality/`description` contracts and the DBAPI `description` are otherwise unchanged.
+- **Paginated `execute()` is atomic in drain-all mode.** The cursor drains every page into a
+  *local* `ResultSet` and only publishes it (`_reset_results()` + append) after the full token
+  walk succeeds. A failure on any page — a `NotionError` translated to a DBAPI error, or a
+  malformed page (`has_more=True` with `next_cursor=None`) surfaced as `DatabaseError` — leaves
+  the cursor's prior result state untouched: callers never observe a torn read presented as
+  complete. (Lazy streaming relaxes this by construction — see Slice 5 mid-stream error
+  propagation.)
 - **New user-visible API:** `execution_options(stream_results=True)` / `yield_per=N` on the
   `Select` read path; `__iter__`/`fetchone`/`fetchmany` stream, `all()`/`fetchall()`
   materialize-by-draining (documented, not blocked).
