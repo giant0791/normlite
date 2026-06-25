@@ -26,6 +26,7 @@ from flask.testing import FlaskClient
 
 from normlite._constants import SpecialColumns
 from normlite.notion_sdk.client import AbstractNotionClient, NotionError
+from normlite.notiondbapi.page_iterator import PageIterator
 from normlite.notiondbapi.resultset import ResultSet
 
 DBAPIParamStyle = Literal[
@@ -435,7 +436,7 @@ class Cursor:
                 or no call was issued yet.
 
         Yields:
-            Iterator[Iterable[tuple]]: The next row in the result set.
+            Iterator[tuple]: The next row in the result set.
 
         .. versionchanged:: 0.9.0
             This version uses the new redesigned iterator based :class:`normlite.notiondbapi.resultset.ResultSet`
@@ -652,20 +653,44 @@ class Cursor:
                 'Cannot fetch rows or execute operations on a closed cursor'
             )
 
-        object_ = {}
-        try:
-            object_ = self._client(
+        def page_fetcher(start_cursor: Optional[str] = None) -> dict:
+            payload = parameters.get("payload")
+            if start_cursor is not None:
+                # per-fetch copy of payload
+                # IMPORTANT: payload may be None, so update it in a None-safe way
+                payload = {**payload, "start_cursor": start_cursor}
+
+            return self._client(
                 operation['endpoint'],
                 operation['request'],
                 parameters.get('path_params'),
                 parameters.get('query_params'),
-                parameters.get('payload'),
-            )
+                payload,
+            ) 
+
+        object_ = {}
+        try:
+            page_iter = PageIterator(page_fetcher=page_fetcher)
+            
+            # fetch the first page
+            # construct a temporary result set to handle mid-drain error translation:
+            # all-or-nothing result
+            object_ = next(page_iter)
+            rs = ResultSet.from_json(self._description, notion_obj=object_)           
+           
+            # retrieve remaining pages using the specified page size
+            for object_ in page_iter:
+                rs.extend_from_json(object_)
+
         except KeyError as ke:
             # Programming error in the DBAPI usage
             raise InterfaceError(
                 f"Missing required key in operation or parameters: {ke.args[0]}"
             ) from ke
+        
+        except ValueError as ve:
+            # --- A malformed Notion object with has_more = True and next_cursor = None
+            raise DatabaseError from ve
 
         except NotionError as ne:
             # --- Database object does not exist -----------------------------
@@ -698,7 +723,7 @@ class Cursor:
             ) from ne
         
         self._reset_results()
-        self._append_result_set(object_)
+        self._result_sets.append(rs)  
         return self
     
     def executemany(self, operation: dict, parameters: Sequence[DBAPIExecuteParameters]) -> Self:

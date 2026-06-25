@@ -1,7 +1,6 @@
 from __future__ import annotations
 from operator import itemgetter
-import pdb
-from typing import Any, Callable, Optional, Sequence
+from typing import Optional
 
 from normlite._constants import SpecialColumns
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
@@ -123,6 +122,18 @@ class ResultSet:
         # the result set contains pages
         # each entry in the result set provides ids
         return [(self._pg_oid_getter(r),) for r in self._rows]
+
+    def extend_from_json(self, notion_obj: dict) -> None:
+        """Grow the current risult set with a new Notion result object.
+
+        .. versionadded:: 0.11.0
+            New API to handle streaming result over Notion token pagination.
+
+        Args:
+            notion_obj (dict): The Notion result object whose "results" objects need to be added.
+        """
+        other = ResultSet.from_json(self._description, notion_obj)
+        self._rows.extend(other._rows)
             
     @classmethod
     def _process_page(

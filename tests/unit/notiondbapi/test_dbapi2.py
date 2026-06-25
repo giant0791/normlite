@@ -441,6 +441,62 @@ def test_rowcount_returns_count_of_all_rows_found(
     assert n_pages == cursor.rowcount
 
 #----------------------------------------------------------------
+# drain-all pagination tests (issue #325)
+#----------------------------------------------------------------
+
+def test_execute_drains_every_page_into_one_result_set(
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...],
+):
+    # Arrange: 5 matching rows, but force the backend to hand them back two at a
+    # time. page_size lives in the caller payload here purely to provoke a 2+2+1
+    # token walk cheaply — in production callers omit it and the client defaults
+    # to 100, where the same drain loop still applies above 100 rows.
+    cursor = Cursor(Connection(client))
+    database_id, pages = generate_pages(client, n=5)
+    cursor._inject_description(row_description)
+
+    payload = {
+        "page_size": 2,
+        "filter": {
+            "property": "is_active",
+            "checkbox": {"does_not_equal": True},
+        },
+    }
+
+    # Act: a SINGLE execute() must transparently follow next_cursor across all
+    # three pages — the caller never sees pagination.
+    cursor.execute(
+        operation={"endpoint": "databases", "request": "query"},
+        parameters={
+            "path_params": {"database_id": database_id},
+            "payload": payload,
+        },
+    )
+    rows = cursor.fetchall()
+
+    # Assert: all five rows surfaced, in insertion order, as ONE result set.
+    # (If a page were modelled as its own ResultSet, fetchall would see only the
+    # first 2 rows even though rowcount summed to 5 — so the names pin order AND
+    # the single-result-set shape, not just the count.)
+    # pages_create strips properties to ids only, so retrieve each created page
+    # to recover the title values for the expected side.
+    created_pages = [
+        client("pages", "retrieve", path_params={"page_id": p["id"]}) for p in pages
+    ]
+    expected_names = [
+        rich_text_to_plain_text(p["properties"]["name"]["title"]) for p in created_pages
+    ]
+    actual_names = [rich_text_to_plain_text(get_name(r)["title"]) for r in rows]
+    assert actual_names == expected_names
+    assert cursor.rowcount == 5
+    assert cursor.fetchone() is None      # result set fully consumed, no second set
+
+    # And the drain rebuilt the body per fetch: the moving start_cursor was never
+    # smeared onto the caller's shared payload dict.
+    assert "start_cursor" not in payload
+
+#----------------------------------------------------------------
 # lastrowid tests
 #----------------------------------------------------------------
 
