@@ -522,6 +522,26 @@ class _CallCountingClient:
         return getattr(self._wrapped, name)
 
 
+class _PayloadSpyClient:
+    """Transparent proxy that records the payload of each databases.query call.
+
+    ``page_size`` is internal (derived from ``yield_per``), so the only way to
+    observe it is to capture the request body the backend actually received.
+    """
+
+    def __init__(self, wrapped):
+        self._wrapped = wrapped
+        self.query_payloads = []
+
+    def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
+        if endpoint == "databases" and request == "query":
+            self.query_payloads.append(payload)
+        return self._wrapped(endpoint, request, path_params, query_params, payload)
+
+    def __getattr__(self, name):
+        return getattr(self._wrapped, name)
+
+
 def test_streaming_execute_fetches_only_first_page(
     client: InMemoryNotionClient,
     row_description: tuple[tuple, ...],
@@ -697,6 +717,41 @@ def test_streaming_fetchall_returns_all_rows_in_order(
     assert actual_names == expected_names
     assert cursor.rowcount == 5
     assert cursor.fetchone() is None      # fully consumed across all pages
+
+
+def test_yield_per_sets_clamped_request_page_size(
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...],
+):
+    # yield_per IS the internal Notion page_size, clamped to the API max of 100:
+    # page_size = min(yield_per or 100, 100). The caller carries NO page_size in
+    # the payload — the cursor injects it from yield_per, on a per-request copy
+    # (never smearing it onto the caller's dict).
+    database_id, _ = generate_pages(client, n=3)
+    spy = _PayloadSpyClient(client)
+    cursor = Cursor(Connection(spy))
+    cursor._inject_description(row_description)
+
+    payload = {"filter": {"property": "is_active", "checkbox": {"does_not_equal": True}}}
+
+    # Sub-cap: yield_per passes straight through as the request page_size.
+    cursor.execute(
+        operation={"endpoint": "databases", "request": "query"},
+        parameters={"path_params": {"database_id": database_id}, "payload": payload},
+        yield_per=2,
+    )
+    assert spy.query_payloads[-1].get("page_size") == 2
+    # internal page_size must not be smeared onto the caller's payload dict.
+    assert "page_size" not in payload
+
+    # Above-cap: clamped to the Notion API maximum of 100 (so yield_per > 100
+    # pulls multiple Notion pages per logical batch).
+    cursor.execute(
+        operation={"endpoint": "databases", "request": "query"},
+        parameters={"path_params": {"database_id": database_id}, "payload": payload},
+        yield_per=200,
+    )
+    assert spy.query_payloads[-1].get("page_size") == 100
 
 #----------------------------------------------------------------
 # lastrowid tests

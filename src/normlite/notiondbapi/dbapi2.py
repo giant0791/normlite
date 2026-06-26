@@ -693,12 +693,17 @@ class Cursor:
                 'Cannot fetch rows or execute operations on a closed cursor'
             )
 
+        page_size = min(yield_per, 100) if yield_per is not None else None
+
         def page_fetcher(start_cursor: Optional[str] = None) -> dict:
             payload = parameters.get("payload")
+            if page_size is not None:
+                payload = {**(payload or {}), "page_size": page_size}
+
             if start_cursor is not None:
                 # per-fetch copy of payload
                 # IMPORTANT: payload may be None, so update it in a None-safe way
-                payload = {**payload, "start_cursor": start_cursor}
+                payload = {**(payload or {}), "start_cursor": start_cursor}
 
             return self._client(
                 operation['endpoint'],
@@ -712,7 +717,7 @@ class Cursor:
         is_streaming = stream_results or yield_per is not None
         
         try:
-            self._page_iter = PageIterator(page_fetcher=page_fetcher, page_size=yield_per)
+            self._page_iter = PageIterator(page_fetcher=page_fetcher, page_size=page_size)
             
             # fetch the first page
             # construct a temporary result set to handle mid-drain error translation:
