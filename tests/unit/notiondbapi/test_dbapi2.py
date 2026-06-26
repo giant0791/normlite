@@ -497,6 +497,208 @@ def test_execute_drains_every_page_into_one_result_set(
     assert "start_cursor" not in payload
 
 #----------------------------------------------------------------
+# lazy streaming pagination tests (issue #326)
+#----------------------------------------------------------------
+
+class _CallCountingClient:
+    """Transparent proxy that counts databases.query calls and delegates the rest.
+
+    Laziness is only observable by *counting backend calls* — row totals look
+    identical whether we drained eagerly or streamed. So we spy on the one call
+    the cursor makes (``self._client(endpoint, request, ...)``) and forward
+    everything else (``_add``, ``pages_create``, ``_ensure_root`` …) untouched.
+    """
+
+    def __init__(self, wrapped):
+        self._wrapped = wrapped
+        self.query_calls = 0
+
+    def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
+        if endpoint == "databases" and request == "query":
+            self.query_calls += 1
+        return self._wrapped(endpoint, request, path_params, query_params, payload)
+
+    def __getattr__(self, name):
+        return getattr(self._wrapped, name)
+
+
+def test_streaming_execute_fetches_only_first_page(
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...],
+):
+    # Arrange: 5 matching rows handed back two at a time (page_size=2 forces a
+    # 2+2+1 token walk). A counting proxy records how many databases.query calls
+    # actually reach the backend.
+    database_id, _ = generate_pages(client, n=5)
+    counting = _CallCountingClient(client)
+    cursor = Cursor(Connection(counting))
+    cursor._inject_description(row_description)
+
+    payload = {
+        "page_size": 2,
+        "filter": {
+            "property": "is_active",
+            "checkbox": {"does_not_equal": True},
+        },
+    }
+
+    # Act: stream the result — execute() must pull page 1 only.
+    cursor.execute(
+        operation={"endpoint": "databases", "request": "query"},
+        parameters={
+            "path_params": {"database_id": database_id},
+            "payload": payload,
+        },
+        stream_results=True,
+        yield_per=2,
+    )
+
+    # Assert: exactly one backend call so far. Drain-all would have made three
+    # (2+2+1); streaming defers pages 2 and 3 until they're fetched.
+    assert counting.query_calls == 1
+
+
+def test_streaming_pulls_next_page_on_demand(
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...],
+):
+    # Arrange: 5 rows, page_size 2 → backend pages of 2, 2, 1. Stream them.
+    database_id, _ = generate_pages(client, n=5)
+    counting = _CallCountingClient(client)
+    cursor = Cursor(Connection(counting))
+    cursor._inject_description(row_description)
+    cursor.execute(
+        operation={"endpoint": "databases", "request": "query"},
+        parameters={
+            "path_params": {"database_id": database_id},
+            "payload": {
+                "page_size": 2,
+                "filter": {"property": "is_active", "checkbox": {"does_not_equal": True}},
+            },
+        },
+        stream_results=True,
+        yield_per=2,
+    )
+
+    # The first page (2 rows) is already buffered — draining it makes no new call.
+    assert cursor.fetchone() is not None
+    assert cursor.fetchone() is not None
+    assert counting.query_calls == 1
+
+    # The third row lives on page 2: fetching it must pull exactly one more page,
+    # and surface real data (not None — which is what dropping the iterator gives).
+    third = cursor.fetchone()
+    assert third is not None
+    assert counting.query_calls == 2
+
+
+def test_streaming_rowcount_is_unknown_until_fully_drained(
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...],
+):
+    # rowcount must NOT leak the buffered page length while a stream is mid-flight.
+    # #326 contract: rowcount stays -1 ("unknown") until every page has been pulled,
+    # then reports the true sum. 5 rows, page_size 2 → pages of 2, 2, 1.
+    database_id, _ = generate_pages(client, n=5)
+    counting = _CallCountingClient(client)
+    cursor = Cursor(Connection(counting))
+    cursor._inject_description(row_description)
+    cursor.execute(
+        operation={"endpoint": "databases", "request": "query"},
+        parameters={
+            "path_params": {"database_id": database_id},
+            "payload": {
+                "page_size": 2,
+                "filter": {"property": "is_active", "checkbox": {"does_not_equal": True}},
+            },
+        },
+        stream_results=True,
+        yield_per=2,
+    )
+
+    # Mid-stream: only page 1 (2 rows) is buffered, but rowcount must read -1 —
+    # NOT 2. Reporting the buffered length is the explicit failure mode in #326.
+    assert cursor.rowcount == -1
+
+    # Drain the whole stream one row at a time (fetchone drives the lazy page pull).
+    drained = 0
+    while cursor.fetchone() is not None:
+        drained += 1
+    assert drained == 5
+
+    # Fully retrieved: rowcount now reports the true total across all pages.
+    assert cursor.rowcount == 5
+
+
+def test_yield_per_implies_streaming(
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...],
+):
+    # Specifying a batch size is itself the opt-in to lazy streaming: passing
+    # yield_per WITHOUT stream_results must still defer pages 2 and 3. 5 rows,
+    # page_size 2 → a drain-all would make three calls (2+2+1).
+    database_id, _ = generate_pages(client, n=5)
+    counting = _CallCountingClient(client)
+    cursor = Cursor(Connection(counting))
+    cursor._inject_description(row_description)
+    cursor.execute(
+        operation={"endpoint": "databases", "request": "query"},
+        parameters={
+            "path_params": {"database_id": database_id},
+            "payload": {
+                "page_size": 2,
+                "filter": {"property": "is_active", "checkbox": {"does_not_equal": True}},
+            },
+        },
+        yield_per=2,
+    )
+
+    # No stream_results kwarg, yet only one backend call so far: yield_per implied it.
+    assert counting.query_calls == 1
+
+
+def test_streaming_fetchall_returns_all_rows_in_order(
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...],
+):
+    # End-to-end: a streamed read must surface EVERY row across EVERY page, in
+    # insertion order — the same observable result as a drain-all, just pulled
+    # lazily. 5 rows, page_size 2 → pages of 2, 2, 1. fetchall() is the canonical
+    # full read, so it must drive the lazy page pull to completion and NOT stop at
+    # the buffered first page (which is what list(current_rs) gives today).
+    cursor = Cursor(Connection(client))
+    database_id, pages = generate_pages(client, n=5)
+    cursor._inject_description(row_description)
+
+    cursor.execute(
+        operation={"endpoint": "databases", "request": "query"},
+        parameters={
+            "path_params": {"database_id": database_id},
+            "payload": {
+                "page_size": 2,
+                "filter": {"property": "is_active", "checkbox": {"does_not_equal": True}},
+            },
+        },
+        stream_results=True,
+        yield_per=2,
+    )
+
+    rows = cursor.fetchall()
+
+    # pages_create strips properties to ids only, so retrieve each created page to
+    # recover the title values for the expected side (same shape as the drain-all test).
+    created_pages = [
+        client("pages", "retrieve", path_params={"page_id": p["id"]}) for p in pages
+    ]
+    expected_names = [
+        rich_text_to_plain_text(p["properties"]["name"]["title"]) for p in created_pages
+    ]
+    actual_names = [rich_text_to_plain_text(get_name(r)["title"]) for r in rows]
+    assert actual_names == expected_names
+    assert cursor.rowcount == 5
+    assert cursor.fetchone() is None      # fully consumed across all pages
+
+#----------------------------------------------------------------
 # lastrowid tests
 #----------------------------------------------------------------
 

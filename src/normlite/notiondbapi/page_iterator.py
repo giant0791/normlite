@@ -18,15 +18,18 @@
 
 
 
+from typing import Optional
+
+
 class PageIterator:
     _page_fetcher: callable
     _page_size: int
     _start_cursor: str
     _exhausted: bool
 
-    def __init__(self, page_fetcher: callable, page_size=100):
+    def __init__(self, page_fetcher: callable, page_size: Optional[int]):
         self._page_fetcher = page_fetcher
-        self._page_size = page_size
+        self._page_size = page_size or 100
         self._exhausted = False
         self._start_cursor = None
 
