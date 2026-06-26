@@ -325,17 +325,28 @@ Two behaviors share one page-fetch seam:
 
 `page_size` is **internal and capped**: `min(yield_per or 100, 100)`. `yield_per` (the user's
 logical batch) is decoupled from `page_size` (Notion transport, ≤100); `yield_per > 100` pulls
-multiple Notion pages per logical batch. `page_size` is not a user knob in v1.
+multiple Notion pages per logical batch. `page_size` is not a user knob in v1. It is injected into
+the request body only when `yield_per` is set, on a per-request payload copy (never smearing onto
+the caller's dict); drain-all (`yield_per is None`) leaves the caller's payload `page_size` alone.
+
+**Pagination is an `execute`-only concern.** `executemany` is the non-paginated bulk-write path:
+one client call per parameter set, no `next_cursor` walk, skip-and-continue error handling. It
+returns no streamable result set (per DBAPI 2.0, `executemany` is not for row-returning ops), so
+neither drain-all nor streaming applies — this boundary is **by design, not deferred**.
 
 ### Pagination — internal representation
 A paginated query is **one streaming `ResultSet`**, not one `ResultSet` per page — pages are an
 axis orthogonal to the `Cursor._result_sets` list, which keeps its existing meaning (one entry per
 statement / `executemany` batch). `nextset()` still means "next statement," untouched. The
-`ResultSet` grows a page-fetch seam: a `_fetch_next(start_cursor)` closure (built by the `Cursor`,
-which owns the `operation`/`parameters`/client and injects `start_cursor`/`page_size` into the
-POST **body** of `databases.query`), plus `next_cursor`/`has_more`/`exhausted` state. The **first
-page is always eager** (it establishes the description and is where `NotionError`→DBAPI translation
-happens). Subsequent pages are eager (drain-all) or lazy (streaming).
+page-fetch seam is a standalone **`PageIterator`** (`notiondbapi/page_iterator.py`): the `Cursor`
+builds a `page_fetcher(start_cursor)` closure (it owns `operation`/`parameters`/client and injects
+`start_cursor`/`page_size` into the POST **body** of `databases.query`) and holds the iterator as
+`Cursor._page_iter`; the `PageIterator` carries `next_cursor`/`has_more`/`exhausted`/`page_size`.
+`ResultSet` grew `extend_from_json(page)` to append a page's rows into its buffer in place. The
+**first page is always eager** (it establishes the description and is where `NotionError`→DBAPI
+translation happens). Subsequent pages are eager (the drain-all `for` loop in `execute`) or lazy:
+`fetchone` pulls the next page only when the in-memory buffer drains, and `fetchall` drives that
+pull to completion.
 
 ### Pagination — rowcount & errors
 - **`rowcount`.** Drain-all: accurate immediately. Streaming: **-1 until the `ResultSet` is

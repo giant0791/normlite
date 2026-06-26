@@ -125,7 +125,22 @@ silently clamp.
   `Select` read path; `__iter__`/`fetchone`/`fetchmany` stream, `all()`/`fetchall()`
   materialize-by-draining (documented, not blocked).
 - **Adopts the centralized error translator on the lazy path**, nudging toward retiring the
-  inline `raise ... from ne` in `execute()` (pre-existing tech debt; separate cleanup).
+  inline `raise ... from ne` in `execute()` (pre-existing tech debt; separate cleanup). The lazy
+  green generalized `_translate_notion_error` from `NotionError` to any `Exception`
+  (KeyError/ValueError/NotionError + unknown-type fallback), which also fixed a latent orphaned
+  fallback that left unrecognised `NotionError` codes unmapped.
+- **Pagination is an `execute`-only concern.** `executemany` stays the non-paginated bulk-write
+  path — one client call per parameter set, no `next_cursor` walk, skip-and-continue error
+  handling — and returns no streamable result set (per DBAPI 2.0, `executemany` is not for
+  row-returning operations). Neither drain-all nor streaming applies to it. This is a permanent
+  boundary by design, not a deferred slice.
+- **Realized seam shape.** The page-fetch seam shipped as a standalone `PageIterator`
+  (`notiondbapi/page_iterator.py`) owned by the `Cursor` as `_page_iter`, with
+  `ResultSet.extend_from_json(page)` appending each page's rows — rather than a `_fetch_next`
+  closure internal to `ResultSet` as sketched in the Decision. The decision content (one streaming
+  `ResultSet`, `Cursor`-owned seam, first page eager, `page_size` injected into the body) is
+  unchanged; only the object boundary moved. `PageIterator._page_size` now carries the clamped
+  size; `fetchone` pulls on buffer-drain and `fetchall` drives the pull to completion.
 - **Out of scope (named boundaries):** GET-style paginated endpoints (body vs `query_params`
   injection); `search`/`_get_by_title` pagination; `CursorResult.partitions(n)`; real Notion
   integration and the relation-property `has_more` truncation
