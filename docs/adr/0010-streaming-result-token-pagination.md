@@ -141,6 +141,19 @@ silently clamp.
   `ResultSet`, `Cursor`-owned seam, first page eager, `page_size` injected into the body) is
   unchanged; only the object boundary moved. `PageIterator._page_size` now carries the clamped
   size; `fetchone` pulls on buffer-drain and `fetchall` drives the pull to completion.
+- **The `page_size` *execution option* is vestigial, not the streaming knob.** A `page_size`
+  key predates this ADR in the engine→connection→statement options cascade (declared on the
+  `execution_options` overloads, default 100, its cascade/merge/precedence pinned by
+  `test_exec_opts.py`), but it is **inert on the query path**: it never reaches the
+  `databases.query` body. The transport page size is set entirely by the compiler — which emits
+  the Notion-max `page_size: 100` into every query body — and, on the streaming path, by the
+  `Cursor` overriding that with `min(yield_per or 100, 100)`. So when both are set, **`yield_per`
+  wins and the `page_size` option changes nothing on the wire** — consistent with the Decision's
+  "`page_size` internal, not a user knob" and rejected Alternative D. Consequence for the
+  Slice-4 streaming cascade: the options to declare on the `execution_options` overloads are
+  `stream_results`/`yield_per`, **not** a re-blessed `page_size`. Retiring the vestigial
+  `page_size` option (and its overload entries) is a separate cleanup, deferred because
+  `test_exec_opts.py` still pins its cascade behavior.
 - **Out of scope (named boundaries):** GET-style paginated endpoints (body vs `query_params`
   injection); `search`/`_get_by_title` pagination; `CursorResult.partitions(n)`; real Notion
   integration and the relation-property `has_more` truncation

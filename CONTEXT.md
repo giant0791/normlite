@@ -329,6 +329,14 @@ multiple Notion pages per logical batch. `page_size` is not a user knob in v1. I
 the request body only when `yield_per` is set, on a per-request payload copy (never smearing onto
 the caller's dict); drain-all (`yield_per is None`) leaves the caller's payload `page_size` alone.
 
+The name collides: a `page_size` **execution option** also lives in the options cascade (default
+100, its cascade/merge pinned by `test_exec_opts.py`) — but it is **vestigial, inert on the query
+path**: it never reaches the request body. The body's `page_size` comes from the compiler (the
+Notion-max 100) and, when streaming, from the `Cursor` overriding it with `min(yield_per or 100,
+100)`. So `yield_per` is the only effective page-size control — when both are set, `yield_per`
+wins. Declaring streaming on `execution_options` therefore means `stream_results`/`yield_per`,
+**not** `page_size`; retiring the vestigial option is a deferred cleanup (it is still test-pinned).
+
 **Pagination is an `execute`-only concern.** `executemany` is the non-paginated bulk-write path:
 one client call per parameter set, no `next_cursor` walk, skip-and-continue error handling. It
 returns no streamable result set (per DBAPI 2.0, `executemany` is not for row-returning ops), so
