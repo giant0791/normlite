@@ -90,6 +90,28 @@ class ExecutionOptions(TypedDict, total=False):
     .. versionadded:: 0.9.0
     """
 
+    stream_results: Optional[bool]
+    """Indicate that results should be “streamed” and not pre-buffered, if possible.
+    
+    The usage is usually combined with setting a fixed number of rows to be fetched in batches, 
+    to allow for efficient iteration of database rows while at the same time not loading 
+    all result rows into memory at once.
+
+    .. seealso::
+
+        See :attr:`yield_per` for more information on how to set the size of batches to be fetched.
+
+    .. versionadded:: 0.11.0
+    """
+
+    yield_per: Optional[int]
+    """Configure the row-fetching strategy to fetch yield_per rows at a time.
+    
+    The :attr:`yield_per` option simultaneously set the :attr:`stream_results` to ``True``.
+
+    .. versionadded:: 0.11.0
+    """
+
 _CoreSingleExecuteParams = Mapping[str, Any]
 _CoreMultiExecuteParams = Sequence[_CoreSingleExecuteParams]
 _CoreAnyExecuteParams = Union[

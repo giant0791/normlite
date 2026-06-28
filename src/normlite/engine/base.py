@@ -130,8 +130,9 @@ class Connection:
         isolation_level: IsolationLevel = ..., # type: ignore
         implicit_returning: bool = False,
         preserve_rowcount: bool = False,    
-        preserve_rowid: bool = False,        
-        page_size: int = 100,
+        preserve_rowid: bool = False,     
+        stream_results: bool = False,
+        yield_per: Optional[int] = None,
         **opts: Any
     ) -> Connection:
         ...
@@ -267,7 +268,9 @@ class Connection:
         self._engine.do_execute(
             context._get_exec_cursor(), 
             context.operation, 
-            context.parameters
+            context.parameters,
+            streamable=elem.is_select,      # stream_results, yield_per options considered for SELECT statements only
+            execution_options=context.execution_options
         )
 
     
@@ -554,7 +557,8 @@ class Engine:
         implicit_returning: bool = False,
         preserve_rowcount: bool = False,
         preserve_rowid: bool = False,
-        page_size: int = 100,            
+        stream_results: bool = False,
+        yield_per: Optional[int] = None,
         **opts: Any
     ) -> Engine:
         ...
@@ -985,9 +989,27 @@ class Engine:
             cursor: DBAPICursor,
             operation: dict,
             parameters: dict,
+            *,
+            streamable: Optional[bool] = False,
+            execution_options: Optional[ExecutionOptions] = None
     ) -> None:
         """Execute an operation on the supplied DBAPI cursor."""
-        cursor.execute(operation, parameters)
+
+        # default behavior: do_execute is **not** streamable
+        stream_results = False
+        yield_per = None
+
+        if streamable:
+            # explicitly requested results to be streamed
+            stream_results = execution_options.get("stream_results") if execution_options else None
+            yield_per = execution_options.get("yield_per") if execution_options else None
+        
+        cursor.execute(
+            operation, 
+            parameters, 
+            stream_results=stream_results,
+            yield_per=yield_per
+        )
 
     def do_executemany(
             self,

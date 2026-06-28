@@ -17,12 +17,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from operator import itemgetter
-from typing import Any, Callable, Dict, Iterator, List, Literal, NoReturn, Optional, Self, Sequence, Tuple, Type, TypeAlias, Union
+from typing import Any, Callable, Dict, Iterator, List, Literal, NoReturn, Optional, Self, Sequence, Type, TypeAlias, Union
 from itertools import islice
 import uuid
-from flask.testing import FlaskClient
-
 
 from normlite._constants import SpecialColumns
 from normlite.notion_sdk.client import AbstractNotionClient, NotionError
@@ -620,7 +617,17 @@ class Cursor:
 
         n = self.arraysize if size is None else size
 
-        return list(islice(rs, n))
+        result = list(islice(rs, n))
+        if len(result) < n:
+            # the current result set contains less than the requested n rows
+            # try to trigger a new page fetch and retrieve as many rows as possible
+            for _ in range(n - len(result)):
+                row = self.fetchone()
+                if row is None:
+                    break
+                result.append(row)
+
+        return result
     
     def execute(
         self, 
@@ -901,6 +908,11 @@ class Cursor:
             )
 
         for rs in self._result_sets:
+            if rs is self._current_result_set:
+                # the current result set may be associated to a paginated result to be drained
+                while self._page_iter is not None and not self._page_iter.exhausted:
+                    rs.extend_from_json(next(self._page_iter))
+
             yield from rs
     
     def close(self) -> None:
