@@ -5,9 +5,15 @@ import uuid
 import pytest
 from faker import Faker
 
-from normlite.notion_sdk.client import InMemoryNotionClient
+from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
 from normlite.notion_sdk.getters import rich_text_to_plain_text
-from normlite.notiondbapi.dbapi2 import Connection, Cursor, ProgrammingError
+from normlite.notiondbapi.dbapi2 import (
+    Connection,
+    Cursor,
+    DatabaseError,
+    OperationalError,
+    ProgrammingError,
+)
 
 @pytest.fixture
 def client() -> InMemoryNotionClient:
@@ -717,6 +723,144 @@ def test_streaming_fetchall_returns_all_rows_in_order(
     assert actual_names == expected_names
     assert cursor.rowcount == 5
     assert cursor.fetchone() is None      # fully consumed across all pages
+
+
+class _FailOnPageNClient:
+    """Transparent proxy that raises a NotionError on the ``fail_on``-th query.
+
+    Same wrap-and-delegate shape as ``_CallCountingClient``, but the chosen
+    ``databases.query`` call fails instead of returning a page — reproducing a
+    backend failure that strikes *mid-stream*, when a later page is pulled.
+    """
+
+    def __init__(self, wrapped, fail_on=2, code="rate_limited"):
+        self._wrapped = wrapped
+        self.fail_on = fail_on
+        self.code = code
+        self.query_calls = 0
+
+    def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
+        if endpoint == "databases" and request == "query":
+            self.query_calls += 1
+            if self.query_calls == self.fail_on:
+                raise NotionError("rate limited", status_code=429, code=self.code)
+        return self._wrapped(endpoint, request, path_params, query_params, payload)
+
+    def __getattr__(self, name):
+        return getattr(self._wrapped, name)
+
+
+def test_streaming_fetchall_propagates_a_mid_stream_page_failure_as_dbapi_error(
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...],
+):
+    """``Cursor.fetchall`` drains a stream to completion — and when a page it must
+    pull fails, it surfaces the *mapped* DBAPI error, not the raw NotionError.
+
+    The first two mid-stream slices fixed the lazy pull (``fetchone`` /
+    ``_try_fetch_next``) and the engine drain façade (``_iter_all``). This pins the
+    *third* page-pull loop: ``Cursor.fetchall``'s own ``while not exhausted`` drain
+    (``dbapi2.py`` ~582). No engine ``CursorResult`` surface routes through it —
+    ``all()``/``fetchall()``/iteration all go via ``_iter_all`` — but it is the
+    PEP 249 public ``fetchall``, so a direct DBAPI consumer streaming a result and
+    calling it must get the same honest propagation contract as every other pull
+    point: ``rate_limited`` -> ``OperationalError`` with the ``NotionError`` as
+    ``__cause__`` (routed through ``Cursor._translate_notion_error``).
+
+    5 rows, ``page_size``/``yield_per`` 2 -> backend pages of 2, 2, 1; the fake
+    fails the 2nd ``databases.query``. ``execute`` buffers page 1; ``fetchall``
+    then drains and hits the injected failure pulling page 2.
+
+    Failure modes fenced off (each collapses the ``raises`` assertion):
+        - **Raw leak** (today): the drain's ``next(self._page_iter)`` is unwrapped,
+          so the unmapped ``NotionError`` escapes -> not an ``OperationalError``.
+        - **Swallow-to-truncated**: the drain stops quietly at the failed page and
+          ``fetchall`` returns just the 2 buffered rows -> nothing raises.
+        - **Skip-and-continue**: page 2 is dropped, the drain resumes at page 3 ->
+          rows come back instead of an error.
+    """
+    failing = _FailOnPageNClient(client, fail_on=2)
+    cursor = Cursor(Connection(failing))
+    database_id, _ = generate_pages(client, n=5)
+    cursor._inject_description(row_description)
+
+    cursor.execute(
+        operation={"endpoint": "databases", "request": "query"},
+        parameters={
+            "path_params": {"database_id": database_id},
+            "payload": {
+                "page_size": 2,
+                "filter": {"property": "is_active", "checkbox": {"does_not_equal": True}},
+            },
+        },
+        stream_results=True,
+        yield_per=2,
+    )
+
+    # Page 1 buffered (1 call); fetchall must drain, and pulling page 2 fails.
+    with pytest.raises(OperationalError) as excinfo:
+        cursor.fetchall()
+
+    assert isinstance(excinfo.value.__cause__, NotionError)
+    assert excinfo.value.__cause__.code == "rate_limited"
+
+
+class _MalformedPageClient:
+    """Minimal client whose ``databases.query`` returns a malformed page.
+
+    ``has_more=True`` with ``next_cursor=None`` is the contradiction
+    ``PageIterator`` rejects: it can't honor "there are more pages" without a
+    cursor to fetch them. The iterator raises ``ValueError`` on the pull, which
+    ``execute()`` must translate into a DBAPI ``DatabaseError`` rather than leak.
+    """
+
+    def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
+        if endpoint == "databases" and request == "query":
+            return {"object": "list", "results": [], "has_more": True, "next_cursor": None}
+        raise AssertionError(f"unexpected backend call: {endpoint}.{request}")
+
+
+def test_execute_translates_malformed_page_into_dbapi_database_error(
+    row_description: tuple[tuple, ...],
+):
+    """A malformed page during ``execute()``'s eager drain surfaces as a
+    ``DatabaseError`` carrying a *descriptive* message, not a bare error.
+
+    This pins the Slice-2 contract (a malformed Notion result becomes a DBAPI
+    Error instead of leaking ``ValueError``) — a translation path that lived only
+    in ``execute()``'s inline ``except ValueError`` and had no direct test. It
+    also guards the consolidation that routes ``execute()`` through
+    ``_translate_notion_error``: that helper's ``ValueError`` branch produces the
+    descriptive message, so this test is the discriminator between the old bare
+    ``DatabaseError()`` and the unified message.
+
+    ``has_more=True`` + ``next_cursor=None`` makes ``PageIterator.__next__`` raise
+    ``ValueError`` on the very first (page-1) pull inside ``execute()``'s drain.
+
+    Failure modes fenced off:
+        - **Raw leak**: the ``ValueError`` escapes untranslated -> not a
+          ``DatabaseError``.
+        - **Uninformative wrap**: a bare ``DatabaseError()`` with no message ->
+          the ``"has_more"``/``"start_cursor"`` assertions fail, leaving operators
+          to guess what broke.
+    """
+    cursor = Cursor(Connection(_MalformedPageClient()))
+    cursor._inject_description(row_description)
+
+    with pytest.raises(DatabaseError) as excinfo:
+        cursor.execute(
+            operation={"endpoint": "databases", "request": "query"},
+            parameters={
+                "path_params": {"database_id": "db-1"},
+                "payload": {"filter": {"property": "is_active", "checkbox": {"equals": True}}},
+            },
+        )
+
+    # The malformed page is the documented cause; the message must name the defect.
+    message = str(excinfo.value)
+    assert "has_more" in message
+    assert "start_cursor" in message
+    assert isinstance(excinfo.value.__cause__, ValueError)
 
 
 def test_yield_per_sets_clamped_request_page_size(

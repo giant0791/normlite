@@ -7,10 +7,13 @@ and gates it to the user-facing ``Select`` path. These tests pin the engine-leve
 observable behavior.
 """
 
+import pytest
+
 from normlite.engine.base import Engine
 from normlite.engine.context import ExecutionContext
 from normlite.engine.interfaces import _distill_params
-from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
+from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, OperationalError
+from normlite.notion_sdk.client import NotionError
 from normlite.sql.dml import delete, select
 from normlite.sql.schema import Table
 
@@ -40,6 +43,146 @@ class _CallCountingClient:
 
     def __getattr__(self, name):
         return getattr(self._wrapped, name)
+
+
+class _FailOnPageNClient:
+    """Transparent proxy that injects a backend failure on the *N*-th page pull.
+
+    Same wrap-and-delegate shape as ``_CallCountingClient``, but the ``fail_on``-th
+    ``databases.query`` call raises a ``NotionError`` instead of returning a page.
+    This is how Slice 5 reproduces a failure that strikes *mid-stream* — after
+    ``execute()`` has already handed back page 1, when a later lazy page pull is
+    the thing that goes wrong.
+    """
+
+    def __init__(self, wrapped, fail_on=2, code="rate_limited"):
+        self._wrapped = wrapped
+        self.fail_on = fail_on
+        self.code = code
+        self.query_calls = 0
+
+    def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
+        if endpoint == "databases" and request == "query":
+            self.query_calls += 1
+            if self.query_calls == self.fail_on:
+                raise NotionError("rate limited", status_code=429, code=self.code)
+        return self._wrapped(endpoint, request, path_params, query_params, payload)
+
+    def __getattr__(self, name):
+        return getattr(self._wrapped, name)
+
+
+def test_streaming_select_propagates_a_mid_stream_page_failure_as_dbapi_error(
+    engine: Engine,
+    students: Table,
+):
+    """A backend failure on page 2 of a streamed ``Select`` surfaces *honestly* at
+    the iteration boundary — page-1 rows already in hand, then a mapped DBAPI error.
+
+    Invariant tested (the Slice-5 headline user story)
+        - A failure that strikes *after* ``execute()`` — when a later page is
+          lazily pulled — must **propagate**, not silently truncate the stream.
+        - It must arrive as the **mapped DBAPI class** (``rate_limited`` ->
+          ``OperationalError``), with the raw ``NotionError`` preserved as
+          ``__cause__`` — i.e. routed through ``Cursor._translate_notion_error``,
+          exactly as a page-1 failure raised inside ``execute()`` already is.
+        - Rows the caller already pulled (page 1) **stay pulled**: the failure does
+          not retroactively empty or rewind the result it already handed back.
+
+    6 rows, ``yield_per=2`` -> backend pages of 2, 2, 2; the fake fails the 2nd
+    ``databases.query``. The first ``fetchmany(2)`` is satisfied entirely from the
+    buffered page 1 (no pull). The second ``fetchmany(2)`` drains the buffer and
+    must pull page 2 — which is where the injected failure lands.
+
+    Three failure modes are fenced off (the anti-patterns the slice must avoid):
+        - **Raw leak** (today): the page pull raises the unmapped ``NotionError``
+          straight up -> ``isinstance(exc, OperationalError)`` is False, no
+          ``__cause__`` chain.
+        - **Swallow-to-empty**: the pull failure is caught and the stream ends
+          quietly -> the second ``fetchmany`` returns ``[]`` and nothing raises.
+        - **Skip-and-continue** (``executemany``'s pattern, wrong here): the failed
+          page is dropped and iteration jumps to page 3 -> rows surface instead of
+          an error; later pages are unreachable past a failure anyway.
+    """
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=6)
+
+    failing = _FailOnPageNClient(engine._client, fail_on=2)
+    engine._dbapi_connection = DBAPIConnection(failing)
+
+    with engine.connect() as conn:
+        conn = conn.execution_options(stream_results=True, yield_per=2)
+        result = conn.execute(select(students))
+
+        # Page 1 is buffered by execute(): the caller gets these rows cleanly.
+        page_one = result.fetchmany(2)
+        assert len(page_one) == 2
+
+        # Crossing into page 2 triggers the injected backend failure. It must
+        # propagate as the mapped DBAPI class, not the raw NotionError, not [].
+        with pytest.raises(OperationalError) as excinfo:
+            result.fetchmany(2)
+
+    # The raw backend error is preserved on the chain (raise ... from ne).
+    assert isinstance(excinfo.value.__cause__, NotionError)
+    assert excinfo.value.__cause__.code == "rate_limited"
+
+
+def test_streaming_select_all_propagates_a_mid_stream_page_failure_as_dbapi_error(
+    engine: Engine,
+    students: Table,
+):
+    """The ``CursorResult.all()`` "materialize everything" façade fails *loudly* when
+    a page it must drain goes wrong — same honest propagation as the lazy path.
+
+    Where the first mid-stream test drove the *incremental* surface
+    (``fetchmany``, which pulls through ``Cursor.fetchone`` / ``_try_fetch_next``),
+    this drives the *drain-to-completion* surface: ``CursorResult.all()`` (and its
+    synonyms ``fetchall()`` / ``for row in result``) all funnel through
+    ``Cursor._iter_all`` — a *separate* page-pull loop that the first slice did not
+    touch.
+
+    Invariant tested
+        - ``all()`` is all-or-nothing: if a page it must pull fails, the whole call
+          raises the **mapped DBAPI class** (``rate_limited`` -> ``OperationalError``)
+          with the raw ``NotionError`` as ``__cause__`` — routed through
+          ``Cursor._translate_notion_error`` exactly like the lazy path now is.
+        - It must NOT hand back a *truncated* result (page-1 rows dressed up as the
+          complete set) and swallow the failure: ``all()`` promises *every* row or
+          an error, never a silent short read.
+
+    6 rows, ``yield_per=2`` -> backend pages of 2, 2, 2; the fake fails the 2nd
+    ``databases.query``. ``execute`` buffers page 1; ``all()`` then drives the drain
+    and hits the injected failure pulling page 2.
+
+    Failure modes fenced off (all collapse the ``raises`` assertion):
+        - **Raw leak** (today): ``_iter_all``'s ``next(self._page_iter)`` is
+          unwrapped, so the unmapped ``NotionError`` escapes -> not an
+          ``OperationalError``, no ``__cause__`` chain.
+        - **Swallow-to-truncated**: the drain stops quietly at the failed page and
+          ``all()`` returns just the 2 buffered rows -> nothing raises.
+        - **Skip-and-continue**: page 2 is dropped and the drain resumes at page 3
+          -> ``all()`` returns rows instead of raising.
+    """
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=6)
+
+    failing = _FailOnPageNClient(engine._client, fail_on=2)
+    engine._dbapi_connection = DBAPIConnection(failing)
+
+    with engine.connect() as conn:
+        conn = conn.execution_options(stream_results=True, yield_per=2)
+        result = conn.execute(select(students))
+
+        # all() must drain every page; pulling page 2 hits the injected failure.
+        # It surfaces as the mapped DBAPI class, never a truncated 2-row result.
+        with pytest.raises(OperationalError) as excinfo:
+            result.all()
+
+    assert isinstance(excinfo.value.__cause__, NotionError)
+    assert excinfo.value.__cause__.code == "rate_limited"
 
 
 def test_streaming_select_fetchmany_pulls_only_the_pages_it_needs(

@@ -470,6 +470,36 @@ class Cursor:
             )
 
         return self
+    
+    def _try_fetch_next(self) -> Optional[tuple]:
+        if self._page_iter is None or self._page_iter.exhausted:
+            # no pages to retrieve
+            return None
+        
+        # fetch next page and extend current result set
+        try:
+            object_ = next(self._page_iter)
+            self._current_result_set.extend_from_json(object_)
+            return next(self._current_result_set)  
+        
+        except StopIteration:
+            return None
+        
+        except Exception as e:
+            # something went wrong during fetching, re-raise as DBAPI error
+            _, exc = self._translate_notion_error(e)
+            raise exc
+
+    def _drain_pages(self, rs: ResultSet) -> None:
+        """Helper to mutate the passed result set by draining all the remaining pages."""
+        try:
+            while self._page_iter is not None and not self._page_iter.exhausted:
+                rs.extend_from_json(next(self._page_iter))
+
+        except Exception as e:
+            # something went wrong during fetching, re-raise as DBAPI error
+            _, exc = self._translate_notion_error(e)
+            raise exc
 
     def fetchone(self) -> Optional[tuple]:
         """Fetch the next row of a query result set.
@@ -512,17 +542,7 @@ class Cursor:
         
         except StopIteration:
             # buffer exhausted, try fetching next page
-            if self._page_iter is None or self._page_iter.exhausted:
-                # no pages to retrieve
-                return None
-            
-            # fetch next page and extend current result set
-            object_ = next(self._page_iter)
-            self._current_result_set.extend_from_json(object_)
-            try:
-                return next(self._current_result_set)  
-            except StopIteration:
-                return None
+            return self._try_fetch_next()
         
         except Exception as e:
             # something went wrong during fetching, re-raise as DBAPI error
@@ -570,9 +590,7 @@ class Cursor:
                 'or -1 if no call was issued yet.' 
             )
 
-        while self._page_iter is not None and not self._page_iter.exhausted:
-            rs.extend_from_json(next(self._page_iter))
-
+        self._drain_pages(rs)
         return list(rs)
     
     def fetchmany(self, size: Optional[int]=None) -> list[tuple]:
@@ -644,16 +662,21 @@ class Cursor:
         which the values are to be bound are known by name.
         In the current implementation, the parameter style implemented in the cursor is:
         `named`.
-        The :meth:`execute()` methods implements a return interface to enable concatenating 
+        The :meth:`execute` methods implements a return interface to enable concatenating 
         calls on :class:`Cursor` methods.
+        This method supports Notion paginated results. It sets an internal page iterator which is then used 
+        for lazy fetching of result pages.
 
         Important:
-            :meth:`.execute()` stores the executed command result(s) in the internal
-            result set. Always call this method prior to :meth:`BaseCursor.fetchone()` and :meth:`Cursor.fetchall()`,
+            :meth:`.execute` stores the executed command result(s) in the internal
+            result set. Always call this method prior to :meth:`Cursor.fetchone` and :meth:`Cursor.fetchall`,
             otherwise an :exc:`InterfaceError` error is raised. 
 
+        .. versionchanged:: 0.11.0
+            :meth:`Cursor.execute` now supports paginated results.
+
         .. versionchanged:: 0.7.0
-            :meth:`Cursor:execute()` now accepts operations with no parameters. This happens for ``CREATE TABLE`` DDL statements.
+            :meth:`Cursor:execute` now accepts operations with no parameters. This happens for ``CREATE TABLE`` DDL statements.
 
         .. versionchanged:: 0.5.0
             Calling this method on a closed cursor raises the :exc:`Error`.
@@ -689,6 +712,11 @@ class Cursor:
             Error: If the cursor is closed.
             InterfaceError: ``"properties"`` object not specified in parameters.
             InterfaceError: ``"parent"`` object not specified in parameters.
+            InterfaceError: If the backend returns an invalid request error.
+            ProgrammingError: If the backend returns an object not found error.
+            DatabaseError: If the backend returns a malformed result object.
+            OperationalError: If the backend flags an authorization failure or is temporarily unavailable (e.g. rate limited).
+
        
         Returns:
             Self: This :class:`Cursor` instance.
@@ -741,46 +769,11 @@ class Cursor:
             for object_ in self._page_iter:
                 rs.extend_from_json(object_)
 
-        except KeyError as ke:
-            # Programming error in the DBAPI usage
-            raise InterfaceError(
-                f"Missing required key in operation or parameters: {ke.args[0]}"
-            ) from ke
-        
-        except ValueError as ve:
-            # --- A malformed Notion object with has_more = True and next_cursor = None
-            raise DatabaseError() from ve
 
-        except NotionError as ne:
-            # --- Database object does not exist -----------------------------
-            if ne.code == "object_not_found":
-                raise ProgrammingError(
-                    f'NotionError("Object not found: {ne}'
-                ) from ne
+        except (KeyError, ValueError, NotionError) as e:
+            _, exc = self._translate_notion_error(e)
+            raise exc
 
-            # --- Authentication / authorization -----------------------------
-            if ne.code in {"unauthorized", "forbidden"}:
-                raise OperationalError(
-                    f'Authentication/authorization failure: {ne}'
-                ) from ne
-
-            # --- Rate limiting / availability -------------------------------
-            if ne.code in {"rate_limited", "service_unavailable"}:
-                raise OperationalError(
-                    f'Backend temporarily unavailable: {ne}'
-                ) from ne
-
-            # --- Malformed request / client misuse --------------------------
-            if ne.code in {"invalid_request", "validation_error"}:
-                raise InterfaceError(
-                    f'Invalid request sent to backend: {ne}'
-                ) from ne
-
-            # --- Fallback: backend rejected operation -----------------------
-            raise DatabaseError(
-                f'Unhandled NotionError("{self._client.__class__.__name__}"): {ne}'
-            ) from ne
-        
         self._reset_results()
         self._result_sets.append(rs)  
         return self
@@ -906,13 +899,11 @@ class Cursor:
             raise ProgrammingError(
                 "Cursor result set is empty. No execute*() call was issued."
             )
-
+        
         for rs in self._result_sets:
             if rs is self._current_result_set:
                 # the current result set may be associated to a paginated result to be drained
-                while self._page_iter is not None and not self._page_iter.exhausted:
-                    rs.extend_from_json(next(self._page_iter))
-
+                self._drain_pages(rs)
             yield from rs
     
     def close(self) -> None:
