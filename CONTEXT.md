@@ -395,3 +395,113 @@ in a future version.
 ### Update — CompileError on missing VALUES
 `visit_update` raises `CompileError` if `_values is None` at compile time. A zero-column update
 with no `parameters=` fallback is always a programming error.
+
+---
+
+## Aggregate Functions
+
+### Aggregate function (`func.sum`, `func.avg`, …)
+A SQL-style **cross-row aggregate**: it reduces *all matched rows* to a single scalar
+(`func.sum(Employee.salary)`, `func.avg(Employee.salary)`). Despite the original framing,
+an aggregate is **not** a Notion formula. Notion *formula properties* are **per-row** scalar
+expressions (spreadsheet-style: `prop("salary") * 12`, computed independently per page);
+they never reduce across pages. Notion's only native cross-row reductions are **rollups**
+(aggregate a property across a relation, anchored to a parent row) and **view calculations**
+(the column-footer sum/avg in the UI) — and view calculations are **not exposed by the public
+API**. Therefore an aggregate over a plain database **has no Notion backend**: it is computed
+**client-side** by normlite, by folding over the pages returned by `databases.query`. Mapping
+`func` onto Notion formula property types is explicitly a non-goal of this feature.
+
+### Aggregate query — execution shape
+The `.where()` filter still rides into the `databases.query` payload (Notion-side narrowing);
+the **reduction happens after the result set drains**, in normlite. An aggregate query therefore
+**forces drain-all** (you cannot average a half-consumed stream), regardless of
+`stream_results` — same rule that already governs joins and two-phase mutations.
+
+### Aggregate query — v1 scope (whole-set, all-aggregate)
+v1 supports **only whole-set aggregates with no `GROUP BY`**:
+- The projection must be **all aggregates** — mixing a bare page-derived column with an
+  aggregate (`select(Employee.dept, func.sum(...))`) is rejected, because without `GROUP BY`
+  it is a SQL error and would require the partitioning machinery below.
+- The query returns **exactly one synthetic row** — a `Row` with **no backing Notion page**,
+  hence no `object_id` and no per-property provenance (a documented hole in the ADR-0009
+  provenance model, justified because every column in the row is synthetic and uniform).
+- `GROUP BY` (one synthetic row *per partition*, grouping key a real page-derived column
+  beside synthetic aggregate columns, plus the bare-column rule and `HAVING`) is a deferred
+  follow-up slice — a sibling to the [[adr-0008-joinexecution-seam]] prepare/assemble pattern.
+
+### Aggregate functions — v1 set and `count` forms
+v1 ships **`sum`, `avg`, `count`**. `sum`/`avg` require a `Number` column; `avg` returns a
+Python `float` even over integer columns, `sum` preserves the column's numeric type. `count`
+returns `int` regardless of column type and has two forms (mirroring SQLAlchemy):
+`func.count()` → row count (`COUNT(*)`), `func.count(col)` → count of **non-empty** cells.
+
+### Aggregate functions — NULL / empty semantics (SQL-faithful)
+Notion has no NULL (see [[adr-0005-outer-join-phantom-null-semantics]]); an empty property
+surfaces as Python `None`. Aggregates apply **SQL skip-NULL semantics** to those empties:
+- **Within the set:** `sum`/`avg` ignore pages whose value is `None`; `avg` divides by the
+  **non-empty** count, not the row count. `count(col)` counts only non-empty cells;
+  `count()` counts all matched rows.
+- **Over zero matching rows:** `sum`/`avg` return **`None`** (SQL NULL), `count` returns `0`.
+  The synthetic aggregate row may legally hold Python `None` even though Notion cannot — it
+  is normlite-built, not a Notion page, so the "no NULL" rule does not bind it. Callers must
+  handle `None` from `sum`/`avg`.
+
+### `func` namespace and aggregate construct
+`func` is a namespace object (mirroring SQLAlchemy's `func`): `func.sum(col)`,
+`func.avg(col)`, `func.count()` / `func.count(col)`. Each call builds an **aggregate
+expression** — a new `ColumnElement` node carried in `Select._projection`. `_projection`
+therefore widens from "tuple of `Column`" to "tuple of `Column` **or** aggregate (**or**
+`Label`)". `.label(name)` wraps the aggregate to set its result key. An aggregate has **no
+table provenance**, so its `ResultColumn` carries no owning `Table` — the ADR-0009 `table`
+field becomes optional (a documented hole, see the v1 scope note above). The aggregate's
+`type_code` comes from its **return type** (`sum` → column type, `avg` → float, `count` →
+int), not from a column.
+
+### Aggregate result keys (auto-named, label optional)
+Mirroring SQLAlchemy: an unlabeled aggregate is keyed by its **function name**
+(`func.sum(salary)` → `"sum"`), with `_1`/`_2` suffixes appended on collision
+(`func.sum(salary), func.sum(bonus)` → `"sum", "sum_1"`). `.label("total")` overrides the
+key. This reuses the same name-collision discipline already used for join projections
+(see [[adr-0009-result-schema-provenance]]).
+
+### AggregateExecution seam
+The cross-row reduction is owned by a dedicated **`AggregateExecution`** seam, mirroring the
+[[adr-0008-joinexecution-seam]] config-to-constructor discipline but **single-phase**: there
+is no EXECUTEMANY dispatch boundary to span (aggregation is `databases.query` drain-all →
+reduce), so it is **one synchronous call**, not a `prepare`/`assemble` pair.
+
+```
+AggregateExecution(projection)
+    .result_schema            # SchemaInfo, provenance-free (no owning Table)
+    .reduce(drained_rows) -> (SchemaInfo, [synthetic_row])
+```
+
+Constructed and called in `Select._finalize_execution` after the result set has drained.
+Keeping it in a single owner (rather than free functions in `_finalize_execution`/`CursorResult`)
+is the same lesson ADR-0008 drew from the join code. See
+[[adr-0011-aggregate-execution-seam]].
+
+### Aggregate query — clause interaction guards (v1)
+In the whole-set/all-aggregate v1, an aggregate projection combined with:
+- **`.order_by()`** → raises `ArgumentError` (ordering a single synthetic row is meaningless;
+  revisit when `GROUP BY` makes ordering partitions meaningful). Fail loud, never silently drop.
+- **`.join()` / `.outerjoin()`** → raises `ArgumentError`/`CompileError` (out of scope; a loud
+  guard, not a silent drop — cf. [[multi-join-silent-drop-boundary]]).
+- **`.where()`** → supported: the filter rides into the `databases.query` payload as usual.
+- **`yield_per` / `stream_results`** → forces drain-all (ignored for streaming purposes, like
+  joins and two-phase mutations); raises nothing.
+
+### Aggregate functions — type validation (construct-time, fail-fast)
+`func.sum(col)` / `func.avg(col)` inspect `col.type_` **at construction** and raise
+`ArgumentError` immediately if it is not a `Number` — the error points at the offending call,
+not at a later `execute()`. `func.count(col)` accepts any type; `func.count()` takes no column.
+(Contrast with `visit_update`'s compile-time `CompileError`: that guards a missing clause, not
+a pure construct-time type error.)
+
+### Aggregate query — rowcount
+A whole-set aggregate query returns **exactly one synthetic row, always** — even over zero
+matched pages (`sum`/`avg` → `None`). Hence `rowcount == 1` unconditionally. This is SQL-faithful
+(a `GROUP BY`-less aggregate has result cardinality 1) and deliberately differs from the
+streaming `rowcount == -1` rule in [[adr-0010-streaming-result-token-pagination]] — aggregates
+never stream.
