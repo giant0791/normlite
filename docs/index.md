@@ -23,6 +23,7 @@ autoapi/index
 
 changelog.md
 contributing.md
+releasing.md
 ```
 
 ```{toctree}

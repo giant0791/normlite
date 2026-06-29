@@ -427,6 +427,103 @@ def test_databases_query_does_not_return_deleted_pages_if_in_trash_false(client)
     ids = {p["id"] for p in result["results"]}
     assert ids == {p2["id"]}
 
+def test_databases_query_paginates_with_page_size_and_cursor(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+
+    p1 = client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
+    p2 = client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
+    p3 = client.pages_create(payload=make_db_page(db["id"], "Carol", 40))
+
+    # First page: ask for 2 of the 3 matching rows.
+    page_one = client.databases_query(
+        path_params={"database_id": db["id"]},
+        payload={"page_size": 2},
+    )
+
+    assert len(page_one["results"]) == 2
+    assert page_one["has_more"] is True
+    assert page_one["next_cursor"] is not None
+
+    # Second page: hand the cursor back to fetch the remainder.
+    page_two = client.databases_query(
+        path_params={"database_id": db["id"]},
+        payload={"page_size": 2, "start_cursor": page_one["next_cursor"]},
+    )
+
+    assert len(page_two["results"]) == 1
+    assert page_two["has_more"] is False
+    assert page_two["next_cursor"] is None
+
+    # The two pages together are all 3 rows, in order, with no overlap.
+    seen_ids = [p["id"] for p in page_one["results"]] + \
+               [p["id"] for p in page_two["results"]]
+    assert seen_ids == [p1["id"], p2["id"], p3["id"]]
+
+
+def test_databases_query_last_page_when_rows_are_exact_multiple_of_page_size(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+
+    # 4 rows with page_size=2 → the set drains exactly on page 2.
+    client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
+    client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
+    client.pages_create(payload=make_db_page(db["id"], "Carol", 40))
+    client.pages_create(payload=make_db_page(db["id"], "Dave", 50))
+
+    page_one = client.databases_query(
+        path_params={"database_id": db["id"]},
+        payload={"page_size": 2},
+    )
+    page_two = client.databases_query(
+        path_params={"database_id": db["id"]},
+        payload={"page_size": 2, "start_cursor": page_one["next_cursor"]},
+    )
+
+    # The second page exactly drains the set: no phantom page beyond it.
+    assert len(page_two["results"]) == 2
+    assert page_two["has_more"] is False
+    assert page_two["next_cursor"] is None
+
+
+def test_databases_query_paginates_the_filtered_set_not_the_raw_store(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+
+    # 5 rows in the store, but only 3 match the filter.
+    m1 = client.pages_create(payload=make_db_page(db["id"], "Alice", 30))
+    client.pages_create(payload=make_db_page(db["id"], "Bob", 99))
+    m2 = client.pages_create(payload=make_db_page(db["id"], "Carol", 30))
+    client.pages_create(payload=make_db_page(db["id"], "Dave", 99))
+    m3 = client.pages_create(payload=make_db_page(db["id"], "Eve", 30))
+
+    age_is_30 = {"property": "Age", "number": {"equals": 30}}
+
+    page_one = client.databases_query(
+        path_params={"database_id": db["id"]},
+        payload={"filter": age_is_30, "page_size": 2},
+    )
+    page_two = client.databases_query(
+        path_params={"database_id": db["id"]},
+        payload={"filter": age_is_30, "page_size": 2, "start_cursor": page_one["next_cursor"]},
+    )
+
+    # Page sizes follow the filtered set (3 matches → 2 then 1), not the raw store (5).
+    assert len(page_one["results"]) == 2
+    assert page_one["has_more"] is True
+    assert len(page_two["results"]) == 1
+    assert page_two["has_more"] is False
+    assert page_two["next_cursor"] is None
+
+    # Only the matching rows appear, in order; the non-matching rows are never paged in.
+    seen_ids = [p["id"] for p in page_one["results"]] + \
+               [p["id"] for p in page_two["results"]]
+    assert seen_ids == [m1["id"], m2["id"], m3["id"]]
+
+
 def test_databases_query_returns_deleted_pages_if_in_trash_true(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)

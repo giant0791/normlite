@@ -296,6 +296,87 @@ remains the "create a new file-backed engine" path regardless of `auto_load`.
 
 ---
 
+## Pagination
+
+### Streaming result over token pagination
+normlite's answer to large result sets. Modelled on SQLAlchemy's server-side cursor
+(`stream_results` / `yield_per`) but **explicitly not** a real server-side cursor: Notion holds
+no cursor object and offers no `FETCH`. The mechanism is **token pagination** — the DBAPI cursor
+lazily requests the next Notion page (`start_cursor` ← previous response's `next_cursor`) only when
+its in-memory buffer drains, so the caller iterates `Row`s without the whole set being resident.
+
+Notion's pagination contract (the wire shape every paginated endpoint returns):
+`object: "list"`, `results: [...]`, `has_more: bool`, `next_cursor: str | None` (present only when
+`has_more` is true), with request params `start_cursor` and `page_size` (default **100**, max
+**100**). "Server-side cursor" may be used in *user-facing docs* as an analogy, but never as the
+canonical domain term — the result set is **not** stable across page requests.
+
+### Drain-all (default) vs streaming (opt-in)
+Two behaviors share one page-fetch seam:
+- **Drain-all (default).** The DBAPI `Cursor` pulls every page (`start_cursor` ← previous
+  `next_cursor`) until `has_more` is false, before the caller sees rows. This makes *every*
+  existing caller — joins, two-phase `Delete`/`Update`, reflection, bootstrap — correct against
+  pagination for free, and preserves today's "you get everything" semantics and `rowcount`.
+- **Streaming (opt-in).** Enabled via `execution_options(stream_results=True)` or `yield_per=N`
+  (`yield_per` implies `stream_results`), mirroring SQLAlchemy. Pages are pulled lazily as the
+  result is iterated. **Select-only**: mutations, join phase-1 scans, reflection and bootstrap
+  always force drain-all even if `stream_results=True` is set on the connection — phase 1 must
+  know the full match set before phase 2 runs.
+
+`page_size` is **internal and capped**: `min(yield_per or 100, 100)`. `yield_per` (the user's
+logical batch) is decoupled from `page_size` (Notion transport, ≤100); `yield_per > 100` pulls
+multiple Notion pages per logical batch. `page_size` is not a user knob in v1. It is injected into
+the request body only when `yield_per` is set, on a per-request payload copy (never smearing onto
+the caller's dict); drain-all (`yield_per is None`) leaves the caller's payload `page_size` alone.
+
+The name collides: a `page_size` **execution option** also lives in the options cascade (default
+100, its cascade/merge pinned by `test_exec_opts.py`) — but it is **vestigial, inert on the query
+path**: it never reaches the request body. The body's `page_size` comes from the compiler (the
+Notion-max 100) and, when streaming, from the `Cursor` overriding it with `min(yield_per or 100,
+100)`. So `yield_per` is the only effective page-size control — when both are set, `yield_per`
+wins. Declaring streaming on `execution_options` therefore means `stream_results`/`yield_per`,
+**not** `page_size`; retiring the vestigial option is a deferred cleanup (it is still test-pinned).
+
+**Pagination is an `execute`-only concern.** `executemany` is the non-paginated bulk-write path:
+one client call per parameter set, no `next_cursor` walk, skip-and-continue error handling. It
+returns no streamable result set (per DBAPI 2.0, `executemany` is not for row-returning ops), so
+neither drain-all nor streaming applies — this boundary is **by design, not deferred**.
+
+### Pagination — internal representation
+A paginated query is **one streaming `ResultSet`**, not one `ResultSet` per page — pages are an
+axis orthogonal to the `Cursor._result_sets` list, which keeps its existing meaning (one entry per
+statement / `executemany` batch). `nextset()` still means "next statement," untouched. The
+page-fetch seam is a standalone **`PageIterator`** (`notiondbapi/page_iterator.py`): the `Cursor`
+builds a `page_fetcher(start_cursor)` closure (it owns `operation`/`parameters`/client and injects
+`start_cursor`/`page_size` into the POST **body** of `databases.query`) and holds the iterator as
+`Cursor._page_iter`; the `PageIterator` carries `next_cursor`/`has_more`/`exhausted`/`page_size`.
+`ResultSet` grew `extend_from_json(page)` to append a page's rows into its buffer in place. The
+**first page is always eager** (it establishes the description and is where `NotionError`→DBAPI
+translation happens). Subsequent pages are eager (the drain-all `for` loop in `execute`) or lazy:
+`fetchone` pulls the next page only when the in-memory buffer drains, and `fetchall` drives that
+pull to completion.
+
+### Pagination — rowcount & errors
+- **`rowcount`.** Drain-all: accurate immediately. Streaming: **-1 until the `ResultSet` is
+  exhausted** (`has_more` false), then the true sum. `preserve_rowcount` memoizing -1 mid-stream
+  is correct, not a bug. The two-phase `Delete`/`Update` "rows matched" guarantee is meaningful
+  only on the drain-all path (mutations never stream).
+- **Mid-stream errors.** A page fetch that fails *during iteration* routes through the centralized
+  `_translate_notion_error` and **propagates** (does not skip-and-continue like `executemany`) —
+  a broken page makes all later pages unreachable. Already-yielded rows stay yielded.
+
+### Pagination — boundaries (deferred)
+- GET-style paginated endpoints (list users, block children) take `start_cursor`/`page_size` as
+  **`query_params`**, not body; the v1 closure hard-codes body-injection for `databases.query` only.
+- `search` and `_get_by_title` stay single-page (`has_more: False`) in the fake; only
+  `databases_query` simulates pagination.
+- `CursorResult.partitions(n)` (idiomatic batch consumer) deferred; `__iter__`/`fetchone`/
+  `fetchmany` stream, `all()`/`fetchall()` materialize-by-draining (documented, not blocked).
+
+See [[adr-0010-streaming-result-token-pagination]].
+
+---
+
 ## DML Construct Decisions
 
 ### Update — partial VALUES
