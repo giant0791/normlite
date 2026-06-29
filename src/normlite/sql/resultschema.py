@@ -39,6 +39,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 from normlite._constants import SpecialColumns
 from normlite.exceptions import InvalidRequestError, NoSuchColumnError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+from normlite.sql.functions import FunctionElement
 from normlite.sql.schema import Column, Table
 
 def _merge_names(
@@ -87,8 +88,8 @@ class ResultColumn:
     name: str
     type_code: DBAPITypeCode
     nullable: bool
-    table: Table = field(compare=False, repr=False)
     bare_name: str = field(compare=False, repr=False)
+    table: Optional[Table] = None
 
 
 @dataclass(frozen=True)
@@ -194,6 +195,24 @@ class SchemaInfo:
             )
             for rc in entities
         ]
+        return SchemaInfo(result_cols)
+    
+    @classmethod
+    def from_aggregate(
+        cls, 
+        *entities: FunctionElement
+    ) -> SchemaInfo:
+        result_cols = [
+            ResultColumn(
+                ent.__func_name__,
+                type_code=ent.type_.get_dbapi_type(),
+                nullable=True,
+                table=None,
+                bare_name=f"{ent.name}_{idx}"
+            )
+            for idx, ent in enumerate(entities)
+        ]
+
         return SchemaInfo(result_cols)
         
     def as_sequence(self) -> Sequence[tuple]:

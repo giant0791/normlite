@@ -20,6 +20,7 @@ from __future__ import annotations
 from normlite.notion_sdk.client import NotionError
 from normlite.notiondbapi import Error
 from normlite.notiondbapi.resultset import ResultSet
+from normlite.sql.functions import FunctionElement
 from normlite.sql.schema import ColumnCollection
 
 from types import MappingProxyType
@@ -579,6 +580,12 @@ class Select(HasTable, ExecutableClauseElement):
     """
 
     _right: Optional[Table] = None
+    """Optional right table if a JOIN-clause is added.
+    
+    .. versionadded:: 0.11.0
+    """
+
+    _is_aggregate: bool = False
 
     def __init__(self, *entities: Union[Table, Column]):
         from normlite.sql.schema import Column, Table
@@ -586,7 +593,7 @@ class Select(HasTable, ExecutableClauseElement):
         if not entities:
             raise ArgumentError(
                 """
-                    select() requires either table or a list of columns,
+                    select() requires either table, a list of columns or an aggregate function,
                     no arguments were provided.
                 """
             )
@@ -614,6 +621,14 @@ class Select(HasTable, ExecutableClauseElement):
                 self._right = entities[1]
                 self._projection = [*self._table.uc, *self._right.uc]
                 return 
+            
+        # check whether it is an aggregate
+        is_aggregate = all(isinstance(entity, FunctionElement) for entity in entities)
+        if is_aggregate:
+            self._is_aggregate = True
+            self._projection = tuple(entities)
+            self._table = entities[0].column.parent
+            return
 
         # A list of columns has been provided
         seen = set()
@@ -623,7 +638,8 @@ class Select(HasTable, ExecutableClauseElement):
         for ent in entities:
             if not isinstance(ent, Column):
                 raise ArgumentError(
-                    "select() arguments must be either a Table or Column objects"
+                    "select() arguments must be either a Table or Column objects. "
+                    "Mixing arguments with aggregate functions and Column objects is not supported."
                 )
             if (ent.name, ent.parent) in seen:
                 raise ArgumentError(
@@ -800,26 +816,42 @@ class Select(HasTable, ExecutableClauseElement):
         context.bulk_parameters = bulk_params
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
-        # guard against execution if joins are empty
-        if not self._joins:
-            return
+        if self._joins:
+            # guard against execution if joins are empty
+            join_execution = context._join_execution
 
-        join_execution = context._join_execution
+            # drain the retrieved right rows (one result set per retrieved page)
+            # and hand them to the seam, which merges + filters them.
+            right_rows = [r for r in context._staged_result_cursor._iter_all()]
+            merged_schema, merged_rows = join_execution.assemble(right_rows)
 
-        # drain the retrieved right rows (one result set per retrieved page)
-        # and hand them to the seam, which merges + filters them.
-        right_rows = [r for r in context._staged_result_cursor._iter_all()]
-        merged_schema, merged_rows = join_execution.assemble(right_rows)
-
-        # fill in the result cursor's result set
-        context._result_cursor = context.engine.raw_connection().cursor()
-        context._result_cursor._result_sets.append(
-            ResultSet(
-                merged_schema.as_sequence(),
-                "page",
-                merged_rows
+            # fill in the result cursor's result set
+            context._result_cursor = context.engine.raw_connection().cursor()
+            context._result_cursor._result_sets.append(
+                ResultSet(
+                    merged_schema.as_sequence(),
+                    "page",
+                    merged_rows
+                )
             )
-        )
+
+            return
+        
+        if self._is_aggregate:
+            rows = context._get_exec_cursor().fetchall()
+            aggregate = AggregateExecution(self._projection)
+            result_schema, synthetic_rows = aggregate.reduce(rows)
+            context._result_cursor = context.engine.raw_connection().cursor()
+            context._result_cursor._result_sets.append(
+                ResultSet(
+                    result_schema.as_sequence(),
+                    "page",
+                    synthetic_rows
+                )
+            )
+
+
+
     
 def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)
@@ -1343,6 +1375,28 @@ class JoinExecution:
 
         page = {"properties": properties}
         return _Filter(page, {"filter": self._right_filter}).eval()
+    
+class AggregateExecution:
+
+    def __init__(self, projection: tuple[FunctionElement]) -> None:
+        self._projection = projection
+        self._result_schema = SchemaInfo.from_aggregate(*projection)
+
+    @property
+    def result_schema(self) -> SchemaInfo:
+        return self._result_schema
+    
+    def reduce(self, rows: list[tuple]) -> list[tuple[Any, ...]]:
+        synthetic_row = tuple()
+
+        for func in self._projection:
+            if func.__func_name__ == "count":
+                func_result = {func.type_.get_col_spec(): len(rows)}
+                synthetic_row += (func_result, )
+            else:
+                raise NotImplementedError(f"Function '{func.__func_name__}' not supported")
+            
+        return self._result_schema, [synthetic_row]
 
 def _join_errorhandler(
     connection: DBAPIConnection, 

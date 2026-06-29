@@ -657,40 +657,47 @@ class NotionCompiler(SQLCompiler):
                         else:
                             # for the right table, stash the filter for filtering after merging
                             compiled_dict["join_right_filter"] = filter_obj
-
+        
         projection = self._compiler_state.stmt._projection
 
-        if projection:
-            # use select projections for the result columns
+        if select._is_aggregate:
             self._compiler_state.fetch_columns = [
-                col.name
-                for col in projection
-                if col.parent is select._table  # join path supplies only its left-owned projection
+                f.column.name
+                for f in projection
             ]
+        
+        else:
+            if projection:
+                # use select projections for the result columns
+                self._compiler_state.fetch_columns = [
+                    col.name
+                    for col in projection
+                    if col.parent is select._table  # join path supplies only its left-owned projection
+                ]
 
-            if select._joins:
-                # add the onclause column name to the set of columns to be fetched
-                # this ensures it is encoded in the filter properties
-                self._compiler_state.fetch_columns.append(
-                    compiled_dict["joins"][0]["onclause"]
-                )
+                if select._joins:
+                    # add the onclause column name to the set of columns to be fetched
+                    # this ensures it is encoded in the filter properties
+                    self._compiler_state.fetch_columns.append(
+                        compiled_dict["joins"][0]["onclause"]
+                    )
 
-            self._compiler_state.result_columns = [
-                col 
-                for col in self._compiler_state.fetch_columns
-                if col not in SpecialColumns
-            ]
+                self._compiler_state.result_columns = [
+                    col 
+                    for col in self._compiler_state.fetch_columns
+                    if col not in SpecialColumns
+                ]
 
-            uc_names = [uc.name for uc in select._table.uc]
+                uc_names = [uc.name for uc in select._table.uc]
 
-            if (
-                self._compiler_state.result_columns and
-                len(self._compiler_state.result_columns) < len(uc_names)
-            ):
-                # add the filter_properties query parameters only
-                # if any user column was projected and the projected user colums are 
-                # a subset of all user columns
-                query_params['filter_properties'] = self._compiler_state.result_columns
+                if (
+                    self._compiler_state.result_columns and
+                    len(self._compiler_state.result_columns) < len(uc_names)
+                ):
+                    # add the filter_properties query parameters only
+                    # if any user column was projected and the projected user colums are 
+                    # a subset of all user columns
+                    query_params['filter_properties'] = self._compiler_state.result_columns
 
         if select._order_by.has_expression():
             order_by_clause = select._order_by
