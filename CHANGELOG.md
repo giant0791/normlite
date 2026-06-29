@@ -1,3 +1,51 @@
+## 0.11.0 (2026-06-29)
+
+### Feat
+
+- **notiondbapi**: propagate mid-stream page failures as translated DBAPI errors (#328)
+- **engine**: gate streaming to the Select path and cascade yield_per (#327)
+- **notiondbapi**: derive clamped request page_size from yield_per (#326)
+- **notiondbapi**: opt-in lazy streaming over token pagination (#326)
+- **notiondbapi**: drain-all token pagination in Cursor.execute (#325)
+- **notion_sdk**: paginate InMemoryNotionClient.databases_query (#324)
+- **sql**: route per-clause WHERE/ORDER BY across join sides (#311)
+- **sql**: reject the same column projected twice in select()
+- **sql**: support explicit colliding projections in joins
+- **sql**: resolve right-side WHERE on name-colliding join column
+- **sql**: add JoinExecution.assemble phase-2 merge (#314)
+- **sql**: green JoinExecution.prepare tracer bullet (#314)
+- **sql**: build right-side WHERE getters from joined schema
+- **sql**: qualify colliding join columns and filter right-side WHERE
+- **sql**: project columns from both joined tables in select
+- **sql**: add Select.outerjoin with right-side filtering (#308)
+- **sql**: route ORDER BY by source table in join compilation (#307)
+- **sql**: route WHERE clause by source table in join compilation (#307)
+- **sql**: auto-detect FK relation in Select.join(table) (#306)
+- **notiondbapi**: route DBAPI errors through PEP 249 errorhandler
+- **sql**: lift inner-join cross-product into merge_inner_join_rows
+- **sql**: add Select.join() AST + compile-time validation (#302 slices 1,3)
+- **engine**: add Engine.dispose() and file-based persistence
+- **notion_sdk**: add Relation property storage, validation, and filter operators
+- **sql**: add Relation filter operators (contains, does_not_contain, is_empty, is_not_empty)
+- **engine**: reflect Notion relation properties with database_id lookup
+- **sql**: add MetaData.create_all() with FK-aware ordering and pre-create guard
+- **sql**: topological sort for MetaData.sorted_tables with cycle detection
+- **sql**: add ForeignKey value object and ForeignKeyConstraint auto-wiring
+- **sql**: Relation TypeEngine: core value behaviour
+
+### Fix
+
+- **sql**: accept both wrapped and unwrapped shapes in Relation.result_processor
+- **sql**: wire Relation through DBAPI type code and result-processor pipelines
+- **sql**: invalidate Table.columns cache on append_column
+- **sql**: restore MetaData.__getitem__ removed during Slice 5 cleanup
+
+### Refactor
+
+- **sql**: fold join free functions into JoinExecution (#317)
+- **engine**: wire Select join hooks through JoinExecution (#314)
+- **sql,notiondbapi**: unify result-processor contract on wrapped {<type>: <raw>} shape
+
 ## 0.10.0 (2026-05-09)
 
 ### Feat
