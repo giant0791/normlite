@@ -18,6 +18,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 """Provide SQL-like cross-row aggregate functions."""
 from __future__ import annotations
+from typing import Optional
 
 from normlite.sql.elements import ColumnElement
 from normlite.sql.schema import Column
@@ -40,19 +41,29 @@ class _FuncNameSpace:
         return Count(colum)
 
 class FunctionElement(ColumnElement):
-    __func_name__ = "func_element"
     column: Column
+    key: str
 
-    def __init__(self, column: Column):
-        self.name = column.name
+    def __init__(self, func_name: str, column: Column):
+        self.name = func_name
         self.column = column
+        self.type_ = self._infer_return_type(column)
+
+        # This is NOT yet the final result key
+        self.key = func_name
+
+    def _infer_return_type(self, column: Column) -> Optional[TypeEngine]:
+        raise NotImplementedError(
+            f"Subclasses of {type(self).__name__} must define this method"
+        )
 
 class Count(FunctionElement):
-    __func_name__ = "count"
     __visit_name__ = "count"
 
     def __init__(self, column: Column) -> None:
-        super().__init__(column)
-        self.type_ = Integer()
+        super().__init__("count", column)
+    
+    def _infer_return_type(self, column):
+        return Integer()
 
 func = _FuncNameSpace()

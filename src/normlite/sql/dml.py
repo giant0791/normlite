@@ -585,10 +585,19 @@ class Select(HasTable, ExecutableClauseElement):
     .. versionadded:: 0.11.0
     """
 
+    _raw_columns: tuple[FunctionElement, ...]
+    """Optional list of functions supplied as synthentic columns.
+    
+    .. versionadded:: 0.12.0
+    """
+
     _is_aggregate: bool = False
 
     def __init__(self, *entities: Union[Table, Column]):
         from normlite.sql.schema import Column, Table
+
+        self._projection = None
+        self._raw_columns = None
 
         if not entities:
             raise ArgumentError(
@@ -626,7 +635,7 @@ class Select(HasTable, ExecutableClauseElement):
         is_aggregate = all(isinstance(entity, FunctionElement) for entity in entities)
         if is_aggregate:
             self._is_aggregate = True
-            self._projection = tuple(entities)
+            self._raw_columns = tuple(entities)
             self._table = entities[0].column.parent
             return
 
@@ -839,7 +848,7 @@ class Select(HasTable, ExecutableClauseElement):
         
         if self._is_aggregate:
             rows = context._get_exec_cursor().fetchall()
-            aggregate = AggregateExecution(self._projection)
+            aggregate = AggregateExecution(self._raw_columns)
             result_schema, synthetic_rows = aggregate.reduce(rows)
             context._result_cursor = context.engine.raw_connection().cursor()
             context._result_cursor._result_sets.append(
@@ -1377,10 +1386,9 @@ class JoinExecution:
         return _Filter(page, {"filter": self._right_filter}).eval()
     
 class AggregateExecution:
-
-    def __init__(self, projection: tuple[FunctionElement]) -> None:
-        self._projection = projection
-        self._result_schema = SchemaInfo.from_aggregate(*projection)
+    def __init__(self, raw_cols: tuple[FunctionElement]) -> None:
+        self._raw_columns = raw_cols
+        self._result_schema = SchemaInfo.from_aggregate(*raw_cols)
 
     @property
     def result_schema(self) -> SchemaInfo:
@@ -1389,12 +1397,12 @@ class AggregateExecution:
     def reduce(self, rows: list[tuple]) -> list[tuple[Any, ...]]:
         synthetic_row = tuple()
 
-        for func in self._projection:
-            if func.__func_name__ == "count":
+        for func in self._raw_columns:
+            if func.name == "count":
                 func_result = {func.type_.get_col_spec(): len(rows)}
                 synthetic_row += (func_result, )
             else:
-                raise NotImplementedError(f"Function '{func.__func_name__}' not supported")
+                raise NotImplementedError(f"Function '{func.name}' not supported")
             
         return self._result_schema, [synthetic_row]
 

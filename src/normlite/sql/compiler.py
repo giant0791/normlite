@@ -661,9 +661,10 @@ class NotionCompiler(SQLCompiler):
         projection = self._compiler_state.stmt._projection
 
         if select._is_aggregate:
+            raw_cols = self._compiler_state.stmt._raw_columns
             self._compiler_state.fetch_columns = [
                 f.column.name
-                for f in projection
+                for f in raw_cols
             ]
         
         else:

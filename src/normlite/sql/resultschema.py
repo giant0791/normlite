@@ -178,7 +178,7 @@ class SchemaInfo:
         # fully qualify names for colliding only
         for cols in colliding.values():
             if len(cols) == 1:
-                # skip, only column only does not need qualification
+                # skip, one column only does not need qualification
                 continue
 
             for ent in cols:
@@ -204,7 +204,7 @@ class SchemaInfo:
     ) -> SchemaInfo:
         result_cols = [
             ResultColumn(
-                ent.__func_name__,
+                ent.name,
                 type_code=ent.type_.get_dbapi_type(),
                 nullable=True,
                 table=None,
