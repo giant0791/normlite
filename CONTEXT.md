@@ -9,8 +9,32 @@ and the decisions made about them.
 ## Core Concepts
 
 ### Table
-A normlite `Table` corresponds to a **Notion database**. Creating a table calls `databases.create`;
-dropping it calls `databases.update` with `in_trash: True`.
+A normlite `Table` corresponds to a **Notion database** containing exactly one **Data Source**
+(see below). Creating a table calls `databases.create`; dropping it calls `databases.update` with
+`in_trash: True`.
+
+### Data Source
+> **Status: agreed design for the Notion API `2025-09-03` upgrade — see
+> [ADR-0014](docs/adr/0014-data-source-two-id-identity.md). Not yet implemented; the entries below
+> marked _(2025-09-03)_ describe the target, and the current code still uses the single-ID
+> `database_id` shape.**
+
+Under `2025-09-03` a Notion **database** (container: `title`/`icon`/`cover` + a `data_sources`
+list) is split from its **data source** (the `properties` schema + the queryable surface + the
+target of relations). normlite keeps the invariant **one `Table` = one database = one data
+source**; multi-data-source databases are deferred.
+
+Each `Table` therefore carries **two IDs**:
+- **`object_id`/`get_oid()` = the database UUID** — unchanged identity; the thing a page-child
+  hangs off and `DROP TABLE` trashes. Used only by create / drop / container operations.
+- **`data_source_id` = a private `Table` attribute** (`get_data_source_id()`, mirroring
+  `_db_parent_id`) — **not** a `table.c` system column. Used by *everything operational*:
+  `data_sources.query` (SELECT + two-phase UPDATE/DELETE), `data_sources.retrieve` (reflection),
+  the `pages.create` parent, and relation schema specs.
+
+Both IDs are persisted: `databases.create` returns the container plus `data_sources[0].id`, and
+the `tables` catalog stores `data_source_id` alongside `table_id`. Reflection is **catalog-first**
+— it reads `data_source_id` from the catalog row and calls `data_sources.retrieve` directly.
 
 ### Row / Page
 A single row in a `Table` corresponds to a **Notion page** inside that database.
@@ -119,11 +143,18 @@ in v1). Its sole responsibility is value translation between Python and Notion J
 - `result_processor` converts `{"relation": [{"id": "...", ...}]}` → `[d["id"] for d in value["relation"]]`.
 - `get_col_spec()` returns `"relation"`.
 - `get_notion_spec()` returns the partial DDL spec `{"relation": {"single_property": {}}}` —
-  without `database_id`, which is not available at TypeEngine level.
+  without the target ID, which is not available at TypeEngine level.
+  _(2025-09-03: the merged target ID becomes `data_source_id`, not `database_id` — see
+  [ADR-0014](docs/adr/0014-data-source-two-id-identity.md). Relation **values** are unchanged.)_
 `Relation` holds no mutable state. It has no `set_oid()` method and no `_oid` field.
 Supported filter operators: `CONTAINS`, `DOES_NOT_CONTAIN`, `IS_EMPTY`, `IS_NOT_EMPTY`.
 
 ### ForeignKey
+_(2025-09-03: `fk.database_id` is renamed `fk.data_source_id` and resolves to the target table's
+data source, not its database UUID — see
+[ADR-0014](docs/adr/0014-data-source-two-id-identity.md). The public
+`ForeignKey("students.object_id")` reference is unchanged.)_
+
 A constraint object passed alongside `Relation()` in `Column(...)`: e.g.
 `Column("students_oid", Relation(), ForeignKey("students.object_id"))`.
 Stores a string reference `"<table>.<column>"` parsed at construction into `fk.table_name` and
@@ -189,6 +220,13 @@ table, it resolves all `ForeignKeyConstraint` objects on that table by calling
 ---
 
 ## Fake Client (InMemoryNotionClient)
+
+> _(2025-09-03 upgrade — [ADR-0014](docs/adr/0014-data-source-two-id-identity.md), not yet
+> implemented: the fake stores `database` and `data_source` as **separate** objects with their own
+> IDs and a parent link; enforces **per-child-type** parent validation (page → `page_id`/
+> `data_source_id`; database → `page_id`; data_source → `database_id`); replaces `databases_query`
+> with `data_sources_{retrieve,update,query}` outright; and `search` returns `data_source` objects.
+> Persisted stores from before the upgrade are a **clean break** with a loud old-format guard.)_
 
 ### Fake client — Relation property support
 `InMemoryNotionClient` stores and filters Notion `relation` properties so DML against
