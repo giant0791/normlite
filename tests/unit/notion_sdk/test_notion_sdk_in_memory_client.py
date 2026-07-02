@@ -63,21 +63,27 @@ def make_title_page(parent_page_id, title="My Page"):
 
 
 def make_database(parent_page_id: str, name: str = "Students"):
+    """A databases.create payload in the Notion 2025-09-03 shape:
+    the schema lives under initial_data_source.properties, not top-level."""
     return {
         "parent": {
             "type": "page_id",
             "page_id": parent_page_id,
         },
         "title": [{"text": {"content": name}}],
-        "properties": {
-            "Name": {
-                "title": {}
-            },
-            "Age": {
-                "number": {}
-            },
+        "initial_data_source": {
+            "properties": {
+                "Name": {"title": {}},
+                "Age": {"number": {}},
+            }
         },
     }
+
+
+def data_source_of(client, db):
+    """Temporary bridge: reach a container's single data source directly from
+    the store. Replace with data_sources.retrieve once #349 lands."""
+    return client._store[db["data_sources"][0]["id"]]
 
 
 def make_db_page(database_id, name="Alice", age=20):
@@ -112,6 +118,23 @@ def create_database(client):
     )
 
     return db
+
+
+def test_databases_create_returns_container_with_one_data_source(client):
+    # Arrange
+    payload = make_database(client._ROOT_PAGE_ID_, "Students")
+
+    # Act
+    container = client.databases_create(payload=payload)
+
+    # Assert: the container advertises exactly one data source...
+    data_sources = container["data_sources"]
+    assert len(data_sources) == 1
+
+    # ...whose id is a real, distinct identifier from the container itself
+    data_source_id = data_sources[0]["id"]
+    assert data_source_id
+    assert data_source_id != container["id"]
 
 # ---------------------------------------------------------
 # Root page behavior
@@ -182,14 +205,16 @@ def test_create_database_under_page(client):
     )
 
     assert db["object"] == "database"
-    assert "Name" in db["properties"]
-    assert "Age" in db["properties"]
 
-    assert db["properties"]["Name"]["type"] == "title"
-    assert db["properties"]["Name"]["id"] == "title"
+    ds = data_source_of(client, db)
+    assert "Name" in ds["properties"]
+    assert "Age" in ds["properties"]
 
-    assert db["properties"]["Age"]["type"] == "number"
-    assert isinstance(db["properties"]["Age"]["id"], str)
+    assert ds["properties"]["Name"]["type"] == "title"
+    assert ds["properties"]["Name"]["id"] == "title"
+
+    assert ds["properties"]["Age"]["type"] == "number"
+    assert isinstance(ds["properties"]["Age"]["id"], str)
 
 
 def test_database_cannot_be_created_under_database(client):
@@ -224,8 +249,9 @@ def test_create_page_under_database_with_exact_schema(client):
 
     # only property ids are returned
     assert set(props.keys()) == {"Name", "Age"}
-    assert props["Name"]["id"] == db["properties"]["Name"]["id"]
-    assert props["Age"]["id"] == db["properties"]["Age"]["id"]
+    ds = data_source_of(client, db)
+    assert props["Name"]["id"] == ds["properties"]["Name"]["id"]
+    assert props["Age"]["id"] == ds["properties"]["Age"]["id"]
 
 
 def test_page_under_database_rejects_missing_property(client):
@@ -928,14 +954,16 @@ def test_database_schema_is_finalized(client):
     db = client.databases_create(payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": rt("tables"),
-            "properties": {
-                "table_name": {"title": {}},
-                "schema": {"rich_text": {}},
+            "initial_data_source": {
+                "properties": {
+                    "table_name": {"title": {}},
+                    "schema": {"rich_text": {}},
+                },
             },
         }
     )
 
-    props = db["properties"]
+    props = data_source_of(client, db)["properties"]
 
     assert props["table_name"]["type"] == "title"
     assert props["table_name"]["id"] == "title"
@@ -948,7 +976,7 @@ def test_database_title_is_normalized(client):
         payload= {
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "tables"}}],
-            "properties": {"name": {"title": {}}},
+            "initial_data_source": {"properties": {"name": {"title": {}}}},
         }
     )
 
@@ -960,9 +988,11 @@ def test_page_under_database_properties_are_normalized(client):
         payload={ 
             'parent': {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             'title': rt("tables"),
-            'properties': {
-                'table_name': {"title": {}},
-                'schema': {"rich_text": {}},
+            'initial_data_source': {
+                'properties': {
+                    'table_name': {"title": {}},
+                    'schema': {"rich_text": {}},
+                }
             }
         }
     )
@@ -992,7 +1022,7 @@ def test_page_schema_mismatch_raises(client):
         payload={            
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": rt("tables"),
-            "properties": {"name": {"title": {}}},
+            "initial_data_source": {"properties": {"name": {"title": {}}}},
         }
     )
 
@@ -1130,7 +1160,7 @@ def test_database_update_title(client, database):
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Original Database Name"}}],
-            "properties": database["properties"]
+            "initial_data_source": {"properties": database["properties"]}
         }
     )
     
@@ -1148,7 +1178,7 @@ def test_database_update_title_invalid_type(client, database):
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Original Database Name"}}],
-            "properties": database["properties"]
+            "initial_data_source": {"properties": database["properties"]}
         }
     )
     
@@ -1158,12 +1188,17 @@ def test_database_update_title_invalid_type(client, database):
             payload={"title": "Invalid"},
         )
 
+@pytest.mark.xfail(
+    reason="Schema-write via databases.update relocates to data_sources.update; "
+    "databases.update narrows to container-level attrs in #348. Out of scope for #347.",
+    strict=True,
+)
 def test_database_update_title_and_schema(client, database):
     database_obj = client.databases_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Original Database Name"}}],
-            "properties": database["properties"]
+            "initial_data_source": {"properties": database["properties"]}
         }
     )
     
@@ -1381,19 +1416,21 @@ def test_pages_create_rejects_relation_value_that_is_not_a_list(client):
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Courses"}}],
-            "properties": {"Title": {"title": {}}},
+            "initial_data_source": {"properties": {"Title": {"title": {}}}},
         }
     )
     students = client.databases_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Students"}}],
-            "properties": {
-                "Name": {"title": {}},
-                "enrolled_in": {
-                    "relation": {
-                        "database_id": courses["id"],
-                        "single_property": {},
+            "initial_data_source": {
+                "properties": {
+                    "Name": {"title": {}},
+                    "enrolled_in": {
+                        "relation": {
+                            "database_id": courses["id"],
+                            "single_property": {},
+                        },
                     },
                 },
             },
@@ -1419,19 +1456,21 @@ def test_pages_create_rejects_relation_item_that_is_not_a_dict(client):
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Courses"}}],
-            "properties": {"Title": {"title": {}}},
+            "initial_data_source": {"properties": {"Title": {"title": {}}}},
         }
     )
     students = client.databases_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Students"}}],
-            "properties": {
-                "Name": {"title": {}},
-                "enrolled_in": {
-                    "relation": {
-                        "database_id": courses["id"],
-                        "single_property": {},
+            "initial_data_source": {
+                "properties": {
+                    "Name": {"title": {}},
+                    "enrolled_in": {
+                        "relation": {
+                            "database_id": courses["id"],
+                            "single_property": {},
+                        },
                     },
                 },
             },
@@ -1456,19 +1495,21 @@ def test_pages_create_rejects_relation_item_dict_without_id(client):
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Courses"}}],
-            "properties": {"Title": {"title": {}}},
+            "initial_data_source": {"properties": {"Title": {"title": {}}}},
         }
     )
     students = client.databases_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Students"}}],
-            "properties": {
-                "Name": {"title": {}},
-                "enrolled_in": {
-                    "relation": {
-                        "database_id": courses["id"],
-                        "single_property": {},
+            "initial_data_source": {
+                "properties": {
+                    "Name": {"title": {}},
+                    "enrolled_in": {
+                        "relation": {
+                            "database_id": courses["id"],
+                            "single_property": {},
+                        },
                     },
                 },
             },
@@ -1493,19 +1534,21 @@ def test_pages_create_rejects_relation_item_id_that_is_not_a_string(client):
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Courses"}}],
-            "properties": {"Title": {"title": {}}},
+            "initial_data_source": {"properties": {"Title": {"title": {}}}},
         }
     )
     students = client.databases_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Students"}}],
-            "properties": {
-                "Name": {"title": {}},
-                "enrolled_in": {
-                    "relation": {
-                        "database_id": courses["id"],
-                        "single_property": {},
+            "initial_data_source": {
+                "properties": {
+                    "Name": {"title": {}},
+                    "enrolled_in": {
+                        "relation": {
+                            "database_id": courses["id"],
+                            "single_property": {},
+                        },
                     },
                 },
             },
@@ -1530,19 +1573,21 @@ def test_pages_create_preserves_relation_property_on_retrieve(client):
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Courses"}}],
-            "properties": {"Title": {"title": {}}},
+            "initial_data_source": {"properties": {"Title": {"title": {}}}},
         }
     )
     students = client.databases_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Students"}}],
-            "properties": {
-                "Name": {"title": {}},
-                "enrolled_in": {
-                    "relation": {
-                        "database_id": courses["id"],
-                        "single_property": {},
+            "initial_data_source": {
+                "properties": {
+                    "Name": {"title": {}},
+                    "enrolled_in": {
+                        "relation": {
+                            "database_id": courses["id"],
+                            "single_property": {},
+                        },
                     },
                 },
             },
@@ -1582,19 +1627,21 @@ def test_pages_update_replaces_relation_property(client):
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Courses"}}],
-            "properties": {"Title": {"title": {}}},
+            "initial_data_source": {"properties": {"Title": {"title": {}}}},
         }
     )
     students = client.databases_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Students"}}],
-            "properties": {
-                "Name": {"title": {}},
-                "enrolled_in": {
-                    "relation": {
-                        "database_id": courses["id"],
-                        "single_property": {},
+            "initial_data_source": {
+                "properties": {
+                    "Name": {"title": {}},
+                    "enrolled_in": {
+                        "relation": {
+                            "database_id": courses["id"],
+                            "single_property": {},
+                        },
                     },
                 },
             },
@@ -1644,19 +1691,21 @@ def test_pages_update_clears_relation_property_with_empty_list(client):
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Courses"}}],
-            "properties": {"Title": {"title": {}}},
+            "initial_data_source": {"properties": {"Title": {"title": {}}}},
         }
     )
     students = client.databases_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Students"}}],
-            "properties": {
-                "Name": {"title": {}},
-                "enrolled_in": {
-                    "relation": {
-                        "database_id": courses["id"],
-                        "single_property": {},
+            "initial_data_source": {
+                "properties": {
+                    "Name": {"title": {}},
+                    "enrolled_in": {
+                        "relation": {
+                            "database_id": courses["id"],
+                            "single_property": {},
+                        },
                     },
                 },
             },
@@ -1700,19 +1749,21 @@ def test_pages_update_rejects_relation_value_that_is_not_a_list(client):
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Courses"}}],
-            "properties": {"Title": {"title": {}}},
+            "initial_data_source": {"properties": {"Title": {"title": {}}}},
         }
     )
     students = client.databases_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": [{"text": {"content": "Students"}}],
-            "properties": {
-                "Name": {"title": {}},
-                "enrolled_in": {
-                    "relation": {
-                        "database_id": courses["id"],
-                        "single_property": {},
+            "initial_data_source": {
+                "properties": {
+                    "Name": {"title": {}},
+                    "enrolled_in": {
+                        "relation": {
+                            "database_id": courses["id"],
+                            "single_property": {},
+                        },
                     },
                 },
             },

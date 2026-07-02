@@ -616,8 +616,18 @@ class InMemoryNotionClient(AbstractNotionClient):
             raise NotionError(
                 "Body failed validation: body.title should be defined for database object."
             )
+        
+        if type_ == "database" and "initial_data_source" not in payload:
+            raise NotionError(
+                "Body failed validation: body.initial_data_source should be defined, instead was undefined."
+            )
+        
+        if type_ == "database" and "properties" not in payload["initial_data_source"]:
+            raise NotionError(
+                "Body failed validation: body.initial_data_source.properties should be defined, instead was undefined."
+            )
 
-        if "properties" not in payload:
+        if type_ != "database" and "properties" not in payload:
             raise NotionError(
                 "Body failed validation: body.properties should be defined, instead was undefined."
             )
@@ -667,7 +677,8 @@ class InMemoryNotionClient(AbstractNotionClient):
         prop["id"] = "title"
 
     def _finalize_page_under_database(self, page: dict, database: dict) -> None:
-        schema_props = database["properties"]
+        data_source = self._get_by_id(database["data_sources"][0]["id"])
+        schema_props = data_source["properties"]
         page_props = page["properties"]
 
         if set(page_props.keys()) != set(schema_props.keys()):
@@ -695,18 +706,23 @@ class InMemoryNotionClient(AbstractNotionClient):
     # ------------------------------------------------------------------
     # Database finalization
     # ------------------------------------------------------------------
-
-    def _finalize_database(self, db: dict) -> None:
+    
+    def _finalize_database(self, db: dict, data_source: dict) -> None:
         parent_type, _ = self._resolve_parent(db)
         if parent_type != "page":
             raise NotionError("Databases can only be created under pages.")
+        
+        db["data_sources"] = [
+            {"id": data_source["id"]}
+        ]
 
-        for name, prop in db["properties"].items():
+        db["is_inline"] = False
+
+    def _finalize_data_source(self, ds: dict) -> None:
+        for _, prop in ds["properties"].items():
             prop_type = next(iter(prop.keys()))
             prop["type"] = prop_type
             prop["id"] = "title" if prop_type == "title" else self._generate_property_id()
-
-        db["is_inline"] = False
 
     # ------------------------------------------------------------------
     # Normalization helpers
@@ -966,7 +982,13 @@ class InMemoryNotionClient(AbstractNotionClient):
                 
 
         elif type_ == "database":
-            self._finalize_database(obj)
+            ds = self._new_object(
+                "data_source", 
+                payload = payload["initial_data_source"],
+            )
+            self._finalize_data_source(ds)
+            self._store[ds["id"]] = ds
+            self._finalize_database(obj, ds)
             self._normalize_database_title(obj)
 
         else:
