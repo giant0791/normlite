@@ -18,27 +18,57 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 """Provide SQL-like cross-row aggregate functions."""
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Self
 
+from normlite.exceptions import ArgumentError
+from normlite.sql.base import generative
 from normlite.sql.elements import ColumnElement
 from normlite.sql.schema import Column
-from normlite.sql.type_api import Integer, TypeEngine
+from normlite.sql.type_api import Float, Integer, Number, Numeric, TypeEngine
 
 class _FuncNameSpace:
     """Function namespace exposed as :attr:`func` to users.
     
     .. versionadded:: 0.12.0
     """
-    def count(self, colum: Column) -> Count:
-        """Count distinct column values for rows belonging to the column's parent table.
+    def count(self, column: Optional[Column] = None) -> Count:
+        """Count column values for rows belonging to the column's parent table.
 
         Args:
-            colum (Column): Column to count values on. 
+            column (Column): Column to count values on. 
 
         Returns:
             Count: A new instance of :class:`Count`.
         """
-        return Count(colum)
+        return Count(column)
+    
+    def sum(self, column: Column) -> Sum:
+        """Sums column values for rows belonging to the column's parent table
+
+        Args:
+            column (Column): Column to sum values on.
+
+        Raises:
+            ArgumentError: If column's type is not a subclass of :class:`normlite.sql.type_api.Number`.
+
+        Returns:
+            Sum: A new instance of :class:`Sum`
+        """
+        return Sum(column)
+    
+    def avg(self, column: Column) -> Avg:
+        """Averages column values for rows belonging to the column's parent table
+
+        Args:
+            column (Column): Column to average values on.
+
+        Raises:
+            ArgumentError: If column's type is not a subclass of :class:`normlite.sql.type_api.Number`.
+
+        Returns:
+            Sum: A new instance of :class:`Avg`
+        """
+        return Avg(column)
 
 class FunctionElement(ColumnElement):
     column: Column
@@ -52,18 +82,54 @@ class FunctionElement(ColumnElement):
         # This is NOT yet the final result key
         self.key = func_name
 
+    @generative
+    def label(self, name: str) -> Self:
+        self.key = name
+
     def _infer_return_type(self, column: Column) -> Optional[TypeEngine]:
         raise NotImplementedError(
             f"Subclasses of {type(self).__name__} must define this method"
         )
 
+    def _raise_if_is_not_instance(
+            self,
+            type_: TypeEngine,
+            required_type: type[TypeEngine],
+            func_name: str,
+        ) -> None:
+        if not isinstance(type_, required_type):
+            raise ArgumentError(
+                f"Function {func_name}() expects column of type {required_type.__name__}, "
+                f"got '{type(type_).__name__}'"
+            )
+
 class Count(FunctionElement):
     __visit_name__ = "count"
 
-    def __init__(self, column: Column) -> None:
+    def __init__(self, column: Optional[Column] = None) -> None:
         super().__init__("count", column)
     
-    def _infer_return_type(self, column):
+    def _infer_return_type(self, column: Column) -> Optional[TypeEngine]:
         return Integer()
+    
+class Sum(FunctionElement):
+    __visit_name__ = "sum"
+
+    def __init__(self, column: Column):
+        self._raise_if_is_not_instance(column.type_, Number, "sum")
+        super().__init__("sum", column)
+
+    def _infer_return_type(self, column: Column):
+        return column.type_
+
+class Avg(FunctionElement):
+    __visit_name__ = "avg"
+
+    def __init__(self, column: Column):
+        self._raise_if_is_not_instance(column.type_, Number, "avg")
+        super().__init__("avg", column)    
+
+    def _infer_return_type(self, column: Column) -> Optional[TypeEngine]:
+        return Float()
 
 func = _FuncNameSpace()

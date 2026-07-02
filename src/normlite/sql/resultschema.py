@@ -167,7 +167,6 @@ class SchemaInfo:
 
         # find colliding column names:
         # same name in entities
-        seen = set()
         colliding: dict[str, list[Column]] = {}
         for ent in entities:
             if ent.name not in colliding:
@@ -202,15 +201,38 @@ class SchemaInfo:
         cls, 
         *entities: FunctionElement
     ) -> SchemaInfo:
+        disambiguate_names: dict[FunctionElement, str] = {}
+
+        # group entities by result key (function name, or the .label() override):
+        # any key shared by 2+ entities is a collision
+        colliding: dict[str, list[FunctionElement]] = {}
+        for ent in entities:
+            if ent.key not in colliding:
+                colliding[ent.key] = [ent]
+            else:
+                colliding[ent.key].append(ent)
+
+        # aggregates are provenance-free (table=None) so a collision can't be
+        # qualified by table like from_join; disambiguate by ordinal suffix instead
+        for cols in colliding.values():
+            if len(cols) == 1:
+                # a unique key stays bare, no disambiguation needed
+                continue
+
+            for i, ent in enumerate(cols):
+                disambiguate_names[ent] = f"{ent.key}_{i + 1}"
+
         result_cols = [
             ResultColumn(
-                ent.name,
+                disambiguate_names.get(ent, ent.key),
                 type_code=ent.type_.get_dbapi_type(),
                 nullable=True,
                 table=None,
-                bare_name=f"{ent.name}_{idx}"
+                # for colliding names, bare_name is not disambiguated
+                # because aggregates are Table=None
+                bare_name=ent.key
             )
-            for idx, ent in enumerate(entities)
+            for ent in entities
         ]
 
         return SchemaInfo(result_cols)

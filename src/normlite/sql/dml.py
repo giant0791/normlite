@@ -21,7 +21,6 @@ from normlite.notion_sdk.client import NotionError
 from normlite.notiondbapi import Error
 from normlite.notiondbapi.resultset import ResultSet
 from normlite.sql.functions import FunctionElement
-from normlite.sql.schema import ColumnCollection
 
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Type, Union, TYPE_CHECKING
@@ -149,7 +148,7 @@ class UpdateBase(HasTable, ExecutableClauseElement):
             existing.append(col)
 
         self._returning = tuple(existing)
-        return self
+        # no return: it is already encapsulated into the generative decorator
 
 class ValuesBase(UpdateBase):
     """Base for all DML statements with the VALUES clause.
@@ -316,8 +315,8 @@ class ValuesBase(UpdateBase):
                     # multi-parameters case
                     self._process_multi_values(arg)
                     self._has_multi_parameters = True
-                    return self
-                
+                    return  # early exit; @generative returns the copy
+
                 if arg and isinstance(arg[0], (list, tuple)):
                     # values(["Galileo Galilei", ...], ["Isaac Newton", ...]) NOT SUPPORTED
                     raise ArgumentError(
@@ -329,7 +328,7 @@ class ValuesBase(UpdateBase):
                 self._process_single_values(arg)
                 self._has_multi_parameters = False
                 self._multi_parameters = None
-                return self
+                return  # early exit; @generative returns the copy
 
             # values(("Galileo Galilei", 1, "A", ...)) single parameter case with a tuple or a list
             # normalize tuple or list to dict, but ensure length is equal to columns
@@ -348,8 +347,7 @@ class ValuesBase(UpdateBase):
         self._has_multi_parameters = False
         self._multi_parameters = None
         self._process_single_values(new_values)
-
-        return self
+        # no return: @generative returns the copy
 
 class Insert(ValuesBase):
     """Provide the SQL ``INSERT`` node to create a new row in the specified table. 
@@ -636,7 +634,12 @@ class Select(HasTable, ExecutableClauseElement):
         if is_aggregate:
             self._is_aggregate = True
             self._raw_columns = tuple(entities)
-            self._table = entities[0].column.parent
+            # anchor from the first aggregate carrying an operand column; a pure
+            # COUNT(*) has none, so leave it unresolved for .select_from() 
+            self._table = next(
+                (e.column.parent for e in entities if e.column is not None),
+                None,
+            )
             return
 
         # A list of columns has been provided
@@ -688,9 +691,36 @@ class Select(HasTable, ExecutableClauseElement):
         self._projection = columns
 
     @generative
+    def select_from(self, table: Table) -> Self:
+        """Return a new select() construct with the given FROM clause
+
+        This is introduced to support COUNT(*), ``func.count()`` where no table can be
+        inferred from the missing operand.
+
+        ..versionadded:: 0.12.0
+
+        Args:
+            table (Table): The table the function shall operate on
+        
+        Raises:
+            ArgumentError: If it is called on a non aggregate select.
+
+        Returns:
+            Self: Return a new copy with the :attr:`_table` set.
+        """
+        if not self._is_aggregate:
+            raise ArgumentError(
+                "select_from() is only supported for aggregate selects "
+                "(e.g. anchoring a columnless func.coun()); explicit FROM on "
+                "column/table selects is not supported"
+            )
+        self._table = table
+        # generative returns a copy
+    
+    @generative
     def where(self, expr: ColumnElement) -> Self:
         self._whereclause = self._whereclause.where(expr)
-        return self
+        # returning self is already encapsulated into the generative decorator
 
     @generative
     def order_by(self, *clauses: ColumnElement) -> Self:
@@ -703,7 +733,7 @@ class Select(HasTable, ExecutableClauseElement):
             )
 
         self._order_by = self._order_by.add(*clauses)
-        return self
+        # returning self is already encapsulated into the generative decorator
     
     def _create_join(
         self, onclause: ColumnExpressionArgument, 
@@ -770,13 +800,13 @@ class Select(HasTable, ExecutableClauseElement):
     def join(self, onclause: ColumnExpressionArgument) -> Self:
         # mutate-vs-rebind: here you create a new tuple
         self._joins = (*self._joins, self._create_join(onclause))
-        return self
+        # returning self is already encapsulated into the generative decorator
     
     @generative
     def outerjoin(self, onclause: ColumnExpressionArgument) -> Self:
         # mutate-vs-rebind: here you create a new tuple
         self._joins = (*self._joins, self._create_join(onclause, isouter=True))
-        return self
+        # returning self is already encapsulated into the generative decorator
     
     def _setup_execution(self, context: ExecutionContext) -> None:
         # guard against execution if joins are empty
@@ -878,7 +908,7 @@ class Delete(UpdateBase):
     @generative
     def where(self, expr: ColumnElement) -> Self:
         self._whereclause = self._whereclause.where(expr)
-        return self
+        # returning self is already encapsulated into the generative decorator
     
     def _setup_execution(self, context: ExecutionContext) -> None:
         elem = context.invoked_stmt
@@ -1395,16 +1425,70 @@ class AggregateExecution:
         return self._result_schema
     
     def reduce(self, rows: list[tuple]) -> list[tuple[Any, ...]]:
+        # **IMPORTANT** - Resolve each func to the pos of its operand column in
+        # the order-preserving deduped list of operand names. This mirrors how the
+        # drained row is laid out (SchemaInfo.from_table -> _merge_names dedup over
+        # the compiler's aggregate fetch_columns); the two MUST stay in lockstep.
+        operand_order = list(dict.fromkeys(
+            f.column.name for f in self._raw_columns
+            if f.column is not None         # guard against column-less func.count()
+        ))
         synthetic_row = tuple()
 
         for func in self._raw_columns:
-            if func.name == "count":
-                func_result = {func.type_.get_col_spec(): len(rows)}
-                synthetic_row += (func_result, )
-            else:
+            if func.name not in ("count", "sum", "avg"):
                 raise NotImplementedError(f"Function '{func.name}' not supported")
             
+            if func.name == "count" and func.column is None:
+                # COUNT(*): count every matched row, empties included
+                synthetic_row += ({func.type_.get_col_spec(): len(rows)}, )
+                continue
+
+            # position of the column to apply the function on
+            pos = operand_order.index(func.column.name)
+            synthetic_row += (self._compute_func_result(pos, func, rows), )
+                    
         return self._result_schema, [synthetic_row]
+    
+    def _compute_func_result(
+        self, 
+        pos: int,
+        func: FunctionElement, 
+        rows: list[tuple]
+    ) -> Optional[dict]:
+        # operand_typ is the column type
+        # return_typ is the func's return type
+        # both are needed because count() needs this distinction:
+        # e.g. operand_typ = "title" but func.type_.get_col_spec() == "number"
+        return_typ = func.type_.get_col_spec()
+        operand_typ = func.column.type_.get_col_spec()
+
+        # extract the raw values which are dictionaries {"number": ...}
+        # check c.get(type) to handle present-but-NULL case: {"number": None}
+        raw_values = [
+            c for r in rows 
+            if (c := r[pos]) is not None and c.get(operand_typ) is not None
+        ]
+
+        if raw_values:
+            if func.name == "count":
+                return {
+                    return_typ: len(raw_values)
+                }
+
+            if func.name == "sum":
+                return {
+                    return_typ: sum(v[operand_typ] for v in raw_values)
+                }
+            
+            if func.name == "avg":
+                return {
+                    return_typ: sum(v[operand_typ] for v in raw_values) / len(raw_values)
+                }
+
+        # the sum or avg of all-None is None, not {"number": None}
+        # func.count(col) for raw_values = [] is {"number": 0}
+        return {"number": 0} if func.name == "count" else None
 
 def _join_errorhandler(
     connection: DBAPIConnection, 

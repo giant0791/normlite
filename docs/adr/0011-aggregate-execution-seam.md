@@ -60,6 +60,17 @@ AggregateExecution(projection)
 - **Aggregation forces drain-all** regardless of `stream_results`/`yield_per` — you cannot
   reduce a half-consumed stream — consistent with joins and two-phase mutations
   ([ADR-0010](./0010-streaming-result-token-pagination.md)).
+- **Result-key naming: auto function-name, `.label()` override, ordinal disambiguation on
+  collision.** Each aggregate column is keyed by its function name (`sum`, `avg`, `count`) unless
+  the user supplies `.label(name)`, which wins. Because an aggregate is provenance-free, a name
+  collision **cannot** be resolved by table-qualification the way `from_join` qualifies
+  `courses.title` ([ADR-0009](./0009-result-schema-provenance.md)) — there is no owning `Table`
+  to qualify with. Instead, collisions are disambiguated **positionally**, SQLAlchemy-style: a
+  key that is unique in the projection stays **bare** (`sum`), but when a key appears more than
+  once, **every** member of that group takes a 1-based ordinal suffix (`func.sum(x), func.sum(y)`
+  → `sum_1, sum_2` — not `sum, sum_1`). This mirrors `from_join`'s "disambiguate only collisions,
+  but suffix every member of the colliding group" rule; only the disambiguation *token* differs
+  (ordinal suffix vs. table qualifier), because aggregates lack provenance.
 
 ## Considered Options
 
@@ -77,8 +88,46 @@ AggregateExecution(projection)
 
 - `Select._projection` widens from "tuple of `Column`" to "tuple of `Column` / aggregate /
   `Label`"; `ResultColumn.table` becomes `Optional[Table]`.
+- **`avg` returns a dedicated `Float` type with its own DBAPI type code.** `avg` is true
+  division, so its result is a Python `float`, not the operand type (`sum`, by contrast,
+  *preserves* the operand type). A `float` — an inexact statistical ratio — is deliberately
+  distinct from `Numeric`/`Money`, which mean an exact `Decimal`. Making this stick end-to-end
+  forced a subtlety: the result cursor reconstructs a column's `result_processor` **from its
+  DBAPI type code**, not from the declared `TypeEngine` (`engine/row.py`: `type_mapper[col_type]`).
+  `Float` originally shared `Numeric`'s `NUMBER_WITH_COMMAS` code, so an averaged value was
+  silently re-materialised as a `Decimal` — the declared `Float` was never consulted. The fix is
+  a **distinct `DBAPITypeCode.NUMBER_FLOAT`** that `Float` owns and `type_mapper` routes back to
+  `Float`, so a `float` survives the round-trip. General rule this establishes: *a type whose
+  runtime Python value must differ from its siblings needs its own DBAPI type code — the type
+  code, not the `TypeEngine` instance, is what the result path keys on.*
+- **The reduce fold resolves operands positionally, and that position is coupled to the
+  compiler.** Since aggregate result keys may collide or be relabelled, `reduce` maps each
+  function to its operand by the **order-preserving-deduped list of operand column names**, which
+  must match the drained-row layout the compiler produces (`fetch_columns` →
+  `SchemaInfo.from_table` → `_merge_names` dedup). Two aggregates over the *same* column resolve
+  to one shared cell; over *different* columns, to distinct cells. This coupling is load-bearing:
+  any change to how aggregate `fetch_columns` are projected must move `AggregateExecution.reduce`
+  in lockstep. A cleaner future design would hand the seam the execution description rather than
+  re-deriving the layout.
 - `.order_by()` and `.join()`/`.outerjoin()` combined with an aggregate projection raise
   loudly (`ArgumentError`/`CompileError`) in v1 — out of scope, never a silent drop.
+- **Skip-NULL keys on the *inner* cell, and the operand key ≠ the return key.** `_process_page`
+  emits a present-but-null number property as `{"number": None}` (a truthy dict), not a bare
+  `None`, so the reduce filter must skip on `c.get(operand_typ) is not None`, not merely
+  `c is not None` — otherwise `sum`/`avg` crash on `int + None` and `count(col)` over-counts.
+  Separately, `_compute_func_result` must read operand cells with the **operand column's** type
+  key (`func.column.type_.get_col_spec()`) but key the result cell with the **return** type
+  (`func.type_.get_col_spec()`). These coincide (`"number"`) for `sum`/`avg`, which hid the
+  conflation, but diverge for `count`, whose return type is always `Integer` while its operand
+  may be any type — a single shared key silently returns `0` for `count` over a non-number column.
+- **`COUNT(*)` is a columnless `func.count()`; its FROM is anchored explicitly via
+  `select_from`.** With no operand column there is nothing to infer the table from, so
+  construction leaves `Select._table` `None` and `select(func.count()).select_from(t)` supplies
+  it. `reduce` returns `len(rows)` for a columnless count (every matched row, empties included),
+  and the compiler falls back to fetching `object_id` (the always-present system column, the
+  default `fetch_columns`) so each page still yields one row to count. `select_from` is
+  **aggregate-only** (guarded with `ArgumentError` on non-aggregate selects) to avoid silently
+  unlocking an untested general explicit-FROM / join path — deferred to a dedicated slice.
 - `GROUP BY` is the natural next slice. It reintroduces **mixed-provenance rows** (a grouping
   key column beside synthetic aggregate columns), the bare-column validation rule, and
   `HAVING`. When it lands it should extend `AggregateExecution` with a partitioning step

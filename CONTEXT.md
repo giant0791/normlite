@@ -377,6 +377,149 @@ See [[adr-0010-streaming-result-token-pagination]].
 
 ---
 
+## Check Constraints
+
+### CheckConstraint (client-side enforcement)
+See [[adr-0012-checkconstraint-client-side-enforcement]] (enforcement + error) and
+[[adr-0013-checkconstraint-catalog-persistence]] (persistence + reflection contract).
+
+A `CheckConstraint` carries a boolean **predicate** over a `Table`'s columns
+(`CheckConstraint(products.c.price > 0)`) and an optional `name`. Notion's
+`databases.create`/`update` API has **no CHECK facility**, so — exactly as with aggregate
+functions ([[adr-0011-aggregate-execution-seam]]) — the constraint **has no Notion backend**
+and is enforced **client-side by normlite**: the predicate is evaluated before a row is
+written, and a violating row is rejected rather than sent to Notion. A `CheckConstraint`
+that never rejects anything would be a footgun, so declarative-only / no-op semantics were
+explicitly ruled out.
+
+There is **one construct**, not two: "row-level" (`price > 0`) vs "table-level"
+(`discount < price`) is only informal prose describing how many columns the predicate
+touches — both are a single boolean predicate over one table's columns, evaluated per-row.
+
+### CheckConstraint — declaration & attachment
+Declared **inline in the `Table(...)` constructor**, positionally, alongside `Column`s
+(`Table.__init__` accepts `Constraint` args, not only `Column`s):
+
+```python
+price = Column("price", Number()); discount = Column("discount", Number())
+products = Table("products", metadata, price, discount,
+                 CheckConstraint(price > 0, name="check_positive_price"),
+                 CheckConstraint(discount < price, name="check_discount_rules"))
+```
+
+Inside the constructor the predicate references the **bare `Column` objects** (their
+`.parent` is still `None`; `Table` adopts them during construction) — NOT `products.c.price`,
+which does not exist until `products` does. The post-hoc escape hatch
+`products.add_constraint(CheckConstraint(products.c.price > 0))` also works (same path FK/PK
+use). Both feed the same `Table._constraints` set.
+
+### CheckConstraint — column-to-column comparisons in the AST
+A table-level predicate like `discount < price` is a **column-to-column** comparison. Today
+`Comparator.operate` calls `coerce_to_bindparam(other, ...)`, which (a `Column` is not
+callable) wraps the RHS `Column` as a literal `BindParameter.value` — silent garbage.
+Fix: `Comparator.operate` **preserves a `ColumnElement` RHS as-is** instead of coercing it;
+`BinaryExpression.value` therefore becomes "either a `BindParameter` (literal) **or** a
+`ColumnElement` (column ref)", and the client-side check-evaluator resolves both operands
+against the row. A column-RHS comparison is **not expressible as a Notion `databases.query`
+filter** (Notion compares a property to a literal, never to another property), so the
+WHERE→filter compiler (`visit_binary_expression`) **raises loudly** if it ever sees a
+`ColumnElement` value — a col-col predicate handed to `.where()` fails fast instead of
+compiling to a broken filter.
+
+### CheckConstraint — enforcement seam (v1: Insert-only)
+Enforcement is owned by a **dedicated single-owner seam** (`CheckEnforcement`), mirroring the
+[[adr-0011-aggregate-execution-seam]] config-to-constructor discipline: built from the target
+table's `CheckConstraint`s, it exposes a `.check(row_values)`-style call that raises on
+violation. v1 enforces **`Insert` only**; `Update` (which carries only a partial `.values()`
+subset and would need to merge new values over the decoded existing page image) is a
+**deferred follow-up slice**. `Delete` never enforces.
+
+- **Row image:** evaluated against the **Python values pre-bind** (`Decimal('5')`, `-2`),
+  keyed by column name — NOT the Notion JSON cells. The evaluator resolves each operand as
+  `row[col.name]` and applies the operator in Python.
+- **When:** right before the `pages.create` call(s), in the `Insert` setup path. A
+  **multi-row** (`INSERTMANYVALUES`) insert checks every row; the whole statement fails
+  fast on the first violating row (no partial commit). All of the table's `CheckConstraint`s
+  are evaluated for each row.
+
+### CheckConstraint — NULL / three-valued logic (SQL-faithful)
+A check **rejects a row only when the predicate evaluates to `False`**. A `None` operand
+(Notion has no NULL — an empty/omitted property is Python `None`, per
+[[adr-0005-outer-join-phantom-null-semantics]]) makes the comparison **UNKNOWN → row
+accepted**, exactly as SQL `CHECK` and the aggregate skip-NULL discipline
+([[adr-0011-aggregate-execution-seam]]). "Value must be present" is a NOT-NULL concern, a
+separate future constraint — not a CHECK.
+
+### CheckConstraint — violation error
+A violation raises DBAPI **`IntegrityError(DatabaseError)`** (new class in
+`notiondbapi/dbapi2.py`), the DBAPI-2.0-canonical error for "relational integrity affected —
+a constraint check failed" (also what SQLAlchemy surfaces). The message carries the
+constraint `name` (or the predicate repr when unnamed) and the offending column/value.
+NOTE the deliberate layering tension: `CheckEnforcement` runs **client-side, above the DBAPI
+boundary**, yet raises a DBAPI-layer error — accepted for SQL/DBAPI fidelity (the *meaning*
+is exactly DBAPI `IntegrityError`). Candidate ADR.
+
+### CheckConstraint — evaluator (new, Operator-enum-driven)
+A **new small tree-walking evaluator** (owned by / beside `CheckEnforcement`), NOT the fake
+client's `_Filter`/`_Condition` (that lives in `notion_sdk/client.py`, speaks Notion raw-cell
+shape + Notion op strings, has no col-col support — reusing it would be a layering inversion).
+The evaluator walks the predicate tree — `BinaryExpression`, `BooleanClauseList` (and/or),
+`UnaryExpression` (not) — resolving `Column` operands to `row[col.name]`, `BindParameter`
+operands to their value, dispatching on the backend-agnostic `Operator` enum with the
+three-valued logic above. **Compound predicates are supported in v1**
+(`CheckConstraint((price > 0) & (discount < price))`) — the tree-walker handles them
+naturally.
+
+### CheckConstraint — construct/attachment validation (fail-fast)
+Validated when the table **adopts** the constraint (`Table.__init__` after columns are bound,
+and `add_constraint` for the post-hoc path) — not at `CheckConstraint(...)` build time, where
+inline columns are still parent-less. Two structural invariants, both raising `ArgumentError`:
+1. **Same-table** — every `Column` referenced in the predicate must belong (by identity) to
+   the attaching table; cross-table refs are rejected.
+2. **Boolean predicate** — the argument must be a boolean-valued expression
+   (`BinaryExpression`/`BooleanClauseList`/`UnaryExpression`), not a bare `Column` or literal.
+
+**No operand-type policing in v1** — any `Operator` the Python evaluator can compute is
+accepted (no rejecting `is_empty()`, `Relation` columns, or type/op mismatches), mirroring the
+type-agnostic `func.count(col)`.
+
+### CheckConstraint — catalog persistence & reflection
+Checks have no Notion-database backend, but they ARE persisted in normlite's own
+`information_schema` catalog so reflection can rebuild them (they are NOT lost on reflection).
+Storage is a **dedicated `check_constraints` catalog database** under `information_schema`
+(sibling of `tables`, mirroring SQL `information_schema.check_constraints`), bootstrapped with
+one more `_get_or_create_database` call. Rows carry `constraint_name` (title),
+`table_catalog` + `table_name` (owning table), and `check_clause`. The `check_clause` stores a
+**JSON AST** serialization of the predicate tree (NOT a textual `"price > 0"` clause — normlite
+has no SQL-text parser, so JSON round-trips without one). `CreateTable`/`create_all` writes the
+rows after `databases.create`; `DropTable` removes/marks them; reflection reads them back and
+**rebuilds `CheckConstraint` objects, binding column refs to the reflected table's columns by
+name**.
+
+### CheckConstraint — `check_clause` JSON-AST format (persisted data contract)
+Because these blobs are stored in Notion and must stay readable across normlite versions, the
+format is a versioned data contract (`"v": 1` root field). Node kinds:
+- `compare` — `{"kind":"compare","op":"<Operator enum name>","left":{col},"right":{col|lit}}`.
+  `op` is the `Operator` **enum name** (`"GT"`, `"LT"`, `"EQ"`, … — backend-agnostic, stable).
+  `left` is **always** a `col` (the LHS of a comparison is always a `Column`); `right` is a
+  `col` (col-col) or a `lit`.
+- `bool` — `{"kind":"bool","op":"and|or","clauses":[…]}` (`BooleanClauseList`).
+- `not`  — `{"kind":"not","operand":{…}}` (`UnaryExpression`).
+- `col`  — `{"kind":"col","name":"price"}`; rebound to the reflected table's column by name.
+- `lit`  — value stored as a **string**, **re-coerced through the paired column's `TypeEngine`**
+  on deserialize (`Decimal("0")` via `price.type_`) — dodges JSON float-precision loss and
+  needs no per-literal type tag (every literal is paired with a known column in its `compare`).
+
+### CheckConstraint — v1 slicing
+1. construct + col-col AST change + WHERE guard + structural validation (no execution).
+2. `CheckEnforcement` + evaluator + `IntegrityError`, wired into Insert (in-memory, no
+   persistence) — first end-to-end usable slice.
+3. JSON-AST serializer + `check_constraints` catalog database + write-on-create / drop-cleanup.
+4. reflection: deserialize + rebuild on `autoload_with`.
+5. (later) Update enforcement (the deferred partial-values merge).
+
+---
+
 ## DML Construct Decisions
 
 ### Update — partial VALUES
@@ -498,6 +641,21 @@ In the whole-set/all-aggregate v1, an aggregate projection combined with:
 not at a later `execute()`. `func.count(col)` accepts any type; `func.count()` takes no column.
 (Contrast with `visit_update`'s compile-time `CompileError`: that guards a missing clause, not
 a pure construct-time type error.)
+
+### Aggregate query — FROM anchoring (`COUNT(*)` and `select_from`)
+A whole-set aggregate query's FROM table is normally **inferred from the operand column**:
+`select(func.sum(t.c.a))` anchors to `t` via `a.parent`. A columnless `func.count()`
+(SQL `COUNT(*)`) has **no operand**, so there is nothing to infer from — the table must be
+supplied explicitly with **`select(func.count()).select_from(t)`** (mirroring SQLAlchemy).
+Construction tolerates the missing anchor (`Select._table` is left `None` until `select_from`
+fills it); at compile the columnless count falls back to fetching `object_id` so each matched
+page still yields exactly one row for `reduce()` to count (`len(rows)`, empties included —
+unlike `count(col)`, which counts non-empty cells).
+
+`select_from()` is **aggregate-only in v1**: calling it on a plain column/table select raises
+`ArgumentError`. It is not a general explicit-FROM mechanism — that (and explicit-FROM joins it
+would structurally unlock) is a deliberately guarded-out future slice. Fail loud, never
+silently unlock an untested path.
 
 ### Aggregate query — rowcount
 A whole-set aggregate query returns **exactly one synthetic row, always** — even over zero

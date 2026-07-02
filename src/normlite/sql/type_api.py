@@ -307,6 +307,32 @@ class Numeric(Number):
     
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.NUMBER_WITH_COMMAS
+    
+class Float(Number):
+    """Convenient type engine to represent average results.
+
+    .. seealso::
+        :class:`normlite.sql.functions.Avg`
+    """
+    def __init__(self):
+        super().__init__('number')
+
+    @property
+    def python_type(self) -> Any:
+        return float
+
+    def result_processor(self):
+        def process(value: Optional[dict]) -> Optional[float]:
+            if value is None:
+                return None
+            
+            self._raise_if_val_not_dict(value)
+            return float(value.get(self.get_col_spec()))
+        
+        return process
+        
+    def get_dbapi_type(self) -> DBAPITypeCode:
+        return DBAPITypeCode.NUMBER_FLOAT
 
 class Money(Number):
     """Convenient type engine for Notion "number" objects handling currencies.
@@ -1064,4 +1090,5 @@ type_mapper: dict[str, TypeEngine] = {
     DBAPITypeCode.ARCHIVAL_FLAG: ArchivalFlag(),
     DBAPITypeCode.TIMESTAMP: TimeStampStringISO8601(),
     DBAPITypeCode.RELATION: Relation(),
+    DBAPITypeCode.NUMBER_FLOAT: Float()
 }

@@ -586,6 +586,15 @@ class NotionCompiler(SQLCompiler):
             compiled_dict["joins"] = joins
 
         table = select.get_table()
+        if table is None:
+            # aggregate with no operand column (a columnless COUNT(*)) and no explicit
+            # select_from(): the FROM is unresolvable. Fail loud at compile, like 
+            # visit_update's missing clause guard, rather that crashing on None.get_iod()
+            raise CompileError(
+                "Aggregate select has no FROM: columnless func.count() (COUNT(*)) "
+                "must be anchored with select_from(table)"
+            )
+
         database_id = table.get_oid()
         if database_id is None:
             raise CompileError(f'Table: {table.name} has not been previously reflected.')
@@ -662,10 +671,10 @@ class NotionCompiler(SQLCompiler):
 
         if select._is_aggregate:
             raw_cols = self._compiler_state.stmt._raw_columns
-            self._compiler_state.fetch_columns = [
-                f.column.name
-                for f in raw_cols
-            ]
+            operand_names = [f.column.name for f in raw_cols if f.column is not None]
+            # a pure COUNT(*) has no operand columns; fall back fetching object_id so
+            # each matched page still yields one row for reduce() to count
+            self._compiler_state.fetch_columns = operand_names or ["object_id"]
         
         else:
             if projection:
