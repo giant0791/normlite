@@ -26,6 +26,9 @@ from enum import StrEnum
 
 class DBAPITypeCode(StrEnum):
     """Enum for type codes used in cursor descriptions.
+
+    .. versionchanged:: 0.12.0
+        :attr:`NUMBER_FLOAT` added to support ``func.avg()`` to return float values.
     
     .. versionadded:: 0.8.0
         With this enum the module :mod:`dbapi2.py` is more PEP 249 compliant.
@@ -37,6 +40,7 @@ class DBAPITypeCode(StrEnum):
     NUMBER             = 'number'
     NUMBER_WITH_COMMAS = 'number_with_commas'
     NUMBER_DOLLAR      = 'dollar'
+    NUMBER_FLOAT       = 'number_float'
     RICH_TEXT          = 'rich_text'
     DATE               = 'date'
     ARCHIVAL_FLAG      = 'boolean'

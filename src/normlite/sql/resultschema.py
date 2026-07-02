@@ -39,6 +39,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 from normlite._constants import SpecialColumns
 from normlite.exceptions import InvalidRequestError, NoSuchColumnError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+from normlite.sql.functions import FunctionElement
 from normlite.sql.schema import Column, Table
 
 def _merge_names(
@@ -87,8 +88,8 @@ class ResultColumn:
     name: str
     type_code: DBAPITypeCode
     nullable: bool
-    table: Table = field(compare=False, repr=False)
     bare_name: str = field(compare=False, repr=False)
+    table: Optional[Table] = None
 
 
 @dataclass(frozen=True)
@@ -166,7 +167,6 @@ class SchemaInfo:
 
         # find colliding column names:
         # same name in entities
-        seen = set()
         colliding: dict[str, list[Column]] = {}
         for ent in entities:
             if ent.name not in colliding:
@@ -177,7 +177,7 @@ class SchemaInfo:
         # fully qualify names for colliding only
         for cols in colliding.values():
             if len(cols) == 1:
-                # skip, only column only does not need qualification
+                # skip, one column only does not need qualification
                 continue
 
             for ent in cols:
@@ -194,6 +194,47 @@ class SchemaInfo:
             )
             for rc in entities
         ]
+        return SchemaInfo(result_cols)
+    
+    @classmethod
+    def from_aggregate(
+        cls, 
+        *entities: FunctionElement
+    ) -> SchemaInfo:
+        disambiguate_names: dict[FunctionElement, str] = {}
+
+        # group entities by result key (function name, or the .label() override):
+        # any key shared by 2+ entities is a collision
+        colliding: dict[str, list[FunctionElement]] = {}
+        for ent in entities:
+            if ent.key not in colliding:
+                colliding[ent.key] = [ent]
+            else:
+                colliding[ent.key].append(ent)
+
+        # aggregates are provenance-free (table=None) so a collision can't be
+        # qualified by table like from_join; disambiguate by ordinal suffix instead
+        for cols in colliding.values():
+            if len(cols) == 1:
+                # a unique key stays bare, no disambiguation needed
+                continue
+
+            for i, ent in enumerate(cols):
+                disambiguate_names[ent] = f"{ent.key}_{i + 1}"
+
+        result_cols = [
+            ResultColumn(
+                disambiguate_names.get(ent, ent.key),
+                type_code=ent.type_.get_dbapi_type(),
+                nullable=True,
+                table=None,
+                # for colliding names, bare_name is not disambiguated
+                # because aggregates are Table=None
+                bare_name=ent.key
+            )
+            for ent in entities
+        ]
+
         return SchemaInfo(result_cols)
         
     def as_sequence(self) -> Sequence[tuple]:
