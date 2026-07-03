@@ -606,10 +606,16 @@ class InMemoryNotionClient(AbstractNotionClient):
             )
 
         parent_type = parent.get("type")
-        if parent_type not in ("page_id", "database_id"):
+        if parent_type not in ("page_id", "data_source_id"):
             raise NotionError(
                 f'Body failed validation: body.parent.type should be "page_id" or '
-                f'"database_id", instead "{parent_type}" was defined.'
+                f'"data_source_id", instead "{parent_type}" was defined.'
+            )
+        
+        if type_ == "database" and parent_type != "page_id":
+            raise NotionError(
+                f'Body failed validation: body.parent.type should be "page_id", '
+                f'instead "{parent_type}" was defined.'
             )
 
         if type_ == "database" and not payload.get("title"):
@@ -667,7 +673,7 @@ class InMemoryNotionClient(AbstractNotionClient):
                 'New page is a child of a page. "title" is the only valid property.'
             )
 
-        name, prop = next(iter(props.items()))
+        _, prop = next(iter(props.items()))
         if "title" not in prop or len(prop) != 1:
             raise NotionError(
                 'New page is a child of a page. "title" is the only valid property.'
@@ -703,17 +709,23 @@ class InMemoryNotionClient(AbstractNotionClient):
                 schema_type: page_prop[schema_type],
             }
 
+    def _finalize_data_source_under_database(self, data_source: dict, database_id: str) -> None:
+        data_source["parent"] = {
+            "type": "database_id",
+            "database_id": database_id
+        }
+
     # ------------------------------------------------------------------
     # Database finalization
     # ------------------------------------------------------------------
     
-    def _finalize_database(self, db: dict, data_source: dict) -> None:
+    def _finalize_database(self, db: dict, data_source_id: str) -> None:
         parent_type, _ = self._resolve_parent(db)
         if parent_type != "page":
             raise NotionError("Databases can only be created under pages.")
         
         db["data_sources"] = [
-            {"id": data_source["id"]}
+            {"id": data_source_id}
         ]
 
         db["is_inline"] = False
@@ -987,8 +999,9 @@ class InMemoryNotionClient(AbstractNotionClient):
                 payload = payload["initial_data_source"],
             )
             self._finalize_data_source(ds)
+            self._finalize_data_source_under_database(ds, obj["id"])
             self._store[ds["id"]] = ds
-            self._finalize_database(obj, ds)
+            self._finalize_database(obj, ds["id"])
             self._normalize_database_title(obj)
 
         else:

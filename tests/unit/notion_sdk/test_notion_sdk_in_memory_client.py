@@ -232,6 +232,49 @@ def test_database_cannot_be_created_under_database(client):
     with pytest.raises(NotionError):
         client.databases_create(payload=payload)
 
+
+def test_page_cannot_be_parented_to_a_database_container(client):
+    # Arrange: a real database (container) exists under root
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+
+    # A page payload that tries to hang directly off the database container
+    payload = make_db_page(db["id"], "Bob", 42)
+    assert payload["parent"]["type"] == "database_id"  # guard: parent really is a container
+
+    # Act / Assert: the container is not a valid parent for a page
+    with pytest.raises(NotionError):
+        client.pages_create(payload=payload)
+
+
+def test_database_cannot_be_parented_to_a_data_source(client):
+    # Arrange: an existing database gives us a real data_source id to point at
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+
+    # A database payload that tries to nest under a data source
+    payload = make_database(client._ROOT_PAGE_ID_)
+    payload["parent"] = {"type": "data_source_id", "data_source_id": ds["id"]}
+
+    # Act / Assert: a data source is not a valid parent for a database container
+    with pytest.raises(NotionError):
+        client.databases_create(payload=payload)
+
+
+def test_data_source_records_its_database_as_parent(client):
+    # Arrange / Act: create a database container with its single data source
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+
+    # Assert: the data source hangs off the database container
+    assert ds["parent"]["type"] == "database_id"
+    assert ds["parent"]["database_id"] == db["id"]
+
 # ---------------------------------------------------------
 # Page under database rules (schema enforcement)
 # ---------------------------------------------------------
