@@ -102,6 +102,23 @@ def make_db_page(database_id, name="Alice", age=20):
         },
     }
 
+def make_ds_page(data_source_id, name="Alice", age=20):
+    """A pages.create payload for a row under a data source (2025-09-03 shape)."""
+    return {
+        "parent": {
+            "type": "data_source_id",
+            "data_source_id": data_source_id,
+        },
+        "properties": {
+            "Name": {
+                "title": [{"text": {"content": name}}]
+            },
+            "Age": {
+                "number": age
+            },
+        },
+    }
+
 def rt(*parts: str):
     return [{"text": {"content": p}} for p in parts]
 
@@ -274,6 +291,180 @@ def test_data_source_records_its_database_as_parent(client):
     # Assert: the data source hangs off the database container
     assert ds["parent"]["type"] == "database_id"
     assert ds["parent"]["database_id"] == db["id"]
+
+# ---------------------------------------------------------
+# Page under data source rules (step 3)
+# ---------------------------------------------------------
+
+def test_page_can_be_created_under_a_data_source(client):
+    # Arrange: a database and its single data source
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+
+    # A row that hangs off the data source (the new queryable surface)
+    payload = make_db_page(db["id"], "Bob", 42)
+    payload["parent"] = {"type": "data_source_id", "data_source_id": ds["id"]}
+
+    # Act
+    page = client.pages_create(payload=payload)
+
+    # Assert: the row is a page parented to the data source
+    assert page["object"] == "page"
+    assert page["parent"]["type"] == "data_source_id"
+    assert page["parent"]["data_source_id"] == ds["id"]
+
+
+def test_data_sources_query_returns_rows_for_data_source(client):
+    # Arrange: a database with its data source, and two rows under the data source
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+
+    def row(name, age):
+        payload = make_db_page(db["id"], name, age)
+        payload["parent"] = {"type": "data_source_id", "data_source_id": ds["id"]}
+        return payload
+
+    p1 = client.pages_create(payload=row("Alice", 20))
+    p2 = client.pages_create(payload=row("Bob", 30))
+
+    # Act: query the data source (the new SELECT surface)
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={},  # no filter
+    )
+
+    # Assert: both rows come back
+    assert result["object"] == "list"
+    assert result["has_more"] is False
+    assert len(result["results"]) == 2
+    assert {p["id"] for p in result["results"]} == {p1["id"], p2["id"]}
+
+
+def test_data_sources_query_paginates_with_page_size_and_cursor(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+
+    p1 = client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+    p2 = client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+    p3 = client.pages_create(payload=make_ds_page(ds["id"], "Carol", 40))
+
+    # First page: ask for 2 of the 3 matching rows.
+    page_one = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={"page_size": 2},
+    )
+
+    assert len(page_one["results"]) == 2
+    assert page_one["has_more"] is True
+    assert page_one["next_cursor"] is not None
+
+    # Second page: hand the cursor back to fetch the remainder.
+    page_two = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={"page_size": 2, "start_cursor": page_one["next_cursor"]},
+    )
+
+    assert len(page_two["results"]) == 1
+    assert page_two["has_more"] is False
+    assert page_two["next_cursor"] is None
+
+    # The two pages together are all 3 rows, in order, with no overlap.
+    seen_ids = [p["id"] for p in page_one["results"]] + \
+               [p["id"] for p in page_two["results"]]
+    assert seen_ids == [p1["id"], p2["id"], p3["id"]]
+
+
+def test_data_sources_query_without_payload_returns_all_rows(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+
+    p1 = client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+    p2 = client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+
+    # No payload at all — the parameter defaults to None.
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+    )
+
+    assert len(result["results"]) == 2
+    assert {p["id"] for p in result["results"]} == {p1["id"], p2["id"]}
+
+
+def test_data_sources_query_sorts_by_number_ascending(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+
+    # Insert out of order so a passing test can only be the sort's doing.
+    client.pages_create(payload=make_ds_page(ds["id"], "A", 30))
+    client.pages_create(payload=make_ds_page(ds["id"], "B", 10))
+    client.pages_create(payload=make_ds_page(ds["id"], "C", 20))
+
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={
+            "sorts": [
+                {"property": "Age", "direction": "ascending"}
+            ]
+        },
+    )
+
+    ages = [p["properties"]["Age"]["number"] for p in result["results"]]
+    assert ages == [10, 20, 30]
+
+
+def test_data_sources_query_with_filter_properties_projection(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+
+    client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        query_params={"filter_properties": ["Name"]},
+        payload={},
+    )
+
+    props = result["results"][0]["properties"]
+    assert "Name" in props
+    assert "Age" not in props
+
+
+def test_data_sources_query_paginates_and_projects_together(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+
+    client.pages_create(payload=make_ds_page(ds["id"], "A", 1))
+    client.pages_create(payload=make_ds_page(ds["id"], "B", 2))
+    client.pages_create(payload=make_ds_page(ds["id"], "C", 3))
+
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        query_params={"filter_properties": ["Name"]},
+        payload={"page_size": 2},
+    )
+
+    # Windowing still holds: projection must not re-expand the page.
+    assert len(result["results"]) == 2
+    assert result["has_more"] is True
+
+    # ... and every row in the window is projected.
+    for p in result["results"]:
+        assert "Name" in p["properties"]
+        assert "Age" not in p["properties"]
 
 # ---------------------------------------------------------
 # Page under database rules (schema enforcement)
