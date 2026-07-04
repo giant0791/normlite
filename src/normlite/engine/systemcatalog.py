@@ -389,7 +389,11 @@ class SystemCatalog:
         """
         existing = self.find_sys_tables_row(table_name, table_catalog=table_catalog)
 
-        if existing is not None and not existing.is_dropped:
+        # A dropped row still *exists* (ADR-0015: is_dropped stays live), so treat it
+        # as existing and never insert a second live row. Un-dropping is not this
+        # method's job: ADR-0016 makes Table.create repurpose a dropped row onto a
+        # fresh database before this primitive is ever reached in the real flow.
+        if existing is not None:
             if if_not_exists:
                 return existing
 

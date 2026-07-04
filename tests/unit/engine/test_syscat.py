@@ -572,3 +572,39 @@ def test_ensure_sys_tables_row_parents_new_row_to_the_data_source():
     assert entry.sys_tables_page_id is not None
     found = catalog.find_sys_tables_row("students", table_catalog="memory")
     assert found.sys_tables_page_id == entry.sys_tables_page_id
+
+def test_ensure_on_a_dropped_row_returns_it_without_duplicating():
+    # ADR-0015: a dropped catalog row still EXISTS (is_dropped checkbox; the page
+    # stays live). ensure(if_not_exists=True) must therefore return that existing
+    # row, not insert a second live one the next find would trip as a duplicate.
+    # It does NOT un-drop it — restoring is set_dropped(dropped=False)'s job.
+    client = InMemoryNotionClient()
+    client._ensure_root()
+    root = client._ROOT_PAGE_ID_
+    tables_db_id, tables_ds_id = _seed_tables_container(client, root)
+
+    catalog = SystemCatalog(client, "memory", root, "memory")
+    catalog._tables_id = tables_db_id
+    catalog._tables_ds_id = tables_ds_id
+
+    original = catalog.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id="deadbeef-dead-beef-dead-beefdeadbeef",
+    )
+    catalog.set_dropped(table_name="students", table_catalog="memory", dropped=True)
+
+    same = catalog.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id="deadbeef-dead-beef-dead-beefdeadbeef",
+        if_not_exists=True,
+    )
+
+    # the existing row, untouched — not a second one, and not un-dropped
+    assert same.sys_tables_page_id == original.sys_tables_page_id
+    assert same.is_dropped is True
+
+    # the catalog still resolves a single, unambiguous row
+    found = catalog.find_sys_tables_row("students", table_catalog="memory")
+    assert found.sys_tables_page_id == original.sys_tables_page_id

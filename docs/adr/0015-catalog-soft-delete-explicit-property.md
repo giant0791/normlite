@@ -72,9 +72,17 @@ property on the `tables` row. The catalog page is never trashed.**
 - Any test asserting the *old* mechanism (`page["in_trash"] is True` after `set_dropped`) must move
   to asserting the checkbox. Two ORPHANED tests that previously passed *accidentally* (via the
   "entry is None" branch) now pass through the intended intent-vs-reality mismatch branch.
-- **Deferred boundary — CREATE-after-DROP duplicate.** With the row now staying live, the
-  dropped-row fall-through in `get_or_create_sys_tables_row` would create a *second live* row with
-  the same name+catalog (previously the original was page-trashed and hidden), which the next
-  `find_sys_tables_row` trips as a `len > 1` `InternalError`. The fall-through must become a
-  RESTORE (flip `is_dropped` back to `False`), not a second insert. Pre-existing logic, surfaced
-  by this change, deferred to its own red.
+- **CREATE-after-DROP is orchestrated at the engine layer, not this primitive.** With the row now
+  staying live, a naive dropped-row fall-through in `get_or_create_sys_tables_row` would create a
+  *second live* row with the same name+catalog (previously the original was page-trashed and
+  hidden), which the next `find_sys_tables_row` trips as a `len > 1` `InternalError`. The fix is
+  **not** to restore inside `get_or_create`. Per
+  [ADR-0016](0016-dropped-table-is-non-existent.md), a dropped table is non-existent to DDL:
+  `Table.create` reads `get_table_state`, and on `DROPPED` **repurposes** the single leftover row
+  onto a fresh database (overwriting `table_id` + `data_source_id`, clearing `is_dropped`) rather
+  than restoring or duplicating. In the real flow `get_or_create` is therefore never reached with a
+  dropped row; it is hardened only **defensively** — a dropped row still *exists*, so it is treated
+  as existing (returned under `if_not_exists`, else `already exists`) rather than duplicated. The
+  soft-delete machinery this ADR introduces is retained (a latent foundation for a possible future
+  restore) but is surfaced by no DDL verb; only the diagnostic `get_table_state` still distinguishes
+  `DROPPED`.

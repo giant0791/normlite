@@ -54,9 +54,24 @@ checkbox and the catalog row **stays live**. The physical `DROP TABLE` still tra
 container* (`databases.update {in_trash}`) — unchanged. See
 [ADR-0015](docs/adr/0015-catalog-soft-delete-explicit-property.md).
 
-_Boundary — CREATE-after-DROP:_ because a dropped row now stays live,
-`get_or_create_sys_tables_row`'s dropped-row fall-through would insert a duplicate live row; it
-should become a RESTORE. Deferred to its own red.
+### Dropped = non-existent (SQL-destructive DROP)
+
+To **DDL operations**, a `DROPPED` table is indistinguishable from a `MISSING` one — normlite is
+SQL-like, and in SQL a dropped table is gone with no restore (see
+[ADR-0016](docs/adr/0016-dropped-table-is-non-existent.md)). `CREATE` on a dropped table yields a
+**fresh** table — internally by *repurposing* the single leftover catalog row onto a new database
+(overwrites `table_id` + `data_source_id`, clears `is_dropped`); the old database is abandoned in
+Notion trash (no hard-delete exists; a human can still recover it via the Notion UI). `DROP` on a
+dropped table → `"does not exist"` (no-op under `checkfirst`); reflection → `NoSuchTableError`.
+`ORPHANED` still raises `InternalError` everywhere. There is **no user-facing restore**; the
+soft-delete machinery stays only as a latent foundation. The split is deliberate: DDL *operations*
+collapse `DROPPED` into `MISSING`, but the diagnostic `get_table_state` **still distinguishes**
+`DROPPED`, keeping the machinery observable to future tooling.
+
+_Boundary — `get_or_create_sys_tables_row`:_ because a dropped row stays live, its dropped-row
+fall-through must never insert a *second* live row (the next `find_sys_tables_row` would trip
+`len > 1`). It is hardened defensively — a dropped row is treated as existing, never duplicated;
+the repurpose above owns the create-after-drop path.
 
 ### Row / Page
 A single row in a `Table` corresponds to a **Notion page** inside that database.
