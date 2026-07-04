@@ -36,6 +36,28 @@ Both IDs are persisted: `databases.create` returns the container plus `data_sour
 the `tables` catalog stores `data_source_id` alongside `table_id`. Reflection is **catalog-first**
 — it reads `data_source_id` from the catalog row and calls `data_sources.retrieve` directly.
 
+The `tables` catalog **row schema** (final order): `table_name` (title), `table_schema`,
+`table_catalog`, `table_id`, **`data_source_id`** (rich_text, per ADR-0014), **`is_dropped`**
+(checkbox, per [ADR-0015](docs/adr/0015-catalog-soft-delete-explicit-property.md)).
+
+### Catalog soft-delete (table lifecycle)
+
+`get_table_state` derives `TableState` from **two independent flags**: normlite's recorded intent
+(`is_dropped` on the catalog row) and Notion's physical reality (the table's database trash state,
+read via `databases.retrieve(table_id)`). Both dropped → `DROPPED`; both live → `ACTIVE`;
+**disagreement → `ORPHANED`** — the disagreement case is why the two flags stay independent.
+
+The intent marker is an explicit **`is_dropped` checkbox on the catalog row**, *not* Notion
+page-trash: `data_sources.query` unconditionally skips trashed pages (ADR-0014), so a page-trashed
+catalog row would be invisible and `DROPPED`/`RESTORE` unobservable. `set_dropped` flips the
+checkbox and the catalog row **stays live**. The physical `DROP TABLE` still trashes the *database
+container* (`databases.update {in_trash}`) — unchanged. See
+[ADR-0015](docs/adr/0015-catalog-soft-delete-explicit-property.md).
+
+_Boundary — CREATE-after-DROP:_ because a dropped row now stays live,
+`get_or_create_sys_tables_row`'s dropped-row fall-through would insert a duplicate live row; it
+should become a RESTORE. Deferred to its own red.
+
 ### Row / Page
 A single row in a `Table` corresponds to a **Notion page** inside that database.
 All DML that reads or mutates rows operates on Notion pages.
@@ -187,8 +209,13 @@ During `Table._autoload(engine)`, a Notion relation property is reflected by:
 3. If found: constructing `Column("<name>", Relation(), ForeignKey(f"{entry.name}.object_id"))`,
    then setting `fk.database_id = database_id` directly on the `ForeignKey` value object —
    no deferred resolution needed.
-4. If not found: the related table was not created by normlite; emit a warning and skip the
-   property (never silently).
+4. If not found: emit a warning and skip the property (never silently). "Not found" now has two
+   distinct causes, both indistinguishable to reflection: the related table was never created by
+   normlite, **or** it was created but has since been dropped — a dropped table's catalog row is
+   trashed, and `data_sources.query` always skips trashed pages (the 2025-09-03 endpoint has no
+   `in_trash` parameter; see [ADR-0014](docs/adr/0014-data-source-two-id-identity.md)). A relation
+   to a dropped table is therefore unresolvable by name; its target database is trashed anyway, so
+   the FK would be dangling.
 
 ### ForeignKeyConstraint
 A `Constraint` auto-generated during `Table.__init__` for every column that carries a `ForeignKey`.

@@ -4,6 +4,7 @@ import pytest
 from normlite.engine.base import Engine, create_engine
 from normlite.engine.systemcatalog import TableState
 from normlite.engine.systemcatalog import SystemCatalog
+from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.notiondbapi.dbapi2 import ProgrammingError, InternalError
 
 def create_students_db(engine: Engine, name: str = 'students') -> str:
@@ -24,12 +25,14 @@ def create_students_db(engine: Engine, name: str = 'students') -> str:
                 "href": None
             }
         ],
-        'properties': {
-            'id': {'number': {}},
-            'name': {'title': {}},
-            'grade': {'rich_text': {}},
-            'is_active': {'checkbox': {}},
-            'start_on': {'date': {}}
+        'initial_data_source': {
+            'properties': {
+                'id': {'number': {}},
+                'name': {'title': {}},
+                'grade': {'rich_text': {}},
+                'is_active': {'checkbox': {}},
+                'start_on': {'date': {}}
+            }
         }
     })
 
@@ -87,12 +90,13 @@ def test_find_sys_tables_row_raises_internal_error_on_duplicates(engine: Engine,
     client = engine._client
     client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": engine._tables_id},
+            "parent": {"type": "data_source_id", "data_source_id": syscat._tables_ds_id},
             "properties": {
                 "table_name": {"title": [{"text": {"content": "students"}}]},
                 "table_catalog": {"rich_text": [{"text": {"content": "memory"}}]},
                 "table_schema": {"rich_text": [{"text": {"content": "not_defined"}}]},
                 "table_id": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef"}}]},
+                "is_dropped": {"checkbox": False},
             },
         }
     )
@@ -171,8 +175,10 @@ def test_set_dropped_soft_deletes(engine: Engine, syscat: SystemCatalog):
         dropped=True
     )
 
+    # ADR-0015: soft-delete flips the is_dropped checkbox; the catalog page stays live
     page = syscat._client._store[entry.sys_tables_page_id]
-    assert page["in_trash"] is True
+    assert page["in_trash"] is False
+    assert page["properties"]["is_dropped"]["checkbox"] is True
 
 
 def test_set_dropped_raises_if_missing(syscat: SystemCatalog):
@@ -432,3 +438,137 @@ def test_bootstrap_is_idempotent(engine: Engine):
     catalog = SystemCatalog(engine._client, "db", engine._root_page_id, "db")
     catalog.bootstrap()
     catalog.bootstrap()  # must not raise
+
+
+# ----------------------------------------------------
+# Migration to Notion API 2025-09-03
+# ----------------------------------------------------
+def _seed_tables_container(client, root):
+    container = client.databases_create(payload={
+        "parent": {"type": "page_id", "page_id": root},
+        "title": [{"type": "text", "text": {"content": "tables"}}],
+        "initial_data_source": {"properties": {
+            "table_name": {"title": {}},
+            "table_schema": {"rich_text": {}},
+            "table_catalog": {"rich_text": {}},
+            "table_id": {"rich_text": {}},
+            "is_dropped": {"checkbox": {}},
+        }}, 
+    })      
+    return container["id"], container["data_sources"][0]["id"]
+
+def test_find_sys_tables_row_queries_the_data_source():
+    client = InMemoryNotionClient()
+    client._ensure_root()
+    root = client._ROOT_PAGE_ID_
+    tables_db_id, tables_ds_id = _seed_tables_container(client, root)
+        
+    # a catalog self-row parented to the DATA SOURCE (2025-09-03 shape)
+    page = client.pages_create(payload={
+        "parent": {"type": "data_source_id", "data_source_id": tables_ds_id},
+        "properties": {
+            "table_name": {"title": [{"text": {"content": "students"}}]},
+            "table_schema": {"rich_text": [{"text": {"content": "public"}}]},
+            "table_catalog": {"rich_text": [{"text": {"content": "memory"}}]},
+            "table_id": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef"}}]},
+            "is_dropped": {"checkbox": False},
+        },
+    })
+    
+    catalog = SystemCatalog(client, "memory", root, "memory")
+    catalog._tables_id = tables_db_id
+    catalog._tables_ds_id = tables_ds_id   # cached at bootstrap from the databases.create response
+
+    found = catalog.find_sys_tables_row("students", table_catalog="memory")
+
+    assert found is not None
+    assert found.sys_tables_page_id == page["id"]
+
+def test_bootstrap_creates_tables_catalog_as_container():
+    client = InMemoryNotionClient()
+    client._ensure_root()
+    catalog = SystemCatalog(client, "db", client._ROOT_PAGE_ID_, "db")
+
+    catalog.bootstrap()
+
+    # The tables catalog is now a container: one database holding exactly one data source.
+    tables_db = client._get_by_title("tables", "database")["results"][0]
+    data_sources = tables_db["data_sources"]
+
+    assert len(data_sources) == 1
+    assert data_sources[0]["id"] is not None
+
+def test_find_sys_tables_row_by_table_id_queries_the_data_source():
+    client = InMemoryNotionClient()
+    client._ensure_root()
+    root = client._ROOT_PAGE_ID_
+    tables_db_id, tables_ds_id = _seed_tables_container(client, root)
+
+    # a catalog row parented to the DATA SOURCE (2025-09-03 shape)
+    page = client.pages_create(payload={
+        "parent": {"type": "data_source_id", "data_source_id": tables_ds_id},
+        "properties": {
+            "table_name": {"title": [{"text": {"content": "students"}}]},
+            "table_schema": {"rich_text": [{"text": {"content": "public"}}]},
+            "table_catalog": {"rich_text": [{"text": {"content": "memory"}}]},
+            "table_id": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef"}}]},
+            "is_dropped": {"checkbox": False},
+        },
+    })
+
+    catalog = SystemCatalog(client, "memory", root, "memory")
+    catalog._tables_id = tables_db_id
+    catalog._tables_ds_id = tables_ds_id   # cached at bootstrap from the databases.create response
+
+    found = catalog.find_sys_tables_row_by_table_id("deadbeef-dead-beef-dead-beefdeadbeef")
+
+    assert found is not None
+    assert found.sys_tables_page_id == page["id"]
+
+def test_set_dropped_marks_row_without_trashing_the_page():
+    # ADR-0015: soft-delete is an explicit is_dropped checkbox on the catalog row,
+    # NOT Notion page-trash — data_sources.query always skips trashed pages, so a
+    # dropped row must stay live to remain queryable (DROPPED detection + RESTORE).
+    client = InMemoryNotionClient()
+    client._ensure_root()
+    root = client._ROOT_PAGE_ID_
+    tables_db_id, tables_ds_id = _seed_tables_container(client, root)
+
+    catalog = SystemCatalog(client, "memory", root, "memory")
+    catalog._tables_id = tables_db_id
+    catalog._tables_ds_id = tables_ds_id
+
+    entry = catalog.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id="deadbeef-dead-beef-dead-beefdeadbeef",
+    )
+
+    catalog.set_dropped(table_name="students", table_catalog="memory", dropped=True)
+
+    # the dropped row stays live and queryable, and reports its dropped intent
+    found = catalog.find_sys_tables_row("students", table_catalog="memory")
+    assert found is not None
+    assert found.sys_tables_page_id == entry.sys_tables_page_id
+    assert found.is_dropped is True
+
+def test_ensure_sys_tables_row_parents_new_row_to_the_data_source():
+    client = InMemoryNotionClient()
+    client._ensure_root()
+    root = client._ROOT_PAGE_ID_
+    tables_db_id, tables_ds_id = _seed_tables_container(client, root)
+    
+    catalog = SystemCatalog(client, "memory", root, "memory")
+    catalog._tables_id = tables_db_id
+    catalog._tables_ds_id = tables_ds_id
+
+    entry = catalog.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id="deadbeef-dead-beef-dead-beefdeadbeef",
+    )
+    
+    # created, and round-trips through the (data-source) find path
+    assert entry.sys_tables_page_id is not None
+    found = catalog.find_sys_tables_row("students", table_catalog="memory")
+    assert found.sys_tables_page_id == entry.sys_tables_page_id

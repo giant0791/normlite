@@ -33,7 +33,7 @@ from typing import Optional
 
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
 from normlite.notion_sdk.client import AbstractNotionClient, NotionError
-from normlite.notion_sdk.getters import get_property, get_rich_text_property_value, get_title_property_value
+from normlite.notion_sdk.getters import get_checkbox_property_value, get_property, get_rich_text_property_value, get_title_property_value
 
 @dataclass(frozen=True)
 class SystemTablesEntry:
@@ -75,7 +75,12 @@ class SystemTablesEntry:
         )
 
         sys_tables_page_id = page_obj['id']
-        is_dropped = page_obj['in_trash']
+        is_dropped = get_checkbox_property_value(
+            get_property(
+                page_obj,
+                "is_dropped"
+            )
+        )
 
         return cls(
             name=name,
@@ -126,7 +131,7 @@ class TableState(Enum):
     **Backend reality**
 
         * sys_tables page exists
-        * `_no_in_trash = False`
+        * `is_dropped = False`
         * Notion database exists and is not archived
 
         **Invariants**
@@ -142,7 +147,7 @@ class TableState(Enum):
     **Backend reality**
 
         * sys_tables row exists
-        * `_no_in_trash = True`
+        * `is_dropped = True`
         * Notion database archived
 
     **Invariants**
@@ -198,6 +203,7 @@ class SystemCatalog:
         self._user_database_name = user_database_name
         self._root_page_id = root_page_id
         self._tables_id = None
+        self._tables_ds_id = None
         self._default_catalog = default_catalog
 
     def bootstrap(self) -> None:
@@ -208,7 +214,7 @@ class SystemCatalog:
         )
 
         # 2. tables database
-        self._tables_id = self._get_or_create_database(
+        tables_container = self._get_or_create_database(
             parent_id=self._ischema_page_id,
             name="tables",
             properties={
@@ -216,8 +222,11 @@ class SystemCatalog:
                 "table_schema": {"rich_text": {}},
                 "table_catalog": {"rich_text": {}},
                 "table_id": {"rich_text": {}},
+                "is_dropped": {"checkbox": {}},
             },
         )
+        self._tables_id = tables_container["id"]
+        self._tables_ds_id = tables_container["data_sources"][0]["id"]
 
        # 3. ensure tables self-row exists
         self._ensure_sys_tables_self_row()
@@ -245,13 +254,16 @@ class SystemCatalog:
 
         Returns:
             Optional[SystemTablesEntry]: The sys catalog entry datastructure for the found table.
+
+        .. versionchanged:: 0.12.0
+            This version is upgraded to new client's data source oriented API 
         """
 
         catalog = table_catalog or self._default_catalog
 
-        response = self._client.databases_query(
+        response = self._client.data_sources_query(
             path_params={
-                "database_id": self._tables_id,
+                "data_source_id": self._tables_ds_id,
             },
 
             payload={
@@ -296,11 +308,15 @@ class SystemCatalog:
         Returns:
             Optional[SystemTablesEntry]: The sys catalog entry datastructure for the found table.
 
+
+        .. versionchanged:: 0.12.0
+            This version is upgraded to new client's data source oriented API 
+
         .. versionadded:: 0.11.0 
         """
-        response = self._client.databases_query(
+        response = self._client.data_sources_query(
             path_params={
-                "database_id": self._tables_id,
+                "data_source_id": self._tables_ds_id,
             },
 
             payload={
@@ -308,7 +324,6 @@ class SystemCatalog:
                     "property": "table_id",
                     "rich_text": {"equals": table_id},
                 },
-                "in_trash": True,
             }
         )
 
@@ -354,6 +369,9 @@ class SystemCatalog:
         This method checks first for existance and creates a new entry if the given
         table name was not found.
 
+        .. versionchanged:: 0.12.0
+            Seed new "is_dropped" property instead of removed "in_trash".    
+
         .. versionadded:: 0.8.0
 
         Args:
@@ -382,8 +400,8 @@ class SystemCatalog:
         page_obj = self._client.pages_create(
             payload={
                 "parent": {
-                    "type": "database_id",
-                    "database_id": self._tables_id,
+                    "type": "data_source_id",
+                    "data_source_id": self._tables_ds_id,
                 },
                 "properties": {
                     "table_name": {
@@ -398,6 +416,9 @@ class SystemCatalog:
                     "table_id": {
                         "rich_text": [{"text": {"content": table_id}}]
                     },
+                    "is_dropped" : {
+                        "checkbox": False
+                    }
                 },
             },
         )
@@ -414,7 +435,7 @@ class SystemCatalog:
         try:
             page_obj = self._client.pages_update(
                 path_params={"page_id": page_id},
-                payload={"in_trash": dropped},
+                payload={"properties": {"is_dropped": {"checkbox": dropped}}},
             )
 
         except NotionError as exc:
@@ -423,7 +444,6 @@ class SystemCatalog:
             raise
 
         return SystemTablesEntry.from_dict(page_obj)
-
 
     def set_dropped(
         self,
@@ -435,10 +455,13 @@ class SystemCatalog:
         """Soft-delete or restore the page corresponding to the entry in the system tables catalog.
 
         .. note::
-            This methods sets the "in_trash" property at page level (the Notion page object in the system
+            This methods sets the new property "is_dropped" at page level (the Notion page object in the system
             tables database). The Notion database object implementing the table itself is **not affected**
             by this method.
 
+        .. versionchanged:: 0.12.0
+            Replace "in_trash" use with dedicated schema property "is_dropped".
+       
         .. versionadded:: 0.8.0
 
         Args:
@@ -497,43 +520,6 @@ class SystemCatalog:
             if_not_exists=True,
         )
     
-    def set_dropped_by_page_id(
-        self,
-        *,
-        page_id: str,
-        dropped: bool,
-    ) -> Optional[SystemTablesEntry]:
-        """Soft-delete or restore a table entry in the system catalog by supplying the page id.
-
-        .. note::
-            This methods sets the "in_trash" property at page level (the Notion page object in the system
-            tables database). The Notion database object implementing the table itself is **not affected**
-            by this method.
-
-        .. versionadded:: 0.8.0
-
-        Args:
-            page_id (str): System tables catalog page id of the table to soft-delete or restore.
-            dropped (bool): _description_
-
-        Raises:
-            ProgrammingError: _description_
-
-        Returns:
-            Optional[SystemTablesEntry]: _description_
-        """
-        try:
-            page_obj = self._client.pages_update(
-                path_params={"page_id": page_id},
-                payload={"in_trash": dropped},
-            )
-        except NotionError as exc:
-            if exc.code == "object_not_found":
-                raise ProgrammingError(page_id)
-            raise
-
-        return SystemTablesEntry.from_dict(page_obj)
-
     # -------------------------------------------------
     # Find-or-create helpers
     # -------------------------------------------------
@@ -561,21 +547,20 @@ class SystemCatalog:
         parent_id: str,
         name: str,
         properties: dict,
-    ) -> str:
+    ) -> dict:
         db = self._client.find_child_database(parent_id, name)
-        if db:
-            return db["id"]
+        if db is None:
+            # database not found, create it
+            db = self._client._add(
+                "database",
+                {
+                    "parent": {"type": "page_id", "page_id": parent_id},
+                    "title": [{"type": "text", "text": {"content": name}}],
+                    "initial_data_source": {"properties": properties},
+                },
+            )
 
-        db = self._client._add(
-            "database",
-            {
-                "parent": {"type": "page_id", "page_id": parent_id},
-                "title": [{"type": "text", "text": {"content": name}}],
-                "properties": properties,
-            },
-        )
-
-        return db['id']
+        return db
 
     def _ensure_sys_tables_self_row(self) -> None:
         self.ensure_sys_tables_row(
@@ -585,33 +570,6 @@ class SystemCatalog:
             table_id=self._tables_id,
             if_not_exists=True          # IMPORTANT: This ensure idempotency, either create it or use it
         )
-
-    def _delete_restore_table(
-            self, 
-            page_id: str, 
-            delete: bool
-    ) -> Optional[SystemTablesEntry]:
-        """Soft-delete/restore a table in system tables."""
-        try: 
-            page_obj = self._client.pages_update(
-                path_params= {                
-                    'page_id': page_id,
-                },
-                payload={
-                    'in_trash': delete
-                }
-            )
-        except NotionError as exc:
-            # a NotionError at this point can only have one meaning:
-            # A programming error <=> page_id not found
-            if exc.code == 'object_not_found':
-                raise ProgrammingError(page_id)
-            
-            # All other DBAPI errors propagate unchanged
-            # This is a fallback and it is expected to never happen
-            raise
-
-        return SystemTablesEntry.from_dict(page_obj)
 
     def _find_database_by_name(
             self,
