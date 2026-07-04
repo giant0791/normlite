@@ -421,7 +421,6 @@ def test_data_sources_query_sorts_by_number_ascending(client):
     ages = [p["properties"]["Age"]["number"] for p in result["results"]]
     assert ages == [10, 20, 30]
 
-
 def test_data_sources_query_with_filter_properties_projection(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
@@ -465,6 +464,356 @@ def test_data_sources_query_paginates_and_projects_together(client):
     for p in result["results"]:
         assert "Name" in p["properties"]
         assert "Age" not in p["properties"]
+
+def test_data_sources_query_requires_data_source_id(client):
+    with pytest.raises(NotionError):
+        client.data_sources_query(
+            path_params={},
+            payload={},
+        )
+
+def test_data_sources_query_returns_empty_list_when_no_match(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+    
+    client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+    
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={
+            "filter": {
+                "property": "Age",
+                "number": {"equals": 99},
+            }
+        },      
+    )           
+    
+    assert result["results"] == []
+    assert result["has_more"] is False
+
+def test_data_sources_query_does_not_return_deleted_rows_when_in_trash_false(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+
+    p1 = client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+    p2 = client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+    
+    client.pages_update(
+        path_params={"page_id": p1["id"]},
+        payload={"in_trash": True},
+    )
+
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={"in_trash": False},
+    )   
+    
+    assert len(result["results"]) == 1
+    assert {p["id"] for p in result["results"]} == {p2["id"]}
+
+def test_data_sources_query_skips_deleted_rows_by_default(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+    
+    p1 = client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+    p2 = client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+    
+    client.pages_update(
+        path_params={"page_id": p1["id"]},
+        payload={"in_trash": True},
+    )
+
+    # No in_trash key at all — the default must still hide the trashed row.
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={},
+    )
+    
+    assert len(result["results"]) == 1
+    assert {p["id"] for p in result["results"]} == {p2["id"]}
+
+def test_data_sources_query_ignores_in_trash_true_and_still_skips_deleted(client):
+    db = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_)
+    )
+    ds = data_source_of(client, db)
+
+    p1 = client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+    p2 = client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+
+    client.pages_update(
+        path_params={"page_id": p1["id"]},
+        payload={"in_trash": True},
+    )
+
+    # data_sources.query has no in_trash parameter — a truthy value must be
+    # ignored, not honoured. The trashed row stays hidden.
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={"in_trash": True},
+    )
+
+    assert len(result["results"]) == 1
+    assert {p["id"] for p in result["results"]} == {p2["id"]}
+
+def test_data_sources_query_with_simple_filter_number_equals(client):
+      db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
+      ds = data_source_of(client, db)
+  
+      client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+      client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+  
+      result = client.data_sources_query(
+          path_params={"data_source_id": ds["id"]},
+          payload={
+              "filter": {
+                  "property": "Age",
+                  "number": {"equals": 30},
+              }
+          },      
+      )           
+              
+      assert len(result["results"]) == 1
+      assert result["results"][0]["properties"]["Age"]["number"] == 30
+
+def test_data_sources_query_with_simple_filter_number_equals(client):
+    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
+    ds = data_source_of(client, db)
+
+    client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+    client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={
+            "filter": {
+                "property": "Age",
+                "number": {"equals": 30},
+            }
+        },      
+    )           
+            
+    assert len(result["results"]) == 1
+    assert result["results"][0]["properties"]["Age"]["number"] == 30
+
+def test_data_sources_query_with_title_contains_filter(client):
+    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
+    ds = data_source_of(client, db)
+
+    client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+    client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+    client.pages_create(payload=make_ds_page(ds["id"], "Alicia", 40))
+
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={
+            "filter": {
+                "property": "Name",
+                "title": {"contains": "Ali"},
+            }
+        },      
+    )           
+            
+    names = [   
+        p["properties"]["Name"]["title"][0]["text"]["content"]
+        for p in result["results"]
+    ]
+    assert set(names) == {"Alice", "Alicia"}
+      
+def test_data_sources_query_with_and_filter(client):
+    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
+    ds = data_source_of(client, db)
+
+    client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+    client.pages_create(payload=make_ds_page(ds["id"], "Alice", 30))
+    client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+    
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={
+            "filter": {
+                "and": [
+                    {"property": "Name", "title": {"equals": "Alice"}},
+                    {"property": "Age", "number": {"equals": 30}},
+                ]
+            }
+        },      
+    )               
+                    
+    assert len(result["results"]) == 1
+    page = result["results"][0]
+    assert page["properties"]["Name"]["title"][0]["text"]["content"] == "Alice"
+    assert page["properties"]["Age"]["number"] == 30
+
+def test_data_sources_query_with_or_filter(client):
+    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
+    ds = data_source_of(client, db)
+
+    client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+    client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+    client.pages_create(payload=make_ds_page(ds["id"], "Charlie", 40))
+    
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={
+            "filter": {
+                "or": [
+                    {"property": "Name", "title": {"equals": "Alice"}},
+                    {"property": "Age", "number": {"equals": 40}},
+                ]
+            }
+        },      
+    )               
+                    
+    names = {
+        p["properties"]["Name"]["title"][0]["text"]["content"]
+        for p in result["results"]
+    }   
+    assert names == {"Alice", "Charlie"}
+
+def test_data_sources_query_last_page_when_rows_are_exact_multiple_of_page_size(client):
+    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
+    ds = data_source_of(client, db)
+
+    # 4 rows with page_size=2 → the set drains exactly on page 2.
+    client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
+    client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+    client.pages_create(payload=make_ds_page(ds["id"], "Carol", 40))
+    client.pages_create(payload=make_ds_page(ds["id"], "Dave", 50))
+    
+    page_one = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={"page_size": 2},
+    )
+    page_two = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={"page_size": 2, "start_cursor": page_one["next_cursor"]},
+    )
+        
+    assert len(page_two["results"]) == 2
+    assert page_two["has_more"] is False
+    assert page_two["next_cursor"] is None
+
+def test_data_sources_query_paginates_the_filtered_set_not_the_raw_store(client):
+    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
+    ds = data_source_of(client, db)
+
+    # 5 rows in the store, but only 3 match the filter.
+    m1 = client.pages_create(payload=make_ds_page(ds["id"], "Alice", 30))
+    client.pages_create(payload=make_ds_page(ds["id"], "Bob", 99))
+    m2 = client.pages_create(payload=make_ds_page(ds["id"], "Carol", 30))
+    client.pages_create(payload=make_ds_page(ds["id"], "Dave", 99))
+    m3 = client.pages_create(payload=make_ds_page(ds["id"], "Eve", 30))
+    
+    age_is_30 = {"property": "Age", "number": {"equals": 30}}
+
+    page_one = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={"filter": age_is_30, "page_size": 2},
+    )
+    page_two = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={"filter": age_is_30, "page_size": 2, "start_cursor": page_one["next_cursor"]},
+    )
+        
+    # Page sizes follow the filtered set (3 matches → 2 then 1), not the raw store (5).
+    assert len(page_one["results"]) == 2
+    assert page_one["has_more"] is True
+    assert len(page_two["results"]) == 1
+    assert page_two["has_more"] is False
+    assert page_two["next_cursor"] is None
+    
+    # Only the matching rows appear, in order; the non-matching rows are never paged in.
+    seen_ids = [p["id"] for p in page_one["results"]] + \
+                [p["id"] for p in page_two["results"]]
+    assert seen_ids == [m1["id"], m2["id"], m3["id"]]
+
+
+def test_data_sources_query_sorts_by_title_descending(client):
+    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
+    ds = data_source_of(client, db)
+
+    # Insert out of descending order so a pass can only be the sort's doing.
+    client.pages_create(payload=make_ds_page(ds["id"], "Bob", 10))
+    client.pages_create(payload=make_ds_page(ds["id"], "Alice", 10))
+    client.pages_create(payload=make_ds_page(ds["id"], "Charlie", 10))
+
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={
+            "sorts": [
+                {"property": "Name", "direction": "descending"}
+            ]
+        },
+    )
+
+    names = [
+        p["properties"]["Name"]["title"][0]["text"]["content"]
+        for p in result["results"]
+    ]
+    assert names == ["Charlie", "Bob", "Alice"]
+
+
+def test_data_sources_query_multiple_sorts_are_applied_in_order(client):
+    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
+    ds = data_source_of(client, db)
+
+    # Two share Age=30; the secondary Name sort must break that tie.
+    client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
+    client.pages_create(payload=make_ds_page(ds["id"], "Alice", 30))
+    client.pages_create(payload=make_ds_page(ds["id"], "Charlie", 20))
+
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={
+            "sorts": [
+                {"property": "Age", "direction": "ascending"},
+                {"property": "Name", "direction": "ascending"},
+            ]
+        },
+    )
+
+    names = [
+        p["properties"]["Name"]["title"][0]["text"]["content"]
+        for p in result["results"]
+    ]
+    # Age asc puts Charlie (20) first; among the Age=30 pair, Name asc breaks the tie.
+    assert names == ["Charlie", "Alice", "Bob"]
+
+
+def test_data_sources_query_sorts_the_filtered_set(client):
+    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
+    ds = data_source_of(client, db)
+
+    client.pages_create(payload=make_ds_page(ds["id"], "Alice", 30))
+    client.pages_create(payload=make_ds_page(ds["id"], "Bob", 20))
+    client.pages_create(payload=make_ds_page(ds["id"], "Charlie", 30))
+
+    result = client.data_sources_query(
+        path_params={"data_source_id": ds["id"]},
+        payload={
+            "filter": {
+                "property": "Age",
+                "number": {"equals": 30},
+            },
+            "sorts": [
+                {"property": "Name", "direction": "ascending"}
+            ],
+        },
+    )
+
+    names = [
+        p["properties"]["Name"]["title"][0]["text"]["content"]
+        for p in result["results"]
+    ]
+    # Bob (Age=20) is filtered out; the survivors come back Name-ascending.
+    assert names == ["Alice", "Charlie"]
 
 # ---------------------------------------------------------
 # Page under database rules (schema enforcement)
@@ -633,489 +982,6 @@ def test_pages_update_in_trash_flag(client):
 
     stored = client._get_by_id(page["id"])
     assert stored["in_trash"] is True
-
-# ---------------------------------------------------------
-# Database query API (databases_query)
-# ---------------------------------------------------------
-
-def test_databases_query_returns_pages_for_database(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    p1 = client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
-    p2 = client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={},   # no filter
-    )
-
-    assert result["object"] == "list"
-    assert result["has_more"] is False
-    assert len(result["results"]) == 2
-
-    ids = {p["id"] for p in result["results"]}
-    assert ids == {p1["id"], p2["id"]}
-
-def test_databases_query_does_not_return_deleted_pages_if_in_trash_false(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    p1 = client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
-    p2 = client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={},   # no filter
-    )
-
-    assert len(result["results"]) == 2
-
-    u1 = client.pages_update(
-        path_params={"page_id": p1["id"]},
-        payload={"in_trash": True},
-    )
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={"in_trash": False},   # retrieve all non-deleted pages
-    )
-
-    assert len(result["results"]) == 1
-    ids = {p["id"] for p in result["results"]}
-    assert ids == {p2["id"]}
-
-def test_databases_query_paginates_with_page_size_and_cursor(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    p1 = client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
-    p2 = client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
-    p3 = client.pages_create(payload=make_db_page(db["id"], "Carol", 40))
-
-    # First page: ask for 2 of the 3 matching rows.
-    page_one = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={"page_size": 2},
-    )
-
-    assert len(page_one["results"]) == 2
-    assert page_one["has_more"] is True
-    assert page_one["next_cursor"] is not None
-
-    # Second page: hand the cursor back to fetch the remainder.
-    page_two = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={"page_size": 2, "start_cursor": page_one["next_cursor"]},
-    )
-
-    assert len(page_two["results"]) == 1
-    assert page_two["has_more"] is False
-    assert page_two["next_cursor"] is None
-
-    # The two pages together are all 3 rows, in order, with no overlap.
-    seen_ids = [p["id"] for p in page_one["results"]] + \
-               [p["id"] for p in page_two["results"]]
-    assert seen_ids == [p1["id"], p2["id"], p3["id"]]
-
-
-def test_databases_query_last_page_when_rows_are_exact_multiple_of_page_size(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    # 4 rows with page_size=2 → the set drains exactly on page 2.
-    client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
-    client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
-    client.pages_create(payload=make_db_page(db["id"], "Carol", 40))
-    client.pages_create(payload=make_db_page(db["id"], "Dave", 50))
-
-    page_one = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={"page_size": 2},
-    )
-    page_two = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={"page_size": 2, "start_cursor": page_one["next_cursor"]},
-    )
-
-    # The second page exactly drains the set: no phantom page beyond it.
-    assert len(page_two["results"]) == 2
-    assert page_two["has_more"] is False
-    assert page_two["next_cursor"] is None
-
-
-def test_databases_query_paginates_the_filtered_set_not_the_raw_store(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    # 5 rows in the store, but only 3 match the filter.
-    m1 = client.pages_create(payload=make_db_page(db["id"], "Alice", 30))
-    client.pages_create(payload=make_db_page(db["id"], "Bob", 99))
-    m2 = client.pages_create(payload=make_db_page(db["id"], "Carol", 30))
-    client.pages_create(payload=make_db_page(db["id"], "Dave", 99))
-    m3 = client.pages_create(payload=make_db_page(db["id"], "Eve", 30))
-
-    age_is_30 = {"property": "Age", "number": {"equals": 30}}
-
-    page_one = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={"filter": age_is_30, "page_size": 2},
-    )
-    page_two = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={"filter": age_is_30, "page_size": 2, "start_cursor": page_one["next_cursor"]},
-    )
-
-    # Page sizes follow the filtered set (3 matches → 2 then 1), not the raw store (5).
-    assert len(page_one["results"]) == 2
-    assert page_one["has_more"] is True
-    assert len(page_two["results"]) == 1
-    assert page_two["has_more"] is False
-    assert page_two["next_cursor"] is None
-
-    # Only the matching rows appear, in order; the non-matching rows are never paged in.
-    seen_ids = [p["id"] for p in page_one["results"]] + \
-               [p["id"] for p in page_two["results"]]
-    assert seen_ids == [m1["id"], m2["id"], m3["id"]]
-
-
-def test_databases_query_returns_deleted_pages_if_in_trash_true(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    p1 = client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
-    p2 = client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={},   # no filter
-    )
-
-    assert len(result["results"]) == 2
-
-    u1 = client.pages_update(
-        path_params={"page_id": p1["id"]},
-        payload={"in_trash": True},
-    )
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={"in_trash": True},   # retrieve all pages
-    )
-
-    assert len(result["results"]) == 2
-    ids = {p["id"] for p in result["results"]}
-    assert ids == {p1["id"], p2["id"]}
-
-def test_databases_query_does_not_return_pages_from_other_databases(client):
-    db1 = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-    db2 = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    client.pages_create(payload=make_db_page(db1["id"], "Alice", 20))
-    client.pages_create(payload=make_db_page(db2["id"], "Bob", 30))
-
-    result = client.databases_query(
-        path_params={"database_id": db1["id"]},
-        payload={},
-    )
-
-    assert len(result["results"]) == 1
-    assert result["results"][0]["parent"]["database_id"] == db1["id"]
-
-
-def test_databases_query_with_simple_filter_number_equals(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
-    client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={
-            "filter": {
-                "property": "Age",
-                "number": {
-                    "equals": 30
-                },
-            }
-        },
-    )
-
-    assert len(result["results"]) == 1
-    assert (
-        result["results"][0]["properties"]["Age"]["number"]
-        == 30
-    )
-
-
-def test_databases_query_with_title_contains_filter(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
-    client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
-    client.pages_create(payload=make_db_page(db["id"], "Alicia", 40))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={
-            "filter": {
-                "property": "Name",
-                "title": {
-                    "contains": "Ali"
-                },
-            }
-        },
-    )
-
-    names = [
-        p["properties"]["Name"]["title"][0]["text"]["content"]
-        for p in result["results"]
-    ]
-
-    assert set(names) == {"Alice", "Alicia"}
-
-
-def test_databases_query_with_and_filter(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
-    client.pages_create(payload=make_db_page(db["id"], "Alice", 30))
-    client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={
-            "filter": {
-                "and": [
-                    {
-                        "property": "Name",
-                        "title": {"equals": "Alice"},
-                    },
-                    {
-                        "property": "Age",
-                        "number": {"equals": 30},
-                    },
-                ]
-            }
-        },
-    )
-
-    assert len(result["results"]) == 1
-    page = result["results"][0]
-    assert page["properties"]["Name"]["title"][0]["text"]["content"] == "Alice"
-    assert page["properties"]["Age"]["number"] == 30
-
-
-def test_databases_query_with_or_filter(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
-    client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
-    client.pages_create(payload=make_db_page(db["id"], "Charlie", 40))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={
-            "filter": {
-                "or": [
-                    {
-                        "property": "Name",
-                        "title": {"equals": "Alice"},
-                    },
-                    {
-                        "property": "Age",
-                        "number": {"equals": 40},
-                    },
-                ]
-            }
-        },
-    )
-
-    names = {
-        p["properties"]["Name"]["title"][0]["text"]["content"]
-        for p in result["results"]
-    }
-
-    assert names == {"Alice", "Charlie"}
-
-
-def test_databases_query_with_filter_properties_projection(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        query_params={"filter_properties": ["Name"]},
-        payload={},
-    )
-
-    props = result["results"][0]["properties"]
-
-    assert "Name" in props
-    assert "Age" not in props
-
-
-def test_databases_query_returns_empty_list_when_no_match(client):
-    db = client.databases_create(
-        payload=make_database(client._ROOT_PAGE_ID_)
-    )
-
-    client.pages_create(payload=make_db_page(db["id"], "Alice", 20))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={
-            "filter": {
-                "property": "Age",
-                "number": {"equals": 99},
-            }
-        },
-    )
-
-    assert result["results"] == []
-    assert result["has_more"] is False
-
-
-def test_databases_query_requires_database_id(client):
-    with pytest.raises(NotionError):
-        client.databases_query(
-            path_params={},
-            payload={},
-        )
-
-# ----------------------------------------------------------
-# Sort by number (ascending / descending)
-# ----------------------------------------------------------
-
-def test_database_query_sort_by_number_ascending(client):
-    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
-
-    client.pages_create(payload=make_db_page(db["id"], "A", 30))
-    client.pages_create(payload=make_db_page(db["id"], "B", 10))
-    client.pages_create(payload=make_db_page(db["id"], "C", 20))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={
-            "sorts": [
-                {"property": "Age", "direction": "ascending"}
-            ]
-        },
-    )
-
-    ages = [
-        p["properties"]["Age"]["number"]
-        for p in result["results"]
-    ]
-
-    assert ages == [10, 20, 30]
-
-# ----------------------------------------------------------
-# Sort by title (descending)
-# ----------------------------------------------------------
-
-def test_database_query_sort_by_title_descending(client):
-    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
-
-    client.pages_create(payload=make_db_page(db["id"], "Alice", 10))
-    client.pages_create(payload=make_db_page(db["id"], "Bob", 10))
-    client.pages_create(payload=make_db_page(db["id"], "Charlie", 10))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={
-            "sorts": [
-                {"property": "Name", "direction": "descending"}
-            ]
-        },
-    )
-
-    names = [
-        p["properties"]["Name"]["title"][0]["text"]["content"]
-        for p in result["results"]
-    ]
-
-    assert names == ["Charlie", "Bob", "Alice"]
-
-# ----------------------------------------------------------
-# Multiple sorts (stable ordering)
-# ----------------------------------------------------------
-
-def test_database_query_multiple_sorts(client):
-    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
-
-    client.pages_create(payload=make_db_page(db["id"], "Alice", 30))
-    client.pages_create(payload=make_db_page(db["id"], "Bob", 30))
-    client.pages_create(payload=make_db_page(db["id"], "Charlie", 20))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={
-            "sorts": [
-                {"property": "Age", "direction": "ascending"},
-                {"property": "Name", "direction": "ascending"},
-            ]
-        },
-    )
-
-    names = [
-        p["properties"]["Name"]["title"][0]["text"]["content"]
-        for p in result["results"]
-    ]
-
-    assert names == ["Charlie", "Alice", "Bob"]
-
-# ----------------------------------------------------------
-# Sorting after filtering
-# ----------------------------------------------------------
-
-def test_database_query_filter_and_sort(client):
-    db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
-
-    client.pages_create(payload=make_db_page(db["id"], "Alice", 30))
-    client.pages_create(payload=make_db_page(db["id"], "Bob", 20))
-    client.pages_create(payload=make_db_page(db["id"], "Charlie", 30))
-
-    result = client.databases_query(
-        path_params={"database_id": db["id"]},
-        payload={
-            "filter": {
-                "property": "Age",
-                "number": {"equals": 30}
-            },
-            "sorts": [
-                {"property": "Name", "direction": "ascending"}
-            ]
-        },
-    )
-
-    names = [
-        p["properties"]["Name"]["title"][0]["text"]["content"]
-        for p in result["results"]
-    ]
-
-    assert names == ["Alice", "Charlie"]
 
 # ----------------------------------------------------------
 # Normalization tests

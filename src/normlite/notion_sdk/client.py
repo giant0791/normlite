@@ -214,14 +214,6 @@ class _ClientQueryEngine:
         if data_source_id is None:
             raise NotionError('Invalid request URL: data_source_id should be defined.')
 
-        # if the in_trash filter is not set ("in_trash" not in payload), skip deleted by default
-        skip_deleted_pages = (
-            not self._payload.get("in_trash", True)      
-            if self._payload 
-            else
-            None
-        ) 
-
         # payload is guarded in the __init__ to be non-None
         has_filter = self._payload.get('filter', False)
 
@@ -239,7 +231,8 @@ class _ClientQueryEngine:
             if parent.get("data_source_id") != data_source_id:
                 continue
 
-            if (skip_deleted_pages and obj.get("in_trash")):
+            if obj.get("in_trash"):
+                # always skip delete (in trash) pages
                 continue
 
             if not has_filter:
@@ -259,7 +252,8 @@ class _ClientQueryEngine:
         
         # project only if "filter_properties" has been provided
         # IMPORTANT: projection must be a pure per-row column transform 
-        # on the paginated results
+        # on the paginated results, that's why it mutates the "result" value in-place.
+        # This ensures the store stays untouched.
         self._query_result_object["results"] = [
             self._filter_properties(p, self._filter_props)
             for p in self._query_result_object["results"]
