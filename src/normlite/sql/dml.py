@@ -618,7 +618,7 @@ class Select(HasTable, ExecutableClauseElement):
             self._table = table
 
             # project all columns
-            self._projection = self._table.c
+            self._projection = tuple(c for c in self._table.c if c.name != "data_source_id")
             return
         
         if len(entities) == 2:

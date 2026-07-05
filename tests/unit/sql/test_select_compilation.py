@@ -335,6 +335,20 @@ def test_columns_all_projection(students: Table):
     assert usr_expected == compiled.result_columns()
     assert all_expected == compiled.fetch_columns()
 
+def test_data_source_id_excluded_from_all_columns_fetch(students: Table):
+    stmt: Select = select(students)
+
+    nc = NotionCompiler()
+    compiled = stmt.compile(nc)
+    fetched = compiled.fetch_columns()
+
+    # object_id is a real top-level page key -> fetched from the query response
+    assert 'object_id' in fetched
+    # data_source_id is a capture-only routing system column (the page's
+    # parent), not a page key: an all-columns SELECT must never fetch it,
+    # even though it lives on the table as a system column.
+    assert 'data_source_id' not in fetched
+
 #---------------------------------------------
 # ORDER BY tests
 #---------------------------------------------
