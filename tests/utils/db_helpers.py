@@ -106,11 +106,16 @@ def create_students_db(engine: Engine) -> str:
         engine._tables_id
     )
 
-def attach_table_oid(table: Table, db_id: str) -> None:
+def attach_table_oid(table: Table, db_id: str, ds_id: Optional[str] = None) -> None:
     """
-    Attach a database id to a Table to simulate reflection.
+    Attach a database id (and its data source id) to a Table to simulate reflection.
+
+    As of Notion 2025-09-03 a Table carries a two-ID identity: the database id
+    (``object_id``) and its data source id (``data_source_id``). When ``ds_id`` is
+    omitted a deterministic, distinct value is derived from ``db_id``.
     """
     table._sys_columns["object_id"]._value = db_id
+    table._sys_columns["data_source_id"]._value = ds_id or f"{db_id}-ds"
 
 
 def populate_students(

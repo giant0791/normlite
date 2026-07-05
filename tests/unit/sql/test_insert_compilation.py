@@ -27,18 +27,8 @@ def test_values_is_generative(students: Table):
 # Compilation tests
 #---------------------------------------------
 
-def test_compiler_dbapi_param_correctness(students: Table, insert_values: dict):
-    mocked_db_id = str(uuid.uuid4())
-    students._sys_columns["object_id"]._value = mocked_db_id
-    stmt = insert(students).values(**insert_values)
-
-    nc = NotionCompiler()
-    compiled = stmt.compile(nc)
-    as_dict = compiled.as_dict()
-
-    assert not compiled.is_ddl
-    assert as_dict['payload']['parent']['database_id'].lstrip(':') in compiled._execution_binds
-    assert 'database_id' in compiled._execution_binds
+# superseded by test_compiler_parents_insert_to_data_source_id
+# (2025-09-03: page parent is data_source_id, not database_id)
 
 def test_compiler_correctness(students: Table, insert_values: dict):
     """Does the refactored compiler generates code correctly according to new client?"""
@@ -65,31 +55,15 @@ def test_compiler_correctness(students: Table, insert_values: dict):
         ]
     )
 
-def test_compiler_generates_parent_id_as_bindparams(students: Table):
-    """Does the compiler generates bind parameters for the payload?"""
-    mocked_db_id = str(uuid.uuid4())
-    students._sys_columns["object_id"]._value = mocked_db_id
-    stmt = insert(students).values(
-        name = 'Galileo Galilei',
-        id=123456,
-        is_active=False,
-        start_on=date(1690,1,1),
-        grade='A'
-    )
-
-    compiled = stmt.compile(NotionCompiler())
-
-    assert 'database_id' in compiled._execution_binds
-    assert isinstance(compiled._execution_binds['database_id'], BindParameter)
-    assert compiled._execution_binds['database_id'].value == mocked_db_id
-    assert compiled._execution_binds['database_id'].role == _BindRole.DBAPI_PARAM
-    assert compiled.as_dict()['payload']['parent']['database_id'] == ':database_id'
+# superseded by test_compiler_parents_insert_to_data_source_id
+# (2025-09-03: page parent is data_source_id, not database_id)
 
 def test_compiler_generates_values_as_bindparams(students: Table, insert_values: dict):
     """Does the compiler generates bind parameters for the Insert.values()?"""
     nc = NotionCompiler()
     mocked_db_id = str(uuid.uuid4())
     students._sys_columns["object_id"]._value = mocked_db_id
+    students._sys_columns["data_source_id"]._value = str(uuid.uuid4())
     stmt = insert(students).values(**insert_values)
 
     compiled = stmt.compile(nc)
@@ -170,3 +144,26 @@ def test_bindparam_column_name_not_found_error(students: Table):
         nc._compiler_state.stmt = insert(students)
         nc._add_bindparam(bp, column_name='another_fake')
 
+
+def test_compiler_parents_insert_to_data_source_id(students: Table):
+    mocked_db_id = str(uuid.uuid4())
+    mocked_ds_id = str(uuid.uuid4())
+    students._sys_columns["object_id"]._value = mocked_db_id
+    students._sys_columns["data_source_id"]._value = mocked_ds_id
+    stmt = insert(students).values(
+        name='Galileo Galilei',
+        id=123456,
+        is_active=False,
+        start_on=date(1690, 1, 1),
+        grade='A',
+    )
+
+    compiled = stmt.compile(NotionCompiler())
+    parent = compiled.as_dict()['payload']['parent']
+
+    # A page's parent is its data source, not the database container.
+    assert parent['type'] == 'data_source_id'
+    assert parent['data_source_id'] == ':data_source_id'
+    assert 'data_source_id' in compiled._execution_binds
+    assert compiled._execution_binds['data_source_id'].value == mocked_ds_id
+    assert compiled._execution_binds['data_source_id'].role == _BindRole.DBAPI_PARAM

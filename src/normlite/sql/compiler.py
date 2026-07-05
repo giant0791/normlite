@@ -472,6 +472,9 @@ class NotionCompiler(SQLCompiler):
         Args:
             insert (Insert): The DML statement to be compiled.
 
+        .. versionchanged:: 0.12.0
+            This version adds support for emitting code compatible with Notion 2025-09-03
+
         .. versionchanged:: 0.9.0
             This version adds full support for INSERT ... RETURNING.
             It initializes the :attr:`normlite.sql.base.CompilerState.result_columns
@@ -517,14 +520,14 @@ class NotionCompiler(SQLCompiler):
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
-                    key='database_id', 
-                    value=insert._table.get_oid(), 
+                    key='data_source_id', 
+                    value=insert._table.get_data_source_id(), 
                 )
             )
 
             payload['parent'] = {
-                'type': 'database_id',
-                'database_id': f':{db_id_key}'
+                'type': 'data_source_id',
+                'data_source_id': f':{db_id_key}'
             }
 
         with self._compiling(new_state=_CompileState.COMPILING_VALUES):
