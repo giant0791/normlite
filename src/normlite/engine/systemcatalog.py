@@ -43,6 +43,7 @@ class SystemTablesEntry:
     table_id: str
     sys_tables_page_id: str
     is_dropped: bool
+    table_dsid: Optional[str]
 
     @classmethod
     def from_dict(cls, page_obj: dict) -> SystemTablesEntry:       
@@ -82,14 +83,18 @@ class SystemTablesEntry:
             )
         )
 
+        dsid_prop = get_property(page_obj, "table_dsid")
+        table_dsid = get_rich_text_property_value(dsid_prop) if dsid_prop else None
+
         return cls(
             name=name,
             catalog=catalog,
             schema=schema,
             table_id=table_id,
             sys_tables_page_id=sys_tables_page_id,
-            is_dropped=is_dropped
-        ) 
+            is_dropped=is_dropped,
+            table_dsid=table_dsid
+        )   
 
 
 class TableState(Enum):

@@ -4,6 +4,7 @@ import pytest
 from normlite.engine.base import Engine, create_engine
 from normlite.engine.systemcatalog import TableState
 from normlite.engine.systemcatalog import SystemCatalog
+from normlite.engine.systemcatalog import SystemTablesEntry
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.notiondbapi.dbapi2 import ProgrammingError, InternalError
 
@@ -55,6 +56,31 @@ def engine() -> Engine:
 @pytest.fixture
 def syscat(engine: Engine) -> SystemCatalog:
     return engine._catalog
+
+# ============================================================
+# SystemTablesEntry.from_dict
+# ============================================================
+
+def test_from_dict_reads_data_source_id():
+    # A tables-catalog row persists the table's data_source_id alongside its
+    # table_id (ADR-0014: both IDs are persisted). from_dict must surface it
+    # so reflection can route data_sources.retrieve on the stored ds id.
+    page_obj = {
+        "id": "page-abc",
+        "properties": {
+            "table_name": {"type": "title", "title": [{"text": {"content": "students"}}]},
+            "table_catalog": {"type": "rich_text", "rich_text": [{"text": {"content": "memory"}}]},
+            "table_schema": {"type": "rich_text", "rich_text": [{"text": {"content": "not_used"}}]},
+            "table_id": {"type": "rich_text", "rich_text": [{"text": {"content": "db-123"}}]},
+            "table_dsid": {"type": "rich_text", "rich_text": [{"text": {"content": "ds-456"}}]},
+            "is_dropped": {"type": "checkbox", "checkbox": False},
+        },
+    }
+
+    entry = SystemTablesEntry.from_dict(page_obj)
+
+    assert entry.table_dsid == "ds-456"
+
 
 # ============================================================
 # find_entry
