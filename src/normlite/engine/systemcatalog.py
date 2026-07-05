@@ -208,7 +208,7 @@ class SystemCatalog:
         self._user_database_name = user_database_name
         self._root_page_id = root_page_id
         self._tables_id = None
-        self._tables_ds_id = None
+        self._tables_dsid = None
         self._default_catalog = default_catalog
 
     def bootstrap(self) -> None:
@@ -227,11 +227,12 @@ class SystemCatalog:
                 "table_schema": {"rich_text": {}},
                 "table_catalog": {"rich_text": {}},
                 "table_id": {"rich_text": {}},
+                "table_dsid": {"rich_text": {}},
                 "is_dropped": {"checkbox": {}},
             },
         )
         self._tables_id = tables_container["id"]
-        self._tables_ds_id = tables_container["data_sources"][0]["id"]
+        self._tables_dsid = tables_container["data_sources"][0]["id"]
 
        # 3. ensure tables self-row exists
         self._ensure_sys_tables_self_row()
@@ -268,7 +269,7 @@ class SystemCatalog:
 
         response = self._client.data_sources_query(
             path_params={
-                "data_source_id": self._tables_ds_id,
+                "data_source_id": self._tables_dsid,
             },
 
             payload={
@@ -321,7 +322,7 @@ class SystemCatalog:
         """
         response = self._client.data_sources_query(
             path_params={
-                "data_source_id": self._tables_ds_id,
+                "data_source_id": self._tables_dsid,
             },
 
             payload={
@@ -350,6 +351,7 @@ class SystemCatalog:
             *,
             table_catalog: str,
             table_id: str,
+            table_dsid: Optional[str] = None,
             if_not_exists: bool = False
     ) -> SystemTablesEntry:
         return self.get_or_create_sys_tables_row(
@@ -357,6 +359,7 @@ class SystemCatalog:
             table_schema,
             table_catalog=table_catalog,
             table_id=table_id,
+            table_dsid=table_dsid,
             if_not_exists=if_not_exists
         )
 
@@ -365,8 +368,9 @@ class SystemCatalog:
         table_name: str, 
         table_schema: Optional[str] = 'not_used',
         *,
-        table_catalog: str, 
+        table_catalog: str,
         table_id: str,
+        table_dsid: Optional[str] = None,
         if_not_exists: bool = False
     ) -> Optional[SystemTablesEntry]:
         """Return the system tables catalog entry for the specified table name.
@@ -376,6 +380,7 @@ class SystemCatalog:
 
         .. versionchanged:: 0.12.0
             Seed new "is_dropped" property instead of removed "in_trash".    
+            Seed new "table_dsid" property for store the data_source_id.
 
         .. versionadded:: 0.8.0
 
@@ -410,7 +415,7 @@ class SystemCatalog:
             payload={
                 "parent": {
                     "type": "data_source_id",
-                    "data_source_id": self._tables_ds_id,
+                    "data_source_id": self._tables_dsid,
                 },
                 "properties": {
                     "table_name": {
@@ -424,6 +429,9 @@ class SystemCatalog:
                     },
                     "table_id": {
                         "rich_text": [{"text": {"content": table_id}}]
+                    },
+                    "table_dsid": {
+                        "rich_text": [{"text": {"content": table_dsid or ""}}]  # table_dsid can be None
                     },
                     "is_dropped" : {
                         "checkbox": False
@@ -577,6 +585,7 @@ class SystemCatalog:
             table_schema='information_schema',
             table_catalog=self._user_database_name,
             table_id=self._tables_id,
+            table_dsid=self._tables_dsid,
             if_not_exists=True          # IMPORTANT: This ensure idempotency, either create it or use it
         )
 

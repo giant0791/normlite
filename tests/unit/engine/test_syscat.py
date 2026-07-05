@@ -8,7 +8,7 @@ from normlite.engine.systemcatalog import SystemTablesEntry
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.notiondbapi.dbapi2 import ProgrammingError, InternalError
 
-def create_students_db(engine: Engine, name: str = 'students') -> str:
+def create_students_db(engine: Engine, name: str = 'students') -> dict:
     # create a new table students in memory
     db = engine._client._add('database', {
         'parent': {
@@ -37,7 +37,7 @@ def create_students_db(engine: Engine, name: str = 'students') -> str:
         }
     })
 
-    return db.get('id')
+    return db
 
 # ============================================================
 # Fixtures
@@ -92,7 +92,7 @@ def test_find_sys_tables_row_returns_none_when_missing(syscat: SystemCatalog):
 
 
 def test_find_sys_tables_row_returns_entry(engine: Engine, syscat: SystemCatalog):
-    database_id = create_students_db(engine)
+    database_id = create_students_db(engine)["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -105,7 +105,7 @@ def test_find_sys_tables_row_returns_entry(engine: Engine, syscat: SystemCatalog
 
 
 def test_find_sys_tables_row_raises_internal_error_on_duplicates(engine: Engine, syscat: SystemCatalog):
-    database_id = create_students_db(engine)
+    database_id = create_students_db(engine)["id"]
     syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -116,12 +116,13 @@ def test_find_sys_tables_row_raises_internal_error_on_duplicates(engine: Engine,
     client = engine._client
     client.pages_create(
         payload={
-            "parent": {"type": "data_source_id", "data_source_id": syscat._tables_ds_id},
+            "parent": {"type": "data_source_id", "data_source_id": syscat._tables_dsid},
             "properties": {
                 "table_name": {"title": [{"text": {"content": "students"}}]},
                 "table_catalog": {"rich_text": [{"text": {"content": "memory"}}]},
                 "table_schema": {"rich_text": [{"text": {"content": "not_defined"}}]},
-                "table_id": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef"}}]},
+                "table_id": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdead0019"}}]},
+                "table_dsid": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdead0019-ds"}}]},
                 "is_dropped": {"checkbox": False},
             },
         }
@@ -138,7 +139,7 @@ def test_find_sys_tables_row_raises_internal_error_on_duplicates(engine: Engine,
 # ============================================================
 
 def test_ensure_sys_tables_row_creates_new(engine: Engine, syscat: SystemCatalog):
-    database_id = create_students_db(engine)
+    database_id = create_students_db(engine)["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -148,7 +149,7 @@ def test_ensure_sys_tables_row_creates_new(engine: Engine, syscat: SystemCatalog
     assert entry.sys_tables_page_id is not None
 
 def test_ensure_entry_raises_if_not_exists_false(engine: Engine, syscat: SystemCatalog):
-    database_id = create_students_db(engine)
+    database_id = create_students_db(engine)["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -167,7 +168,7 @@ def test_ensure_entry_raises_if_not_exists_false(engine: Engine, syscat: SystemC
 
 
 def test_ensure_entry_if_not_exists_true_returns_existing(engine: Engine, syscat: SystemCatalog):
-    database_id = create_students_db(engine)
+    database_id = create_students_db(engine)["id"]
     entry1 = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -183,12 +184,30 @@ def test_ensure_entry_if_not_exists_true_returns_existing(engine: Engine, syscat
 
     assert entry1.sys_tables_page_id == entry2.sys_tables_page_id
 
+def test_ensure_sys_tables_row_persists_table_dsid(engine: Engine, syscat: SystemCatalog):
+    db = create_students_db(engine)
+    table_dsid = db["data_sources"][0]["id"]
+    syscat.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id=db["id"],
+        table_dsid=table_dsid,
+    )
+
+    # persisted, not just echoed: reading the row back from the store surfaces
+    # the stored data source id. NB: the get_or_create create-return is NOT
+    # asserted here — it comes back all-None except the page id (a separate,
+    # pre-existing shape bug in how the pages_create response is parsed), so
+    # persistence must be verified through a re-read via find.
+    found = syscat.find_sys_tables_row("students", table_catalog="memory")
+    assert found.table_dsid == table_dsid
+
 # ============================================================
 # mark_dropped
 # ============================================================
 
 def test_set_dropped_soft_deletes(engine: Engine, syscat: SystemCatalog):
-    database_id = create_students_db(engine)
+    database_id = create_students_db(engine)["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -219,7 +238,7 @@ def test_set_dropped_raises_if_missing(syscat: SystemCatalog):
 
 
 def test_set_dropped_raises_programming_error_on_stale_page_id(engine: Engine, syscat: SystemCatalog):
-    database_id = create_students_db(engine)
+    database_id = create_students_db(engine)["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -245,7 +264,7 @@ def test_set_dropped_raises_programming_error_on_stale_page_id(engine: Engine, s
 # ============================================================
 
 def test_repair_missing_returns_existing(engine: Engine, syscat: SystemCatalog):
-    database_id = create_students_db(engine)
+    database_id = create_students_db(engine)["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -301,7 +320,7 @@ def test_state_orphaned_when_db_exists_but_no_sys(
     syscat: SystemCatalog
 ):
     # create physical but no metadata
-    db_id = create_students_db(engine)
+    db_id = create_students_db(engine)["id"]
 
     state = syscat.get_table_state(
         "students",
@@ -313,7 +332,7 @@ def test_state_orphaned_when_sys_exists_but_db_missing(
     engine: Engine,
     syscat: SystemCatalog
 ):        
-    db_id = create_students_db(engine)
+    db_id = create_students_db(engine)["id"]
 
     # simulate manual deletion of database
     engine._client.databases_update(
@@ -334,7 +353,7 @@ def test_state_active_when_both_not_trashed(
     engine: Engine,
     syscat: SystemCatalog
 ):
-    database_id = create_students_db(engine)
+    database_id = create_students_db(engine)["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -353,7 +372,7 @@ def test_state_active_when_both_not_trashed(
     engine: Engine,
     syscat: SystemCatalog
 ):
-    database_id = create_students_db(engine)
+    database_id = create_students_db(engine)["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -371,7 +390,7 @@ def test_state_dropped_when_both_trashed(
     engine: Engine,
     syscat: SystemCatalog
 ):
-    db_id = create_students_db(engine)
+    db_id = create_students_db(engine)["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -400,7 +419,7 @@ def test_state_orphaned_when_db_trashed_but_sys_active(
     engine: Engine,
     syscat: SystemCatalog
 ):
-    db_id = create_students_db(engine)
+    db_id = create_students_db(engine)["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -424,7 +443,7 @@ def test_state_orphaned_when_sys_trashed_but_db_active(
     engine: Engine,
     syscat: SystemCatalog
 ):
-    db_id = create_students_db(engine)
+    db_id = create_students_db(engine)["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students",
         table_catalog="memory",
@@ -446,7 +465,7 @@ def test_search_does_not_match_exactly_titles(
     engine: Engine,
     syscat: SystemCatalog
 ):
-    db_id = create_students_db(engine, 'students_v1')
+    db_id = create_students_db(engine, 'students_v1')["id"]
     entry = syscat.ensure_sys_tables_row(
         table_name="students_v1",
         table_catalog="memory",
@@ -478,6 +497,7 @@ def _seed_tables_container(client, root):
             "table_schema": {"rich_text": {}},
             "table_catalog": {"rich_text": {}},
             "table_id": {"rich_text": {}},
+            "table_dsid": {"rich_text": {}},
             "is_dropped": {"checkbox": {}},
         }}, 
     })      
@@ -497,13 +517,14 @@ def test_find_sys_tables_row_queries_the_data_source():
             "table_schema": {"rich_text": [{"text": {"content": "public"}}]},
             "table_catalog": {"rich_text": [{"text": {"content": "memory"}}]},
             "table_id": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef"}}]},
+            "table_dsid": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef-ds"}}]},
             "is_dropped": {"checkbox": False},
         },
     })
     
     catalog = SystemCatalog(client, "memory", root, "memory")
     catalog._tables_id = tables_db_id
-    catalog._tables_ds_id = tables_ds_id   # cached at bootstrap from the databases.create response
+    catalog._tables_dsid = tables_ds_id   # cached at bootstrap from the databases.create response
 
     found = catalog.find_sys_tables_row("students", table_catalog="memory")
 
@@ -538,13 +559,14 @@ def test_find_sys_tables_row_by_table_id_queries_the_data_source():
             "table_schema": {"rich_text": [{"text": {"content": "public"}}]},
             "table_catalog": {"rich_text": [{"text": {"content": "memory"}}]},
             "table_id": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef"}}]},
+            "table_dsid": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef-ds"}}]},
             "is_dropped": {"checkbox": False},
         },
     })
 
     catalog = SystemCatalog(client, "memory", root, "memory")
     catalog._tables_id = tables_db_id
-    catalog._tables_ds_id = tables_ds_id   # cached at bootstrap from the databases.create response
+    catalog._tables_dsid = tables_ds_id   # cached at bootstrap from the databases.create response
 
     found = catalog.find_sys_tables_row_by_table_id("deadbeef-dead-beef-dead-beefdeadbeef")
 
@@ -562,7 +584,7 @@ def test_set_dropped_marks_row_without_trashing_the_page():
 
     catalog = SystemCatalog(client, "memory", root, "memory")
     catalog._tables_id = tables_db_id
-    catalog._tables_ds_id = tables_ds_id
+    catalog._tables_dsid = tables_ds_id
 
     entry = catalog.ensure_sys_tables_row(
         table_name="students",
@@ -586,7 +608,7 @@ def test_ensure_sys_tables_row_parents_new_row_to_the_data_source():
     
     catalog = SystemCatalog(client, "memory", root, "memory")
     catalog._tables_id = tables_db_id
-    catalog._tables_ds_id = tables_ds_id
+    catalog._tables_dsid = tables_ds_id
 
     entry = catalog.ensure_sys_tables_row(
         table_name="students",
@@ -611,7 +633,7 @@ def test_ensure_on_a_dropped_row_returns_it_without_duplicating():
 
     catalog = SystemCatalog(client, "memory", root, "memory")
     catalog._tables_id = tables_db_id
-    catalog._tables_ds_id = tables_ds_id
+    catalog._tables_dsid = tables_ds_id
 
     original = catalog.ensure_sys_tables_row(
         table_name="students",
