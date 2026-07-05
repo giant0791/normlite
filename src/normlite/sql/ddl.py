@@ -263,7 +263,7 @@ class ReflectTable(ExecutableDDLStatement):
                 if isinstance(colmeta.type, Relation):
                     # retrieve the table name via sys catalog:
                     database_id = colmeta.value
-                    entry = context.engine._catalog.find_sys_tables_row_by_table_id(database_id)
+                    entry = context.engine._catalog.find_sys_tables_row_by_table_dsid(database_id)
                     if entry is None:
                         warnings.warn(
                             f"Relation column '{colmeta.name}' "

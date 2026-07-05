@@ -545,13 +545,20 @@ def test_bootstrap_creates_tables_catalog_as_container():
     assert len(data_sources) == 1
     assert data_sources[0]["id"] is not None
 
-def test_find_sys_tables_row_by_table_id_queries_the_data_source():
+# superseded by test_find_sys_tables_row_by_dsid_queries_on_table_dsid
+# (Seam B: find_sys_tables_row_by_table_id renamed to find_sys_tables_row_by_table_dsid;
+# relation-FK reflection now resolves the catalog row by data_source_id, not database_id)
+
+def test_find_sys_tables_row_by_dsid_queries_on_table_dsid():
+    # Seam B of the ADR-0014 relation retarget: relation-FK reflection now holds a
+    # data_source_id (Seam A), so the catalog lookup must resolve the row by its
+    # persisted `table_dsid`, NOT `table_id`. The row below has DISTINCT table_id vs
+    # table_dsid, so querying with the dsid pins the filter to the table_dsid property.
     client = InMemoryNotionClient()
     client._ensure_root()
     root = client._ROOT_PAGE_ID_
     tables_db_id, tables_ds_id = _seed_tables_container(client, root)
 
-    # a catalog row parented to the DATA SOURCE (2025-09-03 shape)
     page = client.pages_create(payload={
         "parent": {"type": "data_source_id", "data_source_id": tables_ds_id},
         "properties": {
@@ -566,9 +573,9 @@ def test_find_sys_tables_row_by_table_id_queries_the_data_source():
 
     catalog = SystemCatalog(client, "memory", root, "memory")
     catalog._tables_id = tables_db_id
-    catalog._tables_dsid = tables_ds_id   # cached at bootstrap from the databases.create response
+    catalog._tables_dsid = tables_ds_id
 
-    found = catalog.find_sys_tables_row_by_table_id("deadbeef-dead-beef-dead-beefdeadbeef")
+    found = catalog.find_sys_tables_row_by_table_dsid("deadbeef-dead-beef-dead-beefdeadbeef-ds")
 
     assert found is not None
     assert found.sys_tables_page_id == page["id"]

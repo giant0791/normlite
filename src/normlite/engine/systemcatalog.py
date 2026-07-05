@@ -299,14 +299,14 @@ class SystemCatalog:
 
         return SystemTablesEntry.from_dict(results[0]) if results else None
     
-    def find_sys_tables_row_by_table_id(
+    def find_sys_tables_row_by_table_dsid(
         self,
-        table_id: str
+        table_dsid: str
     ) -> Optional[SystemTablesEntry]:
         """Return the tables row (Notion page object) for a table with the given id or None if it does not exist.
 
         Args:
-            table_id (str): The database id of the table being searched for.
+            table_dsid (str): The data source id of the table being searched for.
 
         Raises:
             InternalError: If more than one table found.
@@ -316,7 +316,8 @@ class SystemCatalog:
 
 
         .. versionchanged:: 0.12.0
-            This version is upgraded to new client's data source oriented API 
+            This version is upgraded to new client's data source oriented API.
+            It supersedes ``find_sys_tables_row_by_table_id`` 
 
         .. versionadded:: 0.11.0 
         """
@@ -327,8 +328,8 @@ class SystemCatalog:
 
             payload={
                 "filter": {
-                    "property": "table_id",
-                    "rich_text": {"equals": table_id},
+                    "property": "table_dsid",
+                    "rich_text": {"equals": table_dsid},
                 },
             }
         )
@@ -339,7 +340,7 @@ class SystemCatalog:
             # catalog corruption invariant.
             raise InternalError(
                 f"Catalog invariant violated: multiple tables with id "
-                f"'{table_id}' found"
+                f"'{table_dsid}' found"
             )
 
         return SystemTablesEntry.from_dict(results[0]) if results else None
