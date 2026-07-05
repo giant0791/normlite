@@ -23,7 +23,7 @@ def metadata() -> MetaData:
 
 @pytest.fixture
 def students(metadata: MetaData) -> Table:
-    return Table(
+    table = Table(
         'students',
         metadata,
         Column('name', String(is_title=True)),
@@ -32,6 +32,11 @@ def students(metadata: MetaData) -> Table:
         Column('start_on', Date()),
         Column('grade',  String())
     )
+    # SELECT routes on data_source_id under 2025-09-03; reflect it so the
+    # compiler's "previously reflected" guard passes (get_oid() is no longer
+    # read by visit_select).
+    table._sys_columns["data_source_id"]._value = str(uuid.uuid4())
+    return table
 
 @pytest.fixture
 def select_stmt(students: Table) -> Select:
@@ -129,21 +134,27 @@ def test_bool_col_expr(students: Table):
 #---------------------------------------------
 # Operation generation tests
 #---------------------------------------------
-def test_select_generate_operation(students: Table, select_stmt: Select):
-    mocked_db_id = str(uuid.uuid4())
-    students._sys_columns["object_id"]._value = mocked_db_id
+# superseded by test_select_routes_to_data_source_query
+# (2025-09-03: SELECT routes to data_sources.query, not databases.query)
 
-    stmt = (
-        select_stmt
-        .where(students.c.name == 'Galileo Galilei')
-    )
+def test_select_routes_to_data_source_query(students: Table, select_stmt: Select):
+    # Under 2025-09-03 a SELECT queries the table's data source, not the
+    # database container: data_sources.query on data_source_id, and the
+    # path param binds the table's data_source_id (get_data_source_id()),
+    # not its database UUID (get_oid()).
+    mocked_db_id = str(uuid.uuid4())
+    mocked_ds_id = str(uuid.uuid4())
+    students._sys_columns["object_id"]._value = mocked_db_id
+    students._sys_columns["data_source_id"]._value = mocked_ds_id
 
     nc = NotionCompiler()
-    compiled = stmt.compile(nc)
+    compiled = select_stmt.compile(nc)
     asdict = compiled.as_dict()
 
-    assert asdict['operation']['endpoint'] == 'databases'
-    assert asdict['operation']['request'] == 'query'
+    assert asdict['operation'] == dict(endpoint='data_sources', request='query')
+    assert asdict['path_params']['data_source_id'] == ':data_source_id'
+    assert 'data_source_id' in compiled._execution_binds
+    assert compiled._execution_binds['data_source_id'].value == mocked_ds_id
 
 #---------------------------------------------
 # WHERE tests
@@ -241,7 +252,7 @@ def test_where_generative_multi_clause(students: Table, select_stmt: Select):
 
     assert 'param_0' in compiled._execution_binds
     assert 'param_1' in compiled._execution_binds
-    assert len(compiled._execution_binds) == 2 + 1        # :database_id is also a bind parameter!
+    assert len(compiled._execution_binds) == 2 + 1        # :data_source_id is also a bind parameter!
 
 #---------------------------------------------
 # Column projection tests
@@ -316,10 +327,11 @@ def test_columns_all_projection(students: Table):
     assert 'query_params' not in asdict
 
     # there is only 1 key ==> this is the page_size
-    assert len(asdict['payload']) == 2  
+    # (data_sources.query has no in_trash body param under 2025-09-03)
+    assert len(asdict['payload']) == 1
     assert 'page_size' in asdict['payload']
     assert asdict['payload']['page_size'] == 100
-    assert asdict["payload"]["in_trash"] == False
+    assert 'in_trash' not in asdict['payload']
     assert usr_expected == compiled.result_columns()
     assert all_expected == compiled.fetch_columns()
 

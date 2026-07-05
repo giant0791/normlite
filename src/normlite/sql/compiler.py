@@ -576,7 +576,7 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state.stmt = select
         self._compiler_state.result_columns = []
 
-        operation = dict(endpoint='databases', request='query')
+        operation = dict(endpoint='data_sources', request='query')
         compiled_dict = {
             'operation': operation, 
         }
@@ -585,7 +585,6 @@ class NotionCompiler(SQLCompiler):
         query_params = {}
         payload = {
             'page_size': 100,        # Notion imposed max page size
-            'in_trash': False,       # Always return non deleted pages only
         }
 
         # add a new top-level 'joins' key to store the joins, if any
@@ -604,18 +603,18 @@ class NotionCompiler(SQLCompiler):
                 "must be anchored with select_from(table)"
             )
 
-        database_id = table.get_oid()
-        if database_id is None:
+        data_source_id = table.get_data_source_id()
+        if data_source_id is None:
             raise CompileError(f'Table: {table.name} has not been previously reflected.')
         
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
-                    key='database_id',
-                    value=database_id
+                    key='data_source_id',
+                    value=data_source_id
                 )
             )
-            path_params['database_id'] = f':{db_id_key}'
+            path_params['data_source_id'] = f':{db_id_key}'
             compiled_dict["path_params"] = path_params 
 
      
