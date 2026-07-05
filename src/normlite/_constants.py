@@ -30,6 +30,9 @@ from normlite.utils import normlite_deprecated
 class SpecialColumns(StrEnum):
     """Define enum constants for column names to access Notion-specific columns ("special columns").
 
+    .. versionchanged:: 0.12.0
+        Add enum for data source ids.
+
     .. versionchanged:: 0.8.0
         This enum class adds parent id as important attribute for Notion pages and databases, so that these ids are
         readily available in their ``normlite`` counterparts.
@@ -39,6 +42,9 @@ class SpecialColumns(StrEnum):
     """
     NO_ID = "object_id"
     """Notion "id" key for all objects."""
+
+    NO_DSID = "data_source_id"
+    """Notion "id" for data sources."""
 
     NO_PID = "parent_id"
     """Parent identifier for a Notion entity.

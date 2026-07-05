@@ -140,8 +140,13 @@ class CreateTable(ExecutableDDLStatement):
 
         # assign database id
         table._sys_columns["object_id"]._value = reflected_table_info.id
+        table._sys_columns["data_source_id"]._value = reflected_table_info.dsid
         
-        for colmeta in reflected_table_info.get_columns():           
+        
+        for colmeta in reflected_table_info.get_columns(): 
+            # As of Notion 2025-09-03 column ids are now all None 
+            # TODO: make CREATE TABLE an 2-phase statement and fetch the column ids
+            # in pahse 2.         
             if not colmeta.is_system:
                 # assign user column ids only
                 table.c[colmeta.name]._id = colmeta.id

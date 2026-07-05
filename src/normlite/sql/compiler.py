@@ -320,6 +320,9 @@ class NotionCompiler(SQLCompiler):
         This visit method compiles the DDL :class:`normlite.sql.ddl.CreateTable` construct into the 
         corresponding Notion payload.
 
+        .. versionchanged:: 0.12.0
+            This method now supports compilation for data sources as of Notion API 2025-09-03.
+
         .. versionchanged:: 0.8.0
             This method now produces a fully parameterized template dictionary and 
             provides the binds in the parameter dictionary.
@@ -372,9 +375,12 @@ class NotionCompiler(SQLCompiler):
             }]
 
         # emit code for properties object
-        payload['properties'] = self._compile_table_columns(
+        properties = self._compile_table_columns(
             stmt_table.user_columns
         )
+        payload["initial_data_source"] = {
+            "properties": properties
+        } 
         
         self._compiler_state.result_columns = [
             col.name

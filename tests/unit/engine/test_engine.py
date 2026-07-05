@@ -408,3 +408,20 @@ def test_file_engine_round_trip_persists_data_and_preserves_file_under_read_only
 
     # The read-only session did not modify the file on disk
     assert store_path.read_bytes() == bytes_after_write
+
+# ---------------------------------------------------
+# Migration to Notion API 2025-09-03
+# Table knows 2 identities
+# ---------------------------------------------------
+def test_create_table_gives_table_its_data_source_id(engine: Engine, students: Table):
+    # Arrange / Act: round-trip a plain CREATE TABLE through the engine
+    students.create(bind=engine, checkfirst=True)
+
+    # Assert: the table now knows two distinct identities —
+    # the database id (get_oid) and its own data source id.
+    database_id = students.get_oid()
+    data_source_id = students.get_data_source_id()
+
+    assert database_id is not None
+    assert data_source_id is not None
+    assert data_source_id != database_id

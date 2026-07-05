@@ -66,18 +66,9 @@ def test_compile_create_table_operation(students: Table, engine: Engine):
     assert as_dict['operation']['endpoint'] == 'databases'
     assert as_dict['operation']['request'] == 'create'
 
-def test_compile_create_table_columns_as_properties(students: Table, engine: Engine):
-    students._db_parent_id = engine._user_tables_page_id
-    stmt = CreateTable(students)
-    compiled = stmt.compile(engine._sql_compiler)
-    as_dict = compiled.as_dict()
-    payload = as_dict['payload']
-
-    assert get_property(payload, 'name') == {'title': {}}
-    assert get_property(payload, 'id') == {'number': {'format': 'number'}}
-    assert get_property(payload, 'is_active') == {'checkbox': {}}
-    assert get_property(payload, 'start_on') == {'date': {}}
-    assert get_property(payload, 'grade') == {'rich_text': {}}
+# superseded by test_compile_create_table_columns_under_initial_data_source
+# (2025-09-03: column schema moved from flat payload['properties'] onto
+# payload['initial_data_source']['properties'])
 
 #---------------------------------------------
 # DROP TABLE tests
@@ -172,3 +163,19 @@ def test_compile_reflect_table_operation(students: Table, engine: Engine):
 
     assert as_dict['operation']['endpoint'] == 'databases'
     assert as_dict['operation']['request'] == 'retrieve'
+
+def test_compile_create_table_columns_under_initial_data_source(students: Table, engine: Engine):
+    students._db_parent_id = engine._user_tables_page_id
+    stmt = CreateTable(students)
+    compiled = stmt.compile(engine._sql_compiler)
+    payload = compiled.as_dict()['payload']
+
+    # The container is created with exactly one data source, and the column
+    # schema is declared on THAT data source (2025-09-03), not on the database.
+    initial_data_source = payload['initial_data_source']
+
+    assert get_property(initial_data_source, 'name') == {'title': {}}
+    assert get_property(initial_data_source, 'id') == {'number': {'format': 'number'}}
+    assert get_property(initial_data_source, 'is_active') == {'checkbox': {}}
+    assert get_property(initial_data_source, 'start_on') == {'date': {}}
+    assert get_property(initial_data_source, 'grade') == {'rich_text': {}}

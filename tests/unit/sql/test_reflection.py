@@ -17,6 +17,12 @@ def database_retrieved() -> dict:
     {
         "object": "database",
         "id": "bc1211ca-e3f1-4939-ae34-5260b16f627c",
+        "data_sources": [
+            {
+                "id": "9f8e7d6c-1234-4939-ae34-5260b16f627c",
+                "name": "Grocery List"
+            }
+        ],
         "created_time": "2021-07-08T23:50:00.000Z",
         "last_edited_time": "2021-07-08T23:50:00.000Z",
         "cover": {
@@ -102,6 +108,7 @@ def database_retrieved() -> dict:
 def db_as_tuples(database_retrieved: dict) -> list[tuple]:
     tuple_seq = [
         (SpecialColumns.NO_ID, DBAPITypeCode.ID, None, database_retrieved["id"], True),
+        (SpecialColumns.NO_DSID, DBAPITypeCode.ID, None, database_retrieved["data_sources"][0]["id"], True),
         (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.ARCHIVAL_FLAG, None, database_retrieved["archived"], True),
         (SpecialColumns.NO_IN_TRASH, DBAPITypeCode.ARCHIVAL_FLAG, None, database_retrieved["in_trash"], True),
         (SpecialColumns.NO_CREATED_TIME, DBAPITypeCode.TIMESTAMP, None, database_retrieved["created_time"], True),
@@ -125,7 +132,7 @@ def test_reflect_table_info_from_dict(database_retrieved: dict):
     
     assert reflected_table_info.id == 'bc1211ca-e3f1-4939-ae34-5260b16f627c'
     assert reflected_table_info.name == 'Grocery List'
-    assert len(reflected_table_info.get_columns()) == 8
+    assert len(reflected_table_info.get_columns()) == 9
     assert usr_column_names == ['Price', 'Description', 'Name']
 
 def test_reflect_table_info_from_tuple(db_as_tuples):
@@ -135,7 +142,7 @@ def test_reflect_table_info_from_tuple(db_as_tuples):
 
     assert reflected_table_info.id == 'bc1211ca-e3f1-4939-ae34-5260b16f627c'
     assert reflected_table_info.name == 'Grocery List'
-    assert len(reflected_table_info.get_columns()) == 8
+    assert len(reflected_table_info.get_columns()) == 9
     assert usr_column_names == ['Price', 'Description', 'Name']
 
 

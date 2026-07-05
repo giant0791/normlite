@@ -58,6 +58,10 @@ class ReflectedTableInfo:
         return self._columns[self._colmap[SpecialColumns.NO_ID]].value
     
     @property
+    def dsid(self) -> str:
+        return self._columns[self._colmap[SpecialColumns.NO_DSID]].value
+    
+    @property
     def archived(self) -> Optional[True]:
         return self._columns[self._colmap[SpecialColumns.NO_ARCHIVED]].value
     
@@ -129,6 +133,14 @@ class ReflectedTableInfo:
             type=ObjectId(),
             id=None,
             value=database_obj['id'],
+            is_system=True
+        ))
+
+        cols.append(ReflectedColumnInfo(
+            name=SpecialColumns.NO_DSID,
+            type=ObjectId(),
+            id=None,
+            value=database_obj['data_sources'][0]['id'],
             is_system=True
         ))
 

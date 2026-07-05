@@ -20,6 +20,7 @@ class ResultSet:
 
     _SYSTEM_COLUMNS_DATABASE = (
         (SpecialColumns.NO_ID, DBAPITypeCode.ID, "id"),                              # TODO: rename in "object_id"
+        (SpecialColumns.NO_DSID, DBAPITypeCode.ID, "data_sources"),
         (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.ARCHIVAL_FLAG, "archived"),       # TODO: rename in "is_archived"   
         (SpecialColumns.NO_IN_TRASH, DBAPITypeCode.ARCHIVAL_FLAG, "in_trash"),       # TODO: rename in "is_deleted"
         (SpecialColumns.NO_CREATED_TIME, DBAPITypeCode.TIMESTAMP, "created_time"),   # TODO: rename in "created_at"
@@ -169,19 +170,34 @@ class ResultSet:
 
         # Notion object properties are system columns
         for colname, coltype, field in cls._SYSTEM_COLUMNS_DATABASE:
+            if field == "title":
+                # result processors expects new contract for "title" objects (issue #290)
+                syscol_val = {"title": database[field]}
+            elif field == "data_sources":
+                # extract the data source id
+                # currently, it support 1 single data source per database object
+                syscol_val = database["data_sources"][0]["id"]
+            else:
+                # the system column value is a top property in the Notion object
+                syscol_val = database[field]
+            
             rows.append(
                 (
                     colname,
                     coltype,
                     None,
-                    # result processors expects new contract for "title" objects (issue #290)
-                    {"title": database[field]} if field == "title" else database[field],
+                    syscol_val,
                     True,               # is system column
                 )
             )
 
-        # "properties" object bears user defined columns
-        for name, prop in database["properties"].items():
+        # database.initial_data_source.properties object bears user defined columns
+        # but it does not store ids and types anymore
+        # TODO: create a _process_data_source class method when the next red comes
+        """
+        for name, prop in database["initial_data_source"]["properties"].items():
+            # TODO: move properties processing to _process_data_source
+            # just fill with None 
             typ = prop["type"]
             rows.append(
                 (
@@ -193,7 +209,7 @@ class ResultSet:
                     False,              # is user defined
                 )
             )
-
+        """
         return rows
 
     @classmethod
