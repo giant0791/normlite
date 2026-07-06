@@ -727,7 +727,7 @@ def test_foreignkey_parses_table_and_column_name():
 
 def test_foreignkey_database_id_initially_none():
     fk = ForeignKey("students.object_id")
-    assert fk.database_id is None
+    assert fk.data_source_id is None
 
 def test_column_accepts_foreignkey_in_args():
     from normlite import Relation
@@ -1071,7 +1071,7 @@ def test_autoload_reflects_relation_with_resolved_database_id(engine: Engine):
     fk = next(iter(fks))
     assert fk.table_name == "courses"
     assert fk.column_name == "object_id"
-    assert fk.database_id == courses_oid
+    assert fk.data_source_id == courses_oid
 
 def test_autoload_warns_when_relation_target_not_in_catalog(engine: Engine):
     client = engine._client
@@ -1177,8 +1177,88 @@ def test_autoload_reflects_mixed_resolvable_and_unresolvable_relations(engine: E
     assert len(fks) == 1
     fk = next(iter(fks))
     assert fk.table_name == "courses"
-    assert fk.database_id == courses_oid
+    assert fk.data_source_id == courses_oid
 
     # Unresolvable column skipped, normal columns intact
     assert 'favorite_topic' not in reflected.c
     assert 'name' in reflected.c
+
+
+def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
+    # Seam C of the ADR-0014 relation retarget (C1 + C2). Seams A and B already land
+    # a data_source_id on the reflected relation column and resolve the catalog row by
+    # `table_dsid`. The FK assembly in ReflectTable._finalize_execution (sql/ddl.py) must
+    # now surface that dsid on the *renamed* attribute `ForeignKey.data_source_id`
+    # (ADR-0014: `ForeignKey.database_id` → `data_source_id`), not the legacy
+    # `database_id` slot.
+    #
+    # Fully hand-built at the FK-assembly seam: the live `autoload_with` pipeline cannot
+    # reach here yet (databases.retrieve drops user columns — the parked
+    # `_process_data_source` work), so we drive `_finalize_execution` directly with a
+    # hand-built relation DDL row against a real, catalog-seeded engine.
+    from normlite.engine.resultmetadata import CursorResultMetaData
+    from normlite.engine.row import Row
+    from normlite.sql.ddl import ReflectTable
+
+    courses_dsid = "deadbeef-dead-beef-dead-beefdeadbeef-ds"
+
+    # Seed the catalog row for the relation target, keyed by its data_source_id.
+    engine._client.pages_create(payload={
+        "parent": {"type": "data_source_id", "data_source_id": engine._catalog._tables_dsid},
+        "properties": {
+            "table_name": {"title": [{"text": {"content": "courses"}}]},
+            "table_schema": {"rich_text": [{"text": {"content": "public"}}]},
+            "table_catalog": {"rich_text": [{"text": {"content": "memory"}}]},
+            "table_id": {"rich_text": [{"text": {"content": "courses-db-0001"}}]},
+            "table_dsid": {"rich_text": [{"text": {"content": courses_dsid}}]},
+            "is_dropped": {"checkbox": False},
+        },
+    })
+
+    # A reflected relation DDL row whose on-wire target rides in `relation.data_source_id`
+    # (Seam A). `_process_ddl_row` extracts the dsid into the row's value slot.
+    ddl_description = (
+        ("column_name", "string", None, None, None, None, None),
+        ("column_type", "string", None, None, None, None, None),
+        ("column_id",   "string", None, None, None, None, None),
+        ("metadata",    "object", None, None, None, None, None),
+        ("is_system",   "bool",   None, None, None, None, None),
+    )
+    relation_row = Row(
+        CursorResultMetaData(ddl_description, is_ddl=True),
+        (
+            "enrolled_in",
+            "relation",
+            "col-enrolled",
+            {"relation": {"data_source_id": courses_dsid, "single_property": {}}},
+            False,  # user column
+        ),
+    )
+
+    class _FakeResult:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return self._rows
+
+        def close(self):
+            pass
+
+    class _FakeContext:
+        def __init__(self, engine, rows):
+            self.engine = engine
+            self._rows = rows
+
+        def setup_cursor_result(self):
+            return _FakeResult(self._rows)
+
+    reflected = Table("students", MetaData())
+    stmt = ReflectTable(reflected)
+    stmt._finalize_execution(_FakeContext(engine, [relation_row]))
+
+    fks = list(reflected.c.enrolled_in.foreign_keys)
+    assert len(fks) == 1
+    fk = fks[0]
+    assert fk.table_name == "courses"
+    assert fk.data_source_id == courses_dsid

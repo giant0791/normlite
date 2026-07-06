@@ -262,12 +262,12 @@ class ReflectTable(ExecutableDDLStatement):
                 # assign user column ids
                 if isinstance(colmeta.type, Relation):
                     # retrieve the table name via sys catalog:
-                    database_id = colmeta.value
-                    entry = context.engine._catalog.find_sys_tables_row_by_table_dsid(database_id)
+                    data_source_id = colmeta.value
+                    entry = context.engine._catalog.find_sys_tables_row_by_table_dsid(data_source_id)
                     if entry is None:
                         warnings.warn(
                             f"Relation column '{colmeta.name}' "
-                            f"references database_id '{database_id}' "
+                            f"references database_id '{data_source_id}' "
                             f"which is not registered in system tables catalog; "
                             f"skipping."
                         )
@@ -275,7 +275,7 @@ class ReflectTable(ExecutableDDLStatement):
 
                     # construct the foreign key
                     fk = ForeignKey(f"{entry.name}.object_id")
-                    fk.database_id = database_id
+                    fk.data_source_id = data_source_id
 
                     #construct the new column
                     new_col = Column(colmeta.name, colmeta.type, fk, id_=colmeta.id)

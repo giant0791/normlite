@@ -1315,6 +1315,9 @@ class ForeignKey:
             Column("courses", Relation(), ForeignKey("courses.object_id")),
         )
 
+    .. versionchanged:: 0.11.0
+        Upgrade to Notion 2025-09-03
+
     .. versionadded:: 0.11.0
     
     """
@@ -1325,8 +1328,12 @@ class ForeignKey:
     column_name: str
     """Name of the column the relation links to, always ``"object_id"``. """
 
-    database_id: str = None
-    """The Notion object id for the database the column refers to."""
+    data_source_id: str = None
+    """The Notion object id for the data source the column refers to.
+    
+    .. versionchanged:: 0.12.0
+        Rename to :attr:`data_source_id` to reflect the new identity.
+    """
 
     parent: Column = None
     """The column this foreign key belongs to."""
