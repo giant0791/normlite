@@ -191,13 +191,14 @@ class ResultSet:
                 )
             )
 
-        # database.initial_data_source.properties object bears user defined columns
-        # but it does not store ids and types anymore
-        # TODO: create a _process_data_source class method when the next red comes
-        """
-        for name, prop in database["initial_data_source"]["properties"].items():
-            # TODO: move properties processing to _process_data_source
-            # just fill with None 
+        # NOTE: user-defined columns live on the data source (2025-09-03), not the
+        # database container; they are reflected separately via _process_data_source.
+        return rows
+
+    @classmethod
+    def _process_data_source(cls, data_source: dict) -> list[tuple]:
+        rows = []
+        for name, prop in data_source["properties"].items():
             typ = prop["type"]
             rows.append(
                 (
@@ -209,7 +210,7 @@ class ResultSet:
                     False,              # is user defined
                 )
             )
-        """
+        
         return rows
 
     @classmethod

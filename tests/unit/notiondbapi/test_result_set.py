@@ -505,6 +505,44 @@ def test_resultset_database_cols_from_json_extract_table_name(
 
     assert rich_text_to_plain_text(table_name["title"]) == "students"
 
+def test_process_data_source_emits_user_columns(client: InMemoryNotionClient):
+    # 2-phase reflection STEP 2 (#347): the 2025-09-03 column schema (property
+    # ids + resolved types) lives on the DATA SOURCE, not the container.
+    # _process_database emits system columns only; a new
+    # ResultSet._process_data_source turns a retrieved data-source object's
+    # `properties` into user-column reflection tuples in the SAME contract
+    # _process_database uses for system columns:
+    #   (column_name, column_type, column_id, {typ: prop[typ]}, is_system=False)
+    # Scoped to plain scalar user columns (relation-value extraction is a later red).
+    container = client.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
+            "title": [{"text": {"content": "students"}}],
+            "initial_data_source": {
+                "properties": {
+                    "name": {"title": {}},
+                    "age": {"number": {}},
+                }
+            },
+        }
+    )
+    data_source_id = container["data_sources"][0]["id"]
+    data_source = client.data_sources_retrieve(
+        path_params={"data_source_id": data_source_id}
+    )
+
+    rows = ResultSet._process_data_source(data_source)
+
+    # one reflection tuple per user-defined property, in the shared 5-field contract
+    by_name = {row[0]: row for row in rows}
+    assert set(by_name) == {"name", "age"}
+
+    age = by_name["age"]
+    assert age[1] == "number"          # column_type = resolved Notion type string
+    assert age[2]                      # column_id = generated, non-empty prop id
+    assert age[3] == {"number": {}}    # metadata = {typ: prop[typ]}
+    assert age[4] is False             # user-defined, NOT a system column
+
 def test_resultset_last_inserted_rowids_from_pages(
     prefilled_client: InMemoryNotionClient, #
     database_id: str, 
