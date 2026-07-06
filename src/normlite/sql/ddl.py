@@ -156,7 +156,8 @@ class CreateTable(ExecutableDDLStatement):
         entry = context.engine.create_table_metadata(
             table.name,
             table_catalog=engine._user_database_name,
-            table_id=table.get_oid()
+            table_id=table.get_oid(),
+            table_dsid=table.get_data_source_id(),
         )
 
         # update write-cache for this entry

@@ -425,3 +425,19 @@ def test_create_table_gives_table_its_data_source_id(engine: Engine, students: T
     assert database_id is not None
     assert data_source_id is not None
     assert data_source_id != database_id
+
+def test_create_table_persists_table_dsid_in_catalog(engine: Engine, students: Table):
+    # The live CREATE path must persist the table's REAL data source id onto its
+    # tables-catalog row (table_dsid), so relation reflection can later route
+    # data_sources.retrieve / find_sys_tables_row_by_table_dsid on it
+    # (ADR-0014: both IDs are persisted).
+    students.create(bind=engine, checkfirst=True)
+
+    # Re-read the persisted row (the get_or_create create-return is not reliably
+    # populated; find re-reads the row from the data source).
+    entry = engine._catalog.find_sys_tables_row(
+        students.name,
+        table_catalog=engine._user_database_name,
+    )
+
+    assert entry.table_dsid == students.get_data_source_id()
