@@ -1046,9 +1046,9 @@ class NotionCompiler(SQLCompiler):
         from normlite.sql.type_api import Relation
 
         # resolve oids for the all referenced columns         
-        stmt_table = self._compiler_state.stmt._table
+        stmt_table: Table = self._compiler_state.stmt._table
         referenced_ids = {
-            c.column.name: c.reftable.get_oid()
+            c.column.name: c.reftable.get_data_source_id()
             for c in stmt_table.foreign_keys
         }
 
@@ -1057,12 +1057,13 @@ class NotionCompiler(SQLCompiler):
         for col in user_cols:
             prop_val = col.type_.get_notion_spec()
             if isinstance(col.type_, Relation):
-                # inject the database_id into the Notion spec for Relation objects
+                # inject the data_source_id into the Notion spec for Relation objects
+                # ref_oid now contains col.name's data_source_id
                 ref_oid = referenced_ids.get(col.name)
                 if ref_oid is None:
                     raise CompileError(f"Relation column '{col.name}' on table '{stmt_table.name}' has no ForeignKeyConstraint registered")
                 
-                prop_val["relation"]["database_id"] = referenced_ids[col.name]
+                prop_val["relation"]["data_source_id"] = referenced_ids[col.name]
 
             properties[col.name] = prop_val    
 

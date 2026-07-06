@@ -6,7 +6,8 @@ from normlite.notion_sdk.getters import get_property
 from normlite.sql.base import DDLCompiled
 from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
 from normlite.sql.elements import _BindRole, BindParameter
-from normlite.sql.schema import Table
+from normlite.sql.schema import Column, ForeignKey, Table
+from normlite.sql.type_api import String
 
 
 #---------------------------------------------
@@ -179,3 +180,32 @@ def test_compile_create_table_columns_under_initial_data_source(students: Table,
     assert get_property(initial_data_source, 'is_active') == {'checkbox': {}}
     assert get_property(initial_data_source, 'start_on') == {'date': {}}
     assert get_property(initial_data_source, 'grade') == {'rich_text': {}}
+
+def test_compile_create_table_relation_spec_targets_data_source_id(engine: Engine):
+    # A Relation column's DDL spec must target the referenced table's
+    # DATA SOURCE (2025-09-03), not its database. The compiler resolves the
+    # FK to reftable.get_data_source_id() and emits it under the
+    # {"relation": {"data_source_id": ...}} key.
+    from normlite import Relation
+    from normlite.sql.schema import MetaData
+
+    metadata = MetaData()
+    courses = Table("courses", metadata, Column("title", String(is_title=True)))
+    # Distinct database id vs data source id so the assertion pins the RIGHT one.
+    courses._sys_columns["object_id"]._value = "db-courses-0000-0000-000000000001"
+    courses._sys_columns["data_source_id"]._value = "ds-courses-0000-0000-000000000002"
+
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    students._db_parent_id = engine._user_tables_page_id
+
+    stmt = CreateTable(students)
+    compiled = stmt.compile(engine._sql_compiler)
+    initial_data_source = compiled.as_dict()['payload']['initial_data_source']
+
+    relation_spec = get_property(initial_data_source, 'enrolled_in')['relation']
+    assert relation_spec['data_source_id'] == courses.get_data_source_id()
