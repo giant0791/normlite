@@ -153,6 +153,33 @@ def test_databases_create_returns_container_with_one_data_source(client):
     assert data_source_id
     assert data_source_id != container["id"]
 
+def test_data_sources_retrieve_returns_schema_with_ids_and_types(client):
+    # 2-phase reflection foundation (#349): the column schema (property ids +
+    # resolved types) lives on the DATA SOURCE, so reflection must fetch it via
+    # data_sources.retrieve. databases.retrieve returns only the container plus
+    # its data_sources list, not the properties. This is the second-phase call
+    # that user-column reflection will build on.
+    container = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, "Students")
+    )
+    data_source_id = container["data_sources"][0]["id"]
+
+    ds = client.data_sources_retrieve(
+        path_params={"data_source_id": data_source_id}
+    )
+
+    assert ds["object"] == "data_source"
+    assert ds["id"] == data_source_id
+
+    # user-column schema is present, each property carrying a resolved type and id
+    name_prop = ds["properties"]["Name"]
+    assert name_prop["type"] == "title"
+    assert name_prop["id"] == "title"
+
+    age_prop = ds["properties"]["Age"]
+    assert age_prop["type"] == "number"
+    assert age_prop["id"]     # a generated, non-empty property id
+
 # ---------------------------------------------------------
 # Root page behavior
 # ---------------------------------------------------------

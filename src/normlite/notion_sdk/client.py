@@ -579,10 +579,10 @@ class AbstractNotionClient(ABC):
     
     @abstractmethod
     def data_sources_query(
-            self, 
-            path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None, 
-            payload: Optional[dict] = None
+        self, 
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None, 
+        payload: Optional[dict] = None
     ) -> List[dict]:
         """Get a list of pages contained in the data source.
 
@@ -596,6 +596,24 @@ class AbstractNotionClient(ABC):
             List[dict]: The list containing the page objects or ``[]``, if no pages have been found.
 
         .. versionadded:: 0.12.0
+        """
+        raise NotImplementedError
+    
+    @abstractmethod
+    def data_sources_retrieve(
+        self,
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None, 
+        payload: Optional[dict] = None
+    ) -> dict:
+        """Retrieve a data source object for the provided ID
+
+        Args:
+            payload (dict): A dictionary containing the data source id as key.
+
+        Returns:
+            dict: The retrieved database object or and empty dictionary if no
+            data source object for the provided ID were found
         """
         raise NotImplementedError
  
@@ -1479,10 +1497,10 @@ class InMemoryNotionClient(AbstractNotionClient):
         return copy.deepcopy(database)
     
     def data_sources_query(
-            self,
-            path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None,
-            payload: Optional[dict] = None
+        self,
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None,
+        payload: Optional[dict] = None
     ) -> dict:
         engine = _ClientQueryEngine(
             self._store,
@@ -1492,6 +1510,27 @@ class InMemoryNotionClient(AbstractNotionClient):
         )
 
         return engine.execute()
+    
+    def data_sources_retrieve(
+        self,
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None,
+        payload: Optional[dict] = None
+    ) -> dict:
+        ds_id = path_params.get("data_source_id") if path_params else None
+
+        if ds_id is None:
+            raise NotionError(f"Invalid request URL: data_source_id should be defined.")
+
+        obj = self._get_by_id(ds_id)
+        if not obj:
+            raise NotionError(
+                f"Could not find data source with ID: {ds_id}. "
+                "Make sure the relevant pages and databases are shared with your integration.",
+                status_code=404,
+                code='object_not_found'
+            )
+        return copy.deepcopy(obj)
 
     def search(
             self, 
