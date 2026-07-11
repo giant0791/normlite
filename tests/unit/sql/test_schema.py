@@ -1136,13 +1136,13 @@ def test_autoload_reflects_mixed_resolvable_and_unresolvable_relations(engine: E
     setup_meta = MetaData()
     courses = Table("courses", setup_meta, Column("title", String(is_title=True)))
     courses.create(engine)
-    courses_oid = courses.get_oid()
+    courses_dsid = courses.get_data_source_id()
 
     # Build a students DB with two relation properties:
     # - enrolled_in → courses (resolvable)
     # - favorite_topic → unknown uuid (NOT in catalog)
     client = engine._client
-    unknown_target_id = "deadbeef-9999-9999-9999-deadbeef9999"
+    unknown_target_dsid = "deadbeef-9999-9999-9999-deadbeef9999"
     students_db = client._add('database', {
         'parent': {'type': 'page_id', 'page_id': engine._user_tables_page_id},
         'title': [{
@@ -1151,31 +1151,35 @@ def test_autoload_reflects_mixed_resolvable_and_unresolvable_relations(engine: E
             'plain_text': 'students',
             'href': None,
         }],
-        'properties': {
-            'name': {'title': {}},
-            'enrolled_in': {
-                'relation': {
-                    'database_id': courses_oid,
-                    'single_property': {},
-                }
-            },
-            'favorite_topic': {
-                'relation': {
-                    'database_id': unknown_target_id,
-                    'single_property': {},
-                }
+        'initial_data_source': {
+            'properties': {
+                'name': {'title': {}},
+                'enrolled_in': {
+                    'relation': {
+                        'data_source_id': courses_dsid,
+                        'single_property': {},
+                    }
+                },
+                'favorite_topic': {
+                    'relation': {
+                        'data_source_id': unknown_target_dsid,
+                        'single_property': {},
+                    }
+                },
             },
         },
     })
 
     # Register students in the catalog
     client._add('page', {
-        'parent': {'type': 'database_id', 'database_id': engine._tables_id},
+        'parent': {'type': 'data_source_id', 'data_source_id': engine._catalog._tables_dsid},
         'properties': {
             'table_name': {'title': [{'text': {'content': 'students'}}]},
             'table_schema': {'rich_text': [{'text': {'content': ''}}]},
             'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
             'table_id': {'rich_text': [{'text': {'content': students_db.get('id')}}]},
+            'table_dsid': {'rich_text': [{'text': {'content': students_db['data_sources'][0]['id']}}]},
+            'is_dropped': {'checkbox': False},
         },
     })
 
@@ -1190,7 +1194,8 @@ def test_autoload_reflects_mixed_resolvable_and_unresolvable_relations(engine: E
     assert len(fks) == 1
     fk = next(iter(fks))
     assert fk.table_name == "courses"
-    assert fk.data_source_id == courses_oid
+    # ADR-0014: relations retarget to the data source id, not the database uuid.
+    assert fk.data_source_id == courses_dsid
 
     # Unresolvable column skipped, normal columns intact
     assert 'favorite_topic' not in reflected.c
