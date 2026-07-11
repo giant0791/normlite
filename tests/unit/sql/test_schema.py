@@ -1048,7 +1048,7 @@ def test_create_all_is_idempotent(engine: Engine):
     assert courses.get_oid() == courses_oid
     assert students.get_oid() == students_oid
 
-def test_autoload_reflects_relation_with_resolved_database_id(engine: Engine):
+def test_autoload_reflects_relation_with_resolved_data_source_id(engine: Engine):
     from normlite import Relation
 
     # Setup: declare and create courses + students with a Relation FK
@@ -1065,7 +1065,7 @@ def test_autoload_reflects_relation_with_resolved_database_id(engine: Engine):
         Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
     )
     setup_meta.create_all(engine)
-    courses_oid = courses.get_oid()
+    courses_dsid = courses.get_data_source_id()
 
     # Reflect students into a fresh, independent MetaData
     fresh_meta = MetaData()
@@ -1079,7 +1079,8 @@ def test_autoload_reflects_relation_with_resolved_database_id(engine: Engine):
     fk = next(iter(fks))
     assert fk.table_name == "courses"
     assert fk.column_name == "object_id"
-    assert fk.data_source_id == courses_oid
+    # ADR-0014: relations retarget to the data source id, not the database uuid.
+    assert fk.data_source_id == courses_dsid
 
 def test_autoload_warns_when_relation_target_not_in_catalog(engine: Engine):
     client = engine._client
