@@ -1076,9 +1076,9 @@ def test_autoload_reflects_relation_with_resolved_database_id(engine: Engine):
 
 def test_autoload_warns_when_relation_target_not_in_catalog(engine: Engine):
     client = engine._client
-    unknown_target_id = "deadbeef-1234-5678-9abc-deadbeefcafe"
+    unknown_target_dsid = "deadbeef-1234-5678-9abc-deadbeefcafe"
 
-    # A Notion database whose relation property points to a database
+    # A Notion database whose relation property points to a data source
     # that exists in Notion but is NOT registered in our catalog
     db = client._add('database', {
         'parent': {'type': 'page_id', 'page_id': engine._user_tables_page_id},
@@ -1088,25 +1088,29 @@ def test_autoload_warns_when_relation_target_not_in_catalog(engine: Engine):
             'plain_text': 'students',
             'href': None,
         }],
-        'properties': {
-            'name': {'title': {}},
-            'enrolled_in': {
-                'relation': {
-                    'database_id': unknown_target_id,
-                    'single_property': {},
-                }
+        'initial_data_source': {
+            'properties': {
+                'name': {'title': {}},
+                'enrolled_in': {
+                    'relation': {
+                        'data_source_id': unknown_target_dsid,
+                        'single_property': {},
+                    }
+                },
             },
         },
     })
 
     # Register only the students DB in the catalog so reflection can find it
     client._add('page', {
-        'parent': {'type': 'database_id', 'database_id': engine._tables_id},
+        'parent': {'type': 'data_source_id', 'data_source_id': engine._catalog._tables_dsid},
         'properties': {
             'table_name': {'title': [{'text': {'content': 'students'}}]},
             'table_schema': {'rich_text': [{'text': {'content': ''}}]},
             'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
             'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]},
+            'table_dsid': {'rich_text': [{'text': {'content': db['data_sources'][0]['id']}}]},
+            'is_dropped': {'checkbox': False},
         },
     })
 
