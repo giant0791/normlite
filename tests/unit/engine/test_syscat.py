@@ -195,12 +195,29 @@ def test_ensure_sys_tables_row_persists_table_dsid(engine: Engine, syscat: Syste
     )
 
     # persisted, not just echoed: reading the row back from the store surfaces
-    # the stored data source id. NB: the get_or_create create-return is NOT
-    # asserted here — it comes back all-None except the page id (a separate,
-    # pre-existing shape bug in how the pages_create response is parsed), so
-    # persistence must be verified through a re-read via find.
+    # the stored data source id. (The get_or_create create-return is now fully
+    # populated too — see test_ensure_sys_tables_row_create_return_is_fully_populated
+    # — but a find re-read is the clearest way to prove persistence.)
     found = syscat.find_sys_tables_row("students", table_catalog="memory")
     assert found.table_dsid == table_dsid
+
+def test_ensure_sys_tables_row_create_return_is_fully_populated(engine: Engine, syscat: SystemCatalog):
+    # The create branch of get_or_create must return a fully-parsed entry, not an
+    # all-None shell. Today it is built from the pages_create response, whose
+    # properties lack the "type" discriminator from_dict needs, so every field
+    # parses to None except sys_tables_page_id — masked because real reads go
+    # through find(). The create-return must equal a subsequent find re-read.
+    db = create_students_db(engine)
+    table_dsid = db["data_sources"][0]["id"]
+    created = syscat.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id=db["id"],
+        table_dsid=table_dsid,
+    )
+    found = syscat.find_sys_tables_row("students", table_catalog="memory")
+
+    assert created == found
 
 # ============================================================
 # mark_dropped
