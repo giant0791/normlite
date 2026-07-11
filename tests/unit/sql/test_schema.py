@@ -524,8 +524,8 @@ def test_drop_table_detects_catalog_corruption_more_than_one_table_entry(
     page_obj = client.pages_create(
         payload={
             "parent": {
-                "type": "database_id",
-                "database_id": engine._tables_id,
+                "type": "data_source_id",
+                "data_source_id": engine._catalog._tables_dsid,
             },
             "properties": {
                 "table_name": {
@@ -540,6 +540,10 @@ def test_drop_table_detects_catalog_corruption_more_than_one_table_entry(
                 "table_id": {
                     "rich_text": [{"text": {"content": students.get_oid()}}]
                 },
+                "table_dsid": {
+                    "rich_text": [{"text": {"content": students.get_data_source_id()}}]
+                },
+                "is_dropped": {"checkbox": False},
             },
         },
     )
