@@ -231,34 +231,6 @@ def test_client_databases_retrieve(client: InMemoryNotionClient, database_payloa
     assert client._store_len() == 2 + 1
     assert database_retrieved == client._store[database_created['id']]
 
-def test_client_databases_query(for_page_queries: InMemoryNotionClient, paccessor):
-    assert for_page_queries._store_len() == 5
-    results = for_page_queries.databases_query({
-        'database_id': _STUDENTS_ID_,
-        'filter': {
-            'and': [
-                {
-                    'property': 'id',
-                    'number': {
-                        'greater_than': 12000
-                    }
-                },
-                {
-                    'property': 'name',
-                    'title': {
-                        'does_not_contain': 'Ada'
-                    }
-
-                }
-            ]
-            
-        }
-    })
-    assert results['object'] == 'list'
-    assert len(results['results']) == 2
-    assert paccessor.get_text_property_value('name', 'title', results['results'][0]) == 'Isaac Newton'
-    assert paccessor.get_text_property_value('name', 'title',   results['results'][1]) == 'Galileo Galilei'
-
 # =================================================================
 # Endpoint: databases, error cases
 # =================================================================

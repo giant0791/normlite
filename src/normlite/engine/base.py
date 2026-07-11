@@ -423,7 +423,7 @@ def create_engine(
 
         # procure an Engine object for connecting to a Notion internal integration
         NOTION_TOKEN = 'secret-token'
-        NOTION_VERSION = '2022-06-28'
+        NOTION_VERSION = '2025-09-03'
 
         engine: Engine = create_engine(
             f'normlite+auth://internal?token={NOTION_TOKEN}&version={NOTION_VERSION}'
@@ -449,7 +449,7 @@ class Engine:
 
         >>> # create a proxy object to a Notion internal integration
         >>> NOTION_TOKEN = 'secret-token'
-        >>> NOTION_VERSION = '2022-06-28' 
+        >>> NOTION_VERSION = '2025-09-03'
         >>> engine = create_engine(f'normlite+auth://internal?token={NOTION_TOKEN}&version={NOTION_VERSION}')
 
         .. versionchanged:: 0.8.0

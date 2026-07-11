@@ -1924,3 +1924,14 @@ def test_pages_update_rejects_relation_value_that_is_not_a_list(client):
                 }
             },
         )
+
+
+def test_databases_query_endpoint_is_retired(client: InMemoryNotionClient):
+    """The 2025-09-03 migration retires ``databases.query`` for ``data_sources.query``.
+
+    Page queries now route to the data source, so the old endpoint must be
+    un-routable: ``databases_query`` is no longer an allowed client operation and
+    dispatching to it raises rather than silently returning an (empty) result set.
+    """
+    with pytest.raises(NotionError, match="Unknown or unsupported operation"):
+        client("databases", "query", path_params={"database_id": "some-db-id"})
