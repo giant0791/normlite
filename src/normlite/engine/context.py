@@ -769,7 +769,7 @@ class ExecutionContext:
         # int, float, None …
         return template
         
-    def setup_cursor_result(self) -> CursorResult:
+    def setup_cursor_result(self, clear_buffered: bool = False) -> CursorResult:
         """Finalize execution and materialize a :class:`normlite.engine.cursor.CursorResult`.
 
         This method represents the **terminal step of the execution pipeline**.
@@ -827,6 +827,9 @@ class ExecutionContext:
                 this execution.
         """
         from normlite.engine.cursor import CursorResult
+
+        if clear_buffered:
+            self._result = None
 
         if self._result is None:
             self._result = CursorResult(self)

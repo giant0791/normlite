@@ -15,6 +15,7 @@ from normlite.engine.systemcatalog import TableState
 from normlite.exceptions import InvalidRequestError, NoReferencedTableError
 from normlite.notion_sdk.getters import get_object_id, get_object_type
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
+from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.schema import MetaData, SystemColumn
 from normlite.sql.type_api import ObjectId, ArchivalFlag
 
@@ -1192,10 +1193,12 @@ def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
     # (ADR-0014: `ForeignKey.database_id` → `data_source_id`), not the legacy
     # `database_id` slot.
     #
-    # Fully hand-built at the FK-assembly seam: the live `autoload_with` pipeline cannot
-    # reach here yet (databases.retrieve drops user columns — the parked
-    # `_process_data_source` work), so we drive `_finalize_execution` directly with a
-    # hand-built relation DDL row against a real, catalog-seeded engine.
+    # Hand-built at the FK-assembly seam: rather than stand up a full live relation
+    # fixture, we drive `_finalize_execution` directly and hand-feed its two phases —
+    # phase 1 (system rows, carrying the data source id in the NO_DSID row) and phase 2
+    # (the reflected relation user column). This isolates FK assembly against a real,
+    # catalog-seeded engine while stubbing the phase-2 `data_sources.retrieve` round-trip
+    # that STEP 3 of the 2-phase reflection slice added to `_finalize_execution`.
     from normlite.engine.resultmetadata import CursorResultMetaData
     from normlite.engine.row import Row
     from normlite.sql.ddl import ReflectTable
@@ -1235,6 +1238,21 @@ def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
         ),
     )
 
+    # Phase-1 system row carrying this table's data source id — `_finalize_execution`
+    # reads it (NO_DSID) to issue the 2nd-phase retrieve. Value is arbitrary here since
+    # the phase-2 round-trip is stubbed and the user rows are hand-fed below.
+    students_dsid = "caffe000-0000-0000-0000-0000000000ff"
+    dsid_row = Row(
+        CursorResultMetaData(ddl_description, is_ddl=True),
+        (
+            SpecialColumns.NO_DSID,
+            DBAPITypeCode.ID,
+            None,
+            students_dsid,
+            True,  # system column
+        ),
+    )
+
     class _FakeResult:
         def __init__(self, rows):
             self._rows = rows
@@ -1245,20 +1263,69 @@ def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
         def close(self):
             pass
 
-    class _FakeContext:
-        def __init__(self, engine, rows):
-            self.engine = engine
-            self._rows = rows
+    class _FakeRawConnection:
+        def cursor(self):
+            return None
 
-        def setup_cursor_result(self):
-            return _FakeResult(self._rows)
+    class _FakeEngine:
+        # Delegate to the real engine (catalog lookups for FK resolution stay real),
+        # but stub the phase-2 DBAPI round-trip that `_finalize_execution` now issues.
+        def __init__(self, real):
+            self._real = real
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+        def raw_connection(self):
+            return _FakeRawConnection()
+
+        def do_execute(self, cursor, operation, parameters):
+            pass
+
+    class _FakeContext:
+        def __init__(self, engine, sys_rows, user_rows):
+            self.engine = _FakeEngine(engine)
+            self._sys_rows = sys_rows
+            self._user_rows = user_rows
+            self._result_cursor = None
+
+        def setup_cursor_result(self, clear_buffered=False):
+            return _FakeResult(self._user_rows if clear_buffered else self._sys_rows)
 
     reflected = Table("students", MetaData())
     stmt = ReflectTable(reflected)
-    stmt._finalize_execution(_FakeContext(engine, [relation_row]))
+    stmt._finalize_execution(_FakeContext(engine, [dsid_row], [relation_row]))
 
     fks = list(reflected.c.enrolled_in.foreign_keys)
     assert len(fks) == 1
     fk = fks[0]
     assert fk.table_name == "courses"
     assert fk.data_source_id == courses_dsid
+
+def test_autoload_merges_scalar_user_columns_from_data_source(engine: Engine):
+    # STEP 3 of the 2-phase reflection slice (ADR-0014). Under 2025-09-03 the user
+    # columns live on the *data source*, not the database container, so
+    # `databases.retrieve` (→ ResultSet._process_database) reflects SYSTEM ROWS ONLY.
+    # ReflectTable._finalize_execution must make a 2nd-phase
+    # `data_sources.retrieve(data_source_id)` call (dsid read from the just-reflected
+    # NO_DSID system row), run ResultSet._process_data_source, and MERGE the user
+    # columns after the system rows. Scalar-only here — relation-value → dsid
+    # extraction is STEP 3b.
+    setup_meta = MetaData()
+    students = Table(
+        "students",
+        setup_meta,
+        Column("name", String(is_title=True)),
+        Column("age", Integer()),
+    )
+    setup_meta.create_all(engine)
+
+    # Reflect into a fresh, independent MetaData via the LIVE autoload path.
+    fresh_meta = MetaData()
+    reflected = Table("students", fresh_meta, autoload_with=engine)
+
+    # The scalar user column defined on the data source must be merged in.
+    assert "age" in reflected.c
+    age = reflected.c.age
+    assert isinstance(age.type_, Integer)   # raw "number" → Integer via type_mapper
+    assert age.get_oid() is not None        # non-empty property id from data_sources.retrieve

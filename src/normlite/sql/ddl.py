@@ -241,7 +241,7 @@ class ReflectTable(ExecutableDDLStatement):
         pass
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
-        from normlite.sql.schema import Column        
+        from normlite.sql.schema import Column
         
         # IMPORTANT: This consumes the result stored in the execution context.
         # DDL reflection is not part of execution — it is interpretation of results.
@@ -253,6 +253,21 @@ class ReflectTable(ExecutableDDLStatement):
         data_as_tuples = [r.as_tuple() for r in rows]        
         self._reflected_table_info = ReflectedTableInfo.from_tuples(data_as_tuples)
         self._reflected_table._db_parent_id = context.engine._user_tables_page_id
+
+        # fetch the data source to reflect the user columns
+        context._result_cursor = context.engine.raw_connection().cursor()
+        dsid = self._reflected_table_info.dsid
+        context.engine.do_execute(
+            context._result_cursor,
+            operation={"endpoint": "data_sources", "request": "retrieve"},
+            parameters={"path_params": {"data_source_id": dsid}}
+        )
+
+        result = context.setup_cursor_result(clear_buffered=True)
+        usrcols_as_rows = result.all()
+        result.close()
+        usrcols_as_tuples = [r.as_tuple() for r in usrcols_as_rows]
+        self._reflected_table_info.merge_with(ReflectedTableInfo.from_tuples(usrcols_as_tuples))
 
         # reflect columns
         for colmeta in self._reflected_table_info.get_reflectable_cols():

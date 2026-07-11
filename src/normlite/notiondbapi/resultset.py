@@ -71,6 +71,10 @@ class ResultSet:
             elif obj_type == "database":
                 object_type = obj_type
                 rows.extend(cls._process_database(obj))
+            
+            elif obj_type == "data_source":
+                object_type = obj_type
+                rows.extend(cls._process_data_source(obj))
 
             else:
                 raise NotImplementedError(obj_type)
@@ -175,7 +179,7 @@ class ResultSet:
                 syscol_val = {"title": database[field]}
             elif field == "data_sources":
                 # extract the data source id
-                # currently, it support 1 single data source per database object
+                # currently, it supports 1 single data source per database object
                 syscol_val = database["data_sources"][0]["id"]
             else:
                 # the system column value is a top property in the Notion object

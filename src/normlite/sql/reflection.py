@@ -189,4 +189,20 @@ class ReflectedTableInfo:
             )
         
         return cls(cols)
+    
+    def merge_with(self, rti: ReflectedTableInfo) -> None:
+        """Merge in-place with the provided reflected table info."""
+        
+        # construct the new merged list of columns
+        merged = [*self._columns, *rti._columns]
+        
+        # reconstruct the colmap
+        self._colmap = {
+            rc.name: index
+            for index, rc in enumerate(merged)
+        }
+
+        self._columns = merged
+    
+
 
