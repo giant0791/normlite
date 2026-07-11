@@ -76,8 +76,12 @@ def generate_pages(client: InMemoryNotionClient, n: int) -> tuple[str, list[dict
     """
     Create a students database and populate it with n fake pages.
 
+    As of Notion 2025-09-03 (ADR-0014) the column schema lives on the database's
+    data source (`initial_data_source.properties`) and pages parent to the data
+    source id, which is also the query target.
+
     Returns:
-        (database_id, rows)
+        (data_source_id, rows)
         rows = normalized dict representation of inserted pages
     """
 
@@ -92,16 +96,18 @@ def generate_pages(client: InMemoryNotionClient, n: int) -> tuple[str, list[dict
             "plain_text": "students",
             "href": None
         }],
-        'properties': {
-            'name': {'title': {}},
-            'id': {'number': {}},
-            'is_active': {'checkbox': {}},
-            'start_on': {'date': {}},
-            'grade': {'rich_text': {}},
+        'initial_data_source': {
+            'properties': {
+                'name': {'title': {}},
+                'id': {'number': {}},
+                'is_active': {'checkbox': {}},
+                'start_on': {'date': {}},
+                'grade': {'rich_text': {}},
+            }
         }
     })
 
-    db_id = students_db["id"]
+    data_source_id = students_db["data_sources"][0]["id"]
     rows = []
 
     for _ in range(n):
@@ -117,8 +123,8 @@ def generate_pages(client: InMemoryNotionClient, n: int) -> tuple[str, list[dict
         page = client.pages_create(
             payload={
                 'parent': {
-                    'type': 'database_id',
-                    'database_id': db_id
+                    'type': 'data_source_id',
+                    'data_source_id': data_source_id
                 },
                 'properties': {
                     'name': {'title': [{'text': {'content': data['name']}}]},
@@ -132,7 +138,7 @@ def generate_pages(client: InMemoryNotionClient, n: int) -> tuple[str, list[dict
 
         rows.append(page)
 
-    return db_id, rows
+    return data_source_id, rows
 
 def rows_to_tuples(rows: list[dict]) -> list[tuple]:
     return [
@@ -167,12 +173,14 @@ def retrieve_database(client: InMemoryNotionClient) -> dict:
                 "href": None
             }
         ],
-        'properties': {
-            'name': {'title': {}},
-            'id': {'number': {}},
-            'is_active': {'checkbox': {}},
-            'start_on': {'date': {}},
-            'grade': {'rich_text': {}},
+        'initial_data_source': {
+            'properties': {
+                'name': {'title': {}},
+                'id': {'number': {}},
+                'is_active': {'checkbox': {}},
+                'start_on': {'date': {}},
+                'grade': {'rich_text': {}},
+            }
         }
     })
 
@@ -180,16 +188,16 @@ def retrieve_database(client: InMemoryNotionClient) -> dict:
 def execute_query_returns_no_rows(
         cursor: Cursor, 
         row_description: tuple[tuple, ...],
-        database_id: str    
+        data_source_id: str    
 ):
     cursor._inject_description(row_description)
     cursor.execute(
         operation={
-            "endpoint": "databases",
+            "endpoint": "data_sources",
             "request": "query"
         },
         parameters={
-            "path_params": {"database_id": database_id},
+            "path_params": {"data_source_id": data_source_id},
             "payload":{
                 "filter": {
                     "property": "is_active",
@@ -204,16 +212,16 @@ def execute_query_returns_no_rows(
 def execute_query_returns_all_rows(
         cursor: Cursor, 
         row_description: tuple[tuple, ...],
-        database_id: str    
+        data_source_id: str    
 ):
     cursor._inject_description(row_description)
     cursor.execute(
         operation={
-            "endpoint": "databases",
+            "endpoint": "data_sources",
             "request": "query"
         },
         parameters={
-            "path_params": {"database_id": database_id},
+            "path_params": {"data_source_id": data_source_id},
             "payload":{
                 "filter": {
                     "property": "is_active",
@@ -241,8 +249,8 @@ def test_description_none_if_no_rows(
     row_description: tuple[tuple, ...],
 ):
     cursor = Cursor(Connection(client))
-    database_id, pages = generate_pages(client, n=10)
-    execute_query_returns_no_rows(cursor, row_description, database_id)
+    data_source_id, pages = generate_pages(client, n=10)
+    execute_query_returns_no_rows(cursor, row_description, data_source_id)
 
     assert cursor.description is None
 
@@ -251,8 +259,8 @@ def test_description_none_on_closed_cursor(
     row_description: tuple[tuple, ...],
 ):
     cursor = Cursor(Connection(client))
-    database_id, pages = generate_pages(client, n=10)
-    execute_query_returns_all_rows(cursor, row_description, database_id)
+    data_source_id, pages = generate_pages(client, n=10)
+    execute_query_returns_all_rows(cursor, row_description, data_source_id)
     cursor.close()
 
     assert cursor.description is None
@@ -266,9 +274,9 @@ def test_fetchone_returns_none_if_no_rows_found(
     row_description: tuple[tuple, ...],
 ):
     cursor = Cursor(Connection(client))
-    database_id, pages = generate_pages(client, n=10)
+    data_source_id, pages = generate_pages(client, n=10)
     cursor._inject_description(row_description)
-    execute_query_returns_no_rows(cursor, row_description, database_id)
+    execute_query_returns_no_rows(cursor, row_description, data_source_id)
     row = cursor.fetchone()
 
     assert row is None
@@ -278,9 +286,9 @@ def test_fetchone_returns_first_row_found(
     row_description: tuple[tuple, ...],
 ):
     cursor = Cursor(Connection(client))
-    database_id, pages = generate_pages(client, n=10)
+    data_source_id, pages = generate_pages(client, n=10)
     cursor._inject_description(row_description)
-    execute_query_returns_all_rows(cursor, row_description, database_id)
+    execute_query_returns_all_rows(cursor, row_description, data_source_id)
     first_page = client("pages", "retrieve", path_params={"page_id": pages[0]["id"]})
     first = cursor.fetchone()
 
@@ -294,9 +302,9 @@ def test_fetchone_consumes_cursor(
     row_description: tuple[tuple, ...],
 ):
     cursor = Cursor(Connection(client))
-    database_id, pages = generate_pages(client, n=3)
+    data_source_id, pages = generate_pages(client, n=3)
     cursor._inject_description(row_description)
-    execute_query_returns_all_rows(cursor, row_description, database_id)
+    execute_query_returns_all_rows(cursor, row_description, data_source_id)
     first = cursor.fetchone()
     second = cursor.fetchone()
     third = cursor.fetchone()
@@ -323,9 +331,9 @@ def test_fetchone_raises_on_closed_cursor(
     row_description: tuple[tuple, ...],
 ):
     cursor = Cursor(Connection(client))
-    database_id, _ = generate_pages(client, n=3)
+    data_source_id, _ = generate_pages(client, n=3)
     cursor._inject_description(row_description)
-    execute_query_returns_all_rows(cursor, row_description, database_id)
+    execute_query_returns_all_rows(cursor, row_description, data_source_id)
     cursor.close()
 
     with pytest.raises(ProgrammingError):
@@ -347,9 +355,9 @@ def test_fetchall_returns_all_rows_found(
     row_description: tuple[tuple, ...],
 ):
     cursor = Cursor(Connection(client))
-    database_id, pages = generate_pages(client, n=100)
+    data_source_id, pages = generate_pages(client, n=100)
     cursor._inject_description(row_description)
-    execute_query_returns_all_rows(cursor, row_description, database_id)
+    execute_query_returns_all_rows(cursor, row_description, data_source_id)
     first_page = client("pages", "retrieve", path_params={"page_id": pages[0]["id"]})
     last_page = client("pages", "retrieve", path_params={"page_id": pages[-1]["id"]})
     rows = cursor.fetchall()
@@ -390,8 +398,8 @@ def test_fetch_many_returns_arrasize_multiples_of_rows(
     row_description: tuple[tuple, ...]
 ):
     cursor = Cursor(Connection(client))
-    database_id, inserted_rows = generate_pages(client, 16)
-    execute_query_returns_all_rows(cursor, row_description, database_id)
+    data_source_id, inserted_rows = generate_pages(client, 16)
+    execute_query_returns_all_rows(cursor, row_description, data_source_id)
     cursor.arraysize = 8
     batch_1 = inserted_rows[:8]
     batch_2 = inserted_rows[8:]
@@ -430,8 +438,8 @@ def test_rowcount_returns_zero_if_no_rows_found(
     row_description: tuple[tuple, ...]
 ):
     cursor = Cursor(Connection(client))
-    database_id, inserted_rows = generate_pages(client, 1000)
-    execute_query_returns_no_rows(cursor, row_description, database_id)
+    data_source_id, inserted_rows = generate_pages(client, 1000)
+    execute_query_returns_no_rows(cursor, row_description, data_source_id)
     
     assert cursor.rowcount == 0
 
@@ -441,8 +449,8 @@ def test_rowcount_returns_count_of_all_rows_found(
 ):
     n_pages = 100
     cursor = Cursor(Connection(client))
-    database_id, _ = generate_pages(client, n_pages)
-    execute_query_returns_all_rows(cursor, row_description, database_id)
+    data_source_id, _ = generate_pages(client, n_pages)
+    execute_query_returns_all_rows(cursor, row_description, data_source_id)
 
     assert n_pages == cursor.rowcount
 
@@ -459,7 +467,7 @@ def test_execute_drains_every_page_into_one_result_set(
     # token walk cheaply — in production callers omit it and the client defaults
     # to 100, where the same drain loop still applies above 100 rows.
     cursor = Cursor(Connection(client))
-    database_id, pages = generate_pages(client, n=5)
+    data_source_id, pages = generate_pages(client, n=5)
     cursor._inject_description(row_description)
 
     payload = {
@@ -473,9 +481,9 @@ def test_execute_drains_every_page_into_one_result_set(
     # Act: a SINGLE execute() must transparently follow next_cursor across all
     # three pages — the caller never sees pagination.
     cursor.execute(
-        operation={"endpoint": "databases", "request": "query"},
+        operation={"endpoint": "data_sources", "request": "query"},
         parameters={
-            "path_params": {"database_id": database_id},
+            "path_params": {"data_source_id": data_source_id},
             "payload": payload,
         },
     )
@@ -485,8 +493,7 @@ def test_execute_drains_every_page_into_one_result_set(
     # (If a page were modelled as its own ResultSet, fetchall would see only the
     # first 2 rows even though rowcount summed to 5 — so the names pin order AND
     # the single-result-set shape, not just the count.)
-    # pages_create strips properties to ids only, so retrieve each created page
-    # to recover the title values for the expected side.
+    # retrieve each created page to recover the title values for the expected side.
     created_pages = [
         client("pages", "retrieve", path_params={"page_id": p["id"]}) for p in pages
     ]
@@ -507,7 +514,7 @@ def test_execute_drains_every_page_into_one_result_set(
 #----------------------------------------------------------------
 
 class _CallCountingClient:
-    """Transparent proxy that counts databases.query calls and delegates the rest.
+    """Transparent proxy that counts data_sources.query calls and delegates the rest.
 
     Laziness is only observable by *counting backend calls* — row totals look
     identical whether we drained eagerly or streamed. So we spy on the one call
@@ -520,7 +527,7 @@ class _CallCountingClient:
         self.query_calls = 0
 
     def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
-        if endpoint == "databases" and request == "query":
+        if endpoint == "data_sources" and request == "query":
             self.query_calls += 1
         return self._wrapped(endpoint, request, path_params, query_params, payload)
 
@@ -529,7 +536,7 @@ class _CallCountingClient:
 
 
 class _PayloadSpyClient:
-    """Transparent proxy that records the payload of each databases.query call.
+    """Transparent proxy that records the payload of each data_sources.query call.
 
     ``page_size`` is internal (derived from ``yield_per``), so the only way to
     observe it is to capture the request body the backend actually received.
@@ -540,7 +547,7 @@ class _PayloadSpyClient:
         self.query_payloads = []
 
     def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
-        if endpoint == "databases" and request == "query":
+        if endpoint == "data_sources" and request == "query":
             self.query_payloads.append(payload)
         return self._wrapped(endpoint, request, path_params, query_params, payload)
 
@@ -553,9 +560,9 @@ def test_streaming_execute_fetches_only_first_page(
     row_description: tuple[tuple, ...],
 ):
     # Arrange: 5 matching rows handed back two at a time (page_size=2 forces a
-    # 2+2+1 token walk). A counting proxy records how many databases.query calls
+    # 2+2+1 token walk). A counting proxy records how many data_sources.query calls
     # actually reach the backend.
-    database_id, _ = generate_pages(client, n=5)
+    data_source_id, _ = generate_pages(client, n=5)
     counting = _CallCountingClient(client)
     cursor = Cursor(Connection(counting))
     cursor._inject_description(row_description)
@@ -570,9 +577,9 @@ def test_streaming_execute_fetches_only_first_page(
 
     # Act: stream the result — execute() must pull page 1 only.
     cursor.execute(
-        operation={"endpoint": "databases", "request": "query"},
+        operation={"endpoint": "data_sources", "request": "query"},
         parameters={
-            "path_params": {"database_id": database_id},
+            "path_params": {"data_source_id": data_source_id},
             "payload": payload,
         },
         stream_results=True,
@@ -589,14 +596,14 @@ def test_streaming_pulls_next_page_on_demand(
     row_description: tuple[tuple, ...],
 ):
     # Arrange: 5 rows, page_size 2 → backend pages of 2, 2, 1. Stream them.
-    database_id, _ = generate_pages(client, n=5)
+    data_source_id, _ = generate_pages(client, n=5)
     counting = _CallCountingClient(client)
     cursor = Cursor(Connection(counting))
     cursor._inject_description(row_description)
     cursor.execute(
-        operation={"endpoint": "databases", "request": "query"},
+        operation={"endpoint": "data_sources", "request": "query"},
         parameters={
-            "path_params": {"database_id": database_id},
+            "path_params": {"data_source_id": data_source_id},
             "payload": {
                 "page_size": 2,
                 "filter": {"property": "is_active", "checkbox": {"does_not_equal": True}},
@@ -625,14 +632,14 @@ def test_streaming_rowcount_is_unknown_until_fully_drained(
     # rowcount must NOT leak the buffered page length while a stream is mid-flight.
     # #326 contract: rowcount stays -1 ("unknown") until every page has been pulled,
     # then reports the true sum. 5 rows, page_size 2 → pages of 2, 2, 1.
-    database_id, _ = generate_pages(client, n=5)
+    data_source_id, _ = generate_pages(client, n=5)
     counting = _CallCountingClient(client)
     cursor = Cursor(Connection(counting))
     cursor._inject_description(row_description)
     cursor.execute(
-        operation={"endpoint": "databases", "request": "query"},
+        operation={"endpoint": "data_sources", "request": "query"},
         parameters={
-            "path_params": {"database_id": database_id},
+            "path_params": {"data_source_id": data_source_id},
             "payload": {
                 "page_size": 2,
                 "filter": {"property": "is_active", "checkbox": {"does_not_equal": True}},
@@ -663,14 +670,14 @@ def test_yield_per_implies_streaming(
     # Specifying a batch size is itself the opt-in to lazy streaming: passing
     # yield_per WITHOUT stream_results must still defer pages 2 and 3. 5 rows,
     # page_size 2 → a drain-all would make three calls (2+2+1).
-    database_id, _ = generate_pages(client, n=5)
+    data_source_id, _ = generate_pages(client, n=5)
     counting = _CallCountingClient(client)
     cursor = Cursor(Connection(counting))
     cursor._inject_description(row_description)
     cursor.execute(
-        operation={"endpoint": "databases", "request": "query"},
+        operation={"endpoint": "data_sources", "request": "query"},
         parameters={
-            "path_params": {"database_id": database_id},
+            "path_params": {"data_source_id": data_source_id},
             "payload": {
                 "page_size": 2,
                 "filter": {"property": "is_active", "checkbox": {"does_not_equal": True}},
@@ -693,13 +700,13 @@ def test_streaming_fetchall_returns_all_rows_in_order(
     # full read, so it must drive the lazy page pull to completion and NOT stop at
     # the buffered first page (which is what list(current_rs) gives today).
     cursor = Cursor(Connection(client))
-    database_id, pages = generate_pages(client, n=5)
+    data_source_id, pages = generate_pages(client, n=5)
     cursor._inject_description(row_description)
 
     cursor.execute(
-        operation={"endpoint": "databases", "request": "query"},
+        operation={"endpoint": "data_sources", "request": "query"},
         parameters={
-            "path_params": {"database_id": database_id},
+            "path_params": {"data_source_id": data_source_id},
             "payload": {
                 "page_size": 2,
                 "filter": {"property": "is_active", "checkbox": {"does_not_equal": True}},
@@ -711,8 +718,8 @@ def test_streaming_fetchall_returns_all_rows_in_order(
 
     rows = cursor.fetchall()
 
-    # pages_create strips properties to ids only, so retrieve each created page to
-    # recover the title values for the expected side (same shape as the drain-all test).
+    # retrieve each created page to recover the title values for the expected side
+    # (same shape as the drain-all test).
     created_pages = [
         client("pages", "retrieve", path_params={"page_id": p["id"]}) for p in pages
     ]
@@ -729,7 +736,7 @@ class _FailOnPageNClient:
     """Transparent proxy that raises a NotionError on the ``fail_on``-th query.
 
     Same wrap-and-delegate shape as ``_CallCountingClient``, but the chosen
-    ``databases.query`` call fails instead of returning a page — reproducing a
+    ``data_sources.query`` call fails instead of returning a page — reproducing a
     backend failure that strikes *mid-stream*, when a later page is pulled.
     """
 
@@ -740,7 +747,7 @@ class _FailOnPageNClient:
         self.query_calls = 0
 
     def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
-        if endpoint == "databases" and request == "query":
+        if endpoint == "data_sources" and request == "query":
             self.query_calls += 1
             if self.query_calls == self.fail_on:
                 raise NotionError("rate limited", status_code=429, code=self.code)
@@ -768,7 +775,7 @@ def test_streaming_fetchall_propagates_a_mid_stream_page_failure_as_dbapi_error(
     ``__cause__`` (routed through ``Cursor._translate_notion_error``).
 
     5 rows, ``page_size``/``yield_per`` 2 -> backend pages of 2, 2, 1; the fake
-    fails the 2nd ``databases.query``. ``execute`` buffers page 1; ``fetchall``
+    fails the 2nd ``data_sources.query``. ``execute`` buffers page 1; ``fetchall``
     then drains and hits the injected failure pulling page 2.
 
     Failure modes fenced off (each collapses the ``raises`` assertion):
@@ -781,13 +788,13 @@ def test_streaming_fetchall_propagates_a_mid_stream_page_failure_as_dbapi_error(
     """
     failing = _FailOnPageNClient(client, fail_on=2)
     cursor = Cursor(Connection(failing))
-    database_id, _ = generate_pages(client, n=5)
+    data_source_id, _ = generate_pages(client, n=5)
     cursor._inject_description(row_description)
 
     cursor.execute(
-        operation={"endpoint": "databases", "request": "query"},
+        operation={"endpoint": "data_sources", "request": "query"},
         parameters={
-            "path_params": {"database_id": database_id},
+            "path_params": {"data_source_id": data_source_id},
             "payload": {
                 "page_size": 2,
                 "filter": {"property": "is_active", "checkbox": {"does_not_equal": True}},
@@ -806,7 +813,7 @@ def test_streaming_fetchall_propagates_a_mid_stream_page_failure_as_dbapi_error(
 
 
 class _MalformedPageClient:
-    """Minimal client whose ``databases.query`` returns a malformed page.
+    """Minimal client whose ``data_sources.query`` returns a malformed page.
 
     ``has_more=True`` with ``next_cursor=None`` is the contradiction
     ``PageIterator`` rejects: it can't honor "there are more pages" without a
@@ -815,7 +822,7 @@ class _MalformedPageClient:
     """
 
     def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
-        if endpoint == "databases" and request == "query":
+        if endpoint == "data_sources" and request == "query":
             return {"object": "list", "results": [], "has_more": True, "next_cursor": None}
         raise AssertionError(f"unexpected backend call: {endpoint}.{request}")
 
@@ -849,9 +856,9 @@ def test_execute_translates_malformed_page_into_dbapi_database_error(
 
     with pytest.raises(DatabaseError) as excinfo:
         cursor.execute(
-            operation={"endpoint": "databases", "request": "query"},
+            operation={"endpoint": "data_sources", "request": "query"},
             parameters={
-                "path_params": {"database_id": "db-1"},
+                "path_params": {"data_source_id": "ds-1"},
                 "payload": {"filter": {"property": "is_active", "checkbox": {"equals": True}}},
             },
         )
@@ -871,7 +878,7 @@ def test_yield_per_sets_clamped_request_page_size(
     # page_size = min(yield_per or 100, 100). The caller carries NO page_size in
     # the payload — the cursor injects it from yield_per, on a per-request copy
     # (never smearing it onto the caller's dict).
-    database_id, _ = generate_pages(client, n=3)
+    data_source_id, _ = generate_pages(client, n=3)
     spy = _PayloadSpyClient(client)
     cursor = Cursor(Connection(spy))
     cursor._inject_description(row_description)
@@ -880,8 +887,8 @@ def test_yield_per_sets_clamped_request_page_size(
 
     # Sub-cap: yield_per passes straight through as the request page_size.
     cursor.execute(
-        operation={"endpoint": "databases", "request": "query"},
-        parameters={"path_params": {"database_id": database_id}, "payload": payload},
+        operation={"endpoint": "data_sources", "request": "query"},
+        parameters={"path_params": {"data_source_id": data_source_id}, "payload": payload},
         yield_per=2,
     )
     assert spy.query_payloads[-1].get("page_size") == 2
@@ -891,8 +898,8 @@ def test_yield_per_sets_clamped_request_page_size(
     # Above-cap: clamped to the Notion API maximum of 100 (so yield_per > 100
     # pulls multiple Notion pages per logical batch).
     cursor.execute(
-        operation={"endpoint": "databases", "request": "query"},
-        parameters={"path_params": {"database_id": database_id}, "payload": payload},
+        operation={"endpoint": "data_sources", "request": "query"},
+        parameters={"path_params": {"data_source_id": data_source_id}, "payload": payload},
         yield_per=200,
     )
     assert spy.query_payloads[-1].get("page_size") == 100
@@ -907,8 +914,8 @@ def test_lastrowid_returns_last_inserted_id(
 ):
     n_pages = 100
     cursor = Cursor(Connection(client))
-    database_id, inserted_rows = generate_pages(client, n_pages)
-    execute_query_returns_all_rows(cursor, row_description, database_id)
+    data_source_id, inserted_rows = generate_pages(client, n_pages)
+    execute_query_returns_all_rows(cursor, row_description, data_source_id)
     # check generate_pages() for how inserted rows are returned
     last_inserted_rowid = uuid.UUID(inserted_rows[-1]["id"]).int
 
@@ -918,15 +925,17 @@ def test_lastrowid_returns_none_if_table_metadata_retrieved(
     client: InMemoryNotionClient,
 ):
     cursor = Cursor(Connection(client))
-    database_id, inserted_rows = generate_pages(client, n=10)
+    students_db = retrieve_database(client)
     # retrieve "students" database
     cursor.execute(
         operation={"endpoint": "databases", "request": "retrieve"},
-        parameters={"path_params": {"database_id": database_id}}
+        parameters={"path_params": {"database_id": students_db["id"]}}
     )
 
     metadata = cursor.fetchall()
-    assert len(metadata) == 10      # 9 + 1 title property for database name
+    # 2025-09-03 (ADR-0014): a database object carries the 6 system columns only;
+    # user columns live on its data source and reflect separately.
+    assert len(metadata) == 6
     assert cursor.lastrowid is None
 
 def test_lastrowid_returns_none_if_no_rows_modified(
@@ -934,8 +943,8 @@ def test_lastrowid_returns_none_if_no_rows_modified(
     row_description: tuple[tuple, ...]
 ):
     cursor = Cursor(Connection(client))
-    database_id, inserted_rows = generate_pages(client, n=10)
-    execute_query_returns_no_rows(cursor, row_description, database_id)
+    data_source_id, inserted_rows = generate_pages(client, n=10)
+    execute_query_returns_no_rows(cursor, row_description, data_source_id)
     assert len(cursor.fetchall()) == 0
     assert cursor.lastrowid is None
 
@@ -949,9 +958,9 @@ def build_trash_operation(page_id: str) -> dict:
         "payload": {"in_trash": True},
     }
 
-def return_all_pages_in_database(client: InMemoryNotionClient, database_id: str) -> list[dict]:
-    result = client.databases_query(
-        path_params={"database_id": database_id},
+def return_all_pages_in_database(client: InMemoryNotionClient, data_source_id: str) -> list[dict]:
+    result = client.data_sources_query(
+        path_params={"data_source_id": data_source_id},
     )
 
     return result["results"]
@@ -966,10 +975,10 @@ def test_executemany_executes_all_operations(
 
     # pre-fill the client
     cursor = Cursor(Connection(client))
-    database_id, _ = generate_pages(client, n=10)
+    data_source_id, _ = generate_pages(client, n=10)
     
     # get all pages belonging to the database
-    pages = return_all_pages_in_database(client, database_id)
+    pages = return_all_pages_in_database(client, data_source_id)
     params = [build_trash_operation(p["id"]) for p in pages]
     cursor._inject_description(row_description)
 
@@ -998,9 +1007,9 @@ def test_executemany_produces_multiple_result_sets(
 
     # pre-fill the client
     cursor = Cursor(Connection(client))
-    database_id, _ = generate_pages(client, n=10)
+    data_source_id, _ = generate_pages(client, n=10)
     
-    pages = return_all_pages_in_database(client, database_id)
+    pages = return_all_pages_in_database(client, data_source_id)
     params = [build_trash_operation(p["id"]) for p in pages]
 
     cursor._inject_description(row_description)
@@ -1053,8 +1062,8 @@ def test_next_moves_to_next_result_set(
     """
 
     cursor = Cursor(Connection(client))
-    database_id, _ = generate_pages(client, n=10)
-    pages = return_all_pages_in_database(client, database_id)
+    data_source_id, _ = generate_pages(client, n=10)
+    pages = return_all_pages_in_database(client, data_source_id)
     params = [build_trash_operation(p["id"]) for p in pages]
 
     cursor._inject_description(row_description)
@@ -1085,8 +1094,8 @@ def test_next_allows_iterating_all_result_sets(
     """
 
     cursor = Cursor(Connection(client))
-    database_id, _ = generate_pages(client, n=100)
-    pages = return_all_pages_in_database(client, database_id)
+    data_source_id, _ = generate_pages(client, n=100)
+    pages = return_all_pages_in_database(client, data_source_id)
     params = [build_trash_operation(p["id"]) for p in pages]
 
     cursor._inject_description(row_description)
@@ -1118,8 +1127,8 @@ def test_next_on_last_result_set_exhausts_results(
     """
 
     cursor = Cursor(Connection(client))
-    database_id, _ = generate_pages(client, n=100)
-    pages = return_all_pages_in_database(client, database_id)
+    data_source_id, _ = generate_pages(client, n=100)
+    pages = return_all_pages_in_database(client, data_source_id)
     params = [build_trash_operation(p["id"]) for p in pages]
 
     cursor._inject_description(row_description)
@@ -1144,8 +1153,8 @@ def test_rowcount_returns_sum_of_resultsets(
     row_description: tuple[tuple, ...]
 ):
     cursor = Cursor(Connection(client))
-    database_id, _ = generate_pages(client, n=100)
-    pages = return_all_pages_in_database(client, database_id)
+    data_source_id, _ = generate_pages(client, n=100)
+    pages = return_all_pages_in_database(client, data_source_id)
     params = [build_trash_operation(p["id"]) for p in pages]
 
     cursor._inject_description(row_description)
