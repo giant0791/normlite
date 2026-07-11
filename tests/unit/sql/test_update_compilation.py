@@ -16,7 +16,7 @@ def metadata():
 
 @pytest.fixture
 def students(metadata):
-    return Table(
+    table = Table(
         'students',
         metadata,
         Column('name', String(is_title=True)),
@@ -25,6 +25,12 @@ def students(metadata):
         Column('start_on', Date()),
         Column('grade', String()),
     )
+
+    mocked_ds_id = str(uuid.uuid4())
+    table._sys_columns["data_source_id"]._value = mocked_ds_id
+
+    return table
+
 
 
 @pytest.fixture
@@ -56,12 +62,29 @@ def test_update_compiled_dict_shape(students, db_id):
     stmt = update(students).values(name='Newton')
     compiled, asdict = compile_update(stmt)
 
-    assert asdict['operation']['endpoint'] == 'databases'
+    assert asdict['operation']['endpoint'] == 'data_sources'
     assert asdict['operation']['request'] == 'query'
     assert 'path_params' in asdict
-    assert asdict['path_params']['database_id'] == ':database_id'
+    assert asdict['path_params']['data_source_id'] == ':data_source_id'
     assert 'payload' in asdict
     assert 'update_payload' in asdict
+
+
+def test_update_routes_to_data_source_query(students, db_id):
+    # Under 2025-09-03 an UPDATE's two-phase find-pages queries the table's data
+    # source, not the database container: data_sources.query on data_source_id,
+    # and the path param binds the table's data_source_id (get_data_source_id()),
+    # not its database UUID (get_oid()). Mirrors
+    # test_delete_routes_to_data_source_query / test_select_routes_to_data_source_query.
+
+    mocked_ds_id = students.c["data_source_id"]._value
+    stmt = update(students).values(name='Newton')
+    compiled, asdict = compile_update(stmt)
+
+    assert asdict['operation'] == dict(endpoint='data_sources', request='query')
+    assert asdict['path_params']['data_source_id'] == ':data_source_id'
+    assert 'data_source_id' in compiled._execution_binds
+    assert compiled._execution_binds['data_source_id'].value == mocked_ds_id
 
 
 def test_update_payload_contains_values_template(students, db_id):

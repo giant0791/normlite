@@ -816,23 +816,25 @@ class NotionCompiler(SQLCompiler):
             col.name for col in update._returning
         ]
 
-        operation = dict(endpoint='databases', request='query')
+        operation = dict(endpoint='data_sources', request='query')
         path_params = {}
         payload = {
             'page_size': 100,
-            'in_trash': False,
         }
 
         table = update.get_table()
-        database_id = table.get_oid()
-        if database_id is None:
+        data_source_id = table.get_data_source_id()
+        if data_source_id is None:
             raise CompileError(f'Table: {table.name} has not been previously reflected.')
-
+        
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
-                BindParameter(key='database_id', value=database_id)
+                BindParameter(
+                    key='data_source_id',
+                    value=data_source_id
+                )
             )
-            path_params['database_id'] = f':{db_id_key}'
+            path_params['data_source_id'] = f':{db_id_key}'
 
         if update._whereclause.has_expression():
             with self._compiling(new_state=_CompileState.COMPILING_WHERE):
