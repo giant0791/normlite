@@ -670,7 +670,7 @@ class Table(HasIdentifier):
         ds_id = SystemColumn(
             name="data_source_id",
             type_=ObjectId(),
-            primary_key=True,
+            primary_key=False,      # routing plumbing, not something a SQL user selects
         )
 
         is_archived = SystemColumn(

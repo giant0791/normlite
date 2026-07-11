@@ -65,26 +65,30 @@ def create_students_db(engine: Engine) -> None:
                 "href": None
             }
         ],
-        'properties': {
-            'id': {'number': {}},
-            'name': {'title': {}},
-            'grade': {'rich_text': {}},
-            'is_active': {'checkbox': {}},
-            'start_on': {'date': {}}
+        'initial_data_source': {
+            'properties': {
+                'id': {'number': {}},
+                'name': {'title': {}},
+                'grade': {'rich_text': {}},
+                'is_active': {'checkbox': {}},
+                'start_on': {'date': {}}
+            }
         }
     })
 
     # add the students to tables
     engine._client._add('page', {
         'parent': {
-            'type': 'database_id',
-            'database_id': engine._tables_id
+            'type': 'data_source_id',
+            'data_source_id': engine._catalog._tables_dsid
         },
         'properties': {
             'table_name': {'title': [{'text': {'content': 'students'}}]},
             'table_schema': {'rich_text': [{'text': {'content': ''}}]},
             'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
-            'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]}
+            'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]},
+            'table_dsid': {'rich_text': [{'text': {'content': db['data_sources'][0]['id']}}]},
+            'is_dropped': {'checkbox': False}
         }
     })
 
@@ -323,6 +327,9 @@ def test_table_primary_key():
     assert students.primary_key.table == students
     assert isinstance(primary_key, PrimaryKeyConstraint)
     assert 'object_id' in primary_key.c
+    # data_source_id is a captured system column but table-constant routing
+    # plumbing (ADR-0014), not row identity — object_id alone is the PK.
+    assert 'data_source_id' not in primary_key.c
     assert 'id' not in primary_key.c
     assert not 'name' in primary_key.columns
 
