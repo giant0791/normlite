@@ -64,39 +64,47 @@ def insert_values():
 # Test helpers (CORE REFACTOR)
 # =========================================================
 
-def create_students_db(engine: Engine) -> str:
+def create_students_db(engine: Engine) -> dict:
+    # As of Notion 2025-09-03 (ADR-0014) the column schema lives on the data
+    # source (`initial_data_source.properties`), the catalog row parents to the
+    # `tables` data source id, and it persists both the database id (`table_id`)
+    # and its data source id (`table_dsid`).
     db = engine._client._add('database', {
         'parent': {'type': 'page_id', 'page_id': engine._user_tables_page_id},
         "title": [{"text": {"content": "students"}}],
-        'properties': {
-            'name': {'title': {}},
-            'id': {'number': {}},
-            'is_active': {'checkbox': {}},
-            'start_on': {'date': {}},
-            'grade': {'rich_text': {}},
+        'initial_data_source': {
+            'properties': {
+                'name': {'title': {}},
+                'id': {'number': {}},
+                'is_active': {'checkbox': {}},
+                'start_on': {'date': {}},
+                'grade': {'rich_text': {}},
+            }
         }
     })
 
     engine._client._add('page', {
-        'parent': {'type': 'database_id', 'database_id': engine._tables_id},
+        'parent': {'type': 'data_source_id', 'data_source_id': engine._catalog._tables_dsid},
         'properties': {
             'table_name': {'title': [{'text': {'content': 'students'}}]},
             'table_schema': {'rich_text': [{'text': {'content': ''}}]},
             'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
-            'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]}
+            'table_id': {'rich_text': [{'text': {'content': db['id']}}]},
+            'table_dsid': {'rich_text': [{'text': {'content': db['data_sources'][0]['id']}}]},
+            'is_dropped': {'checkbox': False},
         }
     })
 
-    return db.get('id')
+    return db
 
 
 def add_students_rows(engine: Engine, students: Table):
-    db_id = students.get_oid()
+    ds_id = students.get_data_source_id()
 
     for name, sid in [("Galileo Galilei", 1500), ("Isaac Newton", 1600)]:
         engine._client.pages_create(
             payload={
-                'parent': {'type': 'database_id', 'database_id': db_id},
+                'parent': {'type': 'data_source_id', 'data_source_id': ds_id},
                 'properties': {
                     'name': {'title': [{'text': {'content': name}}]},
                     'id': {'number': sid},
@@ -110,9 +118,10 @@ def add_students_rows(engine: Engine, students: Table):
 
 @pytest.fixture
 def students_db(engine, students):
-    db_id = create_students_db(engine)
-    students._sys_columns["object_id"]._value = db_id
-    return db_id
+    db = create_students_db(engine)
+    students._sys_columns["object_id"]._value = db['id']
+    students._sys_columns["data_source_id"]._value = db['data_sources'][0]['id']
+    return db
 
 
 @pytest.fixture
