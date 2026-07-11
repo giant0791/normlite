@@ -85,6 +85,11 @@ subclass that maps to the Notion property type and owns the bind/filter value pr
 A column explicitly declared by the user in `Table(...)`. Distinct from **system columns** (e.g.
 `object_id`, `_no_id`) which are injected by normlite and carry Notion metadata.
 
+`data_source_id`, though carried as a system column, is **excluded from every page-result
+description** (`SchemaInfo.from_table`): a Notion *page* has no `data_source_id` key and a SQL user
+never selects it (ADR-0014). It is routing plumbing captured by name via `get_data_source_id()`,
+never a returned column — the same rule the SELECT projection already applies (`e0647cd`).
+
 ### Projected column name (collision qualification)
 A `select(...)` projection preserves the order in which columns are listed. When the projection
 spans two joined tables and a **column name is shared** by both (e.g. both `students` and

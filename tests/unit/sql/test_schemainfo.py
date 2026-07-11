@@ -26,6 +26,22 @@ def test_schemainfo_returns_projected_sys_cols_only(
     assert "object_id" in columns
     assert "is_deleted" not in columns
 
+def test_schemainfo_excludes_data_source_id_from_description(
+    students: Table
+):
+    # data_source_id is a system column on every Table, but a Notion page has no
+    # data_source_id key and a SQL user never selects it (ADR-0014). It must never
+    # reach a page-result description, or _process_page KeyErrors walking it.
+    schema_info: SchemaInfo = SchemaInfo.from_table(
+        students,
+        execution_names=["object_id", "data_source_id"],
+    )
+
+    names = [entry[0] for entry in schema_info.as_sequence()]
+
+    assert "object_id" in names
+    assert "data_source_id" not in names
+
 def test_schemainfo_returns_projected_usr_cols_only(
     students: Table
 ):
