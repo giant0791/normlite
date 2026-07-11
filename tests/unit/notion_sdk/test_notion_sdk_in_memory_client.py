@@ -850,16 +850,16 @@ def test_create_page_under_database_with_exact_schema(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
+    ds = data_source_of(client, db)
 
+    # 2025-09-03: rows parent to the data source, whose schema they must match.
     page = client.pages_create(
-        payload=make_db_page(db["id"], "Bob", 42)
+        payload=make_ds_page(ds["id"], "Bob", 42)
     )
 
     props = page["properties"]
 
-    # only property ids are returned
     assert set(props.keys()) == {"Name", "Age"}
-    ds = data_source_of(client, db)
     assert props["Name"]["id"] == ds["properties"]["Name"]["id"]
     assert props["Age"]["id"] == ds["properties"]["Age"]["id"]
 
@@ -1126,7 +1126,7 @@ def test_page_under_database_properties_are_normalized(client):
 
     page = client.pages_create(
         payload={
-            'parent': {"type": "database_id", "database_id": db["id"]},
+            'parent': {"type": "data_source_id", "data_source_id": db["data_sources"][0]["id"]},
             'properties':{
                 "table_name": {"title": rt("users")},
                 "schema": {"rich_text": rt("public")},
@@ -1566,7 +1566,7 @@ def test_pages_create_rejects_relation_value_that_is_not_a_list(client):
 
 
     malformed_page = {
-        "parent": {"type": "database_id", "database_id": students["id"]},
+        "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
         "properties": {
             "Name": {"title": [{"text": {"content": "Alice"}}]},
             "enrolled_in": {"relation": "not-a-list"},
@@ -1605,7 +1605,7 @@ def test_pages_create_rejects_relation_item_that_is_not_a_dict(client):
     )
 
     malformed_page = {
-        "parent": {"type": "database_id", "database_id": students["id"]},
+        "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
         "properties": {
             "Name": {"title": [{"text": {"content": "Alice"}}]},
             "enrolled_in": {"relation": ["not-a-dict-just-a-string"]},
@@ -1644,7 +1644,7 @@ def test_pages_create_rejects_relation_item_dict_without_id(client):
     )
 
     malformed_page = {
-        "parent": {"type": "database_id", "database_id": students["id"]},
+        "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
         "properties": {
             "Name": {"title": [{"text": {"content": "Alice"}}]},
             "enrolled_in": {"relation": [{"name": "Math 101"}]},
@@ -1683,7 +1683,7 @@ def test_pages_create_rejects_relation_item_id_that_is_not_a_string(client):
     )
 
     malformed_page = {
-        "parent": {"type": "database_id", "database_id": students["id"]},
+        "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
         "properties": {
             "Name": {"title": [{"text": {"content": "Alice"}}]},
             "enrolled_in": {"relation": [{"id": 12345}]},
@@ -1723,7 +1723,7 @@ def test_pages_create_preserves_relation_property_on_retrieve(client):
 
     course = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": courses["data_sources"][0]["id"]},
             "properties": {
                 "Title": {"title": [{"text": {"content": "Math 101"}}]},
             },
@@ -1732,7 +1732,7 @@ def test_pages_create_preserves_relation_property_on_retrieve(client):
 
     student = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": students["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
             "properties": {
                 "Name": {"title": [{"text": {"content": "Alice"}}]},
                 "enrolled_in": {"relation": [{"id": course["id"]}]},
@@ -1777,20 +1777,20 @@ def test_pages_update_replaces_relation_property(client):
 
     math = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": courses["data_sources"][0]["id"]},
             "properties": {"Title": {"title": [{"text": {"content": "Math 101"}}]}},
         }
     )
     history = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": courses["data_sources"][0]["id"]},
             "properties": {"Title": {"title": [{"text": {"content": "History 101"}}]}},
         }
     )
 
     student = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": students["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
             "properties": {
                 "Name": {"title": [{"text": {"content": "Alice"}}]},
                 "enrolled_in": {"relation": [{"id": math["id"]}]},
@@ -1841,14 +1841,14 @@ def test_pages_update_clears_relation_property_with_empty_list(client):
 
     math = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": courses["data_sources"][0]["id"]},
             "properties": {"Title": {"title": [{"text": {"content": "Math 101"}}]}},
         }
     )
 
     student = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": students["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
             "properties": {
                 "Name": {"title": [{"text": {"content": "Alice"}}]},
                 "enrolled_in": {"relation": [{"id": math["id"]}]},
@@ -1899,14 +1899,14 @@ def test_pages_update_rejects_relation_value_that_is_not_a_list(client):
 
     math = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": courses["data_sources"][0]["id"]},
             "properties": {"Title": {"title": [{"text": {"content": "Math 101"}}]}},
         }
     )
 
     student = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": students["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
             "properties": {
                 "Name": {"title": [{"text": {"content": "Alice"}}]},
                 "enrolled_in": {"relation": [{"id": math["id"]}]},
