@@ -65,8 +65,8 @@ def make_insert_bulk_cursor(
     for i in range(n_rows):
         payload = {
             "parent": {
-                "type": "database_id",
-                "database_id": db_id
+                "type": "data_source_id",
+                "data_source_id": students.get_data_source_id()
             },
             "properties": {
                 "name": {"title": [{"text": {"content": f"name_{i}"}}]},
