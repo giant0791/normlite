@@ -244,6 +244,16 @@ def test_all_columns_contains_them_all(students: Table):
         "grade"
     ]
 
+def test_data_source_id_is_hidden_from_public_columns(students: Table):
+    # data_source_id is a hidden system column (ADR-0017): captured in _sys_columns
+    # for routing/value capture but excluded from the public table.c surface, the
+    # same rule table_name/NO_TITLE already follows. It must never appear in .c.
+    assert "data_source_id" not in students.c
+    assert "data_source_id" not in [c.name for c in students.columns]
+
+    # ...yet it is still captured internally for get_data_source_id()
+    assert "data_source_id" in [c.name for c in students._sys_columns]
+
 def test_table_construct():
     metadata = MetaData()
     students = Table(

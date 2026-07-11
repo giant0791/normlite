@@ -507,6 +507,7 @@ class Table(HasIdentifier):
                     (col.name, col) 
                     for col in cols_union
                     if col.name != SpecialColumns.NO_TITLE      # exclude table name
+                    and col.name != SpecialColumns.NO_DSID      # hidden system column (ADR-0017)
                 ]
             )
 

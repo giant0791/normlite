@@ -77,7 +77,9 @@ def test_update_routes_to_data_source_query(students, db_id):
     # not its database UUID (get_oid()). Mirrors
     # test_delete_routes_to_data_source_query / test_select_routes_to_data_source_query.
 
-    mocked_ds_id = students.c["data_source_id"]._value
+    # data_source_id is a hidden system column (ADR-0017): read it via the
+    # accessor, not students.c (it is excluded from the public column surface).
+    mocked_ds_id = students.get_data_source_id()
     stmt = update(students).values(name='Newton')
     compiled, asdict = compile_update(stmt)
 
