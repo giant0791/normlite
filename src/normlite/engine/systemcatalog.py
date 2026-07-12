@@ -44,6 +44,7 @@ class SystemTablesEntry:
     sys_tables_page_id: str
     is_dropped: bool
     table_dsid: Optional[str]
+    created_time: Optional[str]
 
     @classmethod
     def from_dict(cls, page_obj: dict) -> SystemTablesEntry:       
@@ -86,6 +87,9 @@ class SystemTablesEntry:
         dsid_prop = get_property(page_obj, "table_dsid")
         table_dsid = get_rich_text_property_value(dsid_prop) if dsid_prop else None
 
+        created_time_prop = get_property(page_obj, "created_time")
+        created_time = get_rich_text_property_value(created_time_prop) if created_time_prop else None
+
         return cls(
             name=name,
             catalog=catalog,
@@ -93,7 +97,8 @@ class SystemTablesEntry:
             table_id=table_id,
             sys_tables_page_id=sys_tables_page_id,
             is_dropped=is_dropped,
-            table_dsid=table_dsid
+            table_dsid=table_dsid,
+            created_time=created_time
         )   
 
 
@@ -229,6 +234,7 @@ class SystemCatalog:
                 "table_id": {"rich_text": {}},
                 "table_dsid": {"rich_text": {}},
                 "is_dropped": {"checkbox": {}},
+                "created_time": {"rich_text": {}}
             },
         )
         self._tables_id = tables_container["id"]
@@ -353,6 +359,7 @@ class SystemCatalog:
             table_catalog: str,
             table_id: str,
             table_dsid: Optional[str] = None,
+            created_time: Optional[str] = None,
             if_not_exists: bool = False
     ) -> SystemTablesEntry:
         return self.get_or_create_sys_tables_row(
@@ -361,6 +368,7 @@ class SystemCatalog:
             table_catalog=table_catalog,
             table_id=table_id,
             table_dsid=table_dsid,
+            created_time=created_time,
             if_not_exists=if_not_exists
         )
 
@@ -372,6 +380,7 @@ class SystemCatalog:
         table_catalog: str,
         table_id: str,
         table_dsid: Optional[str] = None,
+        created_time: Optional[str] = None,
         if_not_exists: bool = False
     ) -> Optional[SystemTablesEntry]:
         """Return the system tables catalog entry for the specified table name.
@@ -381,7 +390,8 @@ class SystemCatalog:
 
         .. versionchanged:: 0.12.0
             Seed new "is_dropped" property instead of removed "in_trash".    
-            Seed new "table_dsid" property for store the data_source_id.
+            Seed new "table_dsid" property to store the data_source_id.
+            Seed new "created_time" property to store database's created time.
 
         .. versionadded:: 0.8.0
 
@@ -389,7 +399,9 @@ class SystemCatalog:
             table_name (str): _description_
             table_catalog (str): _description_
             table_id (str): _description_
-            table_schema (Optional[str], optional): _description_. Defaults to 'not_used'.
+            table_schema (Optional[str], optional): _description_. Defaults to None.
+            table_dsid (Optional[str], optional): _description_. Defaults to None.
+            created_time (Optional[str], optional): _description_. Defaults to None.
             if_not_exists (bool, optional): _description_. Defaults to False.
 
         Raises:
@@ -436,7 +448,11 @@ class SystemCatalog:
                     },
                     "is_dropped" : {
                         "checkbox": False
-                    }
+                    },
+                    "created_time": {
+                        "rich_text": [{"text": {"content": created_time or ""}}]  # created_time can be None
+                    },
+
                 },
             },
         )

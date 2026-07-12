@@ -92,6 +92,7 @@ def create_students_db(engine: Engine) -> dict:
             'table_id': {'rich_text': [{'text': {'content': db['id']}}]},
             'table_dsid': {'rich_text': [{'text': {'content': db['data_sources'][0]['id']}}]},
             'is_dropped': {'checkbox': False},
+            'created_time': {'rich_text': [{'text': {'content': db['created_time']}}]},
         }
     })
 

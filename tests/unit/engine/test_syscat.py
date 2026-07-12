@@ -124,6 +124,7 @@ def test_find_sys_tables_row_raises_internal_error_on_duplicates(engine: Engine,
                 "table_id": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdead0019"}}]},
                 "table_dsid": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdead0019-ds"}}]},
                 "is_dropped": {"checkbox": False},
+                "created_time": {"rich_text": [{"text": {"content": "1999-12-31"}}]}
             },
         }
     )
@@ -200,6 +201,25 @@ def test_ensure_sys_tables_row_persists_table_dsid(engine: Engine, syscat: Syste
     # — but a find re-read is the clearest way to prove persistence.)
     found = syscat.find_sys_tables_row("students", table_catalog="memory")
     assert found.table_dsid == table_dsid
+
+def test_ensure_sys_tables_row_persists_created_time(engine: Engine, syscat: SystemCatalog):
+    # Catalog-first reflection (#349) reconstructs a reflected table's created_at
+    # from the catalog row instead of a databases.retrieve hop. That value must be
+    # the *database* container's created_time, captured at CREATE and stored on the
+    # row — the data source's own timestamp is a different object's value.
+    db = create_students_db(engine)
+    created_time = db["created_time"]
+    syscat.ensure_sys_tables_row(
+        table_name="students",
+        table_catalog="memory",
+        table_id=db["id"],
+        table_dsid=db["data_sources"][0]["id"],
+        created_time=created_time,
+    )
+
+    # persisted, not just echoed: a find re-read surfaces the stored created_time.
+    found = syscat.find_sys_tables_row("students", table_catalog="memory")
+    assert found.created_time == created_time
 
 def test_ensure_sys_tables_row_create_return_is_fully_populated(engine: Engine, syscat: SystemCatalog):
     # The create branch of get_or_create must return a fully-parsed entry, not an
@@ -516,6 +536,7 @@ def _seed_tables_container(client, root):
             "table_id": {"rich_text": {}},
             "table_dsid": {"rich_text": {}},
             "is_dropped": {"checkbox": {}},
+            "created_time": {"rich_text": {}},
         }}, 
     })      
     return container["id"], container["data_sources"][0]["id"]
@@ -536,6 +557,7 @@ def test_find_sys_tables_row_queries_the_data_source():
             "table_id": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef"}}]},
             "table_dsid": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef-ds"}}]},
             "is_dropped": {"checkbox": False},
+            "created_time": {"rich_text": [{"text": {"content": "1999-12-31"}}]},
         },
     })
     
@@ -585,6 +607,7 @@ def test_find_sys_tables_row_by_dsid_queries_on_table_dsid():
             "table_id": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef"}}]},
             "table_dsid": {"rich_text": [{"text": {"content": "deadbeef-dead-beef-dead-beefdeadbeef-ds"}}]},
             "is_dropped": {"checkbox": False},
+            "created_time": {"rich_text": [{"text": {"content": "1999-12-31"}}]},
         },
     })
 
@@ -670,6 +693,7 @@ def test_ensure_on_a_dropped_row_returns_it_without_duplicating():
         table_name="students",
         table_catalog="memory",
         table_id="deadbeef-dead-beef-dead-beefdeadbeef",
+        created_time="1999-12-31",
         if_not_exists=True,
     )
 

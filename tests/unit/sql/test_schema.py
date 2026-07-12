@@ -88,7 +88,8 @@ def create_students_db(engine: Engine) -> None:
             'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
             'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]},
             'table_dsid': {'rich_text': [{'text': {'content': db['data_sources'][0]['id']}}]},
-            'is_dropped': {'checkbox': False}
+            'is_dropped': {'checkbox': False},
+            'created_time': {'rich_text': [{'text': {'content': db['created_time']}}]}
         }
     })
 
@@ -554,6 +555,9 @@ def test_drop_table_detects_catalog_corruption_more_than_one_table_entry(
                     "rich_text": [{"text": {"content": students.get_data_source_id()}}]
                 },
                 "is_dropped": {"checkbox": False},
+                "created_time": {
+                    "rich_text": [{"text": {"content": "2025-09-03T00:00:00.000Z"}}]
+                },
             },
         },
     )
@@ -1144,6 +1148,7 @@ def test_autoload_warns_when_relation_target_not_in_catalog(engine: Engine):
             'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]},
             'table_dsid': {'rich_text': [{'text': {'content': db['data_sources'][0]['id']}}]},
             'is_dropped': {'checkbox': False},
+            'created_time': {'rich_text': [{'text': {'content': db['created_time']}}]},
         },
     })
 
@@ -1205,6 +1210,7 @@ def test_autoload_reflects_mixed_resolvable_and_unresolvable_relations(engine: E
             'table_id': {'rich_text': [{'text': {'content': students_db.get('id')}}]},
             'table_dsid': {'rich_text': [{'text': {'content': students_db['data_sources'][0]['id']}}]},
             'is_dropped': {'checkbox': False},
+            'created_time': {'rich_text': [{'text': {'content': students_db['created_time']}}]},
         },
     })
 
@@ -1257,6 +1263,7 @@ def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
             "table_id": {"rich_text": [{"text": {"content": "courses-db-0001"}}]},
             "table_dsid": {"rich_text": [{"text": {"content": courses_dsid}}]},
             "is_dropped": {"checkbox": False},
+            "created_time": {"rich_text": [{"text": {"content": "2025-09-03T00:00:00.000Z"}}]},
         },
     })
 
