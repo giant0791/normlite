@@ -108,6 +108,25 @@ class ExecutableDDLStatement(HasTableMixin, Executable):
             execution_options=merged_execution_options
         )
 
+    def _reflect_user_columns(self, context: ExecutionContext, dsid: str) -> ReflectedTableInfo:
+        """Reflect a table's user columns from its data source (post-execution)
+
+        As of Notion 2025-09-03 the databases.create/retrieve response carries
+        system columns only - user-column property ids and types live on the data
+        source. Fetch them and return a ReflectedTableInfo for the caller to merge.  
+        """
+        context._result_cursor = context.engine.raw_connection().cursor()
+        context.engine.do_execute(
+            context._result_cursor,
+            operation={"endpoint": "data_sources", "request": "retrieve"},
+            parameters={"path_params": {"data_source_id": dsid}}
+        )
+
+        result = context.setup_cursor_result(clear_buffered=True)
+        usrcols_as_tuples = [r.as_tuple() for r in result.all()]
+        result.close()
+        return ReflectedTableInfo.from_tuples(usrcols_as_tuples)
+
 class CreateTable(ExecutableDDLStatement):
     """Represent a ``CREATE TABLE`` statement.
     
@@ -141,12 +160,15 @@ class CreateTable(ExecutableDDLStatement):
         # assign database id
         table._sys_columns["object_id"]._value = reflected_table_info.id
         table._sys_columns["data_source_id"]._value = reflected_table_info.dsid
-        
+
+        # merge with the reflected user columns:
+        reflected_table_info.merge_with(
+            self._reflect_user_columns(context, reflected_table_info.dsid)
+        )
         
         for colmeta in reflected_table_info.get_columns(): 
             # As of Notion 2025-09-03 column ids are now all None 
-            # TODO: make CREATE TABLE an 2-phase statement and fetch the column ids
-            # in pahse 2.         
+            # backfill all user columns with ids         
             if not colmeta.is_system:
                 # assign user column ids only
                 table.c[colmeta.name]._id = colmeta.id
@@ -255,19 +277,9 @@ class ReflectTable(ExecutableDDLStatement):
         self._reflected_table._db_parent_id = context.engine._user_tables_page_id
 
         # fetch the data source to reflect the user columns
-        context._result_cursor = context.engine.raw_connection().cursor()
-        dsid = self._reflected_table_info.dsid
-        context.engine.do_execute(
-            context._result_cursor,
-            operation={"endpoint": "data_sources", "request": "retrieve"},
-            parameters={"path_params": {"data_source_id": dsid}}
+        self._reflected_table_info.merge_with(
+            self._reflect_user_columns(context, self._reflected_table_info.dsid)
         )
-
-        result = context.setup_cursor_result(clear_buffered=True)
-        usrcols_as_rows = result.all()
-        result.close()
-        usrcols_as_tuples = [r.as_tuple() for r in usrcols_as_rows]
-        self._reflected_table_info.merge_with(ReflectedTableInfo.from_tuples(usrcols_as_tuples))
 
         # reflect columns
         for colmeta in self._reflected_table_info.get_reflectable_cols():

@@ -780,9 +780,12 @@ def test_table_autowires_foreignkey_constraint_on_create(engine: Engine):
     # Act — no add_constraint, no ForeignKeyConstraint in sight
     students.create(engine)
 
-    # Assert
+    # Assert — the relation spec lives on the data source, targeting data_source_id (2025-09-03)
     db_obj = engine._client._get_by_id(students.get_oid())
-    assert db_obj["properties"]["enrolled_in"]["relation"]["database_id"] == courses.get_oid()
+    ds = engine._client.data_sources_retrieve(
+        path_params={"data_source_id": db_obj["data_sources"][0]["id"]}
+    )
+    assert ds["properties"]["enrolled_in"]["relation"]["data_source_id"] == courses.get_data_source_id()
 
 def test_table_rejects_relation_column_without_foreignkey():
     from normlite import Relation
@@ -1022,13 +1025,21 @@ def test_create_all_with_diamond_fk_schema(engine: Engine):
     for table in (projects, sprints, devs, tasks):
         assert table.get_oid() is not None
 
-    # DDL payload: every Relation column resolved to the right database_id
-    tasks_obj = engine._client._get_by_id(tasks.get_oid())
-    assert tasks_obj["properties"]["project"]["relation"]["database_id"] == projects.get_oid()
-    assert tasks_obj["properties"]["sprint"]["relation"]["database_id"] == sprints.get_oid()
+    # DDL payload: every Relation column resolved to the right data_source_id
+    # (2025-09-03: relation spec lives on the data source, not the container)
+    def ds_props(table):
+        db_obj = engine._client._get_by_id(table.get_oid())
+        ds = engine._client.data_sources_retrieve(
+            path_params={"data_source_id": db_obj["data_sources"][0]["id"]}
+        )
+        return ds["properties"]
 
-    devs_obj = engine._client._get_by_id(devs.get_oid())
-    assert devs_obj["properties"]["project"]["relation"]["database_id"] == projects.get_oid()
+    tasks_props = ds_props(tasks)
+    assert tasks_props["project"]["relation"]["data_source_id"] == projects.get_data_source_id()
+    assert tasks_props["sprint"]["relation"]["data_source_id"] == sprints.get_data_source_id()
+
+    devs_props = ds_props(devs)
+    assert devs_props["project"]["relation"]["data_source_id"] == projects.get_data_source_id()
 
     # Verify creation sequence: parents strictly before any child that depends on them
     objs = {t.name: engine._client._get_by_id(t.get_oid()) for t in (projects, sprints, devs, tasks)}
