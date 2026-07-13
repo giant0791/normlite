@@ -180,6 +180,7 @@ class CreateTable(ExecutableDDLStatement):
             table_catalog=engine._user_database_name,
             table_id=table.get_oid(),
             table_dsid=table.get_data_source_id(),
+            created_time=reflected_table_info.created_time,
         )
 
         # update write-cache for this entry
@@ -269,23 +270,23 @@ class ReflectTable(ExecutableDDLStatement):
         # DDL reflection is not part of execution — it is interpretation of results.
         # So reflection consumes the results by interpreting and leaves the
         # result empty in the context.
+        # Catalog-first reflection (2025-09-03): the compiler routed this statement
+        # straight to data_sources.retrieve on the table's data_source_id, so the
+        # single result here already carries the USER columns. The system columns
+        # were stashed from the catalog row in Table._autoload (zero extra I/O), so
+        # reflection no longer needs the old databases.retrieve + merge second hop.
         result = context.setup_cursor_result()
         rows = result.all()
-        result.close()        
-        data_as_tuples = [r.as_tuple() for r in rows]        
+        result.close()
+        data_as_tuples = [r.as_tuple() for r in rows]
         self._reflected_table_info = ReflectedTableInfo.from_tuples(data_as_tuples)
         self._reflected_table._db_parent_id = context.engine._user_tables_page_id
-
-        # fetch the data source to reflect the user columns
-        self._reflected_table_info.merge_with(
-            self._reflect_user_columns(context, self._reflected_table_info.dsid)
-        )
 
         # reflect columns
         for colmeta in self._reflected_table_info.get_reflectable_cols():
             if colmeta.is_system:
                 self._reflected_table._sys_columns[colmeta.name]._value = colmeta.value
-           
+
             else:
                 # assign user column ids
                 if isinstance(colmeta.type, Relation):

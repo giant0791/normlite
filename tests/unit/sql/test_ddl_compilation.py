@@ -139,21 +139,26 @@ def test_compile_reflect_table_is_ddl(students: Table, engine: Engine):
     assert compiled.is_ddl
     assert isinstance(compiled, DDLCompiled)
 
-def test_compile_reflect_table_database_id(students: Table, engine: Engine):
+def test_compile_reflect_table_data_source_id(students: Table, engine: Engine):
+    # Catalog-first reflection (2025-09-03): a table's schema lives on its data
+    # source, so REFLECT retrieves the DATA SOURCE, not the database container.
+    # Distinct ids so the assertion pins routing onto data_source_id, not object_id.
+    students._sys_columns["object_id"]._value = "db-students-0000-0000-000000000001"
+    students._sys_columns["data_source_id"]._value = "ds-students-0000-0000-000000000002"
     stmt = ReflectTable(students)
     compiled = stmt.compile(engine._sql_compiler)
     as_dict = compiled.as_dict()
     path_params = as_dict['path_params']
 
-    assert 'database_id' in compiled._execution_binds
+    assert 'data_source_id' in compiled._execution_binds
 
-    db_id_param: BindParameter = compiled._execution_binds['database_id']
-    assert db_id_param.type_ is None
-    assert db_id_param.role == _BindRole.DBAPI_PARAM
-    assert db_id_param.effective_value == students.get_oid()
-    assert path_params['database_id'] == ':database_id'
+    ds_id_param: BindParameter = compiled._execution_binds['data_source_id']
+    assert ds_id_param.type_ is None
+    assert ds_id_param.role == _BindRole.DBAPI_PARAM
+    assert ds_id_param.effective_value == students.get_data_source_id()
+    assert path_params['data_source_id'] == ':data_source_id'
 
-def test_compile_reflect_table_no_database_id_does_not_raise(students: Table, engine: Engine):
+def test_compile_reflect_table_no_data_source_id_does_not_raise(students: Table, engine: Engine):
     stmt = ReflectTable(students)
     _ = stmt.compile(engine._sql_compiler)
 
@@ -162,7 +167,7 @@ def test_compile_reflect_table_operation(students: Table, engine: Engine):
     compiled = stmt.compile(engine._sql_compiler)
     as_dict = compiled.as_dict()
 
-    assert as_dict['operation']['endpoint'] == 'databases'
+    assert as_dict['operation']['endpoint'] == 'data_sources'
     assert as_dict['operation']['request'] == 'retrieve'
 
 def test_compile_create_table_columns_under_initial_data_source(students: Table, engine: Engine):

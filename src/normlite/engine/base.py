@@ -717,6 +717,7 @@ class Engine:
         table_catalog: str,
         table_id: str,
         table_dsid: Optional[str] = None,
+        created_time: Optional[str] = None,
         if_not_exists: bool = False,
     ) -> SystemTablesEntry:
         """Add a new page to the system tables database.
@@ -726,6 +727,7 @@ class Engine:
             table_catalog (str): Name of the catalog.
             table_id (str): The database_id object for this table
             table_dsid (Optional[str]): Optional data source id for this table
+            created_time (Optional[str]): Optional database created time for this table
             if_not_exists (bool, optional): If ``True`` creates the table only if it does not exists. Defaults to False.
 
         Raises:
@@ -743,6 +745,7 @@ class Engine:
             table_catalog=table_catalog,
             table_id=table_id,
             table_dsid=table_dsid,
+            created_time=created_time,
             if_not_exists=if_not_exists,
         )
     

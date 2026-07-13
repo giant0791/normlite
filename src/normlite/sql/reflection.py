@@ -62,6 +62,10 @@ class ReflectedTableInfo:
         return self._columns[self._colmap[SpecialColumns.NO_DSID]].value
     
     @property
+    def created_time(self) -> Optional[str]:
+        return self._columns[self._colmap[SpecialColumns.NO_CREATED_TIME]].value
+
+    @property
     def archived(self) -> Optional[True]:
         return self._columns[self._colmap[SpecialColumns.NO_ARCHIVED]].value
     

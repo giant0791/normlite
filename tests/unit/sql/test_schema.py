@@ -1241,12 +1241,12 @@ def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
     # (ADR-0014: `ForeignKey.database_id` → `data_source_id`), not the legacy
     # `database_id` slot.
     #
-    # Hand-built at the FK-assembly seam: rather than stand up a full live relation
-    # fixture, we drive `_finalize_execution` directly and hand-feed its two phases —
-    # phase 1 (system rows, carrying the data source id in the NO_DSID row) and phase 2
-    # (the reflected relation user column). This isolates FK assembly against a real,
-    # catalog-seeded engine while stubbing the phase-2 `data_sources.retrieve` round-trip
-    # that STEP 3 of the 2-phase reflection slice added to `_finalize_execution`.
+    # Hand-built at the FK-assembly seam: under catalog-first reflection (2025-09-03)
+    # the compiler routes ReflectTable straight to data_sources.retrieve, so the single
+    # result already carries the reflected USER columns; the system columns are stashed
+    # from the catalog row in Table._autoload (bypassed here). We drive
+    # `_finalize_execution` directly with a one-hop fake that hands it the reflected
+    # relation user column, against a real, catalog-seeded engine for FK resolution.
     from normlite.engine.resultmetadata import CursorResultMetaData
     from normlite.engine.row import Row
     from normlite.sql.ddl import ReflectTable
@@ -1287,21 +1287,6 @@ def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
         ),
     )
 
-    # Phase-1 system row carrying this table's data source id — `_finalize_execution`
-    # reads it (NO_DSID) to issue the 2nd-phase retrieve. Value is arbitrary here since
-    # the phase-2 round-trip is stubbed and the user rows are hand-fed below.
-    students_dsid = "caffe000-0000-0000-0000-0000000000ff"
-    dsid_row = Row(
-        CursorResultMetaData(ddl_description, is_ddl=True),
-        (
-            SpecialColumns.NO_DSID,
-            DBAPITypeCode.ID,
-            None,
-            students_dsid,
-            True,  # system column
-        ),
-    )
-
     class _FakeResult:
         def __init__(self, rows):
             self._rows = rows
@@ -1312,38 +1297,19 @@ def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
         def close(self):
             pass
 
-    class _FakeRawConnection:
-        def cursor(self):
-            return None
-
-    class _FakeEngine:
-        # Delegate to the real engine (catalog lookups for FK resolution stay real),
-        # but stub the phase-2 DBAPI round-trip that `_finalize_execution` now issues.
-        def __init__(self, real):
-            self._real = real
-
-        def __getattr__(self, name):
-            return getattr(self._real, name)
-
-        def raw_connection(self):
-            return _FakeRawConnection()
-
-        def do_execute(self, cursor, operation, parameters):
-            pass
-
     class _FakeContext:
-        def __init__(self, engine, sys_rows, user_rows):
-            self.engine = _FakeEngine(engine)
-            self._sys_rows = sys_rows
+        # Catalog-first reflection is single-hop: the sole setup_cursor_result() call
+        # returns the reflected user columns. FK resolution uses the real engine.
+        def __init__(self, engine, user_rows):
+            self.engine = engine
             self._user_rows = user_rows
-            self._result_cursor = None
 
         def setup_cursor_result(self, clear_buffered=False):
-            return _FakeResult(self._user_rows if clear_buffered else self._sys_rows)
+            return _FakeResult(self._user_rows)
 
     reflected = Table("students", MetaData())
     stmt = ReflectTable(reflected)
-    stmt._finalize_execution(_FakeContext(engine, [dsid_row], [relation_row]))
+    stmt._finalize_execution(_FakeContext(engine, [relation_row]))
 
     fks = list(reflected.c.enrolled_in.foreign_keys)
     assert len(fks) == 1
