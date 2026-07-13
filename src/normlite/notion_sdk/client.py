@@ -895,9 +895,12 @@ class InMemoryNotionClient(AbstractNotionClient):
         parent_type, _ = self._resolve_parent(db)
         if parent_type != "page":
             raise NotionError("Databases can only be created under pages.")
-        
+
+        # Faithfulness to Notion 2025-09-03: each data_sources entry advertises both
+        # an id and a name; the initial data source's name defaults to the database
+        # title. (db["title"] is still the raw rich-text list at this point.)
         db["data_sources"] = [
-            {"id": data_source_id}
+            {"id": data_source_id, "name": get_title(db)}
         ]
 
         db["is_inline"] = False

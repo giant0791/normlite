@@ -153,6 +153,23 @@ def test_databases_create_returns_container_with_one_data_source(client):
     assert data_source_id
     assert data_source_id != container["id"]
 
+def test_databases_retrieve_data_source_advertises_id_and_name(client):
+    # Faithfulness to Notion 2025-09-03: a container's data_sources entries carry
+    # both an id AND a name (the data source's display name, which defaults to the
+    # database title). databases.retrieve must round-trip that shape.
+    container = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, "Students")
+    )
+
+    retrieved = client.databases_retrieve(
+        path_params={"database_id": container["id"]}
+    )
+
+    data_sources = retrieved["data_sources"]
+    assert len(data_sources) == 1
+    assert data_sources[0]["id"] == container["data_sources"][0]["id"]
+    assert data_sources[0]["name"] == "Students"
+
 def test_data_sources_retrieve_returns_schema_with_ids_and_types(client):
     # 2-phase reflection foundation (#349): the column schema (property ids +
     # resolved types) lives on the DATA SOURCE, so reflection must fetch it via
