@@ -305,12 +305,14 @@ def prefilled_client(client: InMemoryNotionClient) -> InMemoryNotionClient:
 
 @pytest.fixture
 def database_id(prefilled_client: InMemoryNotionClient) -> str:
+    # 2025-09-03: search yields data_source objects (databases no longer appear,
+    # per ADR-0014). Resolve the container id via the data source's parent link.
     found = prefilled_client.search(
         payload={
             "query": "students",
             "filter": {
                 "property": "object",
-                "value": "database"
+                "value": "data_source"
             }
         }
     )
@@ -318,7 +320,7 @@ def database_id(prefilled_client: InMemoryNotionClient) -> str:
     results = found["results"]
     assert len(results) == 1
 
-    return results[0]["id"]
+    return results[0]["parent"]["database_id"]
 
 @pytest.fixture
 def data_source_id(prefilled_client: InMemoryNotionClient, database_id: str) -> str:

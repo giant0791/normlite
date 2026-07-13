@@ -1063,6 +1063,11 @@ class InMemoryNotionClient(AbstractNotionClient):
             self._finalize_database(obj, ds["id"])
             self._normalize_database_title(obj)
 
+            # 2025-09-03: the data source advertises its name as a `title`
+            # rich-text object, equal to the container title under the
+            # single-source invariant. This is what search matches on.
+            ds["title"] = copy.deepcopy(obj["title"])
+
         else:
             raise NotionError(f'"{type_}" not supported or unknown')
 
@@ -1303,9 +1308,9 @@ class InMemoryNotionClient(AbstractNotionClient):
             'results': results,
             'next_cursor': None,
             'has_more': False,
-            'type': 'page_or_database',
+            'type': 'page_or_data_source',
             'page': {}
-        }        
+        }
         if filter is not None:
             if not isinstance(filter, dict):
                 raise NotionError(
@@ -1330,18 +1335,26 @@ class InMemoryNotionClient(AbstractNotionClient):
                     code="invalid_json"                    
                 )
             
-            if filter_by not in ("page", "database"):
+            # 2025-09-03: databases no longer appear as search results — search
+            # yields pages and data sources only (ADR-0014).
+            if filter_by not in ("page", "data_source"):
                 raise NotionError(
-                    "Body failed validation: body.value should be either 'page' or 'database'.",
+                    "Body failed validation: body.value should be either 'page' or 'data_source'.",
                     status_code=400,
-                    code="invalid_json"                    
+                    code="invalid_json"
                 )
 
         for obj in self._store.values():
+            # 2025-09-03: databases never appear as search results — the
+            # queryable surface is the data source (ADR-0014). Only pages and
+            # data sources surface, filter or no filter.
+            if obj['object'] == 'database':
+                continue
+
             if filter_by is not None:
-                if obj['object'] != filter_by:    
+                if obj['object'] != filter_by:
                     continue
-            
+
             if query is not None:
                 if query != get_title(obj):
                     continue

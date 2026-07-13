@@ -197,6 +197,23 @@ def test_data_sources_retrieve_returns_schema_with_ids_and_types(client):
     assert age_prop["type"] == "number"
     assert age_prop["id"]     # a generated, non-empty property id
 
+def test_data_source_retrieve_advertises_title(client):
+    # Faithfulness to Notion 2025-09-03: a data source object carries a `title`
+    # (a rich-text object) holding its name — the same value as the container's
+    # data_sources[{id, name}] entry, equal to the database title under the
+    # single-source invariant. This is what search matches on (get_title), so
+    # orphan detection can find a stray table by its data source's title.
+    container = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, "Students")
+    )
+    data_source_id = container["data_sources"][0]["id"]
+
+    ds = client.data_sources_retrieve(
+        path_params={"data_source_id": data_source_id}
+    )
+
+    assert get_title(ds) == "Students"
+
 # ---------------------------------------------------------
 # Root page behavior
 # ---------------------------------------------------------
@@ -1308,6 +1325,8 @@ def test_database_update_rejects_schema_properties(client, database):
 # ------------------------------------------------------------
 
 def test_search_no_filter_returns_all(client):
+    # 2025-09-03: databases never surface in search (ADR-0014); only pages and
+    # data sources do, so the container objects are excluded even with no filter.
     db1 = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
     )
@@ -1317,11 +1336,11 @@ def test_search_no_filter_returns_all(client):
     )
 
     result = client.search()
-    expected = [obj for obj in client._store.values()]
+    expected = [obj for obj in client._store.values() if obj['object'] != 'database']
 
     assert result['results'] == expected
 
-def test_search_for_databases_no_title_returns_all(client):
+def test_search_for_data_sources_no_title_returns_all(client):
     db1 = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
     )
@@ -1330,23 +1349,32 @@ def test_search_for_databases_no_title_returns_all(client):
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v2')
     )
 
+    ds1 = client.data_sources_retrieve(
+        path_params={"data_source_id": db1["data_sources"][0]["id"]}
+    )
+    ds2 = client.data_sources_retrieve(
+        path_params={"data_source_id": db2["data_sources"][0]["id"]}
+    )
+
     result = client.search(
         payload={
             'filter': {
                 'property': 'object',
-                'value': 'database'
+                'value': 'data_source'
             }
         }
     )
 
-    assert result['results'] == [db1, db2]
- 
-def test_search_for_page_or_database_query_returns_matching_only(client):
+    assert result['results'] == [ds1, ds2]
+
+def test_search_for_page_or_data_source_query_returns_matching_only(client):
     db1 = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
     )
 
-    database1 = client.databases_retrieve(path_params={"database_id": db1["id"]})
+    ds1 = client.data_sources_retrieve(
+        path_params={"data_source_id": db1["data_sources"][0]["id"]}
+    )
 
     pg1 = client.pages_create(
         payload=make_title_page(client._ROOT_PAGE_ID_, title='students_v1')
@@ -1360,11 +1388,16 @@ def test_search_for_page_or_database_query_returns_matching_only(client):
         }
     )
 
-    assert result['results'] == [database1, page1]
+    # the container is excluded; its data source and the page both match by title
+    assert result['results'] == [ds1, page1]
 
-def test_search_for_database_query_returns_matching_only(client):
+def test_search_for_data_source_query_filter_returns_matching_only(client):
     db1 = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    ds1 = client.data_sources_retrieve(
+        path_params={"data_source_id": db1["data_sources"][0]["id"]}
     )
 
     pg1 = client.pages_create(
@@ -1376,12 +1409,12 @@ def test_search_for_database_query_returns_matching_only(client):
             'query': 'students_v1',
             'filter': {
                 'property': 'object',
-                'value': 'database'
+                'value': 'data_source'
             }
         }
     )
 
-    assert result['results'] == [db1]
+    assert result['results'] == [ds1]
 
 def test_search_for_page_query_returns_matching_only(client):
     db1 = client.databases_create(
@@ -1418,18 +1451,42 @@ def test_search_returns_exact_match_only(client):
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v2')
     )
 
+    ds1 = client.data_sources_retrieve(
+        path_params={"data_source_id": db1["data_sources"][0]["id"]}
+    )
+
     result = client.search(
         payload={
             'query': 'students',
             'filter': {
                 'property': 'object',
-                'value': 'database'
+                'value': 'data_source'
             }
         }
     )
 
-    assert result['results'] == [db1]
-  
+    assert result['results'] == [ds1]
+
+def test_search_for_data_source_query_returns_matching_only(client):
+    # 2025-09-03: search yields data_source objects (databases no longer appear
+    # as search results, per ADR-0014). A data source matches by its title, and
+    # the response envelope advertises the page_or_data_source result type.
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+    ds_id = db1["data_sources"][0]["id"]
+    ds1 = client.data_sources_retrieve(path_params={"data_source_id": ds_id})
+
+    result = client.search(
+        payload={
+            'query': 'students_v1',
+            'filter': {'property': 'object', 'value': 'data_source'}
+        }
+    )
+
+    assert result['type'] == 'page_or_data_source'
+    assert result['results'] == [ds1]
+
 def test_search_filter_is_not_a_dict_raises(client):
     with pytest.raises(NotionError) as exc:
         result = client.search(
@@ -1470,13 +1527,13 @@ def test_search_filter_value_missing_raises(client):
     assert exc.value.status_code == 400
     assert 'body.value should be defined.' in str(exc.value)
 
-def test_search_filter_value_not_a_page_or_database_raises(client):
+def test_search_filter_value_not_a_page_or_data_source_raises(client):
     with pytest.raises(NotionError) as exc:
         result = client.search(
             payload={
                 'filter': {
                     'property': 'object',
-                    'value': 'data_source'
+                    'value': 'workspace'
 
                 }
             }
@@ -1484,7 +1541,7 @@ def test_search_filter_value_not_a_page_or_database_raises(client):
 
     assert exc.value.code == 'invalid_json'
     assert exc.value.status_code == 400
-    assert "body.value should be either 'page' or 'database'." in str(exc.value)
+    assert "body.value should be either 'page' or 'data_source'." in str(exc.value)
 
 def test_deleted_pages_have_in_trash_true(client):
     pass

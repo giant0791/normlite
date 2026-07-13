@@ -38,6 +38,11 @@ Both IDs are persisted: `databases.create` returns the container plus `data_sour
 the `tables` catalog stores `data_source_id` alongside `table_id`. Reflection is **catalog-first**
 — it reads `data_source_id` from the catalog row and calls `data_sources.retrieve` directly.
 
+A data source's **name is its `title`** (rich text), equal to the database title under the
+single-source invariant. **Orphan detection** — `get_table_state` for a table with *no* catalog
+row — finds a stray table by searching **data sources** on that title (search yields `data_source`
+objects, never `database`, per ADR-0014); a hit with no catalog row is `ORPHANED`.
+
 The `tables` catalog **row schema** (final order): `table_name` (title), `table_schema`,
 `table_catalog`, `table_id`, **`data_source_id`** (rich_text, per ADR-0014), **`is_dropped`**
 (checkbox, per [ADR-0015](docs/adr/0015-catalog-soft-delete-explicit-property.md)).

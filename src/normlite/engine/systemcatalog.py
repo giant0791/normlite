@@ -606,17 +606,20 @@ class SystemCatalog:
             if_not_exists=True          # IMPORTANT: This ensure idempotency, either create it or use it
         )
 
-    def _find_database_by_name(
+    def _find_data_source_by_name(
             self,
             table_name: str,
     ) -> Optional[dict]:
-        
+        # 2025-09-03: search yields data_source objects (databases no longer
+        # appear as search results, per ADR-0014). A data source's title equals
+        # the table name under the single-source invariant, so an orphaned table
+        # surfaces as a data source with no catalog row.
         response = self._client.search(
             payload={
                 "query": table_name,
                 "filter": {
                     "property": "object",
-                    "value": "database"
+                    "value": "data_source"
                 }
             }
         )
@@ -652,10 +655,10 @@ class SystemCatalog:
         # Case 1: No metadata entry
         # --------------------------------------------
         if entry is None:
-            # try to detect stray database object
-            db = self._find_database_by_name(table_name)
+            # try to detect a stray table via its data source
+            data_source = self._find_data_source_by_name(table_name)
 
-            if db is not None:
+            if data_source is not None:
                 return TableState.ORPHANED
 
             return TableState.MISSING
