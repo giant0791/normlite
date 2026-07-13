@@ -1033,122 +1033,6 @@ class InMemoryNotionClient(AbstractNotionClient):
             # Today the return is identical to the input — validation-only, no real canonicalisation.
             return value
 
-    def _update_database_properties(
-        self,
-        database: dict,
-        updates: dict,
-    ) -> None:
-        if not isinstance(updates, dict):
-            raise NotionError(
-                "Database properties must be an object.",
-                status_code=400,
-                code="validation_error",
-            )
-
-        schema = database["properties"]
-
-        def resolve_property(key: str) -> tuple[str, dict]:
-            # ID match
-            for name, prop in schema.items():
-                if prop["id"] == key:
-                    return name, prop
-            # Name match
-            if key in schema:
-                return key, schema[key]
-
-            raise NotionError(
-                f"Property '{key}' does not exist.",
-                status_code=400,
-                code="validation_error",
-            )
-
-        for ref, spec in updates.items():
-            name, prop = resolve_property(ref)
-            prop_type = prop["type"]
-
-            # ------------------------------------------------------------
-            # Property deletion
-            # ------------------------------------------------------------
-            if spec is None:
-                if prop_type == "title":
-                    raise NotionError(
-                        "Cannot delete title property.",
-                        status_code=400,
-                        code="validation_error",
-                    )
-                del schema[name]
-                continue
-
-            if not isinstance(spec, dict):
-                raise NotionError(
-                    f"Invalid property update for '{name}'.",
-                    status_code=400,
-                    code="validation_error",
-                )
-
-            # ------------------------------------------------------------
-            # Rename
-            # ------------------------------------------------------------
-            if "name" in spec:
-                if prop_type == "status":
-                    raise NotionError(
-                        "Cannot rename status property.",
-                        status_code=400,
-                        code="validation_error",
-                    )
-
-                new_name = spec["name"]
-                if new_name in schema and new_name != name:
-                    raise NotionError(
-                        f"Property '{new_name}' already exists.",
-                        status_code=400,
-                        code="validation_error",
-                    )
-
-                schema[new_name] = schema.pop(name)
-                name = new_name
-                prop = schema[name]
-
-            # ------------------------------------------------------------
-            # Type / configuration update
-            # ------------------------------------------------------------
-            if prop_type in spec:
-                # configuration update
-                new_conf = spec[prop_type]
-
-                if prop_type == "status":
-                    raise NotionError(
-                        "Cannot update status property schema.",
-                        status_code=400,
-                        code="validation_error",
-                    )
-
-                schema[name] = {
-                    "id": prop["id"],
-                    "type": prop_type,
-                    prop_type: new_conf,
-                }
-                continue
-
-            # type update
-            new_type = next(iter(spec), {})
-
-            if new_type:
-                if prop_type == "title" and new_type != "title":
-                    raise NotionError(
-                        "Cannot change type of title property.",
-                        status_code=400,
-                        code="validation_error",
-                    )
-
-            schema[name] = {
-                "id": prop["id"],
-                "type": new_type,
-                new_type: spec[new_type]
-            }
-                    
-
-
     # ------------------------------------------------------------------
     # Unified add entrypoint
     # ------------------------------------------------------------------
@@ -1353,11 +1237,15 @@ class InMemoryNotionClient(AbstractNotionClient):
                 )
             database["title"] = copy.deepcopy(title)
 
-        # schema updates (DDL)
+        # Notion 2025-09-03: databases.update is narrowed to container-level attrs.
+        # A database has no schema surface — user columns live on the data source and
+        # are edited via data_sources.update — so a `properties` body param is invalid.
         if "properties" in payload:
-            self._update_database_properties(
-                database,
-                payload["properties"],
+            raise NotionError(
+                "body.properties is not a valid property for a database update; "
+                "the schema lives on the data source (use data_sources.update).",
+                status_code=400,
+                code="validation_error",
             )
 
         return copy.deepcopy(database)

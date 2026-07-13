@@ -1242,62 +1242,10 @@ def test_store_contains_only_normalized_objects(client):
 # databases update tests
 # ------------------------------------------------------------
 
-def test_delete_property_by_name(client, database):
-    client._update_database_properties(
-        database,
-        {"Score": None},
-    )
-    assert "Score" not in database["properties"]
-
-def test_delete_title_property_fails(client, database):
-    with pytest.raises(NotionError, match="Cannot delete title"):
-        client._update_database_properties(
-            database,
-            {"Name": None},
-        )
-
-def test_rename_property_by_id(client, database):
-    client._update_database_properties(
-        database,
-        {"J@cT": {"name": "Points"}},
-    )
-    assert "Points" in database["properties"]
-    assert database["properties"]["Points"]["id"] == "J@cT"
-
-def test_rename_status_property_fails(client, database):
-    with pytest.raises(NotionError, match="status"):
-        client._update_database_properties(
-            database,
-            {"Status": {"name": "New Status"}},
-        )
-
-def test_update_property_configuration(client, database):
-    client._update_database_properties(
-        database,
-        {"Score": {"number": {"format": "percent"}}},
-    )
-    assert database["properties"]["Score"]["number"]["format"] == "percent"
-
-def test_update_property_type(client, database):
-    client._update_database_properties(
-        database,
-        {"Score": {"rich_text": {}}},
-    )
-    assert database["properties"]["Score"]["rich_text"] == {}
-
-def test_change_title_property_fails(client, database):
-    with pytest.raises(NotionError, match="Cannot change type of title"):
-        client._update_database_properties(
-            database,
-            {"Name": {"rich_text": {}}},
-        )
-
-def test_update_status_property_fails(client, database):
-    with pytest.raises(NotionError, match="status"):
-        client._update_database_properties(
-            database,
-            {"Status": {"status": {"options": []}}},
-        )
+# NOTE: the former `_update_database_properties` helper + its 8 direct tests were
+# retired in #348 — under Notion 2025-09-03 a database container has no schema
+# surface (user columns live on the data source), so databases.update no longer
+# performs property edits. See test_database_update_rejects_schema_properties below.
 
 def test_database_update_title(client, database):
     database_obj = client.databases_create(
@@ -1332,12 +1280,11 @@ def test_database_update_title_invalid_type(client, database):
             payload={"title": "Invalid"},
         )
 
-@pytest.mark.xfail(
-    reason="Schema-write via databases.update relocates to data_sources.update; "
-    "databases.update narrows to container-level attrs in #348. Out of scope for #347.",
-    strict=True,
-)
-def test_database_update_title_and_schema(client, database):
+def test_database_update_rejects_schema_properties(client, database):
+    # Notion 2025-09-03: the database container has no schema surface — user
+    # columns live on the data source, edited via data_sources.update. So
+    # databases.update is narrowed to container-level attrs (title / in_trash /
+    # parent) and rejects a `properties` body param.
     database_obj = client.databases_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
@@ -1345,19 +1292,16 @@ def test_database_update_title_and_schema(client, database):
             "initial_data_source": {"properties": database["properties"]}
         }
     )
-    
-    result = client.databases_update(
-        path_params={"database_id": database_obj["id"]},
-        payload={
-            "title": [{"text": {"content": "New Name"}}],
-            "properties": {
-                "Score": {"number": {"format": "percent"}}
-            },
-        },
-    )
 
-    assert result["title"][0]["text"]["content"] == "New Name"
-    assert result["properties"]["Score"]["number"]["format"] == "percent"
+    with pytest.raises(NotionError, match="properties"):
+        client.databases_update(
+            path_params={"database_id": database_obj["id"]},
+            payload={
+                "properties": {
+                    "Score": {"number": {"format": "percent"}}
+                },
+            },
+        )
 
 # ------------------------------------------------------------
 # search tests
