@@ -27,14 +27,21 @@ source**; multi-data-source databases are deferred.
 Each `Table` therefore carries **two IDs**:
 - **`object_id`/`get_oid()` = the database UUID** — unchanged identity; the thing a page-child
   hangs off and `DROP TABLE` trashes. Used only by create / drop / container operations.
-- **`data_source_id` = a private `Table` attribute** (`get_data_source_id()`, mirroring
-  `_db_parent_id`) — **not** a `table.c` system column. Used by *everything operational*:
-  `data_sources.query` (SELECT + two-phase UPDATE/DELETE), `data_sources.retrieve` (reflection),
-  the `pages.create` parent, and relation schema specs.
+- **`data_source_id` = a hidden system column** (in `_sys_columns`, captured/read by name via
+  `get_data_source_id()`) — carried like any other system column but **excluded from the public
+  `table.c` view** and from every query projection and page-result description (see *Hidden system
+  column* under §User Column). Used by *everything operational*: `data_sources.query` (SELECT +
+  two-phase UPDATE/DELETE), `data_sources.retrieve` (reflection), the `pages.create` parent, and
+  relation schema specs.
 
 Both IDs are persisted: `databases.create` returns the container plus `data_sources[0].id`, and
 the `tables` catalog stores `data_source_id` alongside `table_id`. Reflection is **catalog-first**
 — it reads `data_source_id` from the catalog row and calls `data_sources.retrieve` directly.
+
+A data source's **name is its `title`** (rich text), equal to the database title under the
+single-source invariant. **Orphan detection** — `get_table_state` for a table with *no* catalog
+row — finds a stray table by searching **data sources** on that title (search yields `data_source`
+objects, never `database`, per ADR-0014); a hit with no catalog row is `ORPHANED`.
 
 The `tables` catalog **row schema** (final order): `table_name` (title), `table_schema`,
 `table_catalog`, `table_id`, **`data_source_id`** (rich_text, per ADR-0014), **`is_dropped`**
@@ -85,10 +92,16 @@ subclass that maps to the Notion property type and owns the bind/filter value pr
 A column explicitly declared by the user in `Table(...)`. Distinct from **system columns** (e.g.
 `object_id`, `_no_id`) which are injected by normlite and carry Notion metadata.
 
-`data_source_id`, though carried as a system column, is **excluded from every page-result
-description** (`SchemaInfo.from_table`): a Notion *page* has no `data_source_id` key and a SQL user
-never selects it (ADR-0014). It is routing plumbing captured by name via `get_data_source_id()`,
-never a returned column — the same rule the SELECT projection already applies (`e0647cd`).
+**Hidden system column**: a system column that normlite captures in `_sys_columns` (read by name,
+e.g. `get_data_source_id()`) but that is **excluded from the public `table.c` view** and from every
+query projection and page-result description — never user-visible. `data_source_id` and `table_name`
+are the two (see [ADR-0017](docs/adr/0017-hidden-system-columns.md)).
+
+`data_source_id`, though carried as a system column, is a hidden system column: **excluded from the
+public `table.c` view** and from every page-result description (`SchemaInfo.from_table`). A Notion
+*page* has no `data_source_id` key and a SQL user never selects it (ADR-0014); it is routing plumbing
+captured by name via `get_data_source_id()`, never a returned column — the same rule the SELECT
+projection applies (`e0647cd`), now enforced at the `table.c` source.
 
 ### Projected column name (collision qualification)
 A `select(...)` projection preserves the order in which columns are listed. When the projection

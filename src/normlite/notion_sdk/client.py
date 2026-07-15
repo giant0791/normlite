@@ -534,26 +534,6 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    def databases_query(
-            self, 
-            path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None, 
-            payload: Optional[dict] = None
-    ) -> List[dict]:
-        """Get a list pages contained in the database.
-
-        Args:
-            path_params (dict): A dictionary containing a "database_id" key for the database to
-                query.
-            query_params (dict): A dictionary containing "filter_properties" object to restrict properties returned.
-            payload (dict): A dictionary that must contain the "filter" and optionally "sorts" objects modeling the query.
-
-        Returns:
-            List[dict]: The list containing the page objects or ``[]``, if no pages have been found.
-        """
-        raise NotImplementedError
-    
-    @abstractmethod
     def databases_update(
         self, 
         path_params: Optional[dict] = None,
@@ -915,9 +895,12 @@ class InMemoryNotionClient(AbstractNotionClient):
         parent_type, _ = self._resolve_parent(db)
         if parent_type != "page":
             raise NotionError("Databases can only be created under pages.")
-        
+
+        # Faithfulness to Notion 2025-09-03: each data_sources entry advertises both
+        # an id and a name; the initial data source's name defaults to the database
+        # title. (db["title"] is still the raw rich-text list at this point.)
         db["data_sources"] = [
-            {"id": data_source_id}
+            {"id": data_source_id, "name": get_title(db)}
         ]
 
         db["is_inline"] = False
@@ -1050,122 +1033,6 @@ class InMemoryNotionClient(AbstractNotionClient):
             # Today the return is identical to the input — validation-only, no real canonicalisation.
             return value
 
-    def _update_database_properties(
-        self,
-        database: dict,
-        updates: dict,
-    ) -> None:
-        if not isinstance(updates, dict):
-            raise NotionError(
-                "Database properties must be an object.",
-                status_code=400,
-                code="validation_error",
-            )
-
-        schema = database["properties"]
-
-        def resolve_property(key: str) -> tuple[str, dict]:
-            # ID match
-            for name, prop in schema.items():
-                if prop["id"] == key:
-                    return name, prop
-            # Name match
-            if key in schema:
-                return key, schema[key]
-
-            raise NotionError(
-                f"Property '{key}' does not exist.",
-                status_code=400,
-                code="validation_error",
-            )
-
-        for ref, spec in updates.items():
-            name, prop = resolve_property(ref)
-            prop_type = prop["type"]
-
-            # ------------------------------------------------------------
-            # Property deletion
-            # ------------------------------------------------------------
-            if spec is None:
-                if prop_type == "title":
-                    raise NotionError(
-                        "Cannot delete title property.",
-                        status_code=400,
-                        code="validation_error",
-                    )
-                del schema[name]
-                continue
-
-            if not isinstance(spec, dict):
-                raise NotionError(
-                    f"Invalid property update for '{name}'.",
-                    status_code=400,
-                    code="validation_error",
-                )
-
-            # ------------------------------------------------------------
-            # Rename
-            # ------------------------------------------------------------
-            if "name" in spec:
-                if prop_type == "status":
-                    raise NotionError(
-                        "Cannot rename status property.",
-                        status_code=400,
-                        code="validation_error",
-                    )
-
-                new_name = spec["name"]
-                if new_name in schema and new_name != name:
-                    raise NotionError(
-                        f"Property '{new_name}' already exists.",
-                        status_code=400,
-                        code="validation_error",
-                    )
-
-                schema[new_name] = schema.pop(name)
-                name = new_name
-                prop = schema[name]
-
-            # ------------------------------------------------------------
-            # Type / configuration update
-            # ------------------------------------------------------------
-            if prop_type in spec:
-                # configuration update
-                new_conf = spec[prop_type]
-
-                if prop_type == "status":
-                    raise NotionError(
-                        "Cannot update status property schema.",
-                        status_code=400,
-                        code="validation_error",
-                    )
-
-                schema[name] = {
-                    "id": prop["id"],
-                    "type": prop_type,
-                    prop_type: new_conf,
-                }
-                continue
-
-            # type update
-            new_type = next(iter(spec), {})
-
-            if new_type:
-                if prop_type == "title" and new_type != "title":
-                    raise NotionError(
-                        "Cannot change type of title property.",
-                        status_code=400,
-                        code="validation_error",
-                    )
-
-            schema[name] = {
-                "id": prop["id"],
-                "type": new_type,
-                new_type: spec[new_type]
-            }
-                    
-
-
     # ------------------------------------------------------------------
     # Unified add entrypoint
     # ------------------------------------------------------------------
@@ -1195,6 +1062,11 @@ class InMemoryNotionClient(AbstractNotionClient):
             self._store[ds["id"]] = ds
             self._finalize_database(obj, ds["id"])
             self._normalize_database_title(obj)
+
+            # 2025-09-03: the data source advertises its name as a `title`
+            # rich-text object, equal to the container title under the
+            # single-source invariant. This is what search matches on.
+            ds["title"] = copy.deepcopy(obj["title"])
 
         else:
             raise NotionError(f'"{type_}" not supported or unknown')
@@ -1324,120 +1196,6 @@ class InMemoryNotionClient(AbstractNotionClient):
             )
         return copy.deepcopy(obj)
 
-    def databases_query(
-            self,
-            path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None,
-            payload: Optional[dict] = None
-    ) -> dict:
-        query_results = []
-        query_result_object = {
-            'object': 'list',
-            'results': query_results,
-            'next_cursor': None,
-            'has_more': False,
-            'type': 'page',
-            'page': {}
-        }
-
-        if not self._store_len():
-            return query_result_object
-        
-        payload = payload or {}
-
-        database_id = path_params.get('database_id') if path_params else None
-        if database_id is None:
-            raise NotionError('Invalid request URL: database_id should be defined.')
-
-        # if the in_trash filter is not set ("in_trash" not in payload), skip deleted by default
-        skip_deleted_pages = (
-            not payload.get("in_trash", True)      
-            if payload 
-            else
-            None
-        ) 
-
-        has_filter = bool(payload and payload.get('filter'))
-        sorts = payload.get("sorts") if payload else None
-
-        filter_properties = []
-        if query_params:
-            filter_properties = query_params.get('filter_properties') or []
-
-        # --------------------
-        # Filtering phase
-        # --------------------
-        pages = []
-
-        for obj in self._store.values():
-            if obj.get("object") != "page":
-                continue
-
-            parent = obj.get("parent", {})
-            if parent.get("type") != "database_id":
-                continue
-
-            if parent.get("database_id") != database_id:
-                continue
-
-            if (skip_deleted_pages and obj.get("in_trash")):
-                continue
-
-            if not has_filter:
-                pages.append(obj)
-                continue
-
-            predicate = _Filter(obj, payload)
-            if predicate.eval():
-                pages.append(obj)
-
-        # --------------------
-        # Sorting phase
-        # --------------------
-        if sorts:
-            for sort in reversed(sorts):
-                prop = sort.get("property")
-                direction = sort.get("direction", "ascending")
-
-                if direction not in ("ascending", "descending"):
-                    raise ValueError(f"Invalid sort direction '{direction}'")
-
-                reverse = direction == "descending"
-
-                def sort_key(page):
-                    value = _extract_sort_value(page, prop)
-                    is_empty = value in (None, EMPTY_TEXT, EMPTY_NUMBER)
-                    return (is_empty, value)
-
-                pages.sort(key=sort_key, reverse=reverse)
-
-        # --------------------
-        # Pagination
-        # --------------------
-        # recompute the view at every request
-        requested_page_size = payload.get("page_size") or InMemoryNotionClient.NOTION_MAX_PAGE_SIZE
-        page_size = min(requested_page_size, InMemoryNotionClient.NOTION_MAX_PAGE_SIZE)
-        start_cursor = payload.get("start_cursor")
-        offset = decode_cursor(start_cursor) if start_cursor is not None else 0
-        end = offset + page_size
-
-        # --------------------
-        # Projection phase
-        # --------------------
-        for page in pages[offset:end]:
-            if filter_properties:
-                query_results.append(
-                    self._filter_properties(page, filter_properties)
-                )
-            else:
-                query_results.append(page)
-
-        if end < len(pages):
-            query_result_object["has_more"] = True
-            query_result_object["next_cursor"] = encode_cursor(end)
-
-        return query_result_object
-
     def databases_update(
             self, 
             path_params: Optional[dict] = None,
@@ -1484,11 +1242,15 @@ class InMemoryNotionClient(AbstractNotionClient):
                 )
             database["title"] = copy.deepcopy(title)
 
-        # schema updates (DDL)
+        # Notion 2025-09-03: databases.update is narrowed to container-level attrs.
+        # A database has no schema surface — user columns live on the data source and
+        # are edited via data_sources.update — so a `properties` body param is invalid.
         if "properties" in payload:
-            self._update_database_properties(
-                database,
-                payload["properties"],
+            raise NotionError(
+                "body.properties is not a valid property for a database update; "
+                "the schema lives on the data source (use data_sources.update).",
+                status_code=400,
+                code="validation_error",
             )
 
         return copy.deepcopy(database)
@@ -1546,9 +1308,9 @@ class InMemoryNotionClient(AbstractNotionClient):
             'results': results,
             'next_cursor': None,
             'has_more': False,
-            'type': 'page_or_database',
+            'type': 'page_or_data_source',
             'page': {}
-        }        
+        }
         if filter is not None:
             if not isinstance(filter, dict):
                 raise NotionError(
@@ -1573,18 +1335,26 @@ class InMemoryNotionClient(AbstractNotionClient):
                     code="invalid_json"                    
                 )
             
-            if filter_by not in ("page", "database"):
+            # 2025-09-03: databases no longer appear as search results — search
+            # yields pages and data sources only (ADR-0014).
+            if filter_by not in ("page", "data_source"):
                 raise NotionError(
-                    "Body failed validation: body.value should be either 'page' or 'database'.",
+                    "Body failed validation: body.value should be either 'page' or 'data_source'.",
                     status_code=400,
-                    code="invalid_json"                    
+                    code="invalid_json"
                 )
 
         for obj in self._store.values():
+            # 2025-09-03: databases never appear as search results — the
+            # queryable surface is the data source (ADR-0014). Only pages and
+            # data sources surface, filter or no filter.
+            if obj['object'] == 'database':
+                continue
+
             if filter_by is not None:
-                if obj['object'] != filter_by:    
+                if obj['object'] != filter_by:
                     continue
-            
+
             if query is not None:
                 if query != get_title(obj):
                     continue
@@ -1646,8 +1416,17 @@ class FileBasedNotionClient(InMemoryNotionClient):
 
     """
 
-    STORE_VERSION = 1
-    """Represent the store version used for compatibility check when reading data stores saved on filesystem."""
+    STORE_VERSION = 2
+    """Represent the store version used for compatibility check when reading data stores saved on filesystem.
+
+    Bumped ``1`` → ``2`` for the Notion 2025-09-03 two-ID store shape (ADR-0014): ``database`` and
+    ``data_source`` are separate objects, database containers carry no top-level ``properties``, and
+    pages parent to ``data_source_id``. Pre-upgrade stores are a **clean break** — no migrator; the
+    loader rejects them loudly (see :meth:`load`).
+    """
+
+    _OLD_STORE_GUARD_MESSAGE = "store predates the 2025-09-03 upgrade; recreate it"
+    """Loud guard message for a pre-2025-09-03 store detected by shape (see :meth:`load`)."""
 
 
     def __init__(
@@ -1695,16 +1474,34 @@ class FileBasedNotionClient(InMemoryNotionClient):
         with self._path.open("r", encoding="utf-8") as f:
             data = json.load(f)
 
+        objects = data.get("objects")
+        if not isinstance(objects, dict):
+            raise NotionError("Corrupted store: 'objects' missing or invalid")
+
+        # Shape-sniff a pre-2025-09-03 store BEFORE the version check: a genuine
+        # pre-upgrade store is version 1 *and* old-shape, so the version gate would
+        # otherwise mask it behind the generic "unsupported version" message. The
+        # shape is the semantically precise signal — a `database` container with a
+        # top-level `properties` schema (schema now lives on a separate `data_source`
+        # object), or a `page` parented to `database_id` (pages now parent to
+        # `data_source_id`). NB the `page` scope matters: a `data_source` legitimately
+        # parents to `database_id`, so it must not trip this guard. Clean break,
+        # loud guard, no migrator (ADR-0014).
+        for obj in objects.values():
+            if obj.get("object") == "database" and "properties" in obj:
+                raise NotionError(self._OLD_STORE_GUARD_MESSAGE)
+            if (
+                obj.get("object") == "page"
+                and obj.get("parent", {}).get("type") == "database_id"
+            ):
+                raise NotionError(self._OLD_STORE_GUARD_MESSAGE)
+
         version = data.get("version")
         if version != self.STORE_VERSION:
             raise NotionError(
                 f"Unsupported store version: {version} "
                 f"(expected {self.STORE_VERSION})"
             )
-
-        objects = data.get("objects")
-        if not isinstance(objects, dict):
-            raise NotionError("Corrupted store: 'objects' missing or invalid")
 
         # IMPORTANT: store must contain canonical objects
         self._store = copy.deepcopy(objects)

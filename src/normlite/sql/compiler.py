@@ -443,18 +443,18 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state.stmt = ddl_stmt
         path_params = {}
         stmt_table = ddl_stmt.get_table()
-        database_id = stmt_table.get_oid()
+        data_source_id = stmt_table.get_data_source_id()
 
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
-                    key='database_id',
-                    value=database_id
+                    key='data_source_id',
+                    value=data_source_id
                 )
             )
-            path_params['database_id'] = f':{db_id_key}'
+            path_params['data_source_id'] = f':{db_id_key}'
 
-        operation = dict(endpoint = 'databases', request='retrieve')
+        operation = dict(endpoint = 'data_sources', request='retrieve')
         return {
             'operation': operation, 
             'path_params': path_params,

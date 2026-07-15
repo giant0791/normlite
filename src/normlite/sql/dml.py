@@ -617,8 +617,9 @@ class Select(HasTable, ExecutableClauseElement):
             table = entities[0]
             self._table = table
 
-            # project all columns
-            self._projection = tuple(c for c in self._table.c if c.name != "data_source_id")
+            # project all columns; data_source_id is excluded at the table.c source
+            # (hidden system column, ADR-0017) so no per-projection filter is needed
+            self._projection = tuple(self._table.c)
             return
         
         if len(entities) == 2:

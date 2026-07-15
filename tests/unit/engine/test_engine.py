@@ -111,19 +111,19 @@ def test_tables_database_created(engine: Engine):
     assert tables_id == engine._tables_id
 
 def test_tables_page_created(engine: Engine):
-    existing = engine._client.databases_query(
-        {
-            "database_id": engine._tables_id,
+    existing = engine._client.data_sources_query(
+        path_params={"data_source_id": engine._catalog._tables_dsid},
+        payload={
             "filter": {
                 "property": "table_name",
                 "title": {"equals": "tables"},
             },
-        }
+        },
     )
 
     assert len(existing['results']) == 1
     tables = existing['results'][0]
-    assert get_parent_id(tables) == engine._tables_id
+    assert get_parent_id(tables) == engine._catalog._tables_dsid
     table_schema = get_property(tables, 'table_schema')
     table_catalog = get_property(tables, 'table_catalog')
     table_id = get_property(tables, 'table_id')
@@ -361,7 +361,7 @@ def test_create_engine_passes_read_only_through_to_file_based_client(tmp_path):
     # auto_load=True, the client requires the file to exist (slice #296's check),
     # so we seed an empty-but-versioned store.
     store_path = tmp_path / "fixture.json"
-    store_path.write_text(json.dumps({"version": 1, "objects": {}}))
+    store_path.write_text(json.dumps({"version": 2, "objects": {}}))
     file_uri = f"normlite:{store_path}"
 
     # Act: build the engine with read_only=True

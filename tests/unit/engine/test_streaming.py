@@ -25,7 +25,7 @@ from tests.utils.db_helpers import (
 
 
 class _CallCountingClient:
-    """Transparent proxy that counts ``databases.query`` calls and delegates the rest.
+    """Transparent proxy that counts ``data_sources.query`` calls and delegates the rest.
 
     Laziness is only observable by *counting backend calls* — the row totals look
     identical whether we drained eagerly or streamed. Same idiom as the Slice-3
@@ -37,7 +37,7 @@ class _CallCountingClient:
         self.query_calls = 0
 
     def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
-        if endpoint == "databases" and request == "query":
+        if endpoint == "data_sources" and request == "query":
             self.query_calls += 1
         return self._wrapped(endpoint, request, path_params, query_params, payload)
 
@@ -49,7 +49,7 @@ class _FailOnPageNClient:
     """Transparent proxy that injects a backend failure on the *N*-th page pull.
 
     Same wrap-and-delegate shape as ``_CallCountingClient``, but the ``fail_on``-th
-    ``databases.query`` call raises a ``NotionError`` instead of returning a page.
+    ``data_sources.query`` call raises a ``NotionError`` instead of returning a page.
     This is how Slice 5 reproduces a failure that strikes *mid-stream* — after
     ``execute()`` has already handed back page 1, when a later lazy page pull is
     the thing that goes wrong.
@@ -62,7 +62,7 @@ class _FailOnPageNClient:
         self.query_calls = 0
 
     def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
-        if endpoint == "databases" and request == "query":
+        if endpoint == "data_sources" and request == "query":
             self.query_calls += 1
             if self.query_calls == self.fail_on:
                 raise NotionError("rate limited", status_code=429, code=self.code)
@@ -90,7 +90,7 @@ def test_streaming_select_propagates_a_mid_stream_page_failure_as_dbapi_error(
           not retroactively empty or rewind the result it already handed back.
 
     6 rows, ``yield_per=2`` -> backend pages of 2, 2, 2; the fake fails the 2nd
-    ``databases.query``. The first ``fetchmany(2)`` is satisfied entirely from the
+    ``data_sources.query``. The first ``fetchmany(2)`` is satisfied entirely from the
     buffered page 1 (no pull). The second ``fetchmany(2)`` drains the buffer and
     must pull page 2 — which is where the injected failure lands.
 
@@ -153,7 +153,7 @@ def test_streaming_select_all_propagates_a_mid_stream_page_failure_as_dbapi_erro
           an error, never a silent short read.
 
     6 rows, ``yield_per=2`` -> backend pages of 2, 2, 2; the fake fails the 2nd
-    ``databases.query``. ``execute`` buffers page 1; ``all()`` then drives the drain
+    ``data_sources.query``. ``execute`` buffers page 1; ``all()`` then drives the drain
     and hits the injected failure pulling page 2.
 
     Failure modes fenced off (all collapse the ``raises`` assertion):
@@ -291,7 +291,7 @@ def test_do_execute_ignores_streaming_unless_caller_declares_streamable(
     This drives the ``do_execute`` chokepoint directly (mirroring the
     ``dml.py`` phase-1 callers via ``ExecutionContext``): it forwards streaming
     options but leaves ``streamable`` at its default. The operation is a paginated
-    ``databases.query`` (the only paginated endpoint) purely so streaming-vs-draining
+    ``data_sources.query`` (the only paginated endpoint) purely so streaming-vs-draining
     is observable.
 
     6 rows, ``yield_per=2`` -> request page_size 2 -> backend pages of 2, 2, 2.
@@ -307,7 +307,7 @@ def test_do_execute_ignores_streaming_unless_caller_declares_streamable(
     attach_table_oid(students, db_id)
     populate_students(engine, students, n=6)
 
-    # Build the paginated databases.query operation + a description-injected
+    # Build the paginated data_sources.query operation + a description-injected
     # cursor the way the real phase-1 callers do, via the execution context.
     compiled = select(students).compile(engine._sql_compiler)
     cursor = engine.raw_connection().cursor()

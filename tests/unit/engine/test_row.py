@@ -20,12 +20,12 @@ def row_matadata(row_description: tuple[tuple, ...]) -> CursorResultMetaData:
 
 @pytest.fixture
 def row(engine: Engine, students: Table, row_description: tuple[tuple, ...]) -> Row:
-    db_id = create_students_db(engine)
-    attach_table_oid(students, db_id)
+    db = create_students_db(engine)
+    attach_table_oid(students, db)
     populate_students(engine, students, n=1)
     client = engine._client
-    result = client.databases_query(
-        path_params={"database_id": db_id}
+    result = client.data_sources_query(
+        path_params={"data_source_id": students.get_data_source_id()}
     )
 
     assert len(result["results"]) == 1, "Expected one page only."
@@ -39,14 +39,14 @@ def row(engine: Engine, students: Table, row_description: tuple[tuple, ...]) -> 
 
 @pytest.fixture
 def table_rows(engine: Engine, students: Table) -> list[Row]:
-    db_id = create_students_db(engine)
-    attach_table_oid(students, db_id)
+    db = create_students_db(engine)
+    attach_table_oid(students, db)
     client = engine._client
     database = client.databases_retrieve(
-        path_params={"database_id": db_id}
+        path_params={"database_id": db["id"]}
     )
 
-    assert database, f"Expected to find database with ID: {db_id}"
+    assert database, f"Expected to find database with ID: {db['id']}"
 
     rs = ResultSet.from_json(description=None, notion_obj=database)
     table_metadata = CursorResultMetaData(rs.description, is_ddl=True)
@@ -69,13 +69,17 @@ def test_row_can_construct_from_page_metadata(row: Row):
     assert all_colnames == colnames
 
 def test_row_can_construct_from_database_metadata(table_rows: list[Row]):
+    # As of Notion 2025-09-03 (ADR-0014) a database object carries system columns
+    # only; user-defined columns live on its data source and are reflected
+    # separately via data_sources.retrieve (2-phase). So reflecting the database
+    # metadata alone yields exactly the 6 system column rows, no user columns.
     colnames = set(table_rows[0].keys())
     syscol_rows = [row[0] for row in table_rows if row[4]]
     usrcol_rows = [row[0] for row in table_rows if not row[4]]
 
-    assert len(table_rows) == 10
-    assert len(syscol_rows) == 5
-    assert len(usrcol_rows) == 5
+    assert len(table_rows) == 6
+    assert len(syscol_rows) == 6
+    assert len(usrcol_rows) == 0
     assert colnames == {"column_name", "column_type", "column_id", "metadata", "is_system"}
 
 def test_ddl_row_reflects_relation_target_from_data_source_id():

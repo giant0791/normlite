@@ -88,7 +88,8 @@ def create_students_db(engine: Engine) -> None:
             'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
             'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]},
             'table_dsid': {'rich_text': [{'text': {'content': db['data_sources'][0]['id']}}]},
-            'is_dropped': {'checkbox': False}
+            'is_dropped': {'checkbox': False},
+            'created_time': {'rich_text': [{'text': {'content': db['created_time']}}]}
         }
     })
 
@@ -243,6 +244,16 @@ def test_all_columns_contains_them_all(students: Table):
         "start_on",
         "grade"
     ]
+
+def test_data_source_id_is_hidden_from_public_columns(students: Table):
+    # data_source_id is a hidden system column (ADR-0017): captured in _sys_columns
+    # for routing/value capture but excluded from the public table.c surface, the
+    # same rule table_name/NO_TITLE already follows. It must never appear in .c.
+    assert "data_source_id" not in students.c
+    assert "data_source_id" not in [c.name for c in students.columns]
+
+    # ...yet it is still captured internally for get_data_source_id()
+    assert "data_source_id" in [c.name for c in students._sys_columns]
 
 def test_table_construct():
     metadata = MetaData()
@@ -524,8 +535,8 @@ def test_drop_table_detects_catalog_corruption_more_than_one_table_entry(
     page_obj = client.pages_create(
         payload={
             "parent": {
-                "type": "database_id",
-                "database_id": engine._tables_id,
+                "type": "data_source_id",
+                "data_source_id": engine._catalog._tables_dsid,
             },
             "properties": {
                 "table_name": {
@@ -539,6 +550,13 @@ def test_drop_table_detects_catalog_corruption_more_than_one_table_entry(
                 },
                 "table_id": {
                     "rich_text": [{"text": {"content": students.get_oid()}}]
+                },
+                "table_dsid": {
+                    "rich_text": [{"text": {"content": students.get_data_source_id()}}]
+                },
+                "is_dropped": {"checkbox": False},
+                "created_time": {
+                    "rich_text": [{"text": {"content": "2025-09-03T00:00:00.000Z"}}]
                 },
             },
         },
@@ -766,9 +784,12 @@ def test_table_autowires_foreignkey_constraint_on_create(engine: Engine):
     # Act — no add_constraint, no ForeignKeyConstraint in sight
     students.create(engine)
 
-    # Assert
+    # Assert — the relation spec lives on the data source, targeting data_source_id (2025-09-03)
     db_obj = engine._client._get_by_id(students.get_oid())
-    assert db_obj["properties"]["enrolled_in"]["relation"]["database_id"] == courses.get_oid()
+    ds = engine._client.data_sources_retrieve(
+        path_params={"data_source_id": db_obj["data_sources"][0]["id"]}
+    )
+    assert ds["properties"]["enrolled_in"]["relation"]["data_source_id"] == courses.get_data_source_id()
 
 def test_table_rejects_relation_column_without_foreignkey():
     from normlite import Relation
@@ -1008,13 +1029,21 @@ def test_create_all_with_diamond_fk_schema(engine: Engine):
     for table in (projects, sprints, devs, tasks):
         assert table.get_oid() is not None
 
-    # DDL payload: every Relation column resolved to the right database_id
-    tasks_obj = engine._client._get_by_id(tasks.get_oid())
-    assert tasks_obj["properties"]["project"]["relation"]["database_id"] == projects.get_oid()
-    assert tasks_obj["properties"]["sprint"]["relation"]["database_id"] == sprints.get_oid()
+    # DDL payload: every Relation column resolved to the right data_source_id
+    # (2025-09-03: relation spec lives on the data source, not the container)
+    def ds_props(table):
+        db_obj = engine._client._get_by_id(table.get_oid())
+        ds = engine._client.data_sources_retrieve(
+            path_params={"data_source_id": db_obj["data_sources"][0]["id"]}
+        )
+        return ds["properties"]
 
-    devs_obj = engine._client._get_by_id(devs.get_oid())
-    assert devs_obj["properties"]["project"]["relation"]["database_id"] == projects.get_oid()
+    tasks_props = ds_props(tasks)
+    assert tasks_props["project"]["relation"]["data_source_id"] == projects.get_data_source_id()
+    assert tasks_props["sprint"]["relation"]["data_source_id"] == sprints.get_data_source_id()
+
+    devs_props = ds_props(devs)
+    assert devs_props["project"]["relation"]["data_source_id"] == projects.get_data_source_id()
 
     # Verify creation sequence: parents strictly before any child that depends on them
     objs = {t.name: engine._client._get_by_id(t.get_oid()) for t in (projects, sprints, devs, tasks)}
@@ -1119,6 +1148,7 @@ def test_autoload_warns_when_relation_target_not_in_catalog(engine: Engine):
             'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]},
             'table_dsid': {'rich_text': [{'text': {'content': db['data_sources'][0]['id']}}]},
             'is_dropped': {'checkbox': False},
+            'created_time': {'rich_text': [{'text': {'content': db['created_time']}}]},
         },
     })
 
@@ -1180,6 +1210,7 @@ def test_autoload_reflects_mixed_resolvable_and_unresolvable_relations(engine: E
             'table_id': {'rich_text': [{'text': {'content': students_db.get('id')}}]},
             'table_dsid': {'rich_text': [{'text': {'content': students_db['data_sources'][0]['id']}}]},
             'is_dropped': {'checkbox': False},
+            'created_time': {'rich_text': [{'text': {'content': students_db['created_time']}}]},
         },
     })
 
@@ -1210,12 +1241,12 @@ def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
     # (ADR-0014: `ForeignKey.database_id` → `data_source_id`), not the legacy
     # `database_id` slot.
     #
-    # Hand-built at the FK-assembly seam: rather than stand up a full live relation
-    # fixture, we drive `_finalize_execution` directly and hand-feed its two phases —
-    # phase 1 (system rows, carrying the data source id in the NO_DSID row) and phase 2
-    # (the reflected relation user column). This isolates FK assembly against a real,
-    # catalog-seeded engine while stubbing the phase-2 `data_sources.retrieve` round-trip
-    # that STEP 3 of the 2-phase reflection slice added to `_finalize_execution`.
+    # Hand-built at the FK-assembly seam: under catalog-first reflection (2025-09-03)
+    # the compiler routes ReflectTable straight to data_sources.retrieve, so the single
+    # result already carries the reflected USER columns; the system columns are stashed
+    # from the catalog row in Table._autoload (bypassed here). We drive
+    # `_finalize_execution` directly with a one-hop fake that hands it the reflected
+    # relation user column, against a real, catalog-seeded engine for FK resolution.
     from normlite.engine.resultmetadata import CursorResultMetaData
     from normlite.engine.row import Row
     from normlite.sql.ddl import ReflectTable
@@ -1232,6 +1263,7 @@ def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
             "table_id": {"rich_text": [{"text": {"content": "courses-db-0001"}}]},
             "table_dsid": {"rich_text": [{"text": {"content": courses_dsid}}]},
             "is_dropped": {"checkbox": False},
+            "created_time": {"rich_text": [{"text": {"content": "2025-09-03T00:00:00.000Z"}}]},
         },
     })
 
@@ -1255,21 +1287,6 @@ def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
         ),
     )
 
-    # Phase-1 system row carrying this table's data source id — `_finalize_execution`
-    # reads it (NO_DSID) to issue the 2nd-phase retrieve. Value is arbitrary here since
-    # the phase-2 round-trip is stubbed and the user rows are hand-fed below.
-    students_dsid = "caffe000-0000-0000-0000-0000000000ff"
-    dsid_row = Row(
-        CursorResultMetaData(ddl_description, is_ddl=True),
-        (
-            SpecialColumns.NO_DSID,
-            DBAPITypeCode.ID,
-            None,
-            students_dsid,
-            True,  # system column
-        ),
-    )
-
     class _FakeResult:
         def __init__(self, rows):
             self._rows = rows
@@ -1280,38 +1297,19 @@ def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
         def close(self):
             pass
 
-    class _FakeRawConnection:
-        def cursor(self):
-            return None
-
-    class _FakeEngine:
-        # Delegate to the real engine (catalog lookups for FK resolution stay real),
-        # but stub the phase-2 DBAPI round-trip that `_finalize_execution` now issues.
-        def __init__(self, real):
-            self._real = real
-
-        def __getattr__(self, name):
-            return getattr(self._real, name)
-
-        def raw_connection(self):
-            return _FakeRawConnection()
-
-        def do_execute(self, cursor, operation, parameters):
-            pass
-
     class _FakeContext:
-        def __init__(self, engine, sys_rows, user_rows):
-            self.engine = _FakeEngine(engine)
-            self._sys_rows = sys_rows
+        # Catalog-first reflection is single-hop: the sole setup_cursor_result() call
+        # returns the reflected user columns. FK resolution uses the real engine.
+        def __init__(self, engine, user_rows):
+            self.engine = engine
             self._user_rows = user_rows
-            self._result_cursor = None
 
         def setup_cursor_result(self, clear_buffered=False):
-            return _FakeResult(self._user_rows if clear_buffered else self._sys_rows)
+            return _FakeResult(self._user_rows)
 
     reflected = Table("students", MetaData())
     stmt = ReflectTable(reflected)
-    stmt._finalize_execution(_FakeContext(engine, [dsid_row], [relation_row]))
+    stmt._finalize_execution(_FakeContext(engine, [relation_row]))
 
     fks = list(reflected.c.enrolled_in.foreign_keys)
     assert len(fks) == 1

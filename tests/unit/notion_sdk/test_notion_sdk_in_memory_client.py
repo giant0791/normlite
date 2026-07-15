@@ -153,6 +153,23 @@ def test_databases_create_returns_container_with_one_data_source(client):
     assert data_source_id
     assert data_source_id != container["id"]
 
+def test_databases_retrieve_data_source_advertises_id_and_name(client):
+    # Faithfulness to Notion 2025-09-03: a container's data_sources entries carry
+    # both an id AND a name (the data source's display name, which defaults to the
+    # database title). databases.retrieve must round-trip that shape.
+    container = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, "Students")
+    )
+
+    retrieved = client.databases_retrieve(
+        path_params={"database_id": container["id"]}
+    )
+
+    data_sources = retrieved["data_sources"]
+    assert len(data_sources) == 1
+    assert data_sources[0]["id"] == container["data_sources"][0]["id"]
+    assert data_sources[0]["name"] == "Students"
+
 def test_data_sources_retrieve_returns_schema_with_ids_and_types(client):
     # 2-phase reflection foundation (#349): the column schema (property ids +
     # resolved types) lives on the DATA SOURCE, so reflection must fetch it via
@@ -179,6 +196,23 @@ def test_data_sources_retrieve_returns_schema_with_ids_and_types(client):
     age_prop = ds["properties"]["Age"]
     assert age_prop["type"] == "number"
     assert age_prop["id"]     # a generated, non-empty property id
+
+def test_data_source_retrieve_advertises_title(client):
+    # Faithfulness to Notion 2025-09-03: a data source object carries a `title`
+    # (a rich-text object) holding its name — the same value as the container's
+    # data_sources[{id, name}] entry, equal to the database title under the
+    # single-source invariant. This is what search matches on (get_title), so
+    # orphan detection can find a stray table by its data source's title.
+    container = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, "Students")
+    )
+    data_source_id = container["data_sources"][0]["id"]
+
+    ds = client.data_sources_retrieve(
+        path_params={"data_source_id": data_source_id}
+    )
+
+    assert get_title(ds) == "Students"
 
 # ---------------------------------------------------------
 # Root page behavior
@@ -850,16 +884,16 @@ def test_create_page_under_database_with_exact_schema(client):
     db = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_)
     )
+    ds = data_source_of(client, db)
 
+    # 2025-09-03: rows parent to the data source, whose schema they must match.
     page = client.pages_create(
-        payload=make_db_page(db["id"], "Bob", 42)
+        payload=make_ds_page(ds["id"], "Bob", 42)
     )
 
     props = page["properties"]
 
-    # only property ids are returned
     assert set(props.keys()) == {"Name", "Age"}
-    ds = data_source_of(client, db)
     assert props["Name"]["id"] == ds["properties"]["Name"]["id"]
     assert props["Age"]["id"] == ds["properties"]["Age"]["id"]
 
@@ -1126,7 +1160,7 @@ def test_page_under_database_properties_are_normalized(client):
 
     page = client.pages_create(
         payload={
-            'parent': {"type": "database_id", "database_id": db["id"]},
+            'parent': {"type": "data_source_id", "data_source_id": db["data_sources"][0]["id"]},
             'properties':{
                 "table_name": {"title": rt("users")},
                 "schema": {"rich_text": rt("public")},
@@ -1225,62 +1259,10 @@ def test_store_contains_only_normalized_objects(client):
 # databases update tests
 # ------------------------------------------------------------
 
-def test_delete_property_by_name(client, database):
-    client._update_database_properties(
-        database,
-        {"Score": None},
-    )
-    assert "Score" not in database["properties"]
-
-def test_delete_title_property_fails(client, database):
-    with pytest.raises(NotionError, match="Cannot delete title"):
-        client._update_database_properties(
-            database,
-            {"Name": None},
-        )
-
-def test_rename_property_by_id(client, database):
-    client._update_database_properties(
-        database,
-        {"J@cT": {"name": "Points"}},
-    )
-    assert "Points" in database["properties"]
-    assert database["properties"]["Points"]["id"] == "J@cT"
-
-def test_rename_status_property_fails(client, database):
-    with pytest.raises(NotionError, match="status"):
-        client._update_database_properties(
-            database,
-            {"Status": {"name": "New Status"}},
-        )
-
-def test_update_property_configuration(client, database):
-    client._update_database_properties(
-        database,
-        {"Score": {"number": {"format": "percent"}}},
-    )
-    assert database["properties"]["Score"]["number"]["format"] == "percent"
-
-def test_update_property_type(client, database):
-    client._update_database_properties(
-        database,
-        {"Score": {"rich_text": {}}},
-    )
-    assert database["properties"]["Score"]["rich_text"] == {}
-
-def test_change_title_property_fails(client, database):
-    with pytest.raises(NotionError, match="Cannot change type of title"):
-        client._update_database_properties(
-            database,
-            {"Name": {"rich_text": {}}},
-        )
-
-def test_update_status_property_fails(client, database):
-    with pytest.raises(NotionError, match="status"):
-        client._update_database_properties(
-            database,
-            {"Status": {"status": {"options": []}}},
-        )
+# NOTE: the former `_update_database_properties` helper + its 8 direct tests were
+# retired in #348 — under Notion 2025-09-03 a database container has no schema
+# surface (user columns live on the data source), so databases.update no longer
+# performs property edits. See test_database_update_rejects_schema_properties below.
 
 def test_database_update_title(client, database):
     database_obj = client.databases_create(
@@ -1315,12 +1297,11 @@ def test_database_update_title_invalid_type(client, database):
             payload={"title": "Invalid"},
         )
 
-@pytest.mark.xfail(
-    reason="Schema-write via databases.update relocates to data_sources.update; "
-    "databases.update narrows to container-level attrs in #348. Out of scope for #347.",
-    strict=True,
-)
-def test_database_update_title_and_schema(client, database):
+def test_database_update_rejects_schema_properties(client, database):
+    # Notion 2025-09-03: the database container has no schema surface — user
+    # columns live on the data source, edited via data_sources.update. So
+    # databases.update is narrowed to container-level attrs (title / in_trash /
+    # parent) and rejects a `properties` body param.
     database_obj = client.databases_create(
         payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
@@ -1328,25 +1309,24 @@ def test_database_update_title_and_schema(client, database):
             "initial_data_source": {"properties": database["properties"]}
         }
     )
-    
-    result = client.databases_update(
-        path_params={"database_id": database_obj["id"]},
-        payload={
-            "title": [{"text": {"content": "New Name"}}],
-            "properties": {
-                "Score": {"number": {"format": "percent"}}
-            },
-        },
-    )
 
-    assert result["title"][0]["text"]["content"] == "New Name"
-    assert result["properties"]["Score"]["number"]["format"] == "percent"
+    with pytest.raises(NotionError, match="properties"):
+        client.databases_update(
+            path_params={"database_id": database_obj["id"]},
+            payload={
+                "properties": {
+                    "Score": {"number": {"format": "percent"}}
+                },
+            },
+        )
 
 # ------------------------------------------------------------
 # search tests
 # ------------------------------------------------------------
 
 def test_search_no_filter_returns_all(client):
+    # 2025-09-03: databases never surface in search (ADR-0014); only pages and
+    # data sources do, so the container objects are excluded even with no filter.
     db1 = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
     )
@@ -1356,11 +1336,11 @@ def test_search_no_filter_returns_all(client):
     )
 
     result = client.search()
-    expected = [obj for obj in client._store.values()]
+    expected = [obj for obj in client._store.values() if obj['object'] != 'database']
 
     assert result['results'] == expected
 
-def test_search_for_databases_no_title_returns_all(client):
+def test_search_for_data_sources_no_title_returns_all(client):
     db1 = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
     )
@@ -1369,23 +1349,32 @@ def test_search_for_databases_no_title_returns_all(client):
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v2')
     )
 
+    ds1 = client.data_sources_retrieve(
+        path_params={"data_source_id": db1["data_sources"][0]["id"]}
+    )
+    ds2 = client.data_sources_retrieve(
+        path_params={"data_source_id": db2["data_sources"][0]["id"]}
+    )
+
     result = client.search(
         payload={
             'filter': {
                 'property': 'object',
-                'value': 'database'
+                'value': 'data_source'
             }
         }
     )
 
-    assert result['results'] == [db1, db2]
- 
-def test_search_for_page_or_database_query_returns_matching_only(client):
+    assert result['results'] == [ds1, ds2]
+
+def test_search_for_page_or_data_source_query_returns_matching_only(client):
     db1 = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
     )
 
-    database1 = client.databases_retrieve(path_params={"database_id": db1["id"]})
+    ds1 = client.data_sources_retrieve(
+        path_params={"data_source_id": db1["data_sources"][0]["id"]}
+    )
 
     pg1 = client.pages_create(
         payload=make_title_page(client._ROOT_PAGE_ID_, title='students_v1')
@@ -1399,11 +1388,16 @@ def test_search_for_page_or_database_query_returns_matching_only(client):
         }
     )
 
-    assert result['results'] == [database1, page1]
+    # the container is excluded; its data source and the page both match by title
+    assert result['results'] == [ds1, page1]
 
-def test_search_for_database_query_returns_matching_only(client):
+def test_search_for_data_source_query_filter_returns_matching_only(client):
     db1 = client.databases_create(
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+
+    ds1 = client.data_sources_retrieve(
+        path_params={"data_source_id": db1["data_sources"][0]["id"]}
     )
 
     pg1 = client.pages_create(
@@ -1415,12 +1409,12 @@ def test_search_for_database_query_returns_matching_only(client):
             'query': 'students_v1',
             'filter': {
                 'property': 'object',
-                'value': 'database'
+                'value': 'data_source'
             }
         }
     )
 
-    assert result['results'] == [db1]
+    assert result['results'] == [ds1]
 
 def test_search_for_page_query_returns_matching_only(client):
     db1 = client.databases_create(
@@ -1457,18 +1451,42 @@ def test_search_returns_exact_match_only(client):
         payload=make_database(client._ROOT_PAGE_ID_, name='students_v2')
     )
 
+    ds1 = client.data_sources_retrieve(
+        path_params={"data_source_id": db1["data_sources"][0]["id"]}
+    )
+
     result = client.search(
         payload={
             'query': 'students',
             'filter': {
                 'property': 'object',
-                'value': 'database'
+                'value': 'data_source'
             }
         }
     )
 
-    assert result['results'] == [db1]
-  
+    assert result['results'] == [ds1]
+
+def test_search_for_data_source_query_returns_matching_only(client):
+    # 2025-09-03: search yields data_source objects (databases no longer appear
+    # as search results, per ADR-0014). A data source matches by its title, and
+    # the response envelope advertises the page_or_data_source result type.
+    db1 = client.databases_create(
+        payload=make_database(client._ROOT_PAGE_ID_, name='students_v1')
+    )
+    ds_id = db1["data_sources"][0]["id"]
+    ds1 = client.data_sources_retrieve(path_params={"data_source_id": ds_id})
+
+    result = client.search(
+        payload={
+            'query': 'students_v1',
+            'filter': {'property': 'object', 'value': 'data_source'}
+        }
+    )
+
+    assert result['type'] == 'page_or_data_source'
+    assert result['results'] == [ds1]
+
 def test_search_filter_is_not_a_dict_raises(client):
     with pytest.raises(NotionError) as exc:
         result = client.search(
@@ -1509,13 +1527,13 @@ def test_search_filter_value_missing_raises(client):
     assert exc.value.status_code == 400
     assert 'body.value should be defined.' in str(exc.value)
 
-def test_search_filter_value_not_a_page_or_database_raises(client):
+def test_search_filter_value_not_a_page_or_data_source_raises(client):
     with pytest.raises(NotionError) as exc:
         result = client.search(
             payload={
                 'filter': {
                     'property': 'object',
-                    'value': 'data_source'
+                    'value': 'workspace'
 
                 }
             }
@@ -1523,7 +1541,7 @@ def test_search_filter_value_not_a_page_or_database_raises(client):
 
     assert exc.value.code == 'invalid_json'
     assert exc.value.status_code == 400
-    assert "body.value should be either 'page' or 'database'." in str(exc.value)
+    assert "body.value should be either 'page' or 'data_source'." in str(exc.value)
 
 def test_deleted_pages_have_in_trash_true(client):
     pass
@@ -1566,7 +1584,7 @@ def test_pages_create_rejects_relation_value_that_is_not_a_list(client):
 
 
     malformed_page = {
-        "parent": {"type": "database_id", "database_id": students["id"]},
+        "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
         "properties": {
             "Name": {"title": [{"text": {"content": "Alice"}}]},
             "enrolled_in": {"relation": "not-a-list"},
@@ -1605,7 +1623,7 @@ def test_pages_create_rejects_relation_item_that_is_not_a_dict(client):
     )
 
     malformed_page = {
-        "parent": {"type": "database_id", "database_id": students["id"]},
+        "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
         "properties": {
             "Name": {"title": [{"text": {"content": "Alice"}}]},
             "enrolled_in": {"relation": ["not-a-dict-just-a-string"]},
@@ -1644,7 +1662,7 @@ def test_pages_create_rejects_relation_item_dict_without_id(client):
     )
 
     malformed_page = {
-        "parent": {"type": "database_id", "database_id": students["id"]},
+        "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
         "properties": {
             "Name": {"title": [{"text": {"content": "Alice"}}]},
             "enrolled_in": {"relation": [{"name": "Math 101"}]},
@@ -1683,7 +1701,7 @@ def test_pages_create_rejects_relation_item_id_that_is_not_a_string(client):
     )
 
     malformed_page = {
-        "parent": {"type": "database_id", "database_id": students["id"]},
+        "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
         "properties": {
             "Name": {"title": [{"text": {"content": "Alice"}}]},
             "enrolled_in": {"relation": [{"id": 12345}]},
@@ -1723,7 +1741,7 @@ def test_pages_create_preserves_relation_property_on_retrieve(client):
 
     course = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": courses["data_sources"][0]["id"]},
             "properties": {
                 "Title": {"title": [{"text": {"content": "Math 101"}}]},
             },
@@ -1732,7 +1750,7 @@ def test_pages_create_preserves_relation_property_on_retrieve(client):
 
     student = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": students["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
             "properties": {
                 "Name": {"title": [{"text": {"content": "Alice"}}]},
                 "enrolled_in": {"relation": [{"id": course["id"]}]},
@@ -1777,20 +1795,20 @@ def test_pages_update_replaces_relation_property(client):
 
     math = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": courses["data_sources"][0]["id"]},
             "properties": {"Title": {"title": [{"text": {"content": "Math 101"}}]}},
         }
     )
     history = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": courses["data_sources"][0]["id"]},
             "properties": {"Title": {"title": [{"text": {"content": "History 101"}}]}},
         }
     )
 
     student = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": students["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
             "properties": {
                 "Name": {"title": [{"text": {"content": "Alice"}}]},
                 "enrolled_in": {"relation": [{"id": math["id"]}]},
@@ -1841,14 +1859,14 @@ def test_pages_update_clears_relation_property_with_empty_list(client):
 
     math = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": courses["data_sources"][0]["id"]},
             "properties": {"Title": {"title": [{"text": {"content": "Math 101"}}]}},
         }
     )
 
     student = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": students["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
             "properties": {
                 "Name": {"title": [{"text": {"content": "Alice"}}]},
                 "enrolled_in": {"relation": [{"id": math["id"]}]},
@@ -1899,14 +1917,14 @@ def test_pages_update_rejects_relation_value_that_is_not_a_list(client):
 
     math = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": courses["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": courses["data_sources"][0]["id"]},
             "properties": {"Title": {"title": [{"text": {"content": "Math 101"}}]}},
         }
     )
 
     student = client.pages_create(
         payload={
-            "parent": {"type": "database_id", "database_id": students["id"]},
+            "parent": {"type": "data_source_id", "data_source_id": students["data_sources"][0]["id"]},
             "properties": {
                 "Name": {"title": [{"text": {"content": "Alice"}}]},
                 "enrolled_in": {"relation": [{"id": math["id"]}]},
@@ -1924,3 +1942,14 @@ def test_pages_update_rejects_relation_value_that_is_not_a_list(client):
                 }
             },
         )
+
+
+def test_databases_query_endpoint_is_retired(client: InMemoryNotionClient):
+    """The 2025-09-03 migration retires ``databases.query`` for ``data_sources.query``.
+
+    Page queries now route to the data source, so the old endpoint must be
+    un-routable: ``databases_query`` is no longer an allowed client operation and
+    dispatching to it raises rather than silently returning an (empty) result set.
+    """
+    with pytest.raises(NotionError, match="Unknown or unsupported operation"):
+        client("databases", "query", path_params={"database_id": "some-db-id"})

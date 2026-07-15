@@ -507,6 +507,7 @@ class Table(HasIdentifier):
                     (col.name, col) 
                     for col in cols_union
                     if col.name != SpecialColumns.NO_TITLE      # exclude table name
+                    and col.name != SpecialColumns.NO_DSID      # hidden system column (ADR-0017)
                 ]
             )
 
@@ -916,7 +917,15 @@ class Table(HasIdentifier):
             table_catalog=bind._user_database_name,
         )
 
-        self._sys_columns["object_id"]._value = entry.table_id    
+        # Catalog-first reflection (2025-09-03): the system columns come straight
+        # from the catalog row (zero extra I/O); only user columns need the single
+        # data_sources.retrieve hop that ReflectTable drives below.
+        self._sys_columns["object_id"]._value = entry.table_id
+        self._sys_columns["data_source_id"]._value = entry.table_dsid
+        self._sys_columns["created_at"]._value = entry.created_time
+        # reflect resolves ACTIVE tables only, so archival flags are False by construction
+        self._sys_columns["is_archived"]._value = False
+        self._sys_columns["is_deleted"]._value = False
         stmt = ReflectTable(self)
         with bind.connect() as connection:
             execution_options = {

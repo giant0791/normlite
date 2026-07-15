@@ -305,12 +305,14 @@ def prefilled_client(client: InMemoryNotionClient) -> InMemoryNotionClient:
 
 @pytest.fixture
 def database_id(prefilled_client: InMemoryNotionClient) -> str:
+    # 2025-09-03: search yields data_source objects (databases no longer appear,
+    # per ADR-0014). Resolve the container id via the data source's parent link.
     found = prefilled_client.search(
         payload={
             "query": "students",
             "filter": {
                 "property": "object",
-                "value": "database"
+                "value": "data_source"
             }
         }
     )
@@ -318,9 +320,19 @@ def database_id(prefilled_client: InMemoryNotionClient) -> str:
     results = found["results"]
     assert len(results) == 1
 
-    return results[0]["id"]
+    return results[0]["parent"]["database_id"]
+
+@pytest.fixture
+def data_source_id(prefilled_client: InMemoryNotionClient, database_id: str) -> str:
+    database = prefilled_client.databases_retrieve(
+        path_params={"database_id": database_id}
+    )
+    return database["data_sources"][0]["id"]
 
 def add_pages(client: InMemoryNotionClient, page_data: list[dict]) -> tuple[str, list[str]]:
+    # As of Notion 2025-09-03 (ADR-0014) the column schema lives on the
+    # database's data source (`initial_data_source.properties`) and pages parent
+    # to the data source id, not the database id.
     students_db = client._add('database', {
         'parent': {
             'type': 'page_id',
@@ -337,22 +349,26 @@ def add_pages(client: InMemoryNotionClient, page_data: list[dict]) -> tuple[str,
                 "href": None
             }
         ],
-        'properties': {
-            'name': {'title': {}},
-            'id': {'number': {}},
-            'is_active': {'checkbox': {}},
-            'start_on': {'date': {}},
-            'grade': {'rich_text': {}},
+        'initial_data_source': {
+            'properties': {
+                'name': {'title': {}},
+                'id': {'number': {}},
+                'is_active': {'checkbox': {}},
+                'start_on': {'date': {}},
+                'grade': {'rich_text': {}},
+            }
         }
     })
+
+    data_source_id = students_db['data_sources'][0]['id']
 
     inserted_pages = []
     for data in page_data:
         page = client.pages_create(
             payload={
                 'parent': {
-                    'type': 'database_id',
-                    'database_id': students_db['id']
+                    'type': 'data_source_id',
+                    'data_source_id': data_source_id
                 },
                 'properties': {
                     'name': {'title': [{'text': {'content': data['name']}}]},
@@ -367,25 +383,29 @@ def add_pages(client: InMemoryNotionClient, page_data: list[dict]) -> tuple[str,
 
     return students_db['id'], inserted_pages
 
-def test_client_conforms_API_version_2022_06_28(client: InMemoryNotionClient):
+def test_client_conforms_API_version_2025_09_03(client: InMemoryNotionClient):
+    # As of Notion 2025-09-03, pages.create returns fully-typed properties
+    # (id + type + value), NOT the old 2022-06-28 id-only shape.
     _, pages = add_pages(
         client, [
             {
-                "name": "Galileo Galilei", 
-                "id": 123456, 
-                "is_active": False, 
-                "start_on": "1581-01-01", 
+                "name": "Galileo Galilei",
+                "id": 123456,
+                "is_active": False,
+                "start_on": "1581-01-01",
                 "grade": "A"
             }
         ]
     )
 
     properties = pages[0].get("properties")
-    assert list(properties['name'].keys()) == ['id']
-    assert list(properties['id'].keys()) == ['id']
-    assert list(properties['is_active'].keys()) == ['id']
-    assert list(properties['start_on'].keys()) == ['id']
-    assert list(properties['grade'].keys()) == ['id']
+    assert properties['name']['type'] == 'title'
+    assert properties['id']['type'] == 'number'
+    assert properties['id']['number'] == 123456
+    assert properties['is_active']['type'] == 'checkbox'
+    assert properties['is_active']['checkbox'] is False
+    assert properties['start_on']['type'] == 'date'
+    assert properties['grade']['type'] == 'rich_text'
 
 def test_resultset_created_pages_from_json(client: InMemoryNotionClient, row_description: tuple[tuple, ...]):
     _, pages = add_pages(
@@ -405,25 +425,24 @@ def test_resultset_created_pages_from_json(client: InMemoryNotionClient, row_des
     get_name = row_getters.getter("name")
     get_id = row_getters.getter("id")
     get_is_active = row_getters.getter("is_active")
-    get_start_on = row_getters.getter("start_on")
     get_grade = row_getters.getter("grade")
     first = next(resultset)
 
-    # All property values from a page returned by pages.create are None
-    assert get_name(first) is None
-    assert get_id(first) is None
-    assert get_is_active(first) is None
-    assert get_start_on(first) is None
-    assert get_grade(first) is None
+    # As of Notion 2025-09-03, pages.create returns fully-typed properties, so
+    # the result set carries populated values (not the old all-None shape).
+    assert rich_text_to_plain_text(get_name(first)["title"]) == "Galileo Galilei"
+    assert get_id(first) == {"number": 123456}
+    assert get_is_active(first) == {"checkbox": False}
+    assert rich_text_to_plain_text(get_grade(first)["rich_text"]) == "A"
 
-def test_resultset_pages_from_json(prefilled_client: InMemoryNotionClient, database_id: str, row_description: tuple[tuple, ...]):
-    results = prefilled_client.databases_query({"database_id": database_id})
+def test_resultset_pages_from_json(prefilled_client: InMemoryNotionClient, data_source_id: str, row_description: tuple[tuple, ...]):
+    results = prefilled_client.data_sources_query(path_params={"data_source_id": data_source_id})
     resultset = ResultSet.from_json(row_description, results)
 
     assert len(results["results"]) == len(resultset)
 
-def test_resultset_fetch_first(prefilled_client: InMemoryNotionClient, database_id: str, row_description: tuple[tuple, ...]):
-    results = prefilled_client.databases_query({"database_id": database_id})
+def test_resultset_fetch_first(prefilled_client: InMemoryNotionClient, data_source_id: str, row_description: tuple[tuple, ...]):
+    results = prefilled_client.data_sources_query(path_params={"data_source_id": data_source_id})
     resultset = ResultSet.from_json(row_description, results)
     row_getters = _RowGetter(row_description)
     first = next(resultset)
@@ -433,8 +452,8 @@ def test_resultset_fetch_first(prefilled_client: InMemoryNotionClient, database_
     assert not get_in_trash(first)
     assert rich_text_to_plain_text(get_col_name(first)["title"]) == "Galileo Galilei"
 
-def test_resultset_fetchall(prefilled_client: InMemoryNotionClient, database_id: str, row_description: tuple[tuple, ...]):
-    results = prefilled_client.databases_query({"database_id": database_id})
+def test_resultset_fetchall(prefilled_client: InMemoryNotionClient, data_source_id: str, row_description: tuple[tuple, ...]):
+    results = prefilled_client.data_sources_query(path_params={"data_source_id": data_source_id})
     resultset = ResultSet.from_json(row_description, results)
     row_getters = _RowGetter(row_description)
     get_col_name = row_getters.getter("name")   
@@ -456,22 +475,19 @@ def test_resultset_database_from_json(
     get_col_name = itemgetter(0)
     rows = [row for row in resultset]
 
-    # expected 9, 1 row for each col spec
-    assert len(resultset) == 10 
+    # As of Notion 2025-09-03 (ADR-0014) a database object carries system columns
+    # only; user-defined columns live on its data source and are reflected
+    # separately via data_sources.retrieve. So reflecting the database yields
+    # exactly the 6 system column specs, no user columns.
+    assert len(resultset) == 6
 
-    # sys cols spec 
+    # sys cols spec
     assert get_col_name(rows[0]) == SpecialColumns.NO_ID.value
-    assert get_col_name(rows[1]) == SpecialColumns.NO_ARCHIVED.value
-    assert get_col_name(rows[2]) == SpecialColumns.NO_IN_TRASH.value
-    assert get_col_name(rows[3]) == SpecialColumns.NO_CREATED_TIME.value
-    assert get_col_name(rows[4]) == SpecialColumns.NO_TITLE.value
-
-    # user cols spec
-    assert get_col_name(rows[5]) == "name"
-    assert get_col_name(rows[6]) == "id"
-    assert get_col_name(rows[7]) == "is_active"
-    assert get_col_name(rows[8]) == "start_on"
-    assert get_col_name(rows[9]) == "grade"
+    assert get_col_name(rows[1]) == SpecialColumns.NO_DSID.value
+    assert get_col_name(rows[2]) == SpecialColumns.NO_ARCHIVED.value
+    assert get_col_name(rows[3]) == SpecialColumns.NO_IN_TRASH.value
+    assert get_col_name(rows[4]) == SpecialColumns.NO_CREATED_TIME.value
+    assert get_col_name(rows[5]) == SpecialColumns.NO_TITLE.value
 
 def test_resultset_database_cols_from_json(prefilled_client: InMemoryNotionClient, database_id: str):
     database = prefilled_client.databases_retrieve(
@@ -498,8 +514,9 @@ def test_resultset_database_cols_from_json_extract_table_name(
     resultset = ResultSet.from_json(row_description, database)
     # value of the table_name
     get_table_name = itemgetter(3)
-    # row containing the table name as metadata
-    get_table_name_metadata = itemgetter(4)
+    # row containing the table name as metadata: NO_TITLE is now the 6th system
+    # row (index 5) since NO_DSID was inserted after NO_ID (2025-09-03).
+    get_table_name_metadata = itemgetter(5)
     table_name_metadata_row = get_table_name_metadata(resultset._rows)
     table_name = get_table_name(table_name_metadata_row)
 
@@ -545,10 +562,10 @@ def test_process_data_source_emits_user_columns(client: InMemoryNotionClient):
 
 def test_resultset_last_inserted_rowids_from_pages(
     prefilled_client: InMemoryNotionClient, #
-    database_id: str, 
-    row_description: tuple[tuple, ...]        
+    data_source_id: str,
+    row_description: tuple[tuple, ...]
 ):
-    results = prefilled_client.databases_query({"database_id": database_id})
+    results = prefilled_client.data_sources_query(path_params={"data_source_id": data_source_id})
     resultset = ResultSet.from_json(row_description, results)
 
     assert len(resultset.last_inserted_rowids) == len(resultset)    

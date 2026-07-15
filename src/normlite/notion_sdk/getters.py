@@ -125,11 +125,13 @@ def get_rich_text_annotations(rt: Mapping[str, Any]) -> Optional[Mapping[str, An
 
 def get_title_rich_text(obj: Mapping[str, Any]) -> Optional[List[Dict[str, Any]]]:
     """
-    Return the title rich-text array from a database or page object.
+    Return the title rich-text array from a database, data source, or page object.
     """
     object_type = get_object_type(obj)
 
-    if object_type == "database":
+    # 2025-09-03: a data source advertises its name as a `title` rich-text object,
+    # exactly like a database container (single-source invariant).
+    if object_type in ("database", "data_source"):
         return obj.get("title")
 
     if object_type == "page":
