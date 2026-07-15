@@ -54,7 +54,7 @@ def bootstrap(client: InMemoryNotionClient):
 # Helpers
 # ----------------------------------------------------------------------
 
-def write_store(path: Path, *, version=1, objects=None):
+def write_store(path: Path, *, version=2, objects=None):
     payload = {
         "version": version,
         "objects": objects if objects is not None else {},
@@ -121,6 +121,77 @@ def test_load_rejects_unsupported_version(tmp_path):
         client.load()
 
 
+def test_load_rejects_old_shape_database_with_top_level_properties(tmp_path):
+    # A genuine pre-2025-09-03 store: version 1 AND old shape. Under the upgrade a
+    # database container carries NO top-level `properties` (its schema lives on a
+    # separate `data_source` object); a top-level `properties` key is the tell-tale
+    # of an old-format store. It must be rejected loudly, never silently mis-loaded.
+    path = tmp_path / "store.json"
+    write_store(
+        path,
+        version=1,
+        objects={
+            "db1": {
+                "object": "database",
+                "id": "db1",
+                "properties": {"Name": {"title": {}}},
+            },
+        },
+    )
+
+    client = FileBasedNotionClient(path, auto_load=False)
+
+    with pytest.raises(NotionError, match="predates the 2025-09-03 upgrade"):
+        client.load()
+
+
+def test_load_rejects_old_shape_page_parented_to_database_id(tmp_path):
+    # The other tell-tale of a pre-2025-09-03 store: a page parented directly to a
+    # `database_id`. Under the upgrade pages parent to `data_source_id`.
+    path = tmp_path / "store.json"
+    write_store(
+        path,
+        version=1,
+        objects={
+            "pg1": {
+                "object": "page",
+                "id": "pg1",
+                "parent": {"type": "database_id", "database_id": "db1"},
+                "properties": {},
+            },
+        },
+    )
+
+    client = FileBasedNotionClient(path, auto_load=False)
+
+    with pytest.raises(NotionError, match="predates the 2025-09-03 upgrade"):
+        client.load()
+
+
+def test_load_accepts_new_shape_data_source_parented_to_database_id(tmp_path):
+    # A `data_source` legitimately parents to `database_id` under the 2025-09-03
+    # shape, so the old-shape "parented to database_id" guard MUST be scoped to
+    # pages only — a data source must not trip it.
+    path = tmp_path / "store.json"
+    write_store(
+        path,
+        objects={
+            "ds1": {
+                "object": "data_source",
+                "id": "ds1",
+                "parent": {"type": "database_id", "database_id": "db1"},
+                "properties": {"Name": {"id": "title", "type": "title", "title": {}}},
+            },
+        },
+    )
+
+    client = FileBasedNotionClient(path, auto_load=False)
+
+    client.load()  # must not raise
+
+    assert "ds1" in client._store
+
+
 def test_load_rejects_corrupted_store(tmp_path):
     path = tmp_path / "store.json"
     path.write_text(json.dumps({"version": 1}), encoding="utf-8")
@@ -141,6 +212,78 @@ def test_load_deep_copies_objects(tmp_path):
 
     client._store["abc"]["id"] = "mutated"
     assert original["abc"]["id"] == "abc"
+
+
+# ----------------------------------------------------------------------
+# Round-trip of the 2025-09-03 two-object store
+# ----------------------------------------------------------------------
+
+def test_flush_and_load_round_trips_new_two_object_store(tmp_path):
+    # AC1: the new store shape survives a flush/reload cycle faithfully — a
+    # `database` container with NO top-level `properties` advertising its
+    # `data_sources`, a separate `data_source` object carrying the schema + its
+    # title, and a page parented to the `data_source_id`.
+    path = tmp_path / "store.json"
+
+    writer = FileBasedNotionClient(path, auto_load=False)
+    writer._ensure_root()
+
+    is_id = writer.pages_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": writer._ROOT_PAGE_ID_},
+            "properties": {"Name": {"title": [{"text": {"content": "information_schema"}}]}},
+        }
+    )["id"]
+
+    db = writer.databases_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": is_id},
+            "title": [{"type": "text", "text": {"content": "students"}}],
+            "initial_data_source": {
+                "properties": {
+                    "Name": {"title": {}},
+                    "Age": {"number": {}},
+                },
+            },
+        }
+    )
+    db_id = db["id"]
+    ds_id = db["data_sources"][0]["id"]
+
+    writer.pages_create(
+        payload={
+            "parent": {"type": "data_source_id", "data_source_id": ds_id},
+            "properties": {
+                "Name": {"title": [{"text": {"content": "Alice"}}]},
+                "Age": {"number": 30},
+            },
+        }
+    )
+
+    writer.flush()
+
+    # Fresh client, same file: auto-loads the persisted store.
+    reader = FileBasedNotionClient(path)
+
+    # Database container: present, no top-level schema, advertises its data source.
+    reloaded_db = reader._store[db_id]
+    assert reloaded_db["object"] == "database"
+    assert "properties" not in reloaded_db
+    assert reloaded_db["data_sources"][0]["id"] == ds_id
+
+    # Data source: a separate object carrying the schema and its title.
+    reloaded_ds = reader._store[ds_id]
+    assert reloaded_ds["object"] == "data_source"
+    assert set(reloaded_ds["properties"]) == {"Name", "Age"}
+    assert reloaded_ds["parent"] == {"type": "database_id", "database_id": db_id}
+    assert reloaded_ds["title"] == reloaded_db["title"]
+
+    # Page: parented to the data source, not the database.
+    page = next(
+        o for o in reader._store.values()
+        if o["object"] == "page" and o["parent"].get("type") == "data_source_id"
+    )
+    assert page["parent"]["data_source_id"] == ds_id
 
 
 # ----------------------------------------------------------------------

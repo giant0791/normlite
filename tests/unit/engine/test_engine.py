@@ -361,7 +361,7 @@ def test_create_engine_passes_read_only_through_to_file_based_client(tmp_path):
     # auto_load=True, the client requires the file to exist (slice #296's check),
     # so we seed an empty-but-versioned store.
     store_path = tmp_path / "fixture.json"
-    store_path.write_text(json.dumps({"version": 1, "objects": {}}))
+    store_path.write_text(json.dumps({"version": 2, "objects": {}}))
     file_uri = f"normlite:{store_path}"
 
     # Act: build the engine with read_only=True

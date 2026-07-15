@@ -1416,8 +1416,17 @@ class FileBasedNotionClient(InMemoryNotionClient):
 
     """
 
-    STORE_VERSION = 1
-    """Represent the store version used for compatibility check when reading data stores saved on filesystem."""
+    STORE_VERSION = 2
+    """Represent the store version used for compatibility check when reading data stores saved on filesystem.
+
+    Bumped ``1`` → ``2`` for the Notion 2025-09-03 two-ID store shape (ADR-0014): ``database`` and
+    ``data_source`` are separate objects, database containers carry no top-level ``properties``, and
+    pages parent to ``data_source_id``. Pre-upgrade stores are a **clean break** — no migrator; the
+    loader rejects them loudly (see :meth:`load`).
+    """
+
+    _OLD_STORE_GUARD_MESSAGE = "store predates the 2025-09-03 upgrade; recreate it"
+    """Loud guard message for a pre-2025-09-03 store detected by shape (see :meth:`load`)."""
 
 
     def __init__(
@@ -1465,16 +1474,34 @@ class FileBasedNotionClient(InMemoryNotionClient):
         with self._path.open("r", encoding="utf-8") as f:
             data = json.load(f)
 
+        objects = data.get("objects")
+        if not isinstance(objects, dict):
+            raise NotionError("Corrupted store: 'objects' missing or invalid")
+
+        # Shape-sniff a pre-2025-09-03 store BEFORE the version check: a genuine
+        # pre-upgrade store is version 1 *and* old-shape, so the version gate would
+        # otherwise mask it behind the generic "unsupported version" message. The
+        # shape is the semantically precise signal — a `database` container with a
+        # top-level `properties` schema (schema now lives on a separate `data_source`
+        # object), or a `page` parented to `database_id` (pages now parent to
+        # `data_source_id`). NB the `page` scope matters: a `data_source` legitimately
+        # parents to `database_id`, so it must not trip this guard. Clean break,
+        # loud guard, no migrator (ADR-0014).
+        for obj in objects.values():
+            if obj.get("object") == "database" and "properties" in obj:
+                raise NotionError(self._OLD_STORE_GUARD_MESSAGE)
+            if (
+                obj.get("object") == "page"
+                and obj.get("parent", {}).get("type") == "database_id"
+            ):
+                raise NotionError(self._OLD_STORE_GUARD_MESSAGE)
+
         version = data.get("version")
         if version != self.STORE_VERSION:
             raise NotionError(
                 f"Unsupported store version: {version} "
                 f"(expected {self.STORE_VERSION})"
             )
-
-        objects = data.get("objects")
-        if not isinstance(objects, dict):
-            raise NotionError("Corrupted store: 'objects' missing or invalid")
 
         # IMPORTANT: store must contain canonical objects
         self._store = copy.deepcopy(objects)
