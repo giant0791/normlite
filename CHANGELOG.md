@@ -1,3 +1,45 @@
+## 0.12.0 (2026-07-15)
+
+### Feat
+
+- **notion_sdk**: return full properties from fake pages.create
+- **sql**: route update find-pages to data_sources.query
+- **sql**: route delete find-pages to data_sources.query
+- **sql**: exclude data_source_id from page-result descriptions
+- **sql**: move mixed-relation autoload fixture to 2025-09-03 shape
+- **sql**: retarget relation reflection assert to data_source_id
+- **sql**: exclude data_source_id from the table primary key
+- **sql**: move autoload warns fixture to 2025-09-03 shape
+- **sql**: merge data-source user columns into reflection
+- **notiondbapi**: reflect user columns via _process_data_source (#347)
+- **notiondbapi**: add data_sources.retrieve to the fake (#349)
+- **engine**: persist real data_source_id on live create (#347)
+- **sql**: emit relation CREATE spec onto data_source_id (#347)
+- **sql**: reflect relation FK onto data_source_id (#347)
+- **engine**: resolve relation reflection by table_dsid (#347)
+- **engine**: reflect relation target from data_source_id (#347)
+- **engine**: persist table_dsid on sys_tables rows (#347)
+- **engine**: SystemTablesEntry surfaces table_dsid (#347)
+- **sql**: exclude data_source_id from SELECT projection (#347)
+- **sql**: route SELECT to data_sources.query (#347)
+- **sql**: parent inserted pages to data_source_id (#347)
+- **sql**: thread the two-ID data-source identity through CREATE TABLE (#347)
+- **engine**: migrate system catalog to data_sources.query + is_dropped soft-delete (#347)
+- **notion_sdk**: finish SELECT migration onto data_sources_query (#347)
+- **notion_sdk**: page rows + data_sources_query under data_source_id (#347)
+- **notion_sdk**: per-child-type parent validation + data_source back-link (#347)
+- **notion_sdk**: split fake store into database + data_source (#347)
+- **sql**: add func.sum/avg/count aggregates with COUNT(*) and null-skip
+- **sql**: add func.count() aggregate skeleton (#334)
+
+### Fix
+
+- **engine**: treat dropped catalog row as existing in get_or_create (#347)
+
+### Refactor
+
+- **sql**: generalize FunctionElement for sum/avg groundwork
+
 ## 0.11.0 (2026-06-29)
 
 ### Feat
