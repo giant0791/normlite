@@ -1,7 +1,13 @@
 # ADR-0005: Outer-join phantom rows obey SQL NULL semantics, not Notion empty-property semantics
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-0019](./0019-sql-null-semantics-pushdown-soundness.md)
 **Date:** 2026-06-06
+
+> **Superseded 2026-07-15.** The structural `all(None)` phantom guard was a workaround for a
+> `bool`-returning, Notion-semantic evaluator that had no way to express "there is no row here".
+> ADR-0019 adopts three-valued logic and a real `is_null()`, deriving this ADR's outcome instead of
+> hard-coding it — and closing the two boundaries this ADR spawned (anti-join inexpressible;
+> unreachable empty-title).
 
 ---
 

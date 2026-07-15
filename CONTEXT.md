@@ -121,6 +121,18 @@ Translates a DML/DDL AST into a `compiled_dict` — a JSON-like dict with keys `
 `path_params`, `payload`, and (for UPDATE) `update_payload`. Named placeholders (`:param`) are
 resolved at execution time by `ExecutionContext`.
 
+`visit_select` additionally emits `query_params` and — on the join path — `joins`,
+`join_right_filter`, and `join_right_sorts`. The latter two are **Residual**s (see §Query
+Planning & Execution) that have no home in a payload and ride the `compiled_dict` as ad-hoc keys;
+they are re-exposed as `context.join_right_filter` / `context.join_right_sorts` and fed to
+`JoinExecution.__init__`. This makes `visit_select` a **Planner** in all but name. Both keys are
+**retired** by the agreed design below — they move onto the **PlanningContext**, which is the
+supported channel for exactly this (compile-time decision → run time).
+
+`compiled_dict` is **pure JSON-like data** — no AST objects (`visit_join` emits only names and a
+bool). This is a real invariant: anything that must reach run time as an AST rides the
+**PlanningContext** on the `Compiled`, never `compiled_dict`.
+
 ### Compiler entry points: `.compile()` vs `._compiler_dispatch()`
 Every `ClauseElement` exposes two compilation entry points with **different lifecycle
 semantics**. Confusing them is a real footgun.
@@ -144,6 +156,11 @@ reserve `compile` for the outermost call.
 ### Execution Pipeline
 The sequence: compile → `pre_exec` (bind params) → `_setup_execution` (Notion API call(s)) →
 `_execute_*` → `post_exec` → `_finalize_execution` (cursor routing).
+
+**This term names the engine's statement-lifecycle hook sequence and nothing else.** It is a
+linear sequence driven by `Connection._execute_context`. It is *not* the **Query plan** (the tree
+of **Operator**s that computes a SELECT's rows — see §Query Planning & Execution); a plan is a
+tree, not a pipeline, and most of its nodes block. Do not call the plan a "pipeline".
 
 Two execution styles exist for DML:
 - **Single-phase** (`EXECUTE`, `INSERTMANYVALUES`): one or many `pages.create` calls driven by parameters.
@@ -761,3 +778,279 @@ matched pages (`sum`/`avg` → `None`). Hence `rowcount == 1` unconditionally. T
 (a `GROUP BY`-less aggregate has result cardinality 1) and deliberately differs from the
 streaming `rowcount == -1` rule in [[adr-0010-streaming-result-token-pagination]] — aggregates
 never stream.
+
+---
+
+## Query Planning & Execution
+
+> **Status: agreed design — not yet implemented.** The entries below describe the target. Today
+> `Select._setup_execution` / `_finalize_execution` branch on `if self._joins` / `if
+> self._is_aggregate` and delegate to the `JoinExecution` / `AggregateExecution` seams.
+> See [[adr-0018-query-plan-operator-tree]] (structure, supersedes ADR-0008) and
+> [[adr-0019-sql-null-semantics-pushdown-soundness]] (semantics, supersedes ADR-0005).
+
+### Query plan — slicing
+Structure first, semantics second, so each slice has **one reason to fail**:
+
+1. **Tree, wrapping today's I/O** ([[adr-0018-query-plan-operator-tree]]) — `Query plan` +
+   `Planner` + `PlanningContext` + the `QueryIO` port. Joins **still ride
+   `ExecutionStyle.EXECUTEMANY`**: `Join` keeps the `prepare`/`assemble` split internally, with the
+   hooks driving I/O exactly as today. The tree is stood up *around* the existing choreography —
+   ADR-0008's own delegate-then-fold discipline (#314–#317). Behaviour-preserving.
+2. **Drop EXECUTEMANY** ([[adr-0018-query-plan-operator-tree]]) — the plan takes ownership of its
+   I/O through the port; joins run as `EXECUTE`; `context.py:413`, `_join_errorhandler` and the
+   staged-cursor wiring go. `Join.open()` collapses `prepare`/`assemble` into one call.
+   Behaviour-preserving, and **this** is the slice that makes multi-join expressible.
+3. **Semantics** ([[adr-0019-sql-null-semantics-pushdown-soundness]]) — three-valued evaluator over
+   raw cells + `is_null()`; ADR-0005 superseded; `all(None)` deleted. A deliberate behaviour change
+   with its own tests.
+4. **Multi-join** — `Join` nests; closes [[multi-join-silent-drop-boundary]].
+5. **GROUP BY / HAVING** — a blocking Operator; retires ADR-0011's "sibling seam" plan.
+
+Slices 1 and 2 are **both** behaviour-preserving but split deliberately: slice 1 stands up new
+structure while the old choreography still runs, so a failure there is a *tree* bug; slice 2
+removes the choreography, so a failure there is an *I/O ownership* bug. Fusing them would make a
+structural bug and a dispatch bug indistinguishable in one diff — the same reasoning that keeps
+semantics out of both.
+
+Filed separately (orthogonal, no new pressure from the plan): `_compiler_state` → **compilation
+stack**, resolving the §Compiler entry points trap structurally.
+
+### Query plan
+A **tree of Operators** that computes a SELECT's rows. Built by the **Planner** from the
+`Select` AST; replaces the `if self._joins:` / `if self._is_aggregate:` branching in
+`Select`'s hooks with plan construction plus one drive call.
+
+Distinct from **Execution Pipeline** (the engine's hook sequence, §Core Concepts) — a plan is a
+tree, not a linear sequence. _Avoid_: "query execution pipeline", "execution tree".
+
+### Planner
+The stage translating a `Select` AST into a **Query plan**. It runs at **execution time**, in
+`Select._setup_execution`, reading the **PlanningContext** off `context.compiled`.
+
+Planning already happens today — hand-rolled inside `NotionCompiler.visit_select`, which splits
+`left_conjuncts` / `right_conjuncts` and computes the pushable leading run of ORDER BY keys. The
+**Pushdown** decision stays where it is (the compiler must know the split anyway, to emit a
+`payload['filter']` holding *only* the pushed conjuncts); what changes is that the leftover
+**Residual** is recorded on the **PlanningContext** as an AST instead of being compiled to Notion
+JSON and smuggled out on `compiled_dict`. The Planner then *consumes* that decision to build the
+tree. Long-term, planning moves out of the compiler entirely and the compiler shrinks to pure
+payload generation; that is a later slice, not v1.
+
+### PlanningContext
+The **messenger carrying compile-time decisions to run time** — the `Residual` WHERE and sorts (as
+**AST**), the join structure, and the projection. Authored by the compiler during `visit_select`,
+harvested onto the `Compiled` object, read by the **Planner** at `_setup_execution`.
+
+This is not a new mechanism; it **names and generalises one that already exists**.
+`Compiled.__init__` already does `self._execution_binds = dict(compiler._compiler_state.execution_binds)`
+(`base.py:366`) — compile-time state, harvested, carried to run time. `execution_binds` is the
+pattern; `join_right_filter` on `compiled_dict` was the hack that bypassed it. Note `Compiled`
+already carries `BindParameter` (AST-level) objects, so the JSON-purity rule binds `compiled_dict`
+only — a `PlanningContext` holding AST is consistent with the existing design.
+
+**Scratch vs output.** `CompilerState` today mixes two lifetimes: transient compiler *scratch*
+(`in_where`, `compile_state`, `stmt`) and durable planning *outputs* (`execution_binds`,
+`result_columns`, `fetch_columns`). Only outputs may survive compilation. `PlanningContext` names
+that boundary and holds the outputs, so the `Compiled` harvest is **one object**, not a
+field-by-field cherry-pick that must know which fields are scratch.
+
+**Why not `ExecutionContext`.** It is constructed at `base.py:226` (step 3), *after* compile
+(step 2), so it can only ever be the messenger's **destination**, never its author — that timeline
+is exactly why `join_right_filter` had to ride `compiled_dict` in the first place. Growing it
+would also walk back [[adr-0008-joinexecution-seam]]'s headline win (the 5 → 1 attribute
+collapse).
+
+### Operator
+A node in a **Query plan**. Batch-at-a-time iterator interface, deliberately **not** classic
+row-at-a-time Volcano — Notion's transport grain is a batch (`page_size` ≤ 100, `PageIterator`
+already yields whole pages, `pages.retrieve` is inherently bulk), so a row-at-a-time `next()`
+would re-split batches the layer below just produced.
+
+```
+Operator.open(io) -> None
+Operator.next()   -> list[tuple] | None    # one batch, None when exhausted
+Operator.close()  -> None
+```
+
+Node kinds: **Scan**, **Retrieve**, **Join**, **Filter**, **Aggregate** (and **GroupBy**, the
+first planned addition). `JoinExecution` and `AggregateExecution` become Operators; their
+config-to-constructor discipline ([[adr-0008-joinexecution-seam]],
+[[adr-0011-aggregate-execution-seam]]) carries over intact.
+
+### Scan vs Retrieve (the two access paths)
+A plan has **exactly one Scan** — the left-side `data_sources.query` — no matter how many joins it
+carries. Every right side is a **Retrieve**: a bulk `pages.retrieve` by `object_id`. This is not a
+v1 simplification but a property of the backend: normlite joins through a `Relation` FK, so the
+right side is always reached *by page ID*, and Notion offers no `id IN (...)` filter that could
+turn it into a query. `Scan` is the only Operator that carries a compiled payload.
+
+### Retrieve — a batch-bound parameterized access path
+**Retrieve is the `Join`'s second child**, and it is **parameterized**: it cannot `open()` until
+the Join has drained its left child and bound it with the oids. An `open()` on an unbound
+`Retrieve` is a programming error and must fail loudly, never fetch nothing.
+
+The binding is **once per open, with the whole deduplicated oid set** — *not* Graefe's per-outer-
+tuple rebinding. normlite conforms to Volcano *structurally* (the inner is a bound child of the
+join) but deliberately deviates on binding cardinality: `Join` is a **Blocking operator**, so it
+knows every oid before `Retrieve` opens, and one bulk call is one round-trip where per-tuple
+rebinding would be thousands. **Do not "restore" per-tuple rebinding** — it would be Volcano-
+faithful and catastrophic.
+
+### Join algorithm — batched index nested-loop
+normlite has exactly one join algorithm, previously unnamed: drain left → collect and **dedupe**
+the FK oids → **one** bulk retrieve-by-ID → hash the right rows by `object_id` → probe per left
+row (`dml.py:1265`). Retrieve-by-ID *is* a primary-key index seek, batched across the entire left
+side; the hash map serves **reassembly**, not matching — so this is **not** a hash join, and not a
+classic nested loop (the inner is never re-opened per outer row).
+
+The global dedup survives precisely *because* `Join` blocks. Chained multi-join composes by
+nesting — `Join(Join(Scan(a), Retrieve(b)), Retrieve(c))` — giving **N sequential round-trips**
+for N joins, each individually bulk-deduped.
+
+### Blocking operator (pipeline breaker)
+An **Operator** that must drain its child in `open()` before it can emit its first batch. **Join**
+blocks (it needs every left row's relation IDs to build one deduplicated `pages.retrieve` batch)
+and **Aggregate** blocks (you cannot average a half-consumed stream). This is the *same* rule
+already stated as "joins and aggregates force drain-all" under §Pagination and
+[[adr-0010-streaming-result-token-pagination]] — the plan restates it structurally rather than
+changing it. **Scan** is the only non-blocking Operator; it is what keeps `stream_results` /
+`yield_per` working on a plain select.
+
+### Pushdown / Residual
+Every WHERE conjunct and ORDER BY key is **either** pushed **or** residual — the split is the
+Planner's central output.
+
+- **Pushdown** — the predicate/sort/projection is translated to Notion JSON and evaluated
+  **Notion-side**, inside a **Scan**'s `data_sources.query` payload (`filter`, `sorts`,
+  `filter_properties`).
+- **Residual** — it cannot be pushed, so it is evaluated **client-side** by normlite. A residual
+  stays an **AST** (`ColumnElement`) all the way to its **Filter** Operator; it is *never*
+  compiled to Notion filter JSON.
+
+Sort pushability is **positional**: only the *leading run* of left-table ORDER BY keys is
+pushable; the first non-left key makes it and everything after it residual.
+
+### Pushdown soundness (the invariant)
+**Pushing a predicate must never change its answer.** A predicate evaluated Notion-side (pushed)
+and the same predicate evaluated client-side (residual) must agree — otherwise the result depends
+on a Planner decision the user cannot see, which is the worst failure mode in this design.
+
+This invariant holds **today**, and not by accident: the pushed filter is Notion-semantic, and the
+residual is evaluated by `_Filter` over **raw Notion cells**, which is *also* Notion-semantic. It
+is load-bearing, and it is the reason the two operators below must stay distinct.
+
+### `is_empty()` vs `is_null()` — the overloaded-emptiness split
+**Flagged ambiguity — "empty" meant two different things.** They are now separate operators and
+must never be conflated:
+
+- **`is_empty()` — Notion-semantic, PUSHABLE.** "The property holds no value" (`{"rich_text": []}`,
+  `{"number": null}`). Maps to Notion's `is_empty` filter op (`type_api.py:383`), rides into the
+  Scan payload.
+- **`is_null()` — SQL-semantic, NEVER PUSHED.** "There is no value *here*" — the cell is literally
+  `None`: an outer join's unmatched right slice, or an absent property. Notion cannot express "this
+  row had no join partner", so it is **always Residual**, evaluated client-side. Being unpushable
+  *by construction*, it has no pushdown parity to violate.
+
+`is_empty ≠ is_null`, and the difference is observable: at raw level a real empty cell is a **dict**
+(`{"rich_text": []}`, `{"number": None}`) while an unmatched right slice is **literally `None`** —
+distinguishable, which is exactly what makes `is_null()` implementable.
+
+**This is why decoded values are not enough.** The decode is **lossy**: `{"rich_text": []}` (Notion
+`is_empty` → TRUE) and `{"rich_text": [{"text": {"content": ""}}]}` (→ FALSE) *both* decode to `""`
+via `rich_text_to_plain_text` (`getters.py:93`). A client-side evaluator over decoded values could
+not reproduce `is_empty`, and pushdown parity would break.
+
+### Residual predicates are AST, evaluated over raw cells
+A **Residual** stays an **AST** (`ColumnElement`) — never round-tripped through Notion's filter
+language — and is evaluated over **raw Notion cells**, which is what the rows carry through the
+plan (decoding to Python happens later, at the `Row`/`CursorResult` level).
+
+`JoinExecution._right_side_passes` (`dml.py:1379`) re-wraps raw cells into a synthetic page. That
+re-wrapping is **not gratuitous** — it preserves the raw fidelity `is_empty` needs. What *is* wrong
+is the import: `_Filter` comes from `normlite.notion_sdk.client`, the **fake client's** internals,
+and exists *only* to simulate Notion-side filtering — a real Notion integration would delete the
+join's evaluator out from under it. The fix is to own a raw-cell evaluator, not to abandon raw
+cells.
+
+### Three value shapes (do not conflate)
+The single most important distinction for anything evaluating a predicate client-side:
+
+| Shape | Example | Who evaluates it |
+|---|---|---|
+| **Pre-bind Python values** | `Decimal('5')`, `-2` | `CheckConstraint` ([[adr-0012-checkconstraint-client-side-enforcement]]), before `pages.create` |
+| **Raw Notion cells** | `{"number": 5}`, `{"rich_text": []}` | the **Filter** Operator, on query results |
+| **Decoded Python values** | `Decimal('5')`, `""` | the user, via `Row` — **lossy**, see above |
+
+**There are two client-side evaluators, and that is correct.** `CheckConstraint`'s works on
+pre-bind values *before* a write; the plan's **Filter** works on raw cells *after* a read. They
+share the backend-agnostic `Operator` enum and three-valued logic, not an implementation. An
+earlier draft of this design claimed one evaluator could serve both — that was wrong: the shapes
+and the times differ.
+
+### Three-valued logic — UNKNOWN policy is the caller's
+The evaluator returns **TRUE / FALSE / UNKNOWN**; it must **not** return `bool`, because its two
+callers apply **opposite** (and both SQL-correct) policies to UNKNOWN:
+
+- **`CheckConstraint`** rejects a row only on **FALSE** — UNKNOWN → **accept**.
+- **`WHERE` / Filter** keeps a row only on **TRUE** — UNKNOWN → **drop**.
+
+A `bool`-returning evaluator silently bakes in one caller's policy and breaks the other.
+`is_null()` is *not* a comparison: it returns TRUE/FALSE, never UNKNOWN (SQL `IS NULL` semantics).
+
+### Query plan — I/O ownership
+The plan **drives its own I/O** through an injected I/O port; `Operator`s are otherwise pure
+compute. A join `Select` runs as `ExecutionStyle.EXECUTE`, and the join-specific
+`ExecutionStyle.EXECUTEMANY` branch (`context.py:413`) is **deleted**.
+
+This **supersedes** [[adr-0008-joinexecution-seam]]'s "I/O stays in the hooks" — see
+[[adr-0018-query-plan-operator-tree]]. ADR-0008 held that "a single synchronous call is
+impossible" because the EXECUTEMANY dispatch sits between the phases; that boundary was
+self-inflicted by `context.py:413` (joins borrowing the *mutation* statements' bulk channel as a
+vehicle), and `Select._setup_execution` already drove phase-1 I/O itself (`dml.py:832`). The
+`bulk_operation` / `bulk_parameters` channel is **untouched** and stays exactly as-is for
+DELETE / UPDATE / INSERT…RETURNING — joins simply stop borrowing it, which is *not* what
+ADR-0008's Alternative A rejected (that was `JoinExecution` *owning* the shared channel).
+
+### Phantom NULL — ADR-0005 revisited
+[[adr-0005-outer-join-phantom-null-semantics]] ruled that "a phantom (all-None right slice) fails
+every right-side predicate", enforced **structurally**: `if all(c is None for c in right_slice):
+return False` (`dml.py:1404`), *before* the predicate runs. That rule was a workaround for a
+`bool`-returning, Notion-semantic evaluator with no notion of NULL — normlite had no way to say
+"there is no row here", so it hard-coded the drop.
+
+The plan **removes the constraint that forced it**. With three-valued logic plus a real `is_null()`:
+- a phantom's cells are `None`, so any **comparison** on them is UNKNOWN → **dropped by WHERE** —
+  the ADR-0005 outcome, now derived rather than hard-coded;
+- `is_null()` on a phantom is **TRUE → kept**, which makes **anti-join expressible** — closing
+  [[anti-join-inexpressible-boundary]];
+- the `all(None)` structural guard is **deleted**, closing
+  [[unreachable-empty-title-boundary]] (a real `title=None` row was mislabelled a phantom by it).
+
+This is a **deliberate behaviour change**, not a refactoring side effect: the existing join suite is
+no longer a bit-for-bit oracle for right-side filtering. ADR-0005 is **superseded** by
+[[adr-0019-sql-null-semantics-pushdown-soundness]], which lands as a **separate slice** from the
+structural work — a structural bug and a semantic bug must not be indistinguishable in one diff.
+
+### Title NOT NULL — noted, out of scope
+Notion tolerates value-less properties (an omitted `rich_text` stores `[]`, an omitted number stores
+`null`), so under full SQL semantics nearly every column is nullable. The **`title` property is the
+one exception** — it is non-nullable by definition. The matching SQL-faithful move is for `Insert`
+to reject a `None` value for the `is_title=True` column.
+
+**Deliberately out of scope here** — it is an `Insert`-side constraint concern (a sibling of the
+deferred NOT-NULL constraint noted under §CheckConstraint — NULL / three-valued logic), not a query
+planning one. Recorded so the asymmetry is not mistaken for an oversight. Partial enforcement
+already exists at the fake-client level (`dml.py:1252`: "insert `title=None` is rejected by the
+client").
+
+### Multi-join (what the plan unblocks)
+`Select._joins` is a flat tuple, of which only `_joins[0]` is ever executed — chaining
+`.join().join()` silently drops the rest. Under the plan, joins **nest as Operators** instead.
+
+**Chained** joins (`a JOIN b ON a.b_ref`, then `b JOIN c ON b.c_ref`) are the reason plan-owned
+I/O is load-bearing: `c`'s page IDs are unknowable until `b`'s pages are retrieved, so the join
+needs **N sequential round-trips**. `Connection._execute_context` fires `_execute_many` exactly
+**once** (`base.py:277`), so under the current channel chained multi-join is not merely
+unimplemented — it is *inexpressible*. **Star** joins (several joins off the same left table)
+could be faked by concatenating batches, since both are `pages.retrieve`; chained ones cannot.
