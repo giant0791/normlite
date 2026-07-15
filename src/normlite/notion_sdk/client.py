@@ -141,6 +141,149 @@ def decode_cursor(cursor_str: str) -> int:
         return index
     except ValueError as e:
         raise ValueError(f"Invalid or corrupted cursor string: {cursor_str}") from e
+    
+class _ClientQueryEngine:
+    def __init__(
+        self, 
+        store: dict[str, dict],
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None,
+        payload: Optional[dict] = None
+    ) -> None:
+        self._store = store
+        self._path_params = path_params
+        self._payload = payload or {}
+        self._filter_props = []
+        if query_params is not None:
+            self._filter_props = query_params.get("filter_properties", [])
+        self._query_results = []
+        self._query_result_object = {
+            'object': 'list',
+            'results': self._query_results,
+            'next_cursor': None,
+            'has_more': False,
+            'type': 'page',
+            'page': {}
+        }
+
+    def _paginate(self) -> None:
+        # pagination slices every time the same overall result,
+        # but it uses the start_cursor for the next offset to begin to slice from
+        requested_page_size = self._payload.get("page_size") or InMemoryNotionClient.NOTION_MAX_PAGE_SIZE
+        page_size = min(requested_page_size, InMemoryNotionClient.NOTION_MAX_PAGE_SIZE)
+        start_cursor = self._payload.get("start_cursor")
+        offset = decode_cursor(start_cursor) if start_cursor is not None else 0
+        end = offset + page_size
+        
+        # slice the next page and encode the next cursor if necessary
+        next_page = [
+            p 
+            for p in self._query_results[offset:end]
+        ]
+        self._query_result_object["results"] = next_page
+        if end < len(self._query_results):
+            self._query_result_object["has_more"] = True
+            self._query_result_object["next_cursor"] = encode_cursor(end)
+
+    def _sort(self) -> None:
+        sorts = self._payload.get("sorts")
+        if sorts:
+            for sort in reversed(sorts):
+                prop = sort.get("property")
+                direction = sort.get("direction", "ascending")
+
+                if direction not in ("ascending", "descending"):
+                    raise ValueError(f"Invalid sort direction '{direction}'")
+
+                reverse = direction == "descending"
+
+                def sort_key(page):
+                    value = _extract_sort_value(page, prop)
+                    is_empty = value in (None, EMPTY_TEXT, EMPTY_NUMBER)
+                    return (is_empty, value)
+
+                self._query_results.sort(key=sort_key, reverse=reverse)
+        
+    def _filter(self) -> None:
+        data_source_id = (
+            self._path_params.get('data_source_id') 
+            if self._path_params 
+            else None
+        )
+
+        if data_source_id is None:
+            raise NotionError('Invalid request URL: data_source_id should be defined.')
+
+        # payload is guarded in the __init__ to be non-None
+        has_filter = self._payload.get('filter', False)
+
+        # --------------------
+        # Filtering phase
+        # --------------------
+        pages = []
+
+        for obj in self._store.values():
+            if obj.get("object") != "page":
+                continue
+
+            parent = obj.get("parent", {})
+
+            if parent.get("data_source_id") != data_source_id:
+                continue
+
+            if obj.get("in_trash"):
+                # always skip delete (in trash) pages
+                continue
+
+            if not has_filter:
+                pages.append(obj)
+                continue
+
+            predicate = _Filter(obj, self._payload)
+            if predicate.eval():
+                pages.append(obj)
+        
+        
+        self._query_results.extend(pages)    
+
+    def _project(self) -> None:
+        if not self._filter_props:
+            return
+        
+        # project only if "filter_properties" has been provided
+        # IMPORTANT: projection must be a pure per-row column transform 
+        # on the paginated results, that's why it mutates the "result" value in-place.
+        # This ensures the store stays untouched.
+        self._query_result_object["results"] = [
+            self._filter_properties(p, self._filter_props)
+            for p in self._query_result_object["results"]
+        ]
+    
+    def _filter_properties(
+            self, 
+            original_obj: dict, 
+            filter_list: Optional[list[str]] = []
+        ) -> dict:
+        props = original_obj.get('properties', {})
+        filtered_props = {
+            k: v for k, v in props.items()
+            if not filter_list or k in filter_list
+        }
+
+        return {
+            **original_obj,
+            'properties': filtered_props
+        }
+
+    def execute(self) -> dict:
+        if len(self._store) == 0:
+            return self._query_result_object
+        
+        self._filter()      # WHERE    - working set (may be live store refs)
+        self._sort()        # ORDER_BY - 
+        self._paginate()    # LIMIT    - pure windowing + cursors
+        self._project()     # SELECT   - narrow columns, detach into copies
+        return self._query_result_object
 
 class AbstractNotionClient(ABC):
     """Base class for a Notion API client.
@@ -435,6 +578,46 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
     
     @abstractmethod
+    def data_sources_query(
+        self, 
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None, 
+        payload: Optional[dict] = None
+    ) -> List[dict]:
+        """Get a list of pages contained in the data source.
+
+        Args:
+            path_params (dict): A dictionary containing a "data_source_id" key for the database to
+                query.
+            query_params (dict): A dictionary containing "filter_properties" object to restrict properties returned.
+            payload (dict): A dictionary that must contain the "filter" and optionally "sorts" objects modeling the query.
+
+        Returns:
+            List[dict]: The list containing the page objects or ``[]``, if no pages have been found.
+
+        .. versionadded:: 0.12.0
+        """
+        raise NotImplementedError
+    
+    @abstractmethod
+    def data_sources_retrieve(
+        self,
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None, 
+        payload: Optional[dict] = None
+    ) -> dict:
+        """Retrieve a data source object for the provided ID
+
+        Args:
+            payload (dict): A dictionary containing the data source id as key.
+
+        Returns:
+            dict: The retrieved database object or and empty dictionary if no
+            data source object for the provided ID were found
+        """
+        raise NotImplementedError
+ 
+    @abstractmethod
     def search(
         self,
         path_params: Optional[dict] = None,
@@ -606,18 +789,34 @@ class InMemoryNotionClient(AbstractNotionClient):
             )
 
         parent_type = parent.get("type")
-        if parent_type not in ("page_id", "database_id"):
+        if parent_type not in ("page_id", "data_source_id"):
             raise NotionError(
                 f'Body failed validation: body.parent.type should be "page_id" or '
-                f'"database_id", instead "{parent_type}" was defined.'
+                f'"data_source_id", instead "{parent_type}" was defined.'
+            )
+        
+        if type_ == "database" and parent_type != "page_id":
+            raise NotionError(
+                f'Body failed validation: body.parent.type should be "page_id", '
+                f'instead "{parent_type}" was defined.'
             )
 
         if type_ == "database" and not payload.get("title"):
             raise NotionError(
                 "Body failed validation: body.title should be defined for database object."
             )
+        
+        if type_ == "database" and "initial_data_source" not in payload:
+            raise NotionError(
+                "Body failed validation: body.initial_data_source should be defined, instead was undefined."
+            )
+        
+        if type_ == "database" and "properties" not in payload["initial_data_source"]:
+            raise NotionError(
+                "Body failed validation: body.initial_data_source.properties should be defined, instead was undefined."
+            )
 
-        if "properties" not in payload:
+        if type_ != "database" and "properties" not in payload:
             raise NotionError(
                 "Body failed validation: body.properties should be defined, instead was undefined."
             )
@@ -643,6 +842,16 @@ class InMemoryNotionClient(AbstractNotionClient):
                     "Make sure the relevant pages and databases are shared with your integration."
                 )
             return "database", obj
+        
+        if parent["type"] == "data_source_id":
+            oid = parent.get("data_source_id")
+            obj = self._get_by_id(oid)
+            if not obj or obj["object"] != "data_source":
+                raise NotionError(
+                    f"Could not find data source with ID: {oid}. "
+                    "Make sure the relevant pages, databases, and data sources are shared with your integration."
+                )
+            return "data_source", obj
 
         raise AssertionError("Unreachable")
 
@@ -657,7 +866,7 @@ class InMemoryNotionClient(AbstractNotionClient):
                 'New page is a child of a page. "title" is the only valid property.'
             )
 
-        name, prop = next(iter(props.items()))
+        _, prop = next(iter(props.items()))
         if "title" not in prop or len(prop) != 1:
             raise NotionError(
                 'New page is a child of a page. "title" is the only valid property.'
@@ -666,13 +875,13 @@ class InMemoryNotionClient(AbstractNotionClient):
         prop["type"] = "title"
         prop["id"] = "title"
 
-    def _finalize_page_under_database(self, page: dict, database: dict) -> None:
-        schema_props = database["properties"]
+    def _finalize_page_under_data_source(self, page: dict, data_source: dict) -> None:
+        schema_props = data_source["properties"]
         page_props = page["properties"]
 
         if set(page_props.keys()) != set(schema_props.keys()):
             raise NotionError(
-                f"Page properties must exactly match database schema: "
+                f"Page properties must exactly match data source schema: "
                 f"{sorted(schema_props.keys())}"
             )
 
@@ -692,21 +901,32 @@ class InMemoryNotionClient(AbstractNotionClient):
                 schema_type: page_prop[schema_type],
             }
 
+    def _finalize_data_source_under_database(self, data_source: dict, database_id: str) -> None:
+        data_source["parent"] = {
+            "type": "database_id",
+            "database_id": database_id
+        }
+
     # ------------------------------------------------------------------
     # Database finalization
     # ------------------------------------------------------------------
-
-    def _finalize_database(self, db: dict) -> None:
+    
+    def _finalize_database(self, db: dict, data_source_id: str) -> None:
         parent_type, _ = self._resolve_parent(db)
         if parent_type != "page":
             raise NotionError("Databases can only be created under pages.")
+        
+        db["data_sources"] = [
+            {"id": data_source_id}
+        ]
 
-        for name, prop in db["properties"].items():
+        db["is_inline"] = False
+
+    def _finalize_data_source(self, ds: dict) -> None:
+        for _, prop in ds["properties"].items():
             prop_type = next(iter(prop.keys()))
             prop["type"] = prop_type
             prop["id"] = "title" if prop_type == "title" else self._generate_property_id()
-
-        db["is_inline"] = False
 
     # ------------------------------------------------------------------
     # Normalization helpers
@@ -960,13 +1180,20 @@ class InMemoryNotionClient(AbstractNotionClient):
                 self._finalize_page_under_page(obj)
 
             else:
-                self._finalize_page_under_database(obj, parent_obj)
+                self._finalize_page_under_data_source(obj, parent_obj)
 
             self._normalize_properties(obj)
                 
 
         elif type_ == "database":
-            self._finalize_database(obj)
+            ds = self._new_object(
+                "data_source", 
+                payload = payload["initial_data_source"],
+            )
+            self._finalize_data_source(ds)
+            self._finalize_data_source_under_database(ds, obj["id"])
+            self._store[ds["id"]] = ds
+            self._finalize_database(obj, ds["id"])
             self._normalize_database_title(obj)
 
         else:
@@ -1003,22 +1230,6 @@ class InMemoryNotionClient(AbstractNotionClient):
     def _store_len(self) -> int:
         return len(self._store)
     
-    def _filter_properties(
-            self, 
-            original_obj: dict, 
-            filter_list: Optional[list[str]] = []
-        ) -> dict:
-        props = original_obj.get('properties', {})
-        filtered_props = {
-            k: v for k, v in props.items()
-            if not filter_list or k in filter_list
-        }
-
-        return {
-            **original_obj,
-            'properties': filtered_props
-        }
-
     # ------------------------------------------------------------------
     # Public API methods
     # ------------------------------------------------------------------
@@ -1026,11 +1237,8 @@ class InMemoryNotionClient(AbstractNotionClient):
     def pages_create(self, path_params=None, query_params=None, payload=None) -> dict:
         created_page = self._add("page", payload)
 
-        # update properties to return property ids only as of Notion API version 2022-06-28
-        # https://developers.notion.com/reference/page
-        properties = created_page['properties']
-        updated_props = {k: {'id': v['id']} for k, v in properties.items()}
-        created_page['properties'] = updated_props
+        # 2025-09-03: pages.create returns the full properties object populated with
+        # the values provided, conforming to the data source schema
         return created_page
 
 
@@ -1285,6 +1493,42 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         return copy.deepcopy(database)
     
+    def data_sources_query(
+        self,
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None,
+        payload: Optional[dict] = None
+    ) -> dict:
+        engine = _ClientQueryEngine(
+            self._store,
+            path_params=path_params,
+            query_params=query_params,
+            payload=payload
+        )
+
+        return engine.execute()
+    
+    def data_sources_retrieve(
+        self,
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None,
+        payload: Optional[dict] = None
+    ) -> dict:
+        ds_id = path_params.get("data_source_id") if path_params else None
+
+        if ds_id is None:
+            raise NotionError(f"Invalid request URL: data_source_id should be defined.")
+
+        obj = self._get_by_id(ds_id)
+        if not obj:
+            raise NotionError(
+                f"Could not find data source with ID: {ds_id}. "
+                "Make sure the relevant pages and databases are shared with your integration.",
+                status_code=404,
+                code='object_not_found'
+            )
+        return copy.deepcopy(obj)
+
     def search(
             self, 
             path_params: Optional[dict] = None,

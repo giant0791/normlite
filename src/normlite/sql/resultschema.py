@@ -135,6 +135,9 @@ class SchemaInfo:
             projected_names=projected_names,
         )
 
+        # prune the data_source_id column: it is never a key in pages
+        merged_columns = [n for n in merged_columns if n != SpecialColumns.NO_DSID]
+
         for name in merged_columns:
             # Table-declared columns
             try:

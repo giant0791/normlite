@@ -15,6 +15,7 @@ from normlite.engine.systemcatalog import TableState
 from normlite.exceptions import InvalidRequestError, NoReferencedTableError
 from normlite.notion_sdk.getters import get_object_id, get_object_type
 from normlite.notiondbapi.dbapi2 import InternalError, ProgrammingError
+from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.schema import MetaData, SystemColumn
 from normlite.sql.type_api import ObjectId, ArchivalFlag
 
@@ -64,26 +65,30 @@ def create_students_db(engine: Engine) -> None:
                 "href": None
             }
         ],
-        'properties': {
-            'id': {'number': {}},
-            'name': {'title': {}},
-            'grade': {'rich_text': {}},
-            'is_active': {'checkbox': {}},
-            'start_on': {'date': {}}
+        'initial_data_source': {
+            'properties': {
+                'id': {'number': {}},
+                'name': {'title': {}},
+                'grade': {'rich_text': {}},
+                'is_active': {'checkbox': {}},
+                'start_on': {'date': {}}
+            }
         }
     })
 
     # add the students to tables
     engine._client._add('page', {
         'parent': {
-            'type': 'database_id',
-            'database_id': engine._tables_id
+            'type': 'data_source_id',
+            'data_source_id': engine._catalog._tables_dsid
         },
         'properties': {
             'table_name': {'title': [{'text': {'content': 'students'}}]},
             'table_schema': {'rich_text': [{'text': {'content': ''}}]},
             'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
-            'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]}
+            'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]},
+            'table_dsid': {'rich_text': [{'text': {'content': db['data_sources'][0]['id']}}]},
+            'is_dropped': {'checkbox': False}
         }
     })
 
@@ -322,6 +327,9 @@ def test_table_primary_key():
     assert students.primary_key.table == students
     assert isinstance(primary_key, PrimaryKeyConstraint)
     assert 'object_id' in primary_key.c
+    # data_source_id is a captured system column but table-constant routing
+    # plumbing (ADR-0014), not row identity — object_id alone is the PK.
+    assert 'data_source_id' not in primary_key.c
     assert 'id' not in primary_key.c
     assert not 'name' in primary_key.columns
 
@@ -727,7 +735,7 @@ def test_foreignkey_parses_table_and_column_name():
 
 def test_foreignkey_database_id_initially_none():
     fk = ForeignKey("students.object_id")
-    assert fk.database_id is None
+    assert fk.data_source_id is None
 
 def test_column_accepts_foreignkey_in_args():
     from normlite import Relation
@@ -1040,7 +1048,7 @@ def test_create_all_is_idempotent(engine: Engine):
     assert courses.get_oid() == courses_oid
     assert students.get_oid() == students_oid
 
-def test_autoload_reflects_relation_with_resolved_database_id(engine: Engine):
+def test_autoload_reflects_relation_with_resolved_data_source_id(engine: Engine):
     from normlite import Relation
 
     # Setup: declare and create courses + students with a Relation FK
@@ -1057,7 +1065,7 @@ def test_autoload_reflects_relation_with_resolved_database_id(engine: Engine):
         Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
     )
     setup_meta.create_all(engine)
-    courses_oid = courses.get_oid()
+    courses_dsid = courses.get_data_source_id()
 
     # Reflect students into a fresh, independent MetaData
     fresh_meta = MetaData()
@@ -1071,13 +1079,14 @@ def test_autoload_reflects_relation_with_resolved_database_id(engine: Engine):
     fk = next(iter(fks))
     assert fk.table_name == "courses"
     assert fk.column_name == "object_id"
-    assert fk.database_id == courses_oid
+    # ADR-0014: relations retarget to the data source id, not the database uuid.
+    assert fk.data_source_id == courses_dsid
 
 def test_autoload_warns_when_relation_target_not_in_catalog(engine: Engine):
     client = engine._client
-    unknown_target_id = "deadbeef-1234-5678-9abc-deadbeefcafe"
+    unknown_target_dsid = "deadbeef-1234-5678-9abc-deadbeefcafe"
 
-    # A Notion database whose relation property points to a database
+    # A Notion database whose relation property points to a data source
     # that exists in Notion but is NOT registered in our catalog
     db = client._add('database', {
         'parent': {'type': 'page_id', 'page_id': engine._user_tables_page_id},
@@ -1087,25 +1096,29 @@ def test_autoload_warns_when_relation_target_not_in_catalog(engine: Engine):
             'plain_text': 'students',
             'href': None,
         }],
-        'properties': {
-            'name': {'title': {}},
-            'enrolled_in': {
-                'relation': {
-                    'database_id': unknown_target_id,
-                    'single_property': {},
-                }
+        'initial_data_source': {
+            'properties': {
+                'name': {'title': {}},
+                'enrolled_in': {
+                    'relation': {
+                        'data_source_id': unknown_target_dsid,
+                        'single_property': {},
+                    }
+                },
             },
         },
     })
 
     # Register only the students DB in the catalog so reflection can find it
     client._add('page', {
-        'parent': {'type': 'database_id', 'database_id': engine._tables_id},
+        'parent': {'type': 'data_source_id', 'data_source_id': engine._catalog._tables_dsid},
         'properties': {
             'table_name': {'title': [{'text': {'content': 'students'}}]},
             'table_schema': {'rich_text': [{'text': {'content': ''}}]},
             'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
             'table_id': {'rich_text': [{'text': {'content': db.get('id')}}]},
+            'table_dsid': {'rich_text': [{'text': {'content': db['data_sources'][0]['id']}}]},
+            'is_dropped': {'checkbox': False},
         },
     })
 
@@ -1123,13 +1136,13 @@ def test_autoload_reflects_mixed_resolvable_and_unresolvable_relations(engine: E
     setup_meta = MetaData()
     courses = Table("courses", setup_meta, Column("title", String(is_title=True)))
     courses.create(engine)
-    courses_oid = courses.get_oid()
+    courses_dsid = courses.get_data_source_id()
 
     # Build a students DB with two relation properties:
     # - enrolled_in → courses (resolvable)
     # - favorite_topic → unknown uuid (NOT in catalog)
     client = engine._client
-    unknown_target_id = "deadbeef-9999-9999-9999-deadbeef9999"
+    unknown_target_dsid = "deadbeef-9999-9999-9999-deadbeef9999"
     students_db = client._add('database', {
         'parent': {'type': 'page_id', 'page_id': engine._user_tables_page_id},
         'title': [{
@@ -1138,31 +1151,35 @@ def test_autoload_reflects_mixed_resolvable_and_unresolvable_relations(engine: E
             'plain_text': 'students',
             'href': None,
         }],
-        'properties': {
-            'name': {'title': {}},
-            'enrolled_in': {
-                'relation': {
-                    'database_id': courses_oid,
-                    'single_property': {},
-                }
-            },
-            'favorite_topic': {
-                'relation': {
-                    'database_id': unknown_target_id,
-                    'single_property': {},
-                }
+        'initial_data_source': {
+            'properties': {
+                'name': {'title': {}},
+                'enrolled_in': {
+                    'relation': {
+                        'data_source_id': courses_dsid,
+                        'single_property': {},
+                    }
+                },
+                'favorite_topic': {
+                    'relation': {
+                        'data_source_id': unknown_target_dsid,
+                        'single_property': {},
+                    }
+                },
             },
         },
     })
 
     # Register students in the catalog
     client._add('page', {
-        'parent': {'type': 'database_id', 'database_id': engine._tables_id},
+        'parent': {'type': 'data_source_id', 'data_source_id': engine._catalog._tables_dsid},
         'properties': {
             'table_name': {'title': [{'text': {'content': 'students'}}]},
             'table_schema': {'rich_text': [{'text': {'content': ''}}]},
             'table_catalog': {'rich_text': [{'text': {'content': 'memory'}}]},
             'table_id': {'rich_text': [{'text': {'content': students_db.get('id')}}]},
+            'table_dsid': {'rich_text': [{'text': {'content': students_db['data_sources'][0]['id']}}]},
+            'is_dropped': {'checkbox': False},
         },
     })
 
@@ -1177,8 +1194,155 @@ def test_autoload_reflects_mixed_resolvable_and_unresolvable_relations(engine: E
     assert len(fks) == 1
     fk = next(iter(fks))
     assert fk.table_name == "courses"
-    assert fk.database_id == courses_oid
+    # ADR-0014: relations retarget to the data source id, not the database uuid.
+    assert fk.data_source_id == courses_dsid
 
     # Unresolvable column skipped, normal columns intact
     assert 'favorite_topic' not in reflected.c
     assert 'name' in reflected.c
+
+
+def test_reflected_relation_fk_carries_data_source_id(engine: Engine):
+    # Seam C of the ADR-0014 relation retarget (C1 + C2). Seams A and B already land
+    # a data_source_id on the reflected relation column and resolve the catalog row by
+    # `table_dsid`. The FK assembly in ReflectTable._finalize_execution (sql/ddl.py) must
+    # now surface that dsid on the *renamed* attribute `ForeignKey.data_source_id`
+    # (ADR-0014: `ForeignKey.database_id` → `data_source_id`), not the legacy
+    # `database_id` slot.
+    #
+    # Hand-built at the FK-assembly seam: rather than stand up a full live relation
+    # fixture, we drive `_finalize_execution` directly and hand-feed its two phases —
+    # phase 1 (system rows, carrying the data source id in the NO_DSID row) and phase 2
+    # (the reflected relation user column). This isolates FK assembly against a real,
+    # catalog-seeded engine while stubbing the phase-2 `data_sources.retrieve` round-trip
+    # that STEP 3 of the 2-phase reflection slice added to `_finalize_execution`.
+    from normlite.engine.resultmetadata import CursorResultMetaData
+    from normlite.engine.row import Row
+    from normlite.sql.ddl import ReflectTable
+
+    courses_dsid = "deadbeef-dead-beef-dead-beefdeadbeef-ds"
+
+    # Seed the catalog row for the relation target, keyed by its data_source_id.
+    engine._client.pages_create(payload={
+        "parent": {"type": "data_source_id", "data_source_id": engine._catalog._tables_dsid},
+        "properties": {
+            "table_name": {"title": [{"text": {"content": "courses"}}]},
+            "table_schema": {"rich_text": [{"text": {"content": "public"}}]},
+            "table_catalog": {"rich_text": [{"text": {"content": "memory"}}]},
+            "table_id": {"rich_text": [{"text": {"content": "courses-db-0001"}}]},
+            "table_dsid": {"rich_text": [{"text": {"content": courses_dsid}}]},
+            "is_dropped": {"checkbox": False},
+        },
+    })
+
+    # A reflected relation DDL row whose on-wire target rides in `relation.data_source_id`
+    # (Seam A). `_process_ddl_row` extracts the dsid into the row's value slot.
+    ddl_description = (
+        ("column_name", "string", None, None, None, None, None),
+        ("column_type", "string", None, None, None, None, None),
+        ("column_id",   "string", None, None, None, None, None),
+        ("metadata",    "object", None, None, None, None, None),
+        ("is_system",   "bool",   None, None, None, None, None),
+    )
+    relation_row = Row(
+        CursorResultMetaData(ddl_description, is_ddl=True),
+        (
+            "enrolled_in",
+            "relation",
+            "col-enrolled",
+            {"relation": {"data_source_id": courses_dsid, "single_property": {}}},
+            False,  # user column
+        ),
+    )
+
+    # Phase-1 system row carrying this table's data source id — `_finalize_execution`
+    # reads it (NO_DSID) to issue the 2nd-phase retrieve. Value is arbitrary here since
+    # the phase-2 round-trip is stubbed and the user rows are hand-fed below.
+    students_dsid = "caffe000-0000-0000-0000-0000000000ff"
+    dsid_row = Row(
+        CursorResultMetaData(ddl_description, is_ddl=True),
+        (
+            SpecialColumns.NO_DSID,
+            DBAPITypeCode.ID,
+            None,
+            students_dsid,
+            True,  # system column
+        ),
+    )
+
+    class _FakeResult:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return self._rows
+
+        def close(self):
+            pass
+
+    class _FakeRawConnection:
+        def cursor(self):
+            return None
+
+    class _FakeEngine:
+        # Delegate to the real engine (catalog lookups for FK resolution stay real),
+        # but stub the phase-2 DBAPI round-trip that `_finalize_execution` now issues.
+        def __init__(self, real):
+            self._real = real
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+        def raw_connection(self):
+            return _FakeRawConnection()
+
+        def do_execute(self, cursor, operation, parameters):
+            pass
+
+    class _FakeContext:
+        def __init__(self, engine, sys_rows, user_rows):
+            self.engine = _FakeEngine(engine)
+            self._sys_rows = sys_rows
+            self._user_rows = user_rows
+            self._result_cursor = None
+
+        def setup_cursor_result(self, clear_buffered=False):
+            return _FakeResult(self._user_rows if clear_buffered else self._sys_rows)
+
+    reflected = Table("students", MetaData())
+    stmt = ReflectTable(reflected)
+    stmt._finalize_execution(_FakeContext(engine, [dsid_row], [relation_row]))
+
+    fks = list(reflected.c.enrolled_in.foreign_keys)
+    assert len(fks) == 1
+    fk = fks[0]
+    assert fk.table_name == "courses"
+    assert fk.data_source_id == courses_dsid
+
+def test_autoload_merges_scalar_user_columns_from_data_source(engine: Engine):
+    # STEP 3 of the 2-phase reflection slice (ADR-0014). Under 2025-09-03 the user
+    # columns live on the *data source*, not the database container, so
+    # `databases.retrieve` (→ ResultSet._process_database) reflects SYSTEM ROWS ONLY.
+    # ReflectTable._finalize_execution must make a 2nd-phase
+    # `data_sources.retrieve(data_source_id)` call (dsid read from the just-reflected
+    # NO_DSID system row), run ResultSet._process_data_source, and MERGE the user
+    # columns after the system rows. Scalar-only here — relation-value → dsid
+    # extraction is STEP 3b.
+    setup_meta = MetaData()
+    students = Table(
+        "students",
+        setup_meta,
+        Column("name", String(is_title=True)),
+        Column("age", Integer()),
+    )
+    setup_meta.create_all(engine)
+
+    # Reflect into a fresh, independent MetaData via the LIVE autoload path.
+    fresh_meta = MetaData()
+    reflected = Table("students", fresh_meta, autoload_with=engine)
+
+    # The scalar user column defined on the data source must be merged in.
+    assert "age" in reflected.c
+    age = reflected.c.age
+    assert isinstance(age.type_, Integer)   # raw "number" → Integer via type_mapper
+    assert age.get_oid() is not None        # non-empty property id from data_sources.retrieve

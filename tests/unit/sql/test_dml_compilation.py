@@ -247,8 +247,9 @@ def test_compile_select():
     compiled = stmt.compile(sql_compiler)
     as_dict = compiled.as_dict()
     assert as_dict['operation']['request'] == 'query'
-    assert as_dict['path_params']['database_id'] == ':database_id'
-    assert as_dict['payload']['in_trash'] == False
+    assert as_dict['path_params']['data_source_id'] == ':data_source_id'
+    # data_sources.query has no in_trash body param (2025-09-03).
+    assert 'in_trash' not in as_dict['payload']
 
 def test_compile_select_w_where():
     metadata = MetaData()

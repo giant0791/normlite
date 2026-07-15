@@ -20,6 +20,7 @@ class ResultSet:
 
     _SYSTEM_COLUMNS_DATABASE = (
         (SpecialColumns.NO_ID, DBAPITypeCode.ID, "id"),                              # TODO: rename in "object_id"
+        (SpecialColumns.NO_DSID, DBAPITypeCode.ID, "data_sources"),
         (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.ARCHIVAL_FLAG, "archived"),       # TODO: rename in "is_archived"   
         (SpecialColumns.NO_IN_TRASH, DBAPITypeCode.ARCHIVAL_FLAG, "in_trash"),       # TODO: rename in "is_deleted"
         (SpecialColumns.NO_CREATED_TIME, DBAPITypeCode.TIMESTAMP, "created_time"),   # TODO: rename in "created_at"
@@ -70,6 +71,10 @@ class ResultSet:
             elif obj_type == "database":
                 object_type = obj_type
                 rows.extend(cls._process_database(obj))
+            
+            elif obj_type == "data_source":
+                object_type = obj_type
+                rows.extend(cls._process_data_source(obj))
 
             else:
                 raise NotImplementedError(obj_type)
@@ -169,19 +174,35 @@ class ResultSet:
 
         # Notion object properties are system columns
         for colname, coltype, field in cls._SYSTEM_COLUMNS_DATABASE:
+            if field == "title":
+                # result processors expects new contract for "title" objects (issue #290)
+                syscol_val = {"title": database[field]}
+            elif field == "data_sources":
+                # extract the data source id
+                # currently, it supports 1 single data source per database object
+                syscol_val = database["data_sources"][0]["id"]
+            else:
+                # the system column value is a top property in the Notion object
+                syscol_val = database[field]
+            
             rows.append(
                 (
                     colname,
                     coltype,
                     None,
-                    # result processors expects new contract for "title" objects (issue #290)
-                    {"title": database[field]} if field == "title" else database[field],
+                    syscol_val,
                     True,               # is system column
                 )
             )
 
-        # "properties" object bears user defined columns
-        for name, prop in database["properties"].items():
+        # NOTE: user-defined columns live on the data source (2025-09-03), not the
+        # database container; they are reflected separately via _process_data_source.
+        return rows
+
+    @classmethod
+    def _process_data_source(cls, data_source: dict) -> list[tuple]:
+        rows = []
+        for name, prop in data_source["properties"].items():
             typ = prop["type"]
             rows.append(
                 (
@@ -193,7 +214,7 @@ class ResultSet:
                     False,              # is user defined
                 )
             )
-
+        
         return rows
 
     @classmethod

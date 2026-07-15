@@ -391,23 +391,23 @@ def test_reduce_fills_each_colliding_aggregate_from_its_own_operand():
     assert rows[0][schema.column_index("sum_2")] == {"number": 300}
 
 
-def test_all_aggregate_select_compiles_to_a_databases_query():
+def test_all_aggregate_select_compiles_to_a_data_source_query():
     metadata = MetaData()
     employees = Table(
         "employees",
         metadata,
         Column("name", String(is_title=True)),
     )
-    employees._sys_columns["object_id"]._value = str(uuid.uuid4())
+    employees._sys_columns["data_source_id"]._value = str(uuid.uuid4())
 
     stmt = select(func.count(employees.c.name))
 
     compiled = stmt.compile(NotionCompiler())
     asdict = compiled.as_dict()
 
-    # the all-aggregate projection routes to databases.query
+    # the all-aggregate projection routes to data_sources.query
     # rather than crashing on the missing `.parent`
-    assert asdict["operation"]["endpoint"] == "databases"
+    assert asdict["operation"]["endpoint"] == "data_sources"
     assert asdict["operation"]["request"] == "query"
 
 

@@ -140,8 +140,13 @@ class CreateTable(ExecutableDDLStatement):
 
         # assign database id
         table._sys_columns["object_id"]._value = reflected_table_info.id
+        table._sys_columns["data_source_id"]._value = reflected_table_info.dsid
         
-        for colmeta in reflected_table_info.get_columns():           
+        
+        for colmeta in reflected_table_info.get_columns(): 
+            # As of Notion 2025-09-03 column ids are now all None 
+            # TODO: make CREATE TABLE an 2-phase statement and fetch the column ids
+            # in pahse 2.         
             if not colmeta.is_system:
                 # assign user column ids only
                 table.c[colmeta.name]._id = colmeta.id
@@ -151,7 +156,8 @@ class CreateTable(ExecutableDDLStatement):
         entry = context.engine.create_table_metadata(
             table.name,
             table_catalog=engine._user_database_name,
-            table_id=table.get_oid()
+            table_id=table.get_oid(),
+            table_dsid=table.get_data_source_id(),
         )
 
         # update write-cache for this entry
@@ -235,7 +241,7 @@ class ReflectTable(ExecutableDDLStatement):
         pass
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
-        from normlite.sql.schema import Column        
+        from normlite.sql.schema import Column
         
         # IMPORTANT: This consumes the result stored in the execution context.
         # DDL reflection is not part of execution — it is interpretation of results.
@@ -248,6 +254,21 @@ class ReflectTable(ExecutableDDLStatement):
         self._reflected_table_info = ReflectedTableInfo.from_tuples(data_as_tuples)
         self._reflected_table._db_parent_id = context.engine._user_tables_page_id
 
+        # fetch the data source to reflect the user columns
+        context._result_cursor = context.engine.raw_connection().cursor()
+        dsid = self._reflected_table_info.dsid
+        context.engine.do_execute(
+            context._result_cursor,
+            operation={"endpoint": "data_sources", "request": "retrieve"},
+            parameters={"path_params": {"data_source_id": dsid}}
+        )
+
+        result = context.setup_cursor_result(clear_buffered=True)
+        usrcols_as_rows = result.all()
+        result.close()
+        usrcols_as_tuples = [r.as_tuple() for r in usrcols_as_rows]
+        self._reflected_table_info.merge_with(ReflectedTableInfo.from_tuples(usrcols_as_tuples))
+
         # reflect columns
         for colmeta in self._reflected_table_info.get_reflectable_cols():
             if colmeta.is_system:
@@ -257,12 +278,12 @@ class ReflectTable(ExecutableDDLStatement):
                 # assign user column ids
                 if isinstance(colmeta.type, Relation):
                     # retrieve the table name via sys catalog:
-                    database_id = colmeta.value
-                    entry = context.engine._catalog.find_sys_tables_row_by_table_id(database_id)
+                    data_source_id = colmeta.value
+                    entry = context.engine._catalog.find_sys_tables_row_by_table_dsid(data_source_id)
                     if entry is None:
                         warnings.warn(
                             f"Relation column '{colmeta.name}' "
-                            f"references database_id '{database_id}' "
+                            f"references database_id '{data_source_id}' "
                             f"which is not registered in system tables catalog; "
                             f"skipping."
                         )
@@ -270,7 +291,7 @@ class ReflectTable(ExecutableDDLStatement):
 
                     # construct the foreign key
                     fk = ForeignKey(f"{entry.name}.object_id")
-                    fk.database_id = database_id
+                    fk.data_source_id = data_source_id
 
                     #construct the new column
                     new_col = Column(colmeta.name, colmeta.type, fk, id_=colmeta.id)

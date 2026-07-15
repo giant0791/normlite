@@ -716,6 +716,7 @@ class Engine:
         *,
         table_catalog: str,
         table_id: str,
+        table_dsid: Optional[str] = None,
         if_not_exists: bool = False,
     ) -> SystemTablesEntry:
         """Add a new page to the system tables database.
@@ -724,6 +725,7 @@ class Engine:
             table_name (str): Name of the table to be added.
             table_catalog (str): Name of the catalog.
             table_id (str): The database_id object for this table
+            table_dsid (Optional[str]): Optional data source id for this table
             if_not_exists (bool, optional): If ``True`` creates the table only if it does not exists. Defaults to False.
 
         Raises:
@@ -732,12 +734,15 @@ class Engine:
         Returns:
             SystemTablesEntry: The table entry object.
 
+        .. versionchanged:: 0.12.0
+
         .. versionadded:: 0.8.0
         """
         return self._catalog.ensure_sys_tables_row(
             table_name=table_name,
             table_catalog=table_catalog,
             table_id=table_id,
+            table_dsid=table_dsid,
             if_not_exists=if_not_exists,
         )
     

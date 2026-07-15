@@ -6,7 +6,8 @@ from normlite.notion_sdk.getters import get_property
 from normlite.sql.base import DDLCompiled
 from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
 from normlite.sql.elements import _BindRole, BindParameter
-from normlite.sql.schema import Table
+from normlite.sql.schema import Column, ForeignKey, Table
+from normlite.sql.type_api import String
 
 
 #---------------------------------------------
@@ -66,18 +67,9 @@ def test_compile_create_table_operation(students: Table, engine: Engine):
     assert as_dict['operation']['endpoint'] == 'databases'
     assert as_dict['operation']['request'] == 'create'
 
-def test_compile_create_table_columns_as_properties(students: Table, engine: Engine):
-    students._db_parent_id = engine._user_tables_page_id
-    stmt = CreateTable(students)
-    compiled = stmt.compile(engine._sql_compiler)
-    as_dict = compiled.as_dict()
-    payload = as_dict['payload']
-
-    assert get_property(payload, 'name') == {'title': {}}
-    assert get_property(payload, 'id') == {'number': {'format': 'number'}}
-    assert get_property(payload, 'is_active') == {'checkbox': {}}
-    assert get_property(payload, 'start_on') == {'date': {}}
-    assert get_property(payload, 'grade') == {'rich_text': {}}
+# superseded by test_compile_create_table_columns_under_initial_data_source
+# (2025-09-03: column schema moved from flat payload['properties'] onto
+# payload['initial_data_source']['properties'])
 
 #---------------------------------------------
 # DROP TABLE tests
@@ -172,3 +164,48 @@ def test_compile_reflect_table_operation(students: Table, engine: Engine):
 
     assert as_dict['operation']['endpoint'] == 'databases'
     assert as_dict['operation']['request'] == 'retrieve'
+
+def test_compile_create_table_columns_under_initial_data_source(students: Table, engine: Engine):
+    students._db_parent_id = engine._user_tables_page_id
+    stmt = CreateTable(students)
+    compiled = stmt.compile(engine._sql_compiler)
+    payload = compiled.as_dict()['payload']
+
+    # The container is created with exactly one data source, and the column
+    # schema is declared on THAT data source (2025-09-03), not on the database.
+    initial_data_source = payload['initial_data_source']
+
+    assert get_property(initial_data_source, 'name') == {'title': {}}
+    assert get_property(initial_data_source, 'id') == {'number': {'format': 'number'}}
+    assert get_property(initial_data_source, 'is_active') == {'checkbox': {}}
+    assert get_property(initial_data_source, 'start_on') == {'date': {}}
+    assert get_property(initial_data_source, 'grade') == {'rich_text': {}}
+
+def test_compile_create_table_relation_spec_targets_data_source_id(engine: Engine):
+    # A Relation column's DDL spec must target the referenced table's
+    # DATA SOURCE (2025-09-03), not its database. The compiler resolves the
+    # FK to reftable.get_data_source_id() and emits it under the
+    # {"relation": {"data_source_id": ...}} key.
+    from normlite import Relation
+    from normlite.sql.schema import MetaData
+
+    metadata = MetaData()
+    courses = Table("courses", metadata, Column("title", String(is_title=True)))
+    # Distinct database id vs data source id so the assertion pins the RIGHT one.
+    courses._sys_columns["object_id"]._value = "db-courses-0000-0000-000000000001"
+    courses._sys_columns["data_source_id"]._value = "ds-courses-0000-0000-000000000002"
+
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    students._db_parent_id = engine._user_tables_page_id
+
+    stmt = CreateTable(students)
+    compiled = stmt.compile(engine._sql_compiler)
+    initial_data_source = compiled.as_dict()['payload']['initial_data_source']
+
+    relation_spec = get_property(initial_data_source, 'enrolled_in')['relation']
+    assert relation_spec['data_source_id'] == courses.get_data_source_id()

@@ -29,12 +29,16 @@ def courses(metadata: MetaData) -> Table:
 
 @pytest.fixture
 def students(metadata: MetaData, courses: Table) -> Table:
-    return Table(
+    table = Table(
         "students",
         metadata,
         Column("name", String(is_title=True)),
         Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
     )
+    # Phase-1 SELECT routes on the queried table's data_source_id under
+    # 2025-09-03; reflect it so the "previously reflected" guard passes.
+    table._sys_columns["data_source_id"]._value = str(uuid.uuid4())
+    return table
 
 
 def test_join_node_carries_left_right_onclause_and_defaults_to_inner(
@@ -92,9 +96,11 @@ def test_select_with_join_emits_join_metadata_in_compiled_dict(
     assert nc._compiler_state.stmt is not None
 
     # phase-1 portion: same shape as a plain select(students) would produce
-    assert asdict['operation'] == {'endpoint': 'databases', 'request': 'query'}
+    assert asdict['operation'] == {'endpoint': 'data_sources', 'request': 'query'}
     assert asdict['payload']['page_size'] == 100
-    assert asdict['payload']['in_trash'] is False
+    # data_sources.query has no in_trash body param (2025-09-03); it is no
+    # longer emitted in the payload.
+    assert 'in_trash' not in asdict['payload']
 
     # new: a top-level 'joins' block carries one join entry
     assert 'joins' in asdict

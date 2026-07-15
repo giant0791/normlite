@@ -78,6 +78,32 @@ def test_row_can_construct_from_database_metadata(table_rows: list[Row]):
     assert len(usrcol_rows) == 5
     assert colnames == {"column_name", "column_type", "column_id", "metadata", "is_system"}
 
+def test_ddl_row_reflects_relation_target_from_data_source_id():
+    # Seam A of the ADR-0014 relation retarget: on Notion 2025-09-03, a reflected
+    # relation property carries its target under `relation.data_source_id`, NOT
+    # `relation.database_id`. `_process_ddl_row` must read the new wire key so that
+    # `colmeta.value` for a relation carries a data_source_id downstream.
+    target_dsid = "deadbeef-dead-beef-dead-beefdeadbeef-ds"
+    ddl_description = (
+        ("column_name", "string", None, None, None, None, None),
+        ("column_type", "string", None, None, None, None, None),
+        ("column_id",   "string", None, None, None, None, None),
+        ("metadata",    "object", None, None, None, None, None),
+        ("is_system",   "bool",   None, None, None, None, None),
+    )
+    row_data = (
+        "enrolled_in",
+        "relation",
+        None,
+        {"relation": {"data_source_id": target_dsid, "single_property": {}}},
+        False,  # user column
+    )
+
+    row = Row(CursorResultMetaData(ddl_description, is_ddl=True), row_data)
+
+    # index 3 is the reflected metadata/value slot
+    assert row[3] == target_dsid
+
 # ---------------------------------------
 # Access to columns tests
 # ---------------------------------------

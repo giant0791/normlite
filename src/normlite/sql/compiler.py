@@ -320,6 +320,9 @@ class NotionCompiler(SQLCompiler):
         This visit method compiles the DDL :class:`normlite.sql.ddl.CreateTable` construct into the 
         corresponding Notion payload.
 
+        .. versionchanged:: 0.12.0
+            This method now supports compilation for data sources as of Notion API 2025-09-03.
+
         .. versionchanged:: 0.8.0
             This method now produces a fully parameterized template dictionary and 
             provides the binds in the parameter dictionary.
@@ -372,9 +375,12 @@ class NotionCompiler(SQLCompiler):
             }]
 
         # emit code for properties object
-        payload['properties'] = self._compile_table_columns(
+        properties = self._compile_table_columns(
             stmt_table.user_columns
         )
+        payload["initial_data_source"] = {
+            "properties": properties
+        } 
         
         self._compiler_state.result_columns = [
             col.name
@@ -466,6 +472,9 @@ class NotionCompiler(SQLCompiler):
         Args:
             insert (Insert): The DML statement to be compiled.
 
+        .. versionchanged:: 0.12.0
+            This version adds support for emitting code compatible with Notion 2025-09-03
+
         .. versionchanged:: 0.9.0
             This version adds full support for INSERT ... RETURNING.
             It initializes the :attr:`normlite.sql.base.CompilerState.result_columns
@@ -511,14 +520,14 @@ class NotionCompiler(SQLCompiler):
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
-                    key='database_id', 
-                    value=insert._table.get_oid(), 
+                    key='data_source_id', 
+                    value=insert._table.get_data_source_id(), 
                 )
             )
 
             payload['parent'] = {
-                'type': 'database_id',
-                'database_id': f':{db_id_key}'
+                'type': 'data_source_id',
+                'data_source_id': f':{db_id_key}'
             }
 
         with self._compiling(new_state=_CompileState.COMPILING_VALUES):
@@ -567,7 +576,7 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state.stmt = select
         self._compiler_state.result_columns = []
 
-        operation = dict(endpoint='databases', request='query')
+        operation = dict(endpoint='data_sources', request='query')
         compiled_dict = {
             'operation': operation, 
         }
@@ -576,7 +585,6 @@ class NotionCompiler(SQLCompiler):
         query_params = {}
         payload = {
             'page_size': 100,        # Notion imposed max page size
-            'in_trash': False,       # Always return non deleted pages only
         }
 
         # add a new top-level 'joins' key to store the joins, if any
@@ -595,18 +603,18 @@ class NotionCompiler(SQLCompiler):
                 "must be anchored with select_from(table)"
             )
 
-        database_id = table.get_oid()
-        if database_id is None:
+        data_source_id = table.get_data_source_id()
+        if data_source_id is None:
             raise CompileError(f'Table: {table.name} has not been previously reflected.')
         
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
-                    key='database_id',
-                    value=database_id
+                    key='data_source_id',
+                    value=data_source_id
                 )
             )
-            path_params['database_id'] = f':{db_id_key}'
+            path_params['data_source_id'] = f':{db_id_key}'
             compiled_dict["path_params"] = path_params 
 
      
@@ -755,11 +763,10 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state.is_delete = delete.is_delete
         self._compiler_state.stmt = delete
  
-        operation = dict(endpoint='databases', request='query')
+        operation = dict(endpoint='data_sources', request='query')
         path_params = {}
         payload = {
             'page_size': 100,        # Notion imposed max page size
-            'in_trash': False,       # Always return non deleted pages only
         }
  
         # select the user columns to be included in the returned rows
@@ -769,18 +776,18 @@ class NotionCompiler(SQLCompiler):
         ]
 
         table = delete.get_table()
-        database_id = table.get_oid()
-        if database_id is None:
+        data_source_id = table.get_data_source_id()
+        if data_source_id is None:
             raise CompileError(f'Table: {table.name} has not been previously reflected.')
-
+        
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
-                    key='database_id',
-                    value=database_id
+                    key='data_source_id',
+                    value=data_source_id
                 )
             )
-            path_params['database_id'] = f':{db_id_key}'
+            path_params['data_source_id'] = f':{db_id_key}'
 
         if delete._whereclause.has_expression():
             with self._compiling(new_state=_CompileState.COMPILING_WHERE):
@@ -809,23 +816,25 @@ class NotionCompiler(SQLCompiler):
             col.name for col in update._returning
         ]
 
-        operation = dict(endpoint='databases', request='query')
+        operation = dict(endpoint='data_sources', request='query')
         path_params = {}
         payload = {
             'page_size': 100,
-            'in_trash': False,
         }
 
         table = update.get_table()
-        database_id = table.get_oid()
-        if database_id is None:
+        data_source_id = table.get_data_source_id()
+        if data_source_id is None:
             raise CompileError(f'Table: {table.name} has not been previously reflected.')
-
+        
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
-                BindParameter(key='database_id', value=database_id)
+                BindParameter(
+                    key='data_source_id',
+                    value=data_source_id
+                )
             )
-            path_params['database_id'] = f':{db_id_key}'
+            path_params['data_source_id'] = f':{db_id_key}'
 
         if update._whereclause.has_expression():
             with self._compiling(new_state=_CompileState.COMPILING_WHERE):
@@ -1038,9 +1047,9 @@ class NotionCompiler(SQLCompiler):
         from normlite.sql.type_api import Relation
 
         # resolve oids for the all referenced columns         
-        stmt_table = self._compiler_state.stmt._table
+        stmt_table: Table = self._compiler_state.stmt._table
         referenced_ids = {
-            c.column.name: c.reftable.get_oid()
+            c.column.name: c.reftable.get_data_source_id()
             for c in stmt_table.foreign_keys
         }
 
@@ -1049,12 +1058,13 @@ class NotionCompiler(SQLCompiler):
         for col in user_cols:
             prop_val = col.type_.get_notion_spec()
             if isinstance(col.type_, Relation):
-                # inject the database_id into the Notion spec for Relation objects
+                # inject the data_source_id into the Notion spec for Relation objects
+                # ref_oid now contains col.name's data_source_id
                 ref_oid = referenced_ids.get(col.name)
                 if ref_oid is None:
                     raise CompileError(f"Relation column '{col.name}' on table '{stmt_table.name}' has no ForeignKeyConstraint registered")
                 
-                prop_val["relation"]["database_id"] = referenced_ids[col.name]
+                prop_val["relation"]["data_source_id"] = referenced_ids[col.name]
 
             properties[col.name] = prop_val    
 

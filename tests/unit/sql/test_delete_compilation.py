@@ -41,7 +41,9 @@ def delete_stmt(students: Table) -> Delete:
 #---------------------------------------------
 def test_delete_generate_operation_no_where_clause(students: Table, delete_stmt: Delete):
     mocked_db_id = str(uuid.uuid4())
+    mocked_ds_id = str(uuid.uuid4())
     students._sys_columns["object_id"]._value = mocked_db_id
+    students._sys_columns["data_source_id"]._value = mocked_ds_id
 
     stmt = (
         delete_stmt
@@ -51,19 +53,41 @@ def test_delete_generate_operation_no_where_clause(students: Table, delete_stmt:
     compiled = stmt.compile(nc)
     asdict = compiled.as_dict()
 
-    assert asdict['operation']['endpoint'] == 'databases'
+    assert asdict['operation']['endpoint'] == 'data_sources'
     assert asdict['operation']['request'] == 'query'
-    assert asdict['path_params']['database_id'] == ":database_id"
-    assert "in_trash" in asdict["payload"]
+    assert asdict['path_params']['data_source_id'] == ":data_source_id"
+    # data_sources.query has no in_trash body param (2025-09-03)
+    assert "in_trash" not in asdict["payload"]
     assert "page_size" in asdict["payload"]
     assert compiled._compiler_state.is_delete
+
+def test_delete_routes_to_data_source_query(students: Table, delete_stmt: Delete):
+    # Under 2025-09-03 a DELETE's phase-1 find-pages queries the table's data
+    # source, not the database container: data_sources.query on data_source_id,
+    # and the path param binds the table's data_source_id (get_data_source_id()),
+    # not its database UUID (get_oid()). Mirrors test_select_routes_to_data_source_query.
+    mocked_db_id = str(uuid.uuid4())
+    mocked_ds_id = str(uuid.uuid4())
+    students._sys_columns["object_id"]._value = mocked_db_id
+    students._sys_columns["data_source_id"]._value = mocked_ds_id
+
+    nc = NotionCompiler()
+    compiled = delete_stmt.compile(nc)
+    asdict = compiled.as_dict()
+
+    assert asdict['operation'] == dict(endpoint='data_sources', request='query')
+    assert asdict['path_params']['data_source_id'] == ':data_source_id'
+    assert 'data_source_id' in compiled._execution_binds
+    assert compiled._execution_binds['data_source_id'].value == mocked_ds_id
 
 #---------------------------------------------
 # WHERE tests
 #---------------------------------------------
 def test_delete_generate_operation_with_where_clause(students: Table, delete_stmt: Delete):
     mocked_db_id = str(uuid.uuid4())
+    mocked_ds_id = str(uuid.uuid4())
     students._sys_columns["object_id"]._value = mocked_db_id
+    students._sys_columns["data_source_id"]._value = mocked_ds_id
 
     stmt = (
         delete_stmt
@@ -74,10 +98,10 @@ def test_delete_generate_operation_with_where_clause(students: Table, delete_stm
     compiled = stmt.compile(nc)
     asdict = compiled.as_dict()
 
-    assert asdict['operation']['endpoint'] == 'databases'
+    assert asdict['operation']['endpoint'] == 'data_sources'
     assert asdict['operation']['request'] == 'query'
-    assert asdict['path_params']['database_id'] == ":database_id"
-    assert "in_trash" in asdict["payload"]
+    assert asdict['path_params']['data_source_id'] == ":data_source_id"
+    assert "in_trash" not in asdict["payload"]
     assert "page_size" in asdict["payload"]
     assert "filter" in asdict["payload"]
     assert asdict["payload"]["filter"]["property"] == "name"
@@ -88,7 +112,9 @@ def test_delete_generate_operation_with_where_clause(students: Table, delete_stm
 
 def test_where_generative_multi_clause(students: Table, delete_stmt: Delete):
     mocked_db_id = str(uuid.uuid4())
+    mocked_ds_id = str(uuid.uuid4())
     students._sys_columns["object_id"]._value = mocked_db_id
+    students._sys_columns["data_source_id"]._value = mocked_ds_id
 
     stmt = (
         delete_stmt

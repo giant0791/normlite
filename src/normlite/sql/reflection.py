@@ -58,6 +58,10 @@ class ReflectedTableInfo:
         return self._columns[self._colmap[SpecialColumns.NO_ID]].value
     
     @property
+    def dsid(self) -> str:
+        return self._columns[self._colmap[SpecialColumns.NO_DSID]].value
+    
+    @property
     def archived(self) -> Optional[True]:
         return self._columns[self._colmap[SpecialColumns.NO_ARCHIVED]].value
     
@@ -133,6 +137,14 @@ class ReflectedTableInfo:
         ))
 
         cols.append(ReflectedColumnInfo(
+            name=SpecialColumns.NO_DSID,
+            type=ObjectId(),
+            id=None,
+            value=database_obj['data_sources'][0]['id'],
+            is_system=True
+        ))
+
+        cols.append(ReflectedColumnInfo(
             name=SpecialColumns.NO_TITLE,
             type=String(is_title=True),
             id=None,
@@ -177,4 +189,20 @@ class ReflectedTableInfo:
             )
         
         return cls(cols)
+    
+    def merge_with(self, rti: ReflectedTableInfo) -> None:
+        """Merge in-place with the provided reflected table info."""
+        
+        # construct the new merged list of columns
+        merged = [*self._columns, *rti._columns]
+        
+        # reconstruct the colmap
+        self._colmap = {
+            rc.name: index
+            for index, rc in enumerate(merged)
+        }
+
+        self._columns = merged
+    
+
 
