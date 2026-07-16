@@ -1,7 +1,18 @@
 # ADR-0008: The `JoinExecution` seam — a stateful object spanning the two-phase dispatch
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-0018](./0018-query-plan-operator-tree.md)
 **Date:** 2026-06-14
+
+> **Superseded 2026-07-15.** This ADR's diagnosis (join choreography with no single owner) and its
+> discipline (config to the constructor; a small, pure-compute, testable object) both survive into
+> ADR-0018. What did not survive is the premise below that "a single synchronous call is impossible"
+> because the EXECUTEMANY dispatch sits between the phases: that boundary was **self-inflicted** by
+> `context.py:413` — joins borrowing the *mutation* statements' bulk channel — while
+> `_setup_execution` already drove phase-1 I/O itself (`dml.py:832`). Because the channel is
+> single-shot (`base.py:277`), it also made chained multi-join *inexpressible*. ADR-0018 therefore
+> reverses this ADR's rejected "Alternative B" and lets the plan own its I/O. Note ADR-0018 does
+> **not** contradict Alternative A: the shared bulk channel is untouched — joins simply stop
+> borrowing it.
 
 ---
 
