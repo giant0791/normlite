@@ -153,6 +153,31 @@ semantics**. Confusing them is a real footgun.
 time the outer `visit_select` returns. Use `_compiler_dispatch` for sub-node descent;
 reserve `compile` for the outermost call.
 
+### Layers (DBAPI / SQL / ENGINE)
+> **Status: intended architecture — partially violated today.** The execution hooks break the
+> `SQL → DBAPI`-only rule; the **Query plan** is the mechanism restoring it for `SELECT`. See
+> [[adr-0020-execution-layering-sql-builds-engine-drives]].
+
+Three layers, one dependency direction — **ENGINE → SQL, ENGINE → DBAPI, SQL → DBAPI; nobody calls
+upward**:
+
+- **DBAPI** (`notiondbapi/`) — the I/O adaptation layer. Owns the PEP-249 `Cursor`, pagination
+  mechanics (`PageIterator`, `start_cursor`, eager-vs-lazy page pull), and Notion transport.
+- **SQL** (`sql/`) — the AST and semantics layer. Owns `ClauseElement`s, compilation, and the
+  *description* of what a statement means and needs. Builds descriptions; does not perform I/O.
+- **ENGINE** (`engine/`) — the orchestration layer. Owns `Connection._execute_context`, execution-
+  style dispatch, and cursor routing.
+
+**The invariant for execution**: SQL *builds* the plan (data), ENGINE *drives* it (the drive loop
+lives in the engine, not the hook), and `CursorResult` is the *pull consumer* for streaming.
+`Select._setup_execution` calling `context.engine.do_execute` (`dml.py:832`) is the current
+violation — the SQL layer *performing* I/O rather than describing it. Knowledge crosses the boundary
+as the plan; never as an engine-side `isinstance(stmt, Select)` switch (that pulls SQL knowledge
+*up*). Restoration is staged: inert plan (#361) → engine drives blocking plans (#364, "Move A") →
+`CursorResult` pulls the plain streaming path through the plan ("Move B", a later PRD). _Avoid_
+moving pagination mechanics out of DBAPI: ENGINE owns fetch *policy* and the *drive*, DBAPI owns the
+mechanics.
+
 ### Execution Pipeline
 The sequence: compile → `pre_exec` (bind params) → `_setup_execution` (Notion API call(s)) →
 `_execute_*` → `post_exec` → `_finalize_execution` (cursor routing).
@@ -793,14 +818,28 @@ never stream.
 Structure first, semantics second, so each slice has **one reason to fail**:
 
 1. **Tree, wrapping today's I/O** ([[adr-0018-query-plan-operator-tree]]) — `Query plan` +
-   `Planner` + `PlanningContext` + the `QueryIO` port. Joins **still ride
-   `ExecutionStyle.EXECUTEMANY`**: `Join` keeps the `prepare`/`assemble` split internally, with the
-   hooks driving I/O exactly as today. The tree is stood up *around* the existing choreography —
-   ADR-0008's own delegate-then-fold discipline (#314–#317). Behaviour-preserving.
-2. **Drop EXECUTEMANY** ([[adr-0018-query-plan-operator-tree]]) — the plan takes ownership of its
-   I/O through the port; joins run as `EXECUTE`; `context.py:413`, `_join_errorhandler` and the
-   staged-cursor wiring go. `Join.open()` collapses `prepare`/`assemble` into one call.
-   Behaviour-preserving, and **this** is the slice that makes multi-join expressible.
+   `Planner` + `PlanningContext`. The plan is **inert**: built and unit-tested, not driven; `Scan`
+   takes the DBAPI `Cursor` directly (**no `QueryIO` port yet** — it would have no caller). Joins
+   **still ride `ExecutionStyle.EXECUTEMANY`**: `Join` keeps the `prepare`/`assemble` split
+   internally, with the hooks driving I/O exactly as today. The tree is stood up *around* the
+   existing choreography — ADR-0008's own delegate-then-fold discipline (#314–#317).
+   Behaviour-preserving. Slice-1 `Scan` I/O is a **provisional shim, not the target contract**:
+   `next()` reads a page via `fetchmany(NOTION_MAX_PAGE_SIZE)` — a row-count stand-in that
+   re-splits the whole pages `PageIterator` already produced and lifts the page-size constant into
+   the SQL layer — and `open()` sets `stream_results=True`, an eager-vs-lazy *policy* that belongs
+   to ENGINE (and rides a non-PEP-249 `execute()` extension). The honest contract is a
+   page-granular pull on the DBAPI `Cursor` (a `fetchnextpage()`-style primitive surfacing the
+   `PageIterator`'s grain) reached through the **`QueryIO` port** in slice 2, where the page size
+   returns to the `Cursor` and the policy moves to ENGINE. See
+   [[adr-0018-query-plan-operator-tree]] Correction (3).
+2. **Drop EXECUTEMANY** ([[adr-0018-query-plan-operator-tree]],
+   [[adr-0020-execution-layering-sql-builds-engine-drives]]) — the plan takes ownership of its I/O
+   through the **`QueryIO` port** (its first caller); the **engine** drives **blocking** plans
+   (join/aggregate); joins run as `EXECUTE`; `context.py:413`, `_join_errorhandler` and the
+   staged-cursor wiring go. `Join.open()` collapses `prepare`/`assemble` into one call. The plain
+   streaming path stays cursor-passthrough (streaming untouched) until **Move B** (`CursorResult`
+   as pull consumer, a later PRD). Behaviour-preserving, and **this** is the slice that makes
+   multi-join expressible.
 3. **Semantics** ([[adr-0019-sql-null-semantics-pushdown-soundness]]) — three-valued evaluator over
    raw cells + `is_null()`; ADR-0005 superseded; `all(None)` deleted. A deliberate behaviour change
    with its own tests.
@@ -819,7 +858,9 @@ stack**, resolving the §Compiler entry points trap structurally.
 ### Query plan
 A **tree of Operators** that computes a SELECT's rows. Built by the **Planner** from the
 `Select` AST; replaces the `if self._joins:` / `if self._is_aggregate:` branching in
-`Select`'s hooks with plan construction plus one drive call.
+`Select`'s hooks with plan construction. The hook **builds** the plan; the **engine** drives it
+(the drive loop lives in the engine, not the hook — see
+[[adr-0020-execution-layering-sql-builds-engine-drives]]).
 
 Distinct from **Execution Pipeline** (the engine's hook sequence, §Core Concepts) — a plan is a
 tree, not a linear sequence. _Avoid_: "query execution pipeline", "execution tree".
