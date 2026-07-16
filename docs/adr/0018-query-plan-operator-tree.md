@@ -2,6 +2,31 @@
 
 **Status:** Accepted — supersedes [ADR-0008](./0008-joinexecution-seam.md)
 **Date:** 2026-07-15
+**Applies:** [ADR-0020](./0020-execution-layering-sql-builds-engine-drives.md) — the Operator tree
+is the mechanism that restores the DBAPI/SQL/ENGINE layering for `SELECT`.
+
+> **Correction (2026-07-16).** Two claims below were walked back while slicing the work; see
+> [ADR-0020](./0020-execution-layering-sql-builds-engine-drives.md) for the reasoning. (1) The SQL
+> layer does **not** drive the plan — the engine does; `_setup_execution` only *builds* it, and in
+> slice 1 the plan is **inert** (built, unit-tested, not driven). (2) The `QueryIO` port is **not**
+> part of slice 1; it arrives in slice 2 (drop-EXECUTEMANY, #364) where it gets its first real
+> caller. In slice 1 `Scan` takes the DBAPI `Cursor` directly. The corrected sentences are marked
+> **[corrected]** inline.
+>
+> **(3) The slice-1 `Scan`'s raw-cursor coupling is more compromised than "takes the `Cursor`
+> directly" makes it sound, and both compromises are provisional shims.** (a) `Scan.next()` reads a
+> page via `fetchmany(NOTION_MAX_PAGE_SIZE)` — a **row-count stand-in** for a page pull. This
+> re-splits by a row count the whole pages `PageIterator` already produced (the very thing the
+> batch-at-a-time rationale below, lines 55-58, argues against) and lifts the page-size constant
+> **into the SQL layer**, where [ADR-0020](./0020-execution-layering-sql-builds-engine-drives.md)
+> says pagination *mechanics* must not live. It matches only because `fetchmany(100)` = one Notion
+> page by coincidence of Notion's page size. (b) `Scan.open()` sets `stream_results=True` — an I/O
+> *policy* (eager vs lazy) ADR-0020 assigns to ENGINE, expressed through a `stream_results` /
+> `yield_per` `execute()` extension that is **not** part of PEP-249. The honest contract is a
+> page-granular pull on the DBAPI `Cursor` (a `fetchnextpage()`-style primitive that surfaces the
+> `PageIterator`'s grain) reached **through the `QueryIO` port** in slice 2 (#364): the page size
+> returns to the `Cursor`, the streaming policy moves to ENGINE, and `next()` stops re-splitting
+> pages. Slice 1 keeps the shim so the tracer bullet stays inert and behaviour-preserving.
 
 ---
 
@@ -117,7 +142,10 @@ pressure: one `Scan` per plan means one payload per plan, however many joins. Fi
 
 ## Consequences
 
-- **`Select`'s hook branching disappears**; `_setup_execution` builds a plan and drives it.
+- **`Select`'s hook branching disappears**; `_setup_execution` **builds** a plan and the engine
+  drives it. **[corrected]** The drive loop lives in the engine, not the hook — restoring the
+  layering ([ADR-0020](./0020-execution-layering-sql-builds-engine-drives.md)); a plain select's
+  plan is inert in slice 1.
   `JoinExecution` / `AggregateExecution` become `Operator`s, keeping ADR-0008's and
   [ADR-0011](./0011-aggregate-execution-seam.md)'s config-to-constructor discipline intact.
 - **ADR-0008 is superseded, not contradicted in spirit.** Its diagnosis (choreography with no
@@ -139,8 +167,13 @@ pressure: one `Scan` per plan means one payload per plan, however many joins. Fi
   semantics change is [ADR-0019](./0019-sql-null-semantics-pushdown-soundness.md), a separate,
   deliberate slice.
 - **This ADR lands in two behaviour-preserving slices**, not one. Slice 1 stands up the tree,
-  `Planner`, `PlanningContext` and the `QueryIO` port while joins **still ride EXECUTEMANY** and
-  `Join` keeps `prepare`/`assemble` internally — a failure there is a *tree* bug. Slice 2 gives the
-  plan its I/O, deletes `context.py:413` and the staged-cursor wiring, and collapses
-  `prepare`/`assemble` into `Join.open()` — a failure there is an *I/O ownership* bug. Fusing them
-  would make the two indistinguishable in one diff.
+  `Planner` and `PlanningContext` while joins **still ride EXECUTEMANY** and `Join` keeps
+  `prepare`/`assemble` internally — a failure there is a *tree* bug. **[corrected]** The `QueryIO`
+  port is **not** part of slice 1: the plan owns no I/O yet, so the port would have no caller. In
+  slice 1 `Scan` takes the DBAPI `Cursor` directly and the plan is inert. Slice 2 gives the plan
+  its I/O **through the `QueryIO` port** (its first caller), deletes `context.py:413` and the
+  staged-cursor wiring, and collapses `prepare`/`assemble` into `Join.open()` — a failure there is
+  an *I/O ownership* bug. Slice 2 drives **blocking** plans (join/aggregate) from the engine; the
+  plain streaming path stays cursor-passthrough until Move B (see
+  [ADR-0020](./0020-execution-layering-sql-builds-engine-drives.md)). Fusing the slices would make
+  a tree bug and an I/O-ownership bug indistinguishable in one diff.
