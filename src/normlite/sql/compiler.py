@@ -666,6 +666,17 @@ class NotionCompiler(SQLCompiler):
                                 right_conjuncts[0] if len(right_conjuncts) == 1
                                 else {"and": right_conjuncts}
                             )
+
+                        right_clauses = [
+                            clause
+                            for clause in expression.clauses
+                            if _get_expression_parent_tables(clause) != {select._table}
+                        ]
+                        if right_clauses:
+                            self.planning_context.residual_where = (
+                                right_clauses[0] if len(right_clauses) == 1
+                                else BooleanClauseList("and", right_clauses)
+                            )
                     else:
                         filter_obj = expression._compiler_dispatch(self)
                         if parent_tables == {select._table}:
@@ -674,6 +685,7 @@ class NotionCompiler(SQLCompiler):
                         else:
                             # for the right table, stash the filter for filtering after merging
                             compiled_dict["join_right_filter"] = filter_obj
+                            self.planning_context.residual_where = expression
         
         projection = self._compiler_state.stmt._projection
 

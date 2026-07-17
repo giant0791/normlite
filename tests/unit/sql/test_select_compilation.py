@@ -538,3 +538,14 @@ def test_relation_is_empty_and_is_not_empty_compile_to_relation_filter():
     assert isinstance(exp_not_empty, BinaryExpression)
     assert compiled_not_empty["property"] == "enrolled_in"
     assert compiled_not_empty["relation"] == {"is_not_empty": ":param_0"}
+
+def test_plain_select_harvests_a_planning_context_that_holds_nothing_back(
+    select_stmt: Select,
+):
+    # A plain select has no join and no WHERE, so there is nothing to answer
+    # client-side: the compiler still hands its planning decisions to run time,
+    # and they say "no residual".
+    compiled = select_stmt.compile(NotionCompiler())
+
+    assert compiled.planning_context is not None
+    assert compiled.planning_context.residual_where is None

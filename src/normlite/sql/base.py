@@ -26,6 +26,7 @@ from typing import Any, ClassVar, NoReturn, Optional, Protocol, TYPE_CHECKING, S
 import copy
 
 from normlite.exceptions import ArgumentError, InvalidRequestError, UnsupportedCompilationError
+from normlite.sql.context import PlanningContext
 from normlite.utils import frozendict
 
 if TYPE_CHECKING:
@@ -127,6 +128,7 @@ class ClauseElement(Generative, Visitable):
             Compiled: The compiled object rusult of the compilation.
         """
         compiler._compiler_state = CompilerState()
+        compiler.planning_context = PlanningContext()
         compiled_dict = compiler.process(self, **kwargs)
         if compiler._compiler_state.is_ddl:
             return DDLCompiled(self, compiled_dict, compiler)
@@ -377,6 +379,8 @@ class Compiled:
         .. versionadded:: 0.9.0
         """
 
+        self.planning_context: Optional[PlanningContext] = compiler.planning_context
+
         if compiler._compiler_state.result_columns is not None:
             self._result_columns.extend(compiler._compiler_state.result_columns)
 
@@ -450,6 +454,8 @@ class SQLCompiler(Protocol):
     """
 
     _compiler_state: CompilerState
+
+    planning_context: PlanningContext
 
     def construct_params(
         self, 
