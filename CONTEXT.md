@@ -852,6 +852,17 @@ removes the choreography, so a failure there is an *I/O ownership* bug. Fusing t
 structural bug and a dispatch bug indistinguishable in one diff — the same reasoning that keeps
 semantics out of both.
 
+**Narrative slices vs issue numbers.** The list above is the *coarse* narrative; the GitHub issues
+are finer-grained, and the two numberings do **not** line up. Narrative slice 1 spans **three**
+issues (#361 `Scan`, #362 `Aggregate`, #363 `Join`/`Filter` + `PlanningContext`); narrative slice 2
+is the single issue #364. So "slice 2" in prose means **#364**, which the tracker calls "slice 4".
+Cite issue numbers, not narrative ordinals, when picking up work.
+
+Narrative slice 1 is **not** finished by #361. As merged, #361 shipped `Scan` alone — the
+`Operator` protocol, `Planner` and `PlanningContext` its own acceptance criteria named were **not**
+built (nor was the `QueryIO` port, correctly — see Correction (2)). #363 therefore carries the
+`Planner` + `PlanningContext` introduction its criteria already presuppose.
+
 Filed separately (orthogonal, no new pressure from the plan): `_compiler_state` → **compilation
 stack**, resolving the §Compiler entry points trap structurally.
 
@@ -877,6 +888,25 @@ Planning already happens today — hand-rolled inside `NotionCompiler.visit_sele
 JSON and smuggled out on `compiled_dict`. The Planner then *consumes* that decision to build the
 tree. Long-term, planning moves out of the compiler entirely and the compiler shrinks to pure
 payload generation; that is a later slice, not v1.
+
+**The residual bridge (#363).** Carrying the Residual as AST while `Filter` still wraps `_Filter`
+**verbatim** leaves a gap: `_Filter` eats **Notion JSON**, not AST. The Planner closes it by
+compiling the residual AST to Notion JSON at **plan-build time**, with bind values **inlined**.
+Inlining is forced, not stylistic — the residual's `:key` placeholders were bound only by
+`ExecutionContext._bind_params` reading `compiled_dict['join_right_filter']`, and that key is gone.
+A `BindParameter` already carries its `.value`, so a residual AST is self-contained and needs no
+runtime resolution.
+
+The same fact keeps the parameter accounting honest. `_bind_params` **pops** each key it binds and
+`_assert_all_params_consumed` then raises on leftovers, so the residual's binds must stop being
+registered in `execution_binds` at all — which happens naturally, since a residual that is never
+`_compiler_dispatch`-ed never reaches `visit_bindparam`. Compile it to JSON *and* leave its binds
+registered and every join with a right-side parameterised WHERE dies with
+`ArgumentError: Unused bind parameters`.
+
+This bridge is **deliberate and throwaway**: [[adr-0019-sql-null-semantics-pushdown-soundness]]'s
+three-valued evaluator reads the AST directly, deleting both the bridge and `_Filter`'s reuse (the
+"layering inversion" noted under §is_null). It is not the target contract.
 
 ### PlanningContext
 The **messenger carrying compile-time decisions to run time** — the `Residual` WHERE and sorts (as

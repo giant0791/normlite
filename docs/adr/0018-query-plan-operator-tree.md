@@ -27,6 +27,37 @@ is the mechanism that restores the DBAPI/SQL/ENGINE layering for `SELECT`.
 > `PageIterator`'s grain) reached **through the `QueryIO` port** in slice 2 (#364): the page size
 > returns to the `Cursor`, the streaming policy moves to ENGINE, and `next()` stops re-splitting
 > pages. Slice 1 keeps the shim so the tracer bullet stays inert and behaviour-preserving.
+>
+> **Correction (2026-07-17) — scope of the issues vs. this ADR.**
+>
+> **(4) The issues (#361–#369, authored 2026-07-15) predate Corrections (1)–(3) above (2026-07-16)
+> and their acceptance criteria were never re-cut.** Three of them still demand the `QueryIO` port
+> and a fake ("`Scan`/`Aggregate`/`Join` unit tests against the fake `QueryIO`") — #361's did too,
+> and slice 1 shipped without it, deliberately and correctly. **This ADR, not the issue text, is
+> authoritative:** the port arrives in **#364**, its first real caller. Introducing it in #363 would
+> shape it around the `bulk_operation`/staged-cursor choreography that #364 deletes — a port
+> fossilising the channel it exists to escape. #363's `Join`/`Filter` keep `prepare`/`assemble` and
+> stay pure compute, unit-testable exactly as `JoinExecution` already is (config to the constructor,
+> rows fed directly). For the same reason #363 cannot yet satisfy "the `if self._joins:` branch is
+> gone from `Select`'s hooks": while the hooks still drive phase-1/phase-2, removing the branch
+> would force the plan to own the choreography — which *is* #364.
+>
+> **(5) Slice 1 shipped narrower than #361's criteria.** Only `Scan` landed; the `Operator`
+> protocol, `Planner` and `PlanningContext` did not. **#363 carries them**, as its own criteria
+> already presuppose.
+>
+> **(6) Carrying the residual as AST while `Filter` wraps `_Filter` verbatim implies a bridge.**
+> `_Filter` eats Notion JSON, so the `Planner` compiles the residual AST to JSON at plan-build time
+> with bind values **inlined** — forced, because deleting `join_right_filter` from `compiled_dict`
+> deletes the only thing that bound its `:key` placeholders (`ExecutionContext._bind_params`), and
+> `BindParameter` already carries `.value`. Consequently the residual's binds must **stop being
+> registered** in `execution_binds`: `_bind_params` *pops* what it binds and
+> `_assert_all_params_consumed` raises on leftovers, so a residual compiled to JSON *and* still
+> registered would fail every join with a parameterised right-side WHERE
+> (`ArgumentError: Unused bind parameters`) — breaking the "existing join suite green without edits"
+> invariant. A residual never `_compiler_dispatch`-ed never reaches `visit_bindparam`, so the
+> accounting works out. The bridge is throwaway: ADR-0019's three-valued evaluator reads the AST
+> directly and removes it. It is **not** the target contract.
 
 ---
 
