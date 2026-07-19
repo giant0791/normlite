@@ -315,18 +315,25 @@ def test_compound_and_where_pushes_only_left_conjunct_into_phase_one(
           .where(courses.c.title == "Astronomy")    # RIGHT — client-side only
       )
 
-      asdict = stmt.compile(NotionCompiler()).as_dict()
+      compiled = stmt.compile(NotionCompiler())
+      asdict = compiled.as_dict()
 
       phase_one_filter = json.dumps(asdict["payload"].get("filter"))
-      held_back = json.dumps(asdict.get("join_right_filter"))
 
       # phase-1 query carries the left (students.name) condition ...
       assert '"property": "name"' in phase_one_filter
       # ... but NOT the right (courses.title) condition.
       assert '"property": "title"' not in phase_one_filter
 
-      # the right (courses.title) condition is held back for client-side evaluation.
-      assert '"property": "title"' in held_back
+      # The right (courses.title) conjunct is held back for client-side evaluation —
+      # it must be held back, not dropped, or the join would answer a broader question
+      # than it was asked. It now travels as AST on the PlanningContext ...
+      residual = compiled.planning_context.residual_where
+      assert residual.column is courses.c.title
+      assert residual.value.value == "Astronomy"
+
+      # ... and no longer as Notion JSON on the compiled dict, which stays pure data.
+      assert "join_right_filter" not in asdict
 
 def test_compound_or_spanning_both_sides_pushes_nothing_into_phase_one(
     students: Table, courses: Table
@@ -343,17 +350,23 @@ def test_compound_or_spanning_both_sides_pushes_nothing_into_phase_one(
         .where(or_(students.c.name == "Galileo", courses.c.title == "Astronomy"))
     )
 
-    asdict = stmt.compile(NotionCompiler()).as_dict()
+    compiled = stmt.compile(NotionCompiler())
+    asdict = compiled.as_dict()
 
     # phase-1 query carries NO filter at all ...
     assert "filter" not in asdict["payload"]
 
     # ... and the whole OR is held back for client-side eval, with BOTH disjuncts
     # still present and joined by "or" — i.e. the connective was never split.
-    held_back = asdict["join_right_filter"]
-    assert "or" in held_back
-    assert '"property": "name"' in json.dumps(held_back)
-    assert '"property": "title"' in json.dumps(held_back)
+    residual = compiled.planning_context.residual_where
+    assert residual.operator == "or"
+    assert {clause.column for clause in residual.clauses} == {
+        students.c.name,
+        courses.c.title,
+    }
+
+    # The residual travels as AST; the compiled dict stays pure JSON-like data.
+    assert "join_right_filter" not in asdict
 
 def test_order_by_left_then_right_pushes_only_left_prefix_into_phase_one(
     students: Table, courses: Table

@@ -24,6 +24,7 @@ from typing import Any, Callable, Optional, Protocol, Sequence, Union, runtime_c
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.exceptions import CompileError, InvalidRequestError
 from normlite.notiondbapi.dbapi2 import Cursor
+from normlite.sql.compiler import compile_residual_filter
 from normlite.sql.dml import Join, JoinExecution
 from normlite.sql.elements import BindParameter, ColumnElement, Operator, BinaryExpression
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
@@ -286,14 +287,7 @@ class Planner:
                     f"Only single-binary expressions supported, "
                     f"received a '{type(residual_where).__name__}' expression."
                 )
-            right_filter = {
-                "property": residual_where.column.name,
-                **self._compile_type_filter(
-                    residual_where.column,
-                    residual_where.operator,
-                    residual_where.value,
-                )
-            }
+            right_filter = compile_residual_filter(residual_where)
             merged_schema = SchemaInfo.from_join(
                 join.left,
                 join.right,
@@ -310,38 +304,4 @@ class Planner:
 
         return plan
  
-    def _compile_type_filter(
-        self,
-        column: ColumnElement,
-        operator: Operator,
-        bindparam: BindParameter
-    ) -> dict:
-        type_ = column.type_
-        if type_ is not bindparam.type_:
-            raise CompileError(
-                f"""
-                    Type mismatch between column element: {column.name} 
-                    and bind parameter: {bindparam.key}:
-                    column element type: {type(type_).__name__}
-                    bind parameter type: {type(bindparam.type_).__name__}
-                    in binary expression: {operator}
-                """
-            )
-        filter_type = type_.get_col_spec()
-        filter_op = type_.supported_ops[operator]
-
-        # process the bound value
-        # IMPORTANT - Mimic bind paramters resolution with filter value processing
-        # TypeEngine subclasses provide filter_value_processor() to process
-        # the raw value into a filter value for JSON payloads: 
-        # see ExecutionContext._resolve_bindparam()
-        filter_raw = bindparam.callable_() if bindparam.callable_ else bindparam.value
-        processor = type_.filter_value_processor()
-
-        return {
-            filter_type: {
-                filter_op: processor(filter_raw) if processor else filter_raw
-            }
-        }
-
         

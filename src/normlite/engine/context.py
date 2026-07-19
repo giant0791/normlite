@@ -50,6 +50,8 @@ from typing import TYPE_CHECKING, Any, Mapping, Optional, Union, Sequence
 from normlite.exceptions import ArgumentError, StatementError
 from normlite.engine.interfaces import _CoreMultiExecuteParams, ExecutionOptions
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
+from normlite.sql.compiler import compile_residual_filter
+from normlite.sql.elements import BinaryExpression
 from normlite.sql.resultschema import SchemaInfo
 from normlite.utils import frozendict
 
@@ -520,10 +522,14 @@ class ExecutionContext:
             else:
                 self.payload = self._bind_params(template, resolved_params[0])
 
-        if 'join_right_filter' in self.compiled_dict:
-            template = self.compiled_dict['join_right_filter']
-            self.join_right_filter = self._bind_params(template, resolved_params[0])
-
+        # Only single-binary residuals are rendered client-side in this slice; a
+        # compound residual is left untouched here (tolerant pre_exec) and rejected
+        # loudly by the Planner. Rendering compounds at the edge is the ADR-0019
+        # slice-2 endpoint. (See #363.)
+        residual = self.compiled.planning_context.residual_where
+        if isinstance(residual, BinaryExpression):
+            self.join_right_filter = compile_residual_filter(residual)
+            
         if 'join_right_sorts' in self.compiled_dict:
             self.join_right_sorts = self.compiled_dict.get("join_right_sorts")
 

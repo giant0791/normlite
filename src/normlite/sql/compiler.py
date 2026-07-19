@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Optional, Set
 
 from normlite._constants import SpecialColumns
-from normlite.exceptions import CompileError, StatementError
+from normlite.exceptions import CompileError, StatementError, InvalidRequestError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
 from normlite.sql.base import _CompileState, ClauseElement, SQLCompiler
@@ -36,6 +36,52 @@ if TYPE_CHECKING:
     from normlite.sql.dml import Insert, Select, Join
     from normlite.sql.elements import UnaryExpression, BindParameter
     from normlite.sql.schema import Table
+
+def compile_residual_filter(residual: BinaryExpression) -> dict:
+    """Interim solution until issue #364
+    
+    Compile the residual expression for the right side of a JOIN statement.
+    """
+    if not isinstance(residual, BinaryExpression):
+        raise InvalidRequestError("Only single-binary expressions supported, …")
+    
+    return {
+        "property": residual.column.name,
+        **_compile_type_filter(residual.column, residual.operator, residual.value)
+    }
+
+def _compile_type_filter(
+    column: ColumnElement,
+    operator: Operator,
+    bindparam: BindParameter
+) -> dict:
+    type_ = column.type_
+    if type_ is not bindparam.type_:
+        raise CompileError(
+            f"""
+                Type mismatch between column element: {column.name} 
+                and bind parameter: {bindparam.key}:
+                column element type: {type(type_).__name__}
+                bind parameter type: {type(bindparam.type_).__name__}
+                in binary expression: {operator}
+            """
+        )
+    filter_type = type_.get_col_spec()
+    filter_op = type_.supported_ops[operator]
+
+    # process the bound value
+    # IMPORTANT - Mimic bind paramters resolution with filter value processing
+    # TypeEngine subclasses provide filter_value_processor() to process
+    # the raw value into a filter value for JSON payloads: 
+    # see ExecutionContext._resolve_bindparam()
+    filter_raw = bindparam.callable_() if bindparam.callable_ else bindparam.value
+    processor = type_.filter_value_processor()
+
+    return {
+        filter_type: {
+            filter_op: processor(filter_raw) if processor else filter_raw
+        }
+    }
 
 def _get_expression_parent_tables(expression: ClauseElement) -> Set[Table]:
     """Helper to recursively collect all parent tables corresponding to 
@@ -644,29 +690,22 @@ class NotionCompiler(SQLCompiler):
                         # Compound AND spanning both join sides: split per-clause.
                         # Left-only conjuncts narrow phase-1 to a SUPERSET of the
                         # answer, so push them into payload['filter']; the remaining
-                        # conjuncts are held back in join_right_filter for client-side
-                        # evaluation after the merge. (See #311.)
+                        # conjuncts are held back as the residual AST for client-side
+                        # evaluation after the merge. (See #311, #363.)
                         left_conjuncts = [
                             clause._compiler_dispatch(self)
                             for clause in expression.clauses
                             if _get_expression_parent_tables(clause) == {select._table}
-                        ]
-                        right_conjuncts = [
-                            clause._compiler_dispatch(self)
-                            for clause in expression.clauses
-                            if _get_expression_parent_tables(clause) != {select._table}
                         ]
                         if left_conjuncts:
                             payload['filter'] = (
                                 left_conjuncts[0] if len(left_conjuncts) == 1
                                 else {"and": left_conjuncts}
                             )
-                        if right_conjuncts:
-                            compiled_dict["join_right_filter"] = (
-                                right_conjuncts[0] if len(right_conjuncts) == 1
-                                else {"and": right_conjuncts}
-                            )
 
+                        # Hold the right-side conjuncts as raw AST for client-side
+                        # evaluation after the merge; do NOT dispatch them (that would
+                        # register unconsumed binds — see #363).
                         right_clauses = [
                             clause
                             for clause in expression.clauses
@@ -678,13 +717,13 @@ class NotionCompiler(SQLCompiler):
                                 else BooleanClauseList("and", right_clauses)
                             )
                     else:
-                        filter_obj = expression._compiler_dispatch(self)
                         if parent_tables == {select._table}:
                             # for the left table, add "filter" to the payload for the databases.query
-                            payload['filter'] = filter_obj
+                            payload['filter'] = expression._compiler_dispatch(self)
                         else:
-                            # for the right table, stash the filter for filtering after merging
-                            compiled_dict["join_right_filter"] = filter_obj
+                            # for the right table, hold the residual as raw AST for
+                            # client-side evaluation after the merge; do NOT dispatch it
+                            # (that would register an unconsumed bind — see #363).
                             self.planning_context.residual_where = expression
         
         projection = self._compiler_state.stmt._projection

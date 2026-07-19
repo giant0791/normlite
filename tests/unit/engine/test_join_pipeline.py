@@ -7,6 +7,7 @@ from normlite import Relation, ForeignKey
 from normlite.engine.base import Engine
 from normlite.notiondbapi import DatabaseError
 from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
+from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import insert, select
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import String
@@ -1038,3 +1039,67 @@ def test_inner_join_order_by_left_then_right_breaks_ties_by_right_key_descending
     # both pairs share the name, so the trailing right key (title) orders them:
     # Physics precedes Astronomy descending.
     assert [r.title for r in rows] == ["Physics", "Astronomy"]
+
+def test_join_with_parameterised_right_side_where_executes_with_residual_off_the_compiled_dict(
+    engine: Engine,
+):
+    # Arrange: two courses, one student enrolled in each. The WHERE names a RIGHT-side
+    # column with a *bind parameter* (courses.title == "Astronomy"), so it cannot be
+    # answered by phase-1 and must be held back for client-side evaluation.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses).values(title="Astronomy").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+
+        connection.execute(
+            insert(students).values(name="Galileo Galilei", enrolled_in=[astronomy_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Isaac Newton", enrolled_in=[physics_oid])
+        )
+
+        # A statement is single-shot: compiling assigns bind roles, so executing and
+        # inspecting need one fresh statement each.
+        def astronomy_join():
+            return (
+                select(students, courses)
+                .join(students.c.enrolled_in)
+                .where(courses.c.title == "Astronomy")
+            )
+
+        # Act: the join still answers correctly ...
+        rows = connection.execute(astronomy_join()).fetchall()
+
+        # ... while the residual no longer travels on the compiled dict.
+        compiled_dict = astronomy_join().compile(NotionCompiler()).as_dict()
+
+    # Assert: the held-back predicate was honoured — only the Astronomy pair survives.
+    assert {(row.name, row.title) for row in rows} == {("Galileo Galilei", "Astronomy")}
+
+    # Assert: the residual is gone from the compiled dict, which stays JSON-like data.
+    assert "join_right_filter" not in compiled_dict
