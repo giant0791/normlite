@@ -7,9 +7,10 @@ from normlite.engine.base import _distill_params
 from normlite.exceptions import InvalidRequestError
 from normlite.engine.context import ExecutionContext
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
-from normlite.sql.dml import select
+from normlite.sql.dml import insert, select
 from normlite.sql.elements import or_
 from normlite.sql.queryplan import Filter, HashJoin, Planner, Scan, VolcanoOperator
+from normlite.sql.resultschema import SchemaInfo
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Date, String
 
@@ -260,6 +261,111 @@ def test_planner_turns_a_join_select_into_a_hashjoin_over_two_scans(engine):
     assert isinstance(plan._left_child, Scan)
     assert isinstance(plan._right_child, Scan)
     assert plan._left_child._operation["endpoint"] == "data_sources"
+
+
+def test_planner_right_leaf_scan_retrieves_the_batch_pages_on_its_own_cursor(engine):
+    # The structural sibling above pins the join plan's SHAPE (HashJoin over two
+    # Scans) but leaves the right leaf's operation "the open design point for the
+    # driving reds". THIS drives it: the right leaf must be a REAL
+    # Scan(pages.retrieve), not the placeholder Scan(None, None) the join branch
+    # falls through to today.
+    #
+    # The right leaf is a DEPENDENT scan: its retrieve parameters are the deduped
+    # ids the left rows point at, which only exist after the left side drains --
+    # so it is driven NOT by open() but by execute_with(batch) (the seam HashJoin
+    # already calls). And a join has TWO result sets -- the left
+    # data_sources.query and this pages.retrieve -- but a DBAPI cursor carries
+    # ONE, so the right leaf must run its retrieve on its OWN cursor. Handed a
+    # two-envelope batch for two seeded courses, execute_with must run the
+    # EXECUTEMANY retrieve and next() must drain BOTH retrieved pages (one result
+    # set per page). Scan(None, None) -- no execute_with, no operation -- cannot.
+    #
+    # A Scan carries only (operation, parameters): it has NO access to the right
+    # table, so it cannot build the cursor description itself. Shaping the cursor
+    # is the schema-aware caller's job -- here the arrange phase, standing in for
+    # whoever stands up the right leaf in production. The leaf receives its
+    # already-shaped cursor via open(); execute_with only supplies the batch and
+    # runs it; next() drains.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    # Seed two courses so the batch is a real EXECUTEMANY of two retrieves.
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Astronomy")
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Physics")
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+
+    # A residual-free join, built into a real ExecutionContext the phase-1 way;
+    # the Planner reads the plan off the context, it does not run it.
+    stmt = select(students, courses).join(students.c.enrolled_in)
+    compiled = stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    # The Planner builds the plan; its right leaf is the phase-2 retrieve Scan.
+    right_leaf = Planner(ctx).plan()._right_child
+
+    # The schema-aware caller shapes the right leaf's OWN cursor (the second
+    # result set) and hands it over via open() -- the Scan cannot build this
+    # description, having no access to the right table.
+    right_schema = SchemaInfo.from_table(
+        courses,
+        execution_names=[courses.c.object_id.name],
+        projected_names=[c.name for c in courses.uc],
+    )
+    right_cursor = engine.raw_connection().cursor()
+    right_cursor._inject_description(right_schema.as_sequence())
+    right_leaf.open(right_cursor)
+    
+    # Act: drive ONLY the right leaf, the parametrised way. The batch stands in
+    # for what prepare() would compute from the (undriven) left rows: one
+    # path_params envelope per target course id.
+    right_leaf.execute_with([
+        {"path_params": {"page_id": astronomy_oid}},
+        {"path_params": {"page_id": physics_oid}},
+    ])
+    right_rows = right_leaf.next()
+    
+    # Assert: both seeded course pages came back on the right leaf's own cursor --
+    # two rows, each carrying the object_id of the page it retrieved.
+    assert right_rows is not None
+    assert len(right_rows) == 2
+    assert any(astronomy_oid in row for row in right_rows)
+    assert any(physics_oid in row for row in right_rows)
 
 
 def test_planner_layers_a_filter_carrying_the_residual_over_the_hashjoin(engine):

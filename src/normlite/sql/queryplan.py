@@ -21,7 +21,7 @@
 
 from typing import Any, Callable, Optional, Protocol, Sequence, Union, runtime_checkable
 
-from normlite.engine.context import ExecutionContext
+from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.exceptions import CompileError, InvalidRequestError
 from normlite.notiondbapi.dbapi2 import Cursor
 from normlite.sql.dml import Join, JoinExecution
@@ -49,25 +49,51 @@ class VolcanoOperator(Protocol):
         ...
 
 class Scan(VolcanoOperator):
-    def __init__(self, operation: dict, parameters: Union[dict, list[dict]]) -> None:
+    def __init__(
+        self, 
+        operation: dict, 
+        parameters: Union[dict, list[dict]],
+        style: ExecutionStyle = ExecutionStyle.EXECUTE    
+    ) -> None:
         self._operation = operation
         self._parameters = parameters
+        self._style = style
         self._cursor = None
 
     def open(self, cursor: Cursor) -> None:
         self._cursor = cursor
-        self._cursor.execute(
-            self._operation,
-            self._parameters, 
-            stream_results=True,
-        )
+        if self._style is ExecutionStyle.EXECUTE:
+            # left leaf: execute eagerly
+            self._cursor.execute(
+                self._operation,
+                self._parameters, 
+                stream_results=True,
+            )
+        # right leaf: delay execution until 
+        # the schema-aware caller drives .execute_with
 
     def next(self) -> Optional[list[tuple]]:
-        next_batch = self._cursor.fetchmany(size=NOTION_MAX_PAGE_SIZE)
+        if self._style is ExecutionStyle.EXECUTEMANY:
+            # drain across result sets (one per page)
+            next_batch = [
+                row 
+                for row in self._cursor._iter_all()
+            ]
+        else:
+            # return paginated next batch
+            next_batch = self._cursor.fetchmany(size=NOTION_MAX_PAGE_SIZE)            
+
         return next_batch if next_batch else None
     
     def close(self) -> None:
         self._cursor.close()
+
+    def execute_with(self, batch: list[dict]) -> None:
+        self._parameters = batch
+        self._cursor.executemany(
+            self._operation,
+            self._parameters
+        )
 
 class HashJoin(VolcanoOperator):
     def __init__(
@@ -95,6 +121,15 @@ class HashJoin(VolcanoOperator):
 
     def open(self, cursor: Cursor) -> None:
         self._left_child.open(cursor)
+        
+        right_cursor = None
+        if cursor is not None:
+            right_cursor = cursor._connection.cursor()
+            right_cursor._inject_description(
+                self._join_exec.right_schema.as_sequence()
+            )
+
+        self._right_child.open(right_cursor)
 
     def next(self) -> Optional[list[tuple]]:
         left_rows = self._left_child.next()
@@ -231,7 +266,11 @@ class Planner:
         join: Join = invoked_stmt._joins[0]
         projection = list(invoked_stmt._projection)
         left_child = Scan(ctx.operation, ctx.parameters)
-        right_child = Scan(operation=None, parameters=None)
+        right_child = Scan(
+            operation={"endpoint": "pages", "request": "retrieve"}, 
+            parameters=None,
+            style=ExecutionStyle.EXECUTEMANY
+        )
         plan = HashJoin(
             left_child,
             right_child,

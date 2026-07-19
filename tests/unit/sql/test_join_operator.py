@@ -161,18 +161,22 @@ def test_join_operator_merges_child_rows_into_joined_tuples_as_one_batch():
     assert second is None
 
 
-def test_join_operator_opens_the_left_but_drives_the_right_with_execute_with():
+def test_join_operator_opens_both_children_but_runs_the_right_only_via_execute_with():
     # Arrange: a students->courses join whose two sides are recording child
     # operators. The rows are irrelevant here (both empty), so the merge is a
     # no-op — this test watches only the lifecycle. The two sides are driven
     # DIFFERENTLY, because the right leaf's pages.retrieve parameters do not
     # exist until the left side has been drained and prepared:
-    #   - the LEFT leaf is a self-contained scan: open() it, then pull it;
-    #   - the RIGHT leaf is parametrised: it is NOT opened (its params aren't
-    #     known yet) and is instead driven by execute_with(batch) mid-next(),
-    #     before it is pulled.
-    # Both are closed when the parent closes. This inversion is why open(cursor)
-    # cannot eagerly stand up the right child.
+    #   - the LEFT leaf is a self-contained scan: open() it (which executes it),
+    #     then pull it;
+    #   - the RIGHT leaf is parametrised: open() only DELIVERS its (separately
+    #     shaped) cursor WITHOUT executing — a Scan is schema-blind and cannot
+    #     shape its own cursor, so the schema-aware caller shapes it and open()
+    #     hands it over — and the leaf is then RUN by execute_with(batch)
+    #     mid-next(), before it is pulled.
+    # Both are closed when the parent closes. So open() no longer means "execute":
+    # for the right leaf it means "receive your shaped cursor", and execution is
+    # deferred to execute_with.
     metadata = MetaData()
     courses = Table(
         "courses",
@@ -202,10 +206,12 @@ def test_join_operator_opens_the_left_but_drives_the_right_with_execute_with():
     assert left_source.events.index("open") < left_source.events.index("next")
     assert left_source.events[-1] == "close"
 
-    # The right leaf is NEVER opened — it is driven by execute_with before it is
-    # pulled, and closed at the end.
-    assert "open" not in right_source.events
+    # The right leaf IS opened — but only to RECEIVE its (separately shaped)
+    # cursor, not to execute: its retrieve params aren't known until the left
+    # drains, so its RUN is deferred to execute_with, which lands before the pull.
+    assert "open" in right_source.events
     assert "execute_with" in right_source.events
+    assert right_source.events.index("open") < right_source.events.index("execute_with")
     assert right_source.events.index("execute_with") < right_source.events.index("next")
     assert right_source.events[-1] == "close"
 
@@ -416,7 +422,10 @@ def test_join_operator_feeds_the_right_child_the_retrieve_batch_it_computes_mid_
     join_op = HashJoin(left_source, right_source, join, projection)
     join_op.open(cursor=None)
 
-    assert "open" not in right_source.events  # right leaf not opened at open()
+    # the right leaf IS opened at open() — but only to RECEIVE its shaped cursor;
+    # its execute_with (the actual run) still waits for next(), below.
+    assert "open" in right_source.events
+    assert "execute_with" not in right_source.events  # delivered, not yet run
 
     first = join_op.next()
     second = join_op.next()
