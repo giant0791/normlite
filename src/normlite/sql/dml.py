@@ -1383,7 +1383,13 @@ class JoinExecution:
         right_cols: Sequence[ResultColumn],
     ) -> bool:
         """Shape adapter applying the ``_Filter`` predicate to a merged row's
-        right slice."""
+        right slice.
+
+        NOTE: verbatim strangler-duplicate of ``Filter._right_side_passes``
+        (``sql/queryplan.py``). Both copies exist only until step 4 of #363 cuts
+        the old ``join_right_filter`` channel, which makes this copy dead and
+        removable; edit BOTH until then. See #363.
+        """
 
         from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
         from normlite.notion_sdk.client import _Filter
