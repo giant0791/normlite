@@ -985,6 +985,69 @@ def test_inner_join_order_by_left_then_right_breaks_ties_by_right_key(engine: En
     assert [r.title for r in rows] == ["Astronomy", "Physics"]
 
 
+def test_join_with_right_order_by_sorts_with_residual_off_the_compiled_dict(
+    engine: Engine,
+):
+    # Mirror of the WHERE residual pipeline test: a right-side ORDER BY tie-break
+    # is held back and applied client-side. It must keep sorting correctly while
+    # the held-back sort no longer travels as join_right_sorts on the compiled
+    # dict — the residual is sourced from the PlanningContext AST instead.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            ).first().object_id
+        )
+        astronomy_oid = (
+            connection.execute(
+                insert(courses).values(title="Astronomy").returning(courses.c.object_id)
+            ).first().object_id
+        )
+
+        # relation list deliberately in REVERSE title order
+        connection.execute(
+            insert(students).values(
+                name="Galileo",
+                enrolled_in=[physics_oid, astronomy_oid],
+            )
+        )
+
+        # A statement is single-shot: compiling assigns bind roles, so executing and
+        # inspecting need one fresh statement each.
+        def title_tiebreak_join():
+            return (
+                select(students, courses)
+                .join(students.c.enrolled_in)
+                .order_by(students.c.name.asc(), courses.c.title.asc())
+            )
+
+        # Act: the held-back right key still actively orders the pairs ...
+        rows = connection.execute(title_tiebreak_join()).fetchall()
+
+        # ... while the residual sort no longer travels on the compiled dict.
+        compiled_dict = title_tiebreak_join().compile(NotionCompiler()).as_dict()
+
+    # Assert: Astronomy precedes Physics ascending — the trailing right key ordered them.
+    assert [r.title for r in rows] == ["Astronomy", "Physics"]
+
+    # Assert: the residual sort is gone from the compiled dict, which stays JSON-like data.
+    assert "join_right_sorts" not in compiled_dict
+
+
 def test_inner_join_order_by_left_then_right_breaks_ties_by_right_key_descending(engine: Engine):
     # Same shape as the ascending tie-break above, but the trailing right key is
     # DESCENDING. The held-back right key is applied client-side AFTER the join,

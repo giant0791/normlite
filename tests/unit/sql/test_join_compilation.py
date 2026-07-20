@@ -391,3 +391,33 @@ def test_order_by_left_then_right_pushes_only_left_prefix_into_phase_one(
     assert asdict["payload"].get("sorts") == [
         {"property": "name", "direction": "ascending"}
     ]
+
+
+def test_order_by_right_key_travels_as_ast_residual_off_the_compiled_dict(
+    students: Table, courses: Table
+):
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+
+    # Mirror of the WHERE residual (test_compound_and_where above): the trailing
+    # RIGHT (courses.title) sort key is held back for a client-side stable sort
+    # after the join. Like the WHERE residual, it must travel as AST on the
+    # PlanningContext, not as ad-hoc Notion JSON on the compiled dict — join_right_sorts
+    # is the SECOND of the two ad-hoc residual keys #363 removes.
+    stmt = (
+        select(students, courses)
+        .join(students.c.enrolled_in)
+        .order_by(students.c.name.asc(), courses.c.title.asc())
+    )
+
+    compiled = stmt.compile(NotionCompiler())
+    asdict = compiled.as_dict()
+
+    # The held-back right sort key travels as AST (an OrderByExpression) on the
+    # PlanningContext, carrying its own column and direction ...
+    residual_sorts = compiled.planning_context.residual_sorts
+    assert [(s.column, s.direction) for s in residual_sorts.clauses] == [
+        (courses.c.title, "ascending")
+    ]
+
+    # ... and no longer as Notion JSON on the compiled dict, which stays pure data.
+    assert "join_right_sorts" not in asdict

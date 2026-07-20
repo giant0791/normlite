@@ -50,6 +50,13 @@ def compile_residual_filter(residual: BinaryExpression) -> dict:
         **_compile_type_filter(residual.column, residual.operator, residual.value)
     }
 
+def compile_residual_sorts(residual_sorts: OrderByClause) -> list[dict]:
+    """Interim solution until issue #365 — compile held-back right ORDER BY keys."""
+    return [
+        {"property": c.column.name, "direction": c.direction}
+        for c in residual_sorts.clauses
+    ]
+
 def _compile_type_filter(
     column: ColumnElement,
     operator: Operator,
@@ -794,11 +801,14 @@ class NotionCompiler(SQLCompiler):
                     break
                 sorts_obj.append(clause._compiler_dispatch(self))
 
-            compiled_dict["join_right_sorts"] = [
-                clause._compiler_dispatch(self)
+            right_clauses = tuple(
+                clause
                 for clause in order_by_clause.clauses
                 if _get_expression_parent_tables(clause) != {select._table}
-            ]
+            )
+
+            if right_clauses:
+                self.planning_context.residual_sorts = OrderByClause(right_clauses)
 
             if sorts_obj:
                 payload['sorts'] = sorts_obj

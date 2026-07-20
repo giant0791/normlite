@@ -17,12 +17,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from normlite.sql.elements import ColumnElement
+    from normlite.sql.dml import OrderByClause
 
+@dataclass
 class PlanningContext:
-    def __init__(self):
-        self.residual_where: Optional[ColumnElement] = None
+    residual_where: Optional[ColumnElement] = None
+    residual_sorts: Optional[OrderByClause] = None
 

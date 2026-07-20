@@ -814,14 +814,26 @@ class Select(HasTable, ExecutableClauseElement):
         if not self._joins:
             return
 
+        from normlite.sql.compiler import compile_residual_filter, compile_residual_sorts
+        from normlite.sql.elements import BinaryExpression
+
         # Stand up the join-execution seam: it owns all join-domain state and
         # computation across both phases (ADR-0008). Config enters via the
         # constructor; the hook drives I/O only.
+        pc = context.compiled.planning_context
+        right_filter = (
+            compile_residual_filter(pc.residual_where)
+            if isinstance(pc.residual_where, BinaryExpression) else None
+        )
+        right_sorts = (
+            compile_residual_sorts(pc.residual_sorts)
+            if pc.residual_sorts is not None else None
+        )
         join_execution = JoinExecution(
             self._joins[0],
             self._projection,
-            context.join_right_filter,
-            context.join_right_sorts
+            right_filter,
+            right_sorts
         )
         context._join_execution = join_execution
 

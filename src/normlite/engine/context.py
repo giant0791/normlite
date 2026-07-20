@@ -50,8 +50,6 @@ from typing import TYPE_CHECKING, Any, Mapping, Optional, Union, Sequence
 from normlite.exceptions import ArgumentError, StatementError
 from normlite.engine.interfaces import _CoreMultiExecuteParams, ExecutionOptions
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
-from normlite.sql.compiler import compile_residual_filter
-from normlite.sql.elements import BinaryExpression
 from normlite.sql.resultschema import SchemaInfo
 from normlite.utils import frozendict
 
@@ -244,18 +242,6 @@ class ExecutionContext:
     .. versionadded:: 0.8.0
     """
 
-    join_right_filter: Optional[dict]
-    """The optional filter expression for WHERE clauses with right columns expressions
-    
-    .. versionadded:: 0.11.0
-    """
-
-    join_right_sorts: Optional[list[dict]]
-    """The optional sort criteria for the ORDER BY with right column expressions
-    
-    .. versionadded:: 0.11.0
-    """
-
     execution_style: ExecutionStyle
     """The style of DBAPI cursor method that will be used to execute a statement.
 
@@ -339,8 +325,6 @@ class ExecutionContext:
         self.path_params = None
         self.query_params = None
         self.payload = None
-        self.join_right_filter = None
-        self.join_right_sorts = None
         self._result = None
         self._rowcount = None
         self._returned_primary_keys_rows = None
@@ -521,17 +505,6 @@ class ExecutionContext:
                 ]
             else:
                 self.payload = self._bind_params(template, resolved_params[0])
-
-        # Only single-binary residuals are rendered client-side in this slice; a
-        # compound residual is left untouched here (tolerant pre_exec) and rejected
-        # loudly by the Planner. Rendering compounds at the edge is the ADR-0019
-        # slice-2 endpoint. (See #363.)
-        residual = self.compiled.planning_context.residual_where
-        if isinstance(residual, BinaryExpression):
-            self.join_right_filter = compile_residual_filter(residual)
-            
-        if 'join_right_sorts' in self.compiled_dict:
-            self.join_right_sorts = self.compiled_dict.get("join_right_sorts")
 
         if self.invoked_stmt.is_update:
             self.resolved_params = dict(resolved_params[0])
