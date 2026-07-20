@@ -1130,33 +1130,11 @@ class JoinExecution:
         self._right_filter = right_filter
         self._right_sorts = right_sorts
 
-        # ``projection`` is None only for low-level callers that mean "project
-        # everything" (e.g. JoinExecution unit tests). Fall back to all user
-        # columns of both sides so schema construction stays projection-
-        # independent in that case; the per-side filters below then split them.
-        schema_projection = (
-            projection if projection is not None
-            else (*join.left.uc, *join.right.uc)
-        )
-
-        self._left_schema = SchemaInfo.from_table(
-            join.left,
-            execution_names=[join.left.c.object_id.name],
-            projected_names=[
-                c.name
-                for c in schema_projection
-                if c.parent is self._join.left
-            ] + [self._join.onclause.name],     # the onclause column must always be included for the join to work
-        )
-
-        self._right_schema = SchemaInfo.from_table(
+        self._left_schema, self._right_schema = SchemaInfo.from_join_sides(
+            self._join.left,
             self._join.right,
-            execution_names=[self._join.right.c.object_id.name],
-            projected_names=[
-                c.name
-                for c in schema_projection
-                if c.parent is self._join.right
-            ]
+            self._projection,
+            self._join.onclause
         )
 
         self._left_rows = None
