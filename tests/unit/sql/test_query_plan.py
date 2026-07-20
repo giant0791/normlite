@@ -434,6 +434,62 @@ def test_planner_right_leaf_scan_retrieves_the_batch_pages_on_its_own_cursor(eng
     assert any(physics_oid in row for row in right_rows)
 
 
+def test_unbound_retrieve_leaf_pulled_without_a_batch_raises_loudly(engine):
+    # The right leaf is an EXECUTEMANY Scan: open() only MINTS and shapes its
+    # cursor -- it deliberately does NOT execute, because its retrieve
+    # parameters are the deduped ids the left rows point at, which only exist
+    # after the left side drains. HashJoin supplies them by calling
+    # execute_with(batch) between open() and next(). But nothing structurally
+    # forces that ordering: a caller (or a future bug in the drive loop) could
+    # open() the leaf and pull next() straight away, with no batch ever bound.
+    #
+    # That pull must FAIL, and fail with a breadcrumb pointing at the actual
+    # fault -- the retrieve was never bound (its parameters are still None; no
+    # execute_with) -- NOT silently fetch nothing, and NOT leak the DBAPI
+    # cursor's generic "Cursor result set is empty. No execute*() call was
+    # issued." That generic message misdirects: from the plan's side the leaf
+    # WAS opened; what is missing is the execute_with(batch) bind. The operator
+    # owns this contract, so it must name it.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    stmt = select(students, courses).join(students.c.enrolled_in)
+    compiled = stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    right_leaf = Planner(ctx).plan()._right_child
+    right_leaf.open(engine.raw_connection())
+
+    # Act + Assert: pull the leaf with NO intervening execute_with(batch). It
+    # must raise a clear plan-level error naming the unbound retrieve / missing
+    # batch, not the DBAPI's generic empty-result-set message.
+    with pytest.raises(
+        InvalidRequestError,
+        match=r"(?i)parameters|retrieve|execute_with|batch|unbound",
+    ):
+        right_leaf.next()
+
+
 def test_hashjoin_open_forwards_the_connection_to_both_leaves():
     # HashJoin is a pass-through for I/O: each leaf now mints its OWN cursor off
     # the connection and shapes it with its OWN schema (decision #5, #364), so

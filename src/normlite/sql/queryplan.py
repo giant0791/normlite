@@ -77,6 +77,10 @@ class Scan(VolcanoOperator):
 
     def next(self) -> Optional[list[tuple]]:
         if self._style is ExecutionStyle.EXECUTEMANY:
+            if self._parameters is None:
+                raise InvalidRequestError(
+                    "No parameters provided: Scan on the right side needs the ids to retrieve."
+                )
             # drain across result sets (one per page)
             next_batch = [
                 row 
