@@ -939,10 +939,13 @@ already yields whole pages, `pages.retrieve` is inherently bulk), so a row-at-a-
 would re-split batches the layer below just produced.
 
 ```
-Operator.open(io) -> None
-Operator.next()   -> list[tuple] | None    # one batch, None when exhausted
-Operator.close()  -> None
+Operator.open(conn) -> None                # conn: DBAPI Connection — the leaf mints its own cursor
+Operator.next()     -> list[tuple] | None  # one batch, None when exhausted
+Operator.close()    -> None
 ```
+
+The `open()` handle is the DBAPI `Connection` the engine hands down while driving (see §Query plan
+— I/O ownership); there is **no `QueryIO` port**.
 
 Node kinds: **Scan**, **Retrieve**, **Join**, **Filter**, **Aggregate** (and **GroupBy**, the
 first planned addition). `JoinExecution` and `AggregateExecution` become Operators; their
@@ -1070,9 +1073,28 @@ A `bool`-returning evaluator silently bakes in one caller's policy and breaks th
 `is_null()` is *not* a comparison: it returns TRUE/FALSE, never UNKNOWN (SQL `IS NULL` semantics).
 
 ### Query plan — I/O ownership
-The plan **drives its own I/O** through an injected I/O port; `Operator`s are otherwise pure
-compute. A join `Select` runs as `ExecutionStyle.EXECUTE`, and the join-specific
+The plan **drives its own I/O**, but through a handle the **engine hands down**, not one the plan
+holds. A join `Select` runs as `ExecutionStyle.EXECUTE`, and the join-specific
 `ExecutionStyle.EXECUTEMANY` branch (`context.py:413`) is **deleted**.
+
+**The I/O handle is a DBAPI `Connection` injected at `open()` — there is no `QueryIO` port**
+(#364 resolution). The engine's drive loop (`Connection._execute_context`) mints the DBAPI
+connection via `Engine.raw_connection()` (an ENGINE→DBAPI reach, legal) and passes it to
+`plan.open(conn)`. Each leaf Operator mints its **own** cursor from it (`conn.cursor()`): one DBAPI
+cursor carries one result set, and a `Join` has two leaves (left `data_sources.query`, right bulk
+`pages.retrieve`) that need two. Minting and driving a DBAPI cursor is a legal **SQL → DBAPI**
+reach; the plan holds **no engine handle**, so the forbidden **SQL → ENGINE** reach never reappears.
+
+The issue-#364 acceptance text ("Operators never touch a cursor", "unit tests against a fake
+`QueryIO`") **overshot** the invariant: ADR-0020 forbids SQL touching the **engine**, not the DBAPI
+`Cursor` (the downward boundary object). A `QueryIO` port wrapping the cursor would add an
+abstraction the layering does not require and would prematurely fix the `stream_results`/page-size
+relocation (Correction (3)) that the **blocking** Move-A path never exercises. The
+`Table.create(bind=engine)` DDL facade (`schema.py:829`) is *not* a counter-model: it holds `bind`
+only to call the **public** `bind.connect().execute(stmt)` entry point, never
+`raw_connection().cursor()` — an entry-point facade, not an operator driving I/O. A future
+`plan.execute(bind)` convenience could mirror it, but #364's caller is the engine drive loop, so no
+such facade is in scope.
 
 This **supersedes** [[adr-0008-joinexecution-seam]]'s "I/O stays in the hooks" — see
 [[adr-0018-query-plan-operator-tree]]. ADR-0008 held that "a single synchronous call is

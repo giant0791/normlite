@@ -58,6 +58,23 @@ is the mechanism that restores the DBAPI/SQL/ENGINE layering for `SELECT`.
 > invariant. A residual never `_compiler_dispatch`-ed never reaches `visit_bindparam`, so the
 > accounting works out. The bridge is throwaway: ADR-0019's three-valued evaluator reads the AST
 > directly and removes it. It is **not** the target contract.
+>
+> **Correction (2026-07-20) — there is no `QueryIO` port (#364).**
+>
+> **(7)** #364's acceptance text ("I/O flows through the `QueryIO` port; Operators never touch a
+> cursor or the engine directly"; "unit tests against the fake `QueryIO`") is more pre-Correction
+> boilerplate (Correction (4)). It **overshoots** [ADR-0020](./0020-execution-layering-sql-builds-engine-drives.md):
+> the invariant forbids SQL touching the **engine**, not the DBAPI `Cursor`, which is the *downward*
+> boundary object (`SQL → DBAPI` is legal). The port arrives as **nothing new**: the plan's `open()`
+> takes the **DBAPI `Connection`** the engine hands down while driving (`Connection._execute_context`
+> mints it via `Engine.raw_connection()`), and each leaf mints its own `conn.cursor()` — one cursor
+> per result set, two for a `Join`. The plan carries **no engine handle** (the Decision's rule
+> holds), so `open(conn: Connection)`, not `open(io: QueryIO)`. A cursor-hiding `QueryIO` wrapper
+> would add an abstraction the layering does not require *and* prematurely force the
+> `stream_results`/page-size relocation of Correction (3), which the **blocking** Move-A path never
+> exercises. `Table.create(bind=engine)` (`schema.py:829`) is not a counter-precedent: it holds
+> `bind` only to call the **public** `bind.connect().execute(stmt)` — an entry-point facade, never an
+> operator reaching `raw_connection().cursor()`.
 
 ---
 
