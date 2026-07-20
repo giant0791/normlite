@@ -23,7 +23,7 @@ from typing import Any, Callable, Optional, Protocol, Sequence, Union, runtime_c
 
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.exceptions import CompileError, InvalidRequestError
-from normlite.notiondbapi.dbapi2 import Cursor
+from normlite.notiondbapi.dbapi2 import Connection, Cursor
 from normlite.sql.compiler import compile_residual_filter
 from normlite.sql.dml import Join, JoinExecution
 from normlite.sql.elements import BindParameter, ColumnElement, Operator, BinaryExpression
@@ -54,17 +54,19 @@ class Scan(VolcanoOperator):
         self, 
         operation: dict, 
         parameters: Union[dict, list[dict]],
-        style: ExecutionStyle = ExecutionStyle.EXECUTE    
+        schema: SchemaInfo,
+        style: ExecutionStyle = ExecutionStyle.EXECUTE
     ) -> None:
         self._operation = operation
         self._parameters = parameters
+        self._schema = schema
         self._style = style
         self._cursor = None
 
-    def open(self, cursor: Cursor) -> None:
-        self._cursor = cursor
+    def open(self, connection: Connection) -> None:
+        self._cursor = connection.cursor()
+        self._cursor._inject_description(self._schema.as_sequence())
         if self._style is ExecutionStyle.EXECUTE:
-            # left leaf: execute eagerly
             self._cursor.execute(
                 self._operation,
                 self._parameters, 
@@ -120,18 +122,10 @@ class HashJoin(VolcanoOperator):
     def result_schema(self) -> Optional[SchemaInfo]:
         return self._result_schema
 
-    def open(self, cursor: Cursor) -> None:
-        self._left_child.open(cursor)
+    def open(self, connection: Connection) -> None:
+        self._left_child.open(connection)
+        self._right_child.open(connection)
         
-        right_cursor = None
-        if cursor is not None:
-            right_cursor = cursor._connection.cursor()
-            right_cursor._inject_description(
-                self._join_exec.right_schema.as_sequence()
-            )
-
-        self._right_child.open(right_cursor)
-
     def next(self) -> Optional[list[tuple]]:
         left_rows = self._left_child.next()
         if left_rows is None:
@@ -261,15 +255,28 @@ class Planner:
             )
 
         if not invoked_stmt._joins:
-            return Scan(ctx.operation, ctx.parameters)
+            # SELECT statement without JOIN
+            schema = SchemaInfo.from_table(
+                invoked_stmt.get_table(),
+                execution_names=ctx.compiled.fetch_columns(),
+                projected_names=ctx.compiled.result_columns(),
+            )
+            return Scan(ctx.operation, ctx.parameters, schema=schema)
         
-        # build the plan for the join
+        # build the plan for JOIN
         join: Join = invoked_stmt._joins[0]
         projection = list(invoked_stmt._projection)
-        left_child = Scan(ctx.operation, ctx.parameters)
+        left_schema, right_schema = SchemaInfo.from_join_sides(
+            join.left,
+            join.right,
+            projection,
+            join.onclause
+        )
+        left_child = Scan(ctx.operation, ctx.parameters, schema=left_schema)
         right_child = Scan(
             operation={"endpoint": "pages", "request": "retrieve"}, 
             parameters=None,
+            schema=right_schema,
             style=ExecutionStyle.EXECUTEMANY
         )
         plan = HashJoin(

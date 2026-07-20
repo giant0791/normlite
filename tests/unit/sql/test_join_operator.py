@@ -27,7 +27,7 @@ class _RowSource:
         self._rows = rows
         self._drained = False
 
-    def open(self, cursor) -> None:
+    def open(self, connection) -> None:
         pass
 
     def execute_with(self, parameters) -> None:
@@ -59,7 +59,7 @@ class _RecordingSource:
         self.events: list[str] = []
         self.received_params = None
 
-    def open(self, cursor) -> None:
+    def open(self, connection) -> None:
         self.events.append("open")
 
     def execute_with(self, parameters) -> None:
@@ -137,7 +137,8 @@ def test_join_operator_merges_child_rows_into_joined_tuples_as_one_batch():
     ])
 
     # Act: build the Join operator over its two child operators and drive it
-    # through the VolcanoOperator contract only — no cursor is threaded.
+    # through the VolcanoOperator contract only — the in-memory children ignore
+    # the connection, so None stands in for it (no I/O here).
     join_op = HashJoin(
         left_source,
         right_source,
@@ -146,7 +147,7 @@ def test_join_operator_merges_child_rows_into_joined_tuples_as_one_batch():
         right_filter=None,
         right_sorts=None,
     )
-    join_op.open(cursor=None)
+    join_op.open(None)
     first = join_op.next()
     second = join_op.next()
     join_op.close()
@@ -167,16 +168,16 @@ def test_join_operator_opens_both_children_but_runs_the_right_only_via_execute_w
     # no-op — this test watches only the lifecycle. The two sides are driven
     # DIFFERENTLY, because the right leaf's pages.retrieve parameters do not
     # exist until the left side has been drained and prepared:
-    #   - the LEFT leaf is a self-contained scan: open() it (which executes it),
-    #     then pull it;
-    #   - the RIGHT leaf is parametrised: open() only DELIVERS its (separately
-    #     shaped) cursor WITHOUT executing — a Scan is schema-blind and cannot
-    #     shape its own cursor, so the schema-aware caller shapes it and open()
-    #     hands it over — and the leaf is then RUN by execute_with(batch)
-    #     mid-next(), before it is pulled.
-    # Both are closed when the parent closes. So open() no longer means "execute":
-    # for the right leaf it means "receive your shaped cursor", and execution is
-    # deferred to execute_with.
+    #   - the LEFT leaf is a self-contained scan: open() it (which mints its own
+    #     cursor and executes it), then pull it;
+    #   - the RIGHT leaf is parametrised: open() mints and shapes its OWN cursor
+    #     but does NOT execute (it is an EXECUTEMANY leaf whose retrieve params
+    #     aren't known until the left drains) — the leaf is then RUN by
+    #     execute_with(batch) mid-next(), before it is pulled.
+    # HashJoin.open() forwards the same connection to both leaves; each owns its
+    # cursor. Both are closed when the parent closes. So open() no longer means
+    # "execute" for the right leaf: it mints/shapes, and the run is deferred to
+    # execute_with.
     metadata = MetaData()
     courses = Table(
         "courses",
@@ -197,7 +198,7 @@ def test_join_operator_opens_both_children_but_runs_the_right_only_via_execute_w
 
     # Act: drive the full VolcanoOperator lifecycle once.
     join_op = HashJoin(left_source, right_source, join, projection)
-    join_op.open(cursor=None)
+    join_op.open(None)
     join_op.next()
     join_op.close()
 
@@ -206,9 +207,10 @@ def test_join_operator_opens_both_children_but_runs_the_right_only_via_execute_w
     assert left_source.events.index("open") < left_source.events.index("next")
     assert left_source.events[-1] == "close"
 
-    # The right leaf IS opened — but only to RECEIVE its (separately shaped)
-    # cursor, not to execute: its retrieve params aren't known until the left
-    # drains, so its RUN is deferred to execute_with, which lands before the pull.
+    # The right leaf IS opened — but as an EXECUTEMANY leaf open() only mints and
+    # shapes its cursor, it does not execute: its retrieve params aren't known
+    # until the left drains, so its RUN is deferred to execute_with, which lands
+    # before the pull.
     assert "open" in right_source.events
     assert "execute_with" in right_source.events
     assert right_source.events.index("open") < right_source.events.index("execute_with")
@@ -269,7 +271,7 @@ def test_join_operator_surfaces_the_merged_collision_qualified_schema():
 
     # Act: drive the join once, then ask it for the schema of what it produced.
     join_op = HashJoin(left_source, right_source, join, projection)
-    join_op.open(cursor=None)
+    join_op.open(None)
     join_op.next()
     join_op.close()
 
@@ -417,15 +419,17 @@ def test_join_operator_feeds_the_right_child_the_retrieve_batch_it_computes_mid_
     ])
     right_source = _RecordingSource([right_row("Astronomy", "c-astro")])
 
-    # Act: drive the join. open() must NOT stand up the right child (its params
-    # don't exist yet); the batch is computed and delivered inside next().
+    # Act: drive the join. open() opens the right child (forwarding the
+    # connection) but must NOT run it — its retrieve params don't exist yet; the
+    # batch is computed and delivered via execute_with inside next().
     join_op = HashJoin(left_source, right_source, join, projection)
-    join_op.open(cursor=None)
+    join_op.open(None)
 
-    # the right leaf IS opened at open() — but only to RECEIVE its shaped cursor;
-    # its execute_with (the actual run) still waits for next(), below.
+    # the right leaf IS opened at open() — but as an EXECUTEMANY leaf it only
+    # mints/shapes its cursor; its execute_with (the actual run) still waits for
+    # next(), below.
     assert "open" in right_source.events
-    assert "execute_with" not in right_source.events  # delivered, not yet run
+    assert "execute_with" not in right_source.events  # opened, not yet run
 
     first = join_op.next()
     second = join_op.next()
