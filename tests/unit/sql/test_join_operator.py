@@ -347,7 +347,7 @@ def test_filter_operator_keeps_passing_rows_and_drops_failures_and_phantoms():
         schema=merged_schema,
         table=courses,
     )
-    filter_op.open(cursor=None)
+    filter_op.open(None)
     first = filter_op.next()
     second = filter_op.next()
     filter_op.close()

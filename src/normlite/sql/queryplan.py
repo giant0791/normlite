@@ -22,11 +22,11 @@
 from typing import Any, Callable, Optional, Protocol, Sequence, Union, runtime_checkable
 
 from normlite.engine.context import ExecutionContext, ExecutionStyle
-from normlite.exceptions import CompileError, InvalidRequestError
-from normlite.notiondbapi.dbapi2 import Connection, Cursor
+from normlite.exceptions import InvalidRequestError
+from normlite.notiondbapi.dbapi2 import Connection
 from normlite.sql.compiler import compile_residual_filter
 from normlite.sql.dml import Join, JoinExecution
-from normlite.sql.elements import BindParameter, ColumnElement, Operator, BinaryExpression
+from normlite.sql.elements import BinaryExpression
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
 from normlite.sql.schema import Column, Table
 
@@ -40,7 +40,7 @@ class VolcanoOperator(Protocol):
     
     .. versionadded:: 0.13.0
     """
-    def open(self, cursor: Cursor) -> None:
+    def open(self, connection: Connection) -> None:
         ...
 
     def next(self) -> Optional[list[tuple]]:
@@ -174,8 +174,8 @@ class Filter(VolcanoOperator):
             for c in self._right_cols
         ]
 
-    def open(self, cursor: Cursor) -> None:
-        self._source.open(cursor)
+    def open(self, connection: Connection) -> None:
+        self._source.open(connection)
 
     def next(self) -> Optional[list[tuple]]:
         merged_rows = self._source.next()
