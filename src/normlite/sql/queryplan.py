@@ -131,7 +131,14 @@ class HashJoin(VolcanoOperator):
         self._right_child.open(connection)
         
     def next(self) -> Optional[list[tuple]]:
+        # drain the left child fully to get all retrieve params
         left_rows = self._left_child.next()
+        while left_rows is not None:
+            next_rows = self._left_child.next()
+            if next_rows is None:
+                break
+            left_rows.extend(next_rows)
+
         if left_rows is None:
             return None
         

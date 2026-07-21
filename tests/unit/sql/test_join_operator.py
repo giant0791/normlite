@@ -79,6 +79,37 @@ class _RecordingSource:
         self.events.append("close")
 
 
+class _PaginatedSource:
+    """In-memory child that yields its rows across SEVERAL next() batches, one
+    per call, then exhaustion -- the way a real Scan paginates a >100-row store
+    100 rows at a time (a full scan of 150 rows surfaces as 100 then 50).
+
+    Stands in for a multi-page left leaf so the Join's drain behaviour is
+    observable: a source that returned everything in one batch (``_RowSource``)
+    could never tell whether the parent drains or stops at the first page.
+    """
+
+    def __init__(self, batches: list[list[tuple]]) -> None:
+        self._batches = list(batches)
+        self._i = 0
+
+    def open(self, connection) -> None:
+        pass
+
+    def execute_with(self, parameters) -> None:
+        pass
+
+    def next(self):
+        if self._i >= len(self._batches):
+            return None
+        batch = self._batches[self._i]
+        self._i += 1
+        return batch
+
+    def close(self) -> None:
+        pass
+
+
 def test_join_operator_merges_child_rows_into_joined_tuples_as_one_batch():
     # Arrange: a students->courses inner join whose two sides are supplied by
     # two in-memory child operators. The left source yields raw phase-1 student
@@ -445,4 +476,91 @@ def test_join_operator_feeds_the_right_child_the_retrieve_batch_it_computes_mid_
     assert first is not None
     assert len(first) == 2
     assert all("Astronomy" in row for row in first)
+    assert second is None
+
+
+def test_join_operator_drains_every_left_page_not_just_the_first():
+    # THE BLOCKING-JOIN LANDMINE (#364 step 4). A real left Scan paginates: a
+    # >100-row left store surfaces as 100 rows, then the rest, then None. But a
+    # Join BLOCKS -- it must see EVERY left row before it can build the deduped
+    # retrieve batch, exactly as the old dml.py phase-1 did with fetchall(). If
+    # HashJoin pulls the left child ONCE (a single fetchmany page) it silently
+    # drops every left row past the first page.
+    #
+    # And the loss is total, not partial: the right retrieve source is
+    # single-shot (its pages.retrieve runs once, on the batch prepare() computes
+    # from the FIRST left page). So a second left page arrives after the right
+    # side is already spent -- there is nothing to join it against, and those
+    # students vanish. The Join must DRAIN the left side fully in one next(),
+    # prepare the retrieve over ALL left rows, then assemble once.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    join = Join(students, courses, students.c.enrolled_in)
+    projection = [*students.uc, *courses.uc]
+
+    left_schema = SchemaInfo.from_table(
+        students,
+        execution_names=[students.c.object_id.name],
+        projected_names=[c.name for c in students.uc],
+    )
+    right_schema = SchemaInfo.from_table(
+        courses,
+        execution_names=[courses.c.object_id.name],
+        projected_names=[c.name for c in courses.uc],
+    )
+
+    def left_row(name: str, oids: list[str], oid: str) -> tuple:
+        cells = [None] * len(left_schema.columns)
+        cells[left_schema.column_index("name")] = {"title": name}
+        cells[left_schema.column_index("enrolled_in")] = {
+            "relation": [{"id": o} for o in oids]
+        }
+        cells[left_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    def right_row(title: str, oid: str) -> tuple:
+        cells = [None] * len(right_schema.columns)
+        cells[right_schema.column_index("title")] = title
+        cells[right_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    # Three students all enrolled in the ONE course, split across two left pages
+    # (two on the first, one on the second) -- the shape a >100-row scan takes.
+    left_source = _PaginatedSource([
+        [
+            left_row("Galileo Galilei", ["c-astro"], "s-1"),
+            left_row("Johannes Kepler", ["c-astro"], "s-2"),
+        ],
+        [
+            left_row("Isaac Newton", ["c-astro"], "s-3"),
+        ],
+    ])
+    right_source = _RowSource([right_row("Astronomy", "c-astro")])
+
+    # Act: drive the join once.
+    join_op = HashJoin(left_source, right_source, join, projection)
+    join_op.open(None)
+    first = join_op.next()
+    second = join_op.next()
+    join_op.close()
+
+    # Assert: ALL THREE students are joined to Astronomy -- the second left page
+    # was drained and merged too, not dropped. A single-page pull would yield
+    # only the two first-page students (and the third would be unjoinable, the
+    # right side already spent).
+    assert first is not None
+    assert len(first) == 3
+    assert all("Astronomy" in row for row in first)
+    for name in ("Galileo Galilei", "Johannes Kepler", "Isaac Newton"):
+        assert any({"title": name} in row for row in first)
     assert second is None
