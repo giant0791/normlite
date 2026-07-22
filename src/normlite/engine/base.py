@@ -239,7 +239,10 @@ class Connection:
         # 5. statement prepares execution
         elem._setup_execution(ctx)      
 
-        if ctx.execution_style == ExecutionStyle.EXECUTE:
+        if ctx.execution_style == ExecutionStyle.EXECUTEQUERYPLAN:
+            self._execute_query_plan(ctx)
+
+        elif ctx.execution_style == ExecutionStyle.EXECUTE:
             self._execute_single(ctx)
         
         elif ctx.execution_style == ExecutionStyle.EXECUTEMANY:
@@ -295,6 +298,25 @@ class Connection:
             context._get_exec_cursor(), 
             context.operation, 
             context.parameters
+        )
+
+    def _execute_query_plan(self, context: ExecutionContext) -> None:
+        from normlite.sql.queryplan import Planner
+        from normlite.notiondbapi.resultset import ResultSet
+
+        # build and execute the query plan
+        conn = self._engine.raw_connection()
+        plan = Planner(context).plan()
+        plan.open(conn)
+        rows = []
+        while (batch := plan.next()) is not None:
+            rows.extend(batch)
+        plan.close()
+
+        # construct the result cursor to store the joined rows
+        context._result_cursor = conn.cursor()
+        context._result_cursor._result_sets.append(
+            ResultSet(plan.result_schema.as_sequence(), "page", rows)
         )
 
     def _resolve_execution_options(self, stmt_execution_options: ExecutionOptions) -> ExecutionOptions:

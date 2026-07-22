@@ -40,7 +40,7 @@ from normlite._constants import SpecialColumns
 from normlite.exceptions import InvalidRequestError, NoSuchColumnError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql.functions import FunctionElement
-from normlite.sql.schema import Column, Table
+from normlite.sql.schema import Column, ReadOnlyColumnCollection, Table
 
 def _merge_names(
     execution_names: Optional[Sequence[str]],
@@ -239,6 +239,50 @@ class SchemaInfo:
         ]
 
         return SchemaInfo(result_cols)
+    
+    @classmethod
+    def from_join_sides(
+        cls, 
+        left: Table, 
+        right: Table, 
+        projection: Optional[ReadOnlyColumnCollection], 
+        onclause: Column
+    ) -> tuple[SchemaInfo, SchemaInfo]:
+        """Construct the schema info objects for the JOIN left and right side
+        
+        .. versionadded:: 0.13.0
+        """
+        # ``projection`` is None only for low-level callers that mean "project
+        # everything" (e.g. JoinExecution unit tests). Fall back to all user
+        # columns of both sides so schema construction stays projection-
+        # independent in that case; the per-side filters below then split them.
+        schema_projection = (
+            projection if projection is not None
+            else (*left.uc, *right.uc)
+        )
+
+        left_schema = SchemaInfo.from_table(
+            left,
+            execution_names=[left.c.object_id.name],
+            projected_names=[
+                c.name
+                for c in schema_projection
+                if c.parent is left
+            ] + [onclause.name],     # the onclause column must always be included for the join to work
+        )
+
+        right_schema = SchemaInfo.from_table(
+            right,
+            execution_names=[right.c.object_id.name],
+            projected_names=[
+                c.name
+                for c in schema_projection
+                if c.parent is right
+            ]
+        )
+
+        return (left_schema, right_schema)
+
         
     def as_sequence(self) -> Sequence[tuple]:
         """Provide the description for DBAPI cursors.

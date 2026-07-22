@@ -42,29 +42,35 @@ class _PageCountingClient:
 
 
 def test_scan_yields_the_store_rows_as_a_batch_then_reports_exhaustion(engine, students):
-    # Arrange: a real store with 3 rows, and a prepared cursor + compiled payload,
-    # built the way phase-1 callers do — but with NOTHING driving the cursor yet.
+    # Arrange: a real store with 3 rows and the compiled phase-1 payload. The plan
+    # leaf now takes the DBAPI *connection* and mints its own cursor off it (#364),
+    # so nothing outside the leaf shapes or drives a cursor.
     db_id = create_students_db(engine)
     attach_table_oid(students, db_id)
     populate_students(engine, students, n=3)
 
     compiled = select(students).compile(engine._sql_compiler)
-    cursor = engine.raw_connection().cursor()
+    connection = engine.raw_connection()
     ctx = ExecutionContext(
         engine,
         engine.connect(),
-        cursor=cursor,
+        cursor=connection.cursor(),
         compiled=compiled,
         distilled_params=_distill_params(None),
         execution_options={},
     )
     ctx.pre_exec()
-    ctx.invoked_stmt._setup_execution(ctx)   # plain select: a no-op today, cursor stays undriven
+    ctx.invoked_stmt._setup_execution(ctx)   # plain select: a no-op today
 
-    scan = Scan(ctx.operation, ctx.parameters)
+    schema = SchemaInfo.from_table(
+        students,
+        execution_names=compiled.fetch_columns(),
+        projected_names=compiled.result_columns(),
+    )
+    scan = Scan(ctx.operation, ctx.parameters, schema=schema)
 
-    # Act: the plan's leaf drives the cursor itself.
-    scan.open(cursor)
+    # Act: the leaf mints its own cursor off the connection and drives it.
+    scan.open(connection)
     first = scan.next()
     second = scan.next()
     scan.close()
@@ -83,11 +89,11 @@ def test_scan_returns_one_notion_page_per_next(engine, students):
     populate_students(engine, students, n=150)
 
     compiled = select(students).compile(engine._sql_compiler)
-    cursor = engine.raw_connection().cursor()
+    connection = engine.raw_connection()
     ctx = ExecutionContext(
         engine,
         engine.connect(),
-        cursor=cursor,
+        cursor=connection.cursor(),
         compiled=compiled,
         distilled_params=_distill_params(None),
         execution_options={},
@@ -95,10 +101,15 @@ def test_scan_returns_one_notion_page_per_next(engine, students):
     ctx.pre_exec()
     ctx.invoked_stmt._setup_execution(ctx)
 
-    scan = Scan(ctx.operation, ctx.parameters)
+    schema = SchemaInfo.from_table(
+        students,
+        execution_names=compiled.fetch_columns(),
+        projected_names=compiled.result_columns(),
+    )
+    scan = Scan(ctx.operation, ctx.parameters, schema=schema)
 
-    # Act: the plan drives the cursor and pulls one Notion page per next().
-    scan.open(cursor)
+    # Act: the leaf mints its own cursor and pulls one Notion page per next().
+    scan.open(connection)
     first = scan.next()
     second = scan.next()
     third = scan.next()
@@ -122,11 +133,11 @@ def test_scan_pulls_pages_lazily_fetching_only_what_next_demands(engine, student
 
     compiled = select(students).compile(engine._sql_compiler)
     counting = _PageCountingClient(engine._client)
-    cursor = DBAPIConnection(counting).cursor()
+    connection = DBAPIConnection(counting)
     ctx = ExecutionContext(
         engine,
         engine.connect(),
-        cursor=cursor,
+        cursor=connection.cursor(),
         compiled=compiled,
         distilled_params=_distill_params(None),
         execution_options={},
@@ -134,10 +145,16 @@ def test_scan_pulls_pages_lazily_fetching_only_what_next_demands(engine, student
     ctx.pre_exec()
     ctx.invoked_stmt._setup_execution(ctx)
 
-    scan = Scan(ctx.operation, ctx.parameters)
+    schema = SchemaInfo.from_table(
+        students,
+        execution_names=compiled.fetch_columns(),
+        projected_names=compiled.result_columns(),
+    )
+    scan = Scan(ctx.operation, ctx.parameters, schema=schema)
 
-    # Act: open the scan and pull only the first page.
-    scan.open(cursor)
+    # Act: the leaf mints its cursor off the counting connection and pulls only
+    # the first page.
+    scan.open(connection)
     first = scan.next()
 
     # Assert: the first page is in hand, but the second has NOT been fetched yet —
@@ -157,14 +174,70 @@ def test_scan_is_recognised_as_a_volcano_operator_but_a_partial_object_is_not(en
     # Scan already speaks it, so it must be recognised as a VolcanoOperator — while
     # an object missing part of the contract (here, no next()) must NOT be, or the
     # protocol would guarantee nothing.
-    scan = Scan(operation={}, parameters={})
+    scan = Scan(operation={}, parameters={}, schema=SchemaInfo(columns=[]))
 
     class _MissingNext:
-        def open(self, cursor): ...
+        def open(self, connection): ...
         def close(self): ...
 
     assert isinstance(scan, VolcanoOperator)
     assert not isinstance(_MissingNext(), VolcanoOperator)
+
+
+class _RecordingCursor:
+    """A DBAPI-cursor stand-in that records how the leaf shapes and drives it."""
+    def __init__(self):
+        self.injected = None
+        self.executed = None
+
+    def _inject_description(self, entries):
+        self.injected = entries
+
+    def execute(self, operation, parameters, *, stream_results=False, yield_per=None):
+        self.executed = (operation, parameters, stream_results)
+        return self
+
+
+class _RecordingConnection:
+    """A DBAPI-connection stand-in that hands out (and records) recording cursors."""
+    def __init__(self):
+        self.minted = []
+
+    def cursor(self):
+        cur = _RecordingCursor()
+        self.minted.append(cur)
+        return cur
+
+
+def test_scan_open_mints_its_own_cursor_from_the_connection_and_shapes_it_with_its_schema(students):
+    # Decision #5 (#364) reverses the schema-blind "receive an already-shaped
+    # cursor" scaffold: a Scan now carries its OWN schema, and open() takes the
+    # DBAPI *Connection* the engine hands down — not a cursor. The leaf mints its
+    # own cursor off that connection (one cursor = one result set; a Join's two
+    # leaves need two), shapes it with its schema's description (the Scan owns
+    # this now, no schema-aware parent doing it from the outside), and — as an
+    # EXECUTE / left leaf — drives the query eagerly with streaming on.
+    schema = SchemaInfo.from_table(
+        students,
+        execution_names=[students.c.object_id.name],
+        projected_names=[c.name for c in students.uc],
+    )
+    operation = {"endpoint": "data_sources", "request": "query"}
+    parameters = {"payload": {"filter": {}}}
+    scan = Scan(operation, parameters, schema=schema)
+
+    conn = _RecordingConnection()
+
+    # Act: the leaf opens itself against the CONNECTION, not a cursor.
+    scan.open(conn)
+
+    # Assert: it minted exactly one cursor of its own off the connection...
+    assert len(conn.minted) == 1
+    minted = conn.minted[0]
+    # ...shaped that cursor with its own schema's description...
+    assert minted.injected == schema.as_sequence()
+    # ...and eagerly drove the phase-1 query on it, streaming.
+    assert minted.executed == (operation, parameters, True)
 
 
 def test_planner_turns_a_plain_select_into_a_single_scan_that_yields_the_store(engine, students):
@@ -177,11 +250,11 @@ def test_planner_turns_a_plain_select_into_a_single_scan_that_yields_the_store(e
     populate_students(engine, students, n=3)
 
     compiled = select(students).compile(engine._sql_compiler)
-    cursor = engine.raw_connection().cursor()
+    connection = engine.raw_connection()
     ctx = ExecutionContext(
         engine,
         engine.connect(),
-        cursor=cursor,
+        cursor=connection.cursor(),
         compiled=compiled,
         distilled_params=_distill_params(None),
         execution_options={},
@@ -195,8 +268,9 @@ def test_planner_turns_a_plain_select_into_a_single_scan_that_yields_the_store(e
     # The plan is a single Scan — a leaf, not a tree.
     assert isinstance(plan, Scan)
 
-    # ... and driving it yields the whole store, then exhaustion.
-    plan.open(cursor)
+    # ... and driving it (the leaf mints its own cursor off the connection)
+    # yields the whole store, then exhaustion.
+    plan.open(connection)
     first = plan.next()
     second = plan.next()
     plan.close()
@@ -280,12 +354,12 @@ def test_planner_right_leaf_scan_retrieves_the_batch_pages_on_its_own_cursor(eng
     # EXECUTEMANY retrieve and next() must drain BOTH retrieved pages (one result
     # set per page). Scan(None, None) -- no execute_with, no operation -- cannot.
     #
-    # A Scan carries only (operation, parameters): it has NO access to the right
-    # table, so it cannot build the cursor description itself. Shaping the cursor
-    # is the schema-aware caller's job -- here the arrange phase, standing in for
-    # whoever stands up the right leaf in production. The leaf receives its
-    # already-shaped cursor via open(); execute_with only supplies the batch and
-    # runs it; next() drains.
+    # The right leaf carries its OWN right-side schema (the Planner derives it via
+    # from_join_sides), so on open() it mints its own cursor off the connection --
+    # the join's second result set -- and shapes it itself; no schema-aware caller
+    # injects a description from outside. open() only mints and shapes the
+    # EXECUTEMANY leaf (it does not execute); execute_with supplies the batch and
+    # runs the retrieve; next() drains.
     metadata = MetaData()
     courses = Table(
         "courses",
@@ -336,21 +410,13 @@ def test_planner_right_leaf_scan_retrieves_the_batch_pages_on_its_own_cursor(eng
     )
     ctx.pre_exec()
 
-    # The Planner builds the plan; its right leaf is the phase-2 retrieve Scan.
+    # The Planner builds the plan; its right leaf is the phase-2 retrieve Scan,
+    # already carrying its own right-side schema. On open() it mints its OWN cursor
+    # off the connection (the join's second result set) and shapes it itself.
     right_leaf = Planner(ctx).plan()._right_child
 
-    # The schema-aware caller shapes the right leaf's OWN cursor (the second
-    # result set) and hands it over via open() -- the Scan cannot build this
-    # description, having no access to the right table.
-    right_schema = SchemaInfo.from_table(
-        courses,
-        execution_names=[courses.c.object_id.name],
-        projected_names=[c.name for c in courses.uc],
-    )
-    right_cursor = engine.raw_connection().cursor()
-    right_cursor._inject_description(right_schema.as_sequence())
-    right_leaf.open(right_cursor)
-    
+    right_leaf.open(engine.raw_connection())
+
     # Act: drive ONLY the right leaf, the parametrised way. The batch stands in
     # for what prepare() would compute from the (undriven) left rows: one
     # path_params envelope per target course id.
@@ -366,6 +432,109 @@ def test_planner_right_leaf_scan_retrieves_the_batch_pages_on_its_own_cursor(eng
     assert len(right_rows) == 2
     assert any(astronomy_oid in row for row in right_rows)
     assert any(physics_oid in row for row in right_rows)
+
+
+def test_unbound_retrieve_leaf_pulled_without_a_batch_raises_loudly(engine):
+    # The right leaf is an EXECUTEMANY Scan: open() only MINTS and shapes its
+    # cursor -- it deliberately does NOT execute, because its retrieve
+    # parameters are the deduped ids the left rows point at, which only exist
+    # after the left side drains. HashJoin supplies them by calling
+    # execute_with(batch) between open() and next(). But nothing structurally
+    # forces that ordering: a caller (or a future bug in the drive loop) could
+    # open() the leaf and pull next() straight away, with no batch ever bound.
+    #
+    # That pull must FAIL, and fail with a breadcrumb pointing at the actual
+    # fault -- the retrieve was never bound (its parameters are still None; no
+    # execute_with) -- NOT silently fetch nothing, and NOT leak the DBAPI
+    # cursor's generic "Cursor result set is empty. No execute*() call was
+    # issued." That generic message misdirects: from the plan's side the leaf
+    # WAS opened; what is missing is the execute_with(batch) bind. The operator
+    # owns this contract, so it must name it.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    stmt = select(students, courses).join(students.c.enrolled_in)
+    compiled = stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    right_leaf = Planner(ctx).plan()._right_child
+    right_leaf.open(engine.raw_connection())
+
+    # Act + Assert: pull the leaf with NO intervening execute_with(batch). It
+    # must raise a clear plan-level error naming the unbound retrieve / missing
+    # batch, not the DBAPI's generic empty-result-set message.
+    with pytest.raises(
+        InvalidRequestError,
+        match=r"(?i)parameters|retrieve|execute_with|batch|unbound",
+    ):
+        right_leaf.next()
+
+
+def test_hashjoin_open_forwards_the_connection_to_both_leaves():
+    # HashJoin is a pass-through for I/O: each leaf now mints its OWN cursor off
+    # the connection and shapes it with its OWN schema (decision #5, #364), so
+    # open() just hands the SAME connection down to both children -- it mints and
+    # shapes nothing itself. (It used to mint the right leaf's cursor off the
+    # left's and inject the right schema from outside; the right Scan owns that
+    # now.) Driving through a spy for each leaf isolates the forwarding contract.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    stmt = select(students, courses).join(students.c.enrolled_in)
+    join = stmt._joins[0]
+    projection = list(stmt._projection)
+
+    class _SpyLeaf:
+        def __init__(self):
+            self.opened_with = "<unopened>"
+
+        def open(self, connection):
+            self.opened_with = connection
+
+        def next(self): ...
+        def close(self): ...
+
+    left, right = _SpyLeaf(), _SpyLeaf()
+    hashjoin = HashJoin(left, right, join, projection)
+
+    connection = object()   # opaque stand-in for the DBAPI Connection
+
+    # Act: open the join.
+    hashjoin.open(connection)
+
+    # Assert: both leaves received the SAME connection, untouched -- the parent
+    # minted no cursor of its own.
+    assert left.opened_with is connection
+    assert right.opened_with is connection
 
 
 def test_planner_layers_a_filter_carrying_the_residual_over_the_hashjoin(engine):

@@ -19,16 +19,18 @@
 
 """Provide abstractions for a query planner based on the Volcano iterator model."""
 
-from typing import Any, Callable, Optional, Protocol, Sequence, Union, runtime_checkable
+from typing import Any, Callable, Optional, Protocol, Sequence, Type, Union, runtime_checkable
 
-from normlite.engine.context import ExecutionContext, ExecutionStyle
-from normlite.exceptions import CompileError, InvalidRequestError
-from normlite.notiondbapi.dbapi2 import Cursor
-from normlite.sql.compiler import compile_residual_filter
+from normlite.engine.context import ExecutionContext
+from normlite.exceptions import InvalidRequestError
+from normlite.notion_sdk.client import NotionError
+from normlite.notiondbapi.dbapi2 import Connection, Cursor
+from normlite.sql.compiler import compile_residual_filter, compile_residual_sorts
 from normlite.sql.dml import Join, JoinExecution
-from normlite.sql.elements import BindParameter, ColumnElement, Operator, BinaryExpression
+from normlite.sql.elements import BinaryExpression
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
 from normlite.sql.schema import Column, Table
+from normlite.sql.type_api import type_mapper
 
 #: Notion's maximum (and default) result page size. A ``Scan`` pulls the store
 #: one Notion page at a time, so this is the operator's batch granularity.
@@ -40,13 +42,17 @@ class VolcanoOperator(Protocol):
     
     .. versionadded:: 0.13.0
     """
-    def open(self, cursor: Cursor) -> None:
+    def open(self, connection: Connection) -> None:
         ...
 
     def next(self) -> Optional[list[tuple]]:
         ...
 
     def close(self) -> None:
+        ...
+
+    @property
+    def result_schema(self) -> SchemaInfo:
         ...
 
 class Scan(VolcanoOperator):
@@ -54,40 +60,56 @@ class Scan(VolcanoOperator):
         self, 
         operation: dict, 
         parameters: Union[dict, list[dict]],
-        style: ExecutionStyle = ExecutionStyle.EXECUTE    
+        schema: SchemaInfo,
     ) -> None:
         self._operation = operation
         self._parameters = parameters
-        self._style = style
+        self._schema = schema
         self._cursor = None
 
-    def open(self, cursor: Cursor) -> None:
-        self._cursor = cursor
-        if self._style is ExecutionStyle.EXECUTE:
-            # left leaf: execute eagerly
-            self._cursor.execute(
-                self._operation,
-                self._parameters, 
-                stream_results=True,
-            )
-        # right leaf: delay execution until 
-        # the schema-aware caller drives .execute_with
+    def open(self, connection: Connection) -> None:
+        self._cursor = connection.cursor()
+        self._cursor._inject_description(self._schema.as_sequence())
+        self._cursor.execute(
+            self._operation,
+            self._parameters, 
+            stream_results=True,
+        )
 
     def next(self) -> Optional[list[tuple]]:
-        if self._style is ExecutionStyle.EXECUTEMANY:
-            # drain across result sets (one per page)
-            next_batch = [
-                row 
-                for row in self._cursor._iter_all()
-            ]
-        else:
-            # return paginated next batch
-            next_batch = self._cursor.fetchmany(size=NOTION_MAX_PAGE_SIZE)            
-
+        next_batch = self._cursor.fetchmany(size=NOTION_MAX_PAGE_SIZE)            
         return next_batch if next_batch else None
     
     def close(self) -> None:
         self._cursor.close()
+
+    @property
+    def result_schema(self) -> SchemaInfo:
+        return self._schema
+    
+class Retrieve(Scan):
+    """Retrieve joining rows by id with lax semantics.
+    
+    Silences `object_not_found` from `pages.retrieve` (ADR-0002 lax-FK semantics:
+    a dangling relation entry is an absent reference, not an error). All other
+    errors propagate via the default DBAPI raise path.
+    """
+
+    def __init__(
+        self, 
+        parameters: list[dict], 
+        schema: SchemaInfo
+    ):
+        super().__init__(
+            {"endpoint": "pages", "request": "retrieve"}, 
+            parameters, 
+            schema
+        )
+
+    def open(self, connection: Connection) -> None:
+        self._cursor = connection.cursor()
+        self._cursor._inject_description(self._schema.as_sequence())
+        self._cursor.errorhandler = self._lax_retrieve_errorhandler
 
     def execute_with(self, batch: list[dict]) -> None:
         self._parameters = batch
@@ -96,11 +118,46 @@ class Scan(VolcanoOperator):
             self._parameters
         )
 
+    def next(self) -> Optional[list[tuple]]:
+        if self._parameters is None:
+            raise InvalidRequestError(
+                "No parameters provided: Retrieve on the right side needs the ids to fetch the rows."
+            )
+        
+        # drain across result sets (one per page)
+        next_batch = [
+            row 
+            for row in self._cursor._iter_all()
+        ]
+        return next_batch if next_batch else None
+
+    def _lax_retrieve_errorhandler(
+        self, 
+        connection: Connection, 
+        cursor: Cursor, 
+        errorclass: Type[BaseException],
+        errorvalue: BaseException) -> None:
+        """Errorhandler for lax semantics.
+
+        Silences `object_not_found` from `pages.retrieve` (ADR-0002 lax-FK semantics:
+        a dangling relation entry is an absent reference, not an error). All other
+        errors propagate via the default DBAPI raise path.
+        """
+        cause = errorvalue.__cause__
+        if isinstance(cause, NotionError) and cause.code == "object_not_found":
+            # Dangling-FK / lax-reference semantics (ADR-0002):
+            # missing pages are treated as absent references
+            # INNER JOIN silently drops left rows whose relation list resolves 
+            # to zero existing right rows
+            return                       
+
+        raise errorvalue                 # propagate everything else
+
 class HashJoin(VolcanoOperator):
     def __init__(
         self,
         left_child: VolcanoOperator,
-        right_child: VolcanoOperator,
+        right_child: Retrieve,
         join: Join,
         projection: list[Column],
         right_filter: Optional[dict] = None,
@@ -120,20 +177,19 @@ class HashJoin(VolcanoOperator):
     def result_schema(self) -> Optional[SchemaInfo]:
         return self._result_schema
 
-    def open(self, cursor: Cursor) -> None:
-        self._left_child.open(cursor)
+    def open(self, connection: Connection) -> None:
+        self._left_child.open(connection)
+        self._right_child.open(connection)
         
-        right_cursor = None
-        if cursor is not None:
-            right_cursor = cursor._connection.cursor()
-            right_cursor._inject_description(
-                self._join_exec.right_schema.as_sequence()
-            )
-
-        self._right_child.open(right_cursor)
-
     def next(self) -> Optional[list[tuple]]:
+        # drain the left child fully to get all retrieve params
         left_rows = self._left_child.next()
+        while left_rows is not None:
+            next_rows = self._left_child.next()
+            if next_rows is None:
+                break
+            left_rows.extend(next_rows)
+
         if left_rows is None:
             return None
         
@@ -180,8 +236,12 @@ class Filter(VolcanoOperator):
             for c in self._right_cols
         ]
 
-    def open(self, cursor: Cursor) -> None:
-        self._source.open(cursor)
+    @property
+    def result_schema(self) -> SchemaInfo:
+        return self._merged_schema
+
+    def open(self, connection: Connection) -> None:
+        self._source.open(connection)
 
     def next(self) -> Optional[list[tuple]]:
         merged_rows = self._source.next()
@@ -215,17 +275,6 @@ class Filter(VolcanoOperator):
         from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
         from normlite.notion_sdk.client import _Filter
 
-        type_mapper = {
-            DBAPITypeCode.NUMBER: "number",
-            DBAPITypeCode.NUMBER_WITH_COMMAS: "number",
-            DBAPITypeCode.NUMBER_DOLLAR: "number",
-            DBAPITypeCode.TITLE: "title",
-            DBAPITypeCode.RICH_TEXT: "rich_text",
-            DBAPITypeCode.CHECKBOX: "checkbox",
-            DBAPITypeCode.DATE: "date",
-            DBAPITypeCode.RELATION: "relation",
-        }
-
         right_slice = tuple(getter(merged_row) for getter in row_getters)
 
         if all(c is None for c in right_slice):
@@ -237,11 +286,74 @@ class Filter(VolcanoOperator):
         # are unambiguous within it. See ADR-0009.
         properties = {}
         for col, cell in zip(right_cols, right_slice):
-            typ = type_mapper[col.type_code]
+            typ = type_mapper[col.type_code].get_col_spec()
             properties[col.bare_name] = {"type": typ, **cell}
 
         page = {"properties": properties}
         return _Filter(page, {"filter": self._filter}).eval()
+    
+class Sort(VolcanoOperator):
+    def __init__(        
+        self,
+        source: VolcanoOperator,
+        schema: SchemaInfo,
+        sorts: list[dict],
+        table: Table,
+    ) -> None:
+        self._source = source
+        self._merged_schema = schema
+        self._sorts = sorts
+        self._table = table
+
+    @property
+    def result_schema(self) -> SchemaInfo:
+        return self._merged_schema
+
+    def open(self, connection: Connection) -> None:
+        self._source.open(connection)
+
+    def next(self) -> Optional[list[tuple]]:
+        merged_rows = self._source.next()
+        if merged_rows is None:
+            return None
+
+        from normlite.sql.type_api import type_mapper
+        from normlite.notion_sdk.client import EMPTY_TEXT, EMPTY_NUMBER
+
+        right_cols = [c for c in self._merged_schema.columns if c.table is self._table]
+        by_bare = {c.bare_name: c for c in right_cols}
+        merged_rows = list(merged_rows)
+        for sort in reversed(self._sorts):
+            # identity, keyed by the sort's own property
+            col = by_bare[sort["property"]]
+
+            # merged name — survives collision
+            getter = self._merged_schema.column_getter(col.name)
+            direction = sort.get("direction", "ascending")
+            reverse = direction == "descending"
+
+            def sort_key(
+                row: tuple[dict], 
+                col: ResultColumn = col, 
+                getter: Callable[[Sequence[Any]], Any] = getter
+            ) -> tuple[bool, Any]:
+                value = type_mapper[col.type_code].result_processor()(getter(row))
+
+                # Empties-first/last sentinel, inherited from
+                # _extract_sort_value. For a right-side TITLE key this branch
+                # is currently UNREACHABLE: an empty/None right title is
+                # unconstructable through the public interface (insert
+                # title=None is rejected by the client; title="" yields a
+                # non-empty list). Kept for parity with the shared sort-value
+                # semantics and for nullable types if they become sortable
+                # right-side keys. See ADR-0005 / the unreachable-empty-title
+                # boundary; not covered by a test because the input can't be
+                # built.
+                is_empty = value in (None, EMPTY_TEXT, EMPTY_NUMBER)
+                return (is_empty, value)
+
+            merged_rows.sort(key=sort_key, reverse=reverse)
+        return merged_rows
 
 class Planner:
     """Provide a query plan as a pipeline composed of Volcano operators."""
@@ -261,16 +373,27 @@ class Planner:
             )
 
         if not invoked_stmt._joins:
-            return Scan(ctx.operation, ctx.parameters)
+            # SELECT statement without JOIN
+            schema = SchemaInfo.from_table(
+                invoked_stmt.get_table(),
+                execution_names=ctx.compiled.fetch_columns(),
+                projected_names=ctx.compiled.result_columns(),
+            )
+            return Scan(ctx.operation, ctx.parameters, schema=schema)
         
-        # build the plan for the join
+        # build the plan for JOIN
         join: Join = invoked_stmt._joins[0]
         projection = list(invoked_stmt._projection)
-        left_child = Scan(ctx.operation, ctx.parameters)
-        right_child = Scan(
-            operation={"endpoint": "pages", "request": "retrieve"}, 
+        left_schema, right_schema = SchemaInfo.from_join_sides(
+            join.left,
+            join.right,
+            projection,
+            join.onclause
+        )
+        left_child = Scan(ctx.operation, ctx.parameters, schema=left_schema)
+        right_child = Retrieve(
             parameters=None,
-            style=ExecutionStyle.EXECUTEMANY
+            schema=right_schema,
         )
         plan = HashJoin(
             left_child,
@@ -302,6 +425,13 @@ class Planner:
 
             plan = updated
 
+        # add a sort on top of the plan, if there is a ORDER BY-clause on the right table
+        residual_sorts = ctx.compiled.planning_context.residual_sorts
+        if residual_sorts is not None:
+            sorts = compile_residual_sorts(residual_sorts)
+            merged_schema = SchemaInfo.from_join(join.left, join.right, *invoked_stmt._projection)
+            plan = Sort(source=plan, schema=merged_schema, sorts=sorts, table=join.right)
+        
         return plan
  
         
