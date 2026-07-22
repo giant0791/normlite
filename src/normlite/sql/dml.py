@@ -17,13 +17,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from normlite.notion_sdk.client import NotionError
 from normlite.notiondbapi import Error
 from normlite.notiondbapi.resultset import ResultSet
 from normlite.sql.functions import FunctionElement
 
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Type, Union, TYPE_CHECKING
+from typing import Any, Callable, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
 import collections.abc as collections_abc
 
 import warnings
@@ -40,8 +39,6 @@ if TYPE_CHECKING:
     from normlite.engine.cursor import CursorResult
     from normlite.engine.base import Connection
     from normlite.engine.context import ExecutionContext
-    from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
-    from normlite.notiondbapi.dbapi2 import Cursor as DBAPICursor 
 
 ColumnExpressionArgument = Union[
     BinaryExpression,
@@ -810,85 +807,10 @@ class Select(HasTable, ExecutableClauseElement):
         # returning self is already encapsulated into the generative decorator
     
     def _setup_execution(self, context: ExecutionContext) -> None:
-        # guard against execution if joins are empty
-        if not self._joins:
-            return
+        # It's a no-op for select
+        pass
 
-        from normlite.sql.compiler import compile_residual_filter, compile_residual_sorts
-        from normlite.sql.elements import BinaryExpression
-
-        # Stand up the join-execution seam: it owns all join-domain state and
-        # computation across both phases (ADR-0008). Config enters via the
-        # constructor; the hook drives I/O only.
-        pc = context.compiled.planning_context
-        right_filter = (
-            compile_residual_filter(pc.residual_where)
-            if isinstance(pc.residual_where, BinaryExpression) else None
-        )
-        right_sorts = (
-            compile_residual_sorts(pc.residual_sorts)
-            if pc.residual_sorts is not None else None
-        )
-        join_execution = JoinExecution(
-            self._joins[0],
-            self._projection,
-            right_filter,
-            right_sorts
-        )
-        context._join_execution = join_execution
-
-        # phase 1: run the left-side query and drain the left rows
-        context._cursor._inject_description(
-            join_execution.left_schema.as_sequence()
-        )
-        context.engine.do_execute(
-            context._cursor,
-            context.operation,
-            context.parameters
-        )
-        left_rows = context._cursor.fetchall()
-
-        # phase 2 prep: the seam turns the left rows into the deduplicated
-        # pages.retrieve batch; the hook wires it onto the EXECUTEMANY channel.
-        bulk_params = join_execution.prepare(left_rows)
-
-        result_cursor = context.connection._engine.raw_connection().cursor()
-        result_cursor._inject_description(
-            join_execution.right_schema.as_sequence()
-        )
-        result_cursor.errorhandler = _join_errorhandler
-
-        # staged cursor will contain 1 result set for each retrieved row
-        context._staged_result_cursor = result_cursor
-        context.bulk_operation = {
-            "endpoint": "pages",
-            "request": "retrieve"
-        }
-
-        context.bulk_parameters = bulk_params
-
-    def _finalize_execution(self, context: ExecutionContext) -> None:
-        if self._joins:
-            # guard against execution if joins are empty
-            join_execution = context._join_execution
-
-            # drain the retrieved right rows (one result set per retrieved page)
-            # and hand them to the seam, which merges + filters them.
-            right_rows = [r for r in context._staged_result_cursor._iter_all()]
-            merged_schema, merged_rows = join_execution.assemble(right_rows)
-
-            # fill in the result cursor's result set
-            context._result_cursor = context.engine.raw_connection().cursor()
-            context._result_cursor._result_sets.append(
-                ResultSet(
-                    merged_schema.as_sequence(),
-                    "page",
-                    merged_rows
-                )
-            )
-
-            return
-        
+    def _finalize_execution(self, context: ExecutionContext) -> None:       
         if self._is_aggregate:
             rows = context._get_exec_cursor().fetchall()
             aggregate = AggregateExecution(self._raw_columns)
@@ -901,9 +823,6 @@ class Select(HasTable, ExecutableClauseElement):
                     synthetic_rows
                 )
             )
-
-
-
     
 def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)
@@ -1486,25 +1405,3 @@ class AggregateExecution:
         # the sum or avg of all-None is None, not {"number": None}
         # func.count(col) for raw_values = [] is {"number": 0}
         return {"number": 0} if func.name == "count" else None
-
-def _join_errorhandler(
-    connection: DBAPIConnection, 
-    cursor: DBAPICursor, 
-    errorclass: Type[BaseException],
-    errorvalue: BaseException
-) -> None:
-    """Errorhandler for the inner-join staged result cursor.
-
-    Silences `object_not_found` from `pages.retrieve` (ADR-0002 lax-FK semantics:
-    a dangling relation entry is an absent reference, not an error). All other
-    errors propagate via the default DBAPI raise path.
-    """
-    cause = errorvalue.__cause__
-    if isinstance(cause, NotionError) and cause.code == "object_not_found":
-        # Dangling-FK / lax-reference semantics (ADR-0002):
-        # missing pages are treated as absent references
-        # INNER JOIN silently drops left rows whose relation list resolves 
-        # to zero existing right rows
-        return                       
-
-    raise errorvalue                 # propagate everything else

@@ -10,7 +10,7 @@ arrange pattern the ADR mandates for #363.
 
 from normlite import Relation, ForeignKey
 from normlite.sql.dml import Join
-from normlite.sql.queryplan import HashJoin
+from normlite.sql.queryplan import HashJoin, Sort
 from normlite.sql.resultschema import SchemaInfo
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Integer, String
@@ -563,4 +563,71 @@ def test_join_operator_drains_every_left_page_not_just_the_first():
     assert all("Astronomy" in row for row in first)
     for name in ("Galileo Galilei", "Johannes Kepler", "Isaac Newton"):
         assert any({"title": name} in row for row in first)
+    assert second is None
+
+
+def test_sort_operator_orders_merged_rows_by_the_residual_right_key_descending():
+    # The residual right-side ORDER BY is held back through the join and applied
+    # as a Sort operator ON TOP of the merged stream (ADR-0018 operator tree).
+    # JoinExecution used to fold this into assemble(); the tree gives ORDER BY
+    # its own operator. Feed pre-merged rows in scrambled title order; Sort must
+    # reorder them by courses.title DESCENDING, reading the key off the merged
+    # (qualified) schema and result-processing the raw phase-2 title cell.
+    #
+    # Mirrors the Filter operator's shape: Sort(source, schema, sorts, table),
+    # where `sorts` is the compile_residual_sorts list and `table` scopes the
+    # sort property to the right side (by bare_name), exactly as assemble() did.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    join = Join(students, courses, students.c.enrolled_in)
+    projection = [*students.uc, *courses.uc]
+    merged_schema = SchemaInfo.from_join(join.left, join.right, *projection)
+
+    name_idx = merged_schema.column_index("name")
+    title_idx = merged_schema.column_index("title")
+
+    def merged_row(student: str, course: str) -> tuple:
+        # A joined tuple as it leaves the merge: the left title is the decoded
+        # {"title": name} left cell; the right title keeps its raw phase-2
+        # retrieve shape, which the sort key result-processes to compare.
+        cells = [None] * len(merged_schema.columns)
+        cells[name_idx] = {"title": student}
+        cells[title_idx] = {"title": [{"text": {"content": course}}]}
+        return tuple(cells)
+
+    # Scrambled input order (ascending by title): Astronomy, Calculus, Physics.
+    source = _RowSource([
+        merged_row("Galileo Galilei", "Astronomy"),
+        merged_row("Johannes Kepler", "Calculus"),
+        merged_row("Isaac Newton", "Physics"),
+    ])
+
+    sorts = [{"property": "title", "direction": "descending"}]
+
+    # Act: drive the Sort operator once.
+    sort_op = Sort(source, schema=merged_schema, sorts=sorts, table=join.right)
+    sort_op.open(None)
+    rows = sort_op.next()
+    second = sort_op.next()
+    sort_op.close()
+
+    # Assert: rows come back by title DESCENDING (Physics > Calculus > Astronomy),
+    # i.e. Newton, then Kepler, then Galileo. The whole ordering rides in one
+    # batch, then exhaustion.
+    assert rows is not None
+    assert [r[name_idx]["title"] for r in rows] == [
+        "Isaac Newton",     # Physics
+        "Johannes Kepler",  # Calculus
+        "Galileo Galilei",  # Astronomy
+    ]
     assert second is None

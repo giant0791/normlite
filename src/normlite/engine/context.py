@@ -95,6 +95,18 @@ class ExecutionStyle(Enum):
     .. versionadded:: 0.9.0
     """
 
+    EXECUTEQUERYPLAN = auto()
+    """The operation is driven by the query planner.
+
+    This execution style is used for SELECT-JOIN statements, which require complex IO flows.
+    The query planner drives the execution and result collection.
+    
+    .. seealso::
+        :class:`normlite.sql.queryplan.Planner`
+
+    .. versionadded:: 0.13.0
+    """
+
 class ExecutionContext:
     """Orchestrate binding, compilation, and result setup.
 
@@ -394,10 +406,10 @@ class ExecutionContext:
         if stmt.is_delete or stmt.is_update:
             return ExecutionStyle.EXECUTEMANY
         
-        # NEW: Select with joins is two-phase — phase-1 databases.query,
-        # phase-2 bulk pages.retrieve (Select.join, slice 2 of #302)
+        # REFACTORED: Select with joins is driven by the query planner
+        # (see #364, drop EXECUTEMANY for select with joins)
         if stmt.is_select and stmt._joins:
-            return ExecutionStyle.EXECUTEMANY
+            return ExecutionStyle.EXECUTEQUERYPLAN
         
         # select or insert without returning
         return ExecutionStyle.EXECUTE
