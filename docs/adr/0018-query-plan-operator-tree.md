@@ -75,6 +75,46 @@ is the mechanism that restores the DBAPI/SQL/ENGINE layering for `SELECT`.
 > exercises. `Table.create(bind=engine)` (`schema.py:829`) is not a counter-precedent: it holds
 > `bind` only to call the **public** `bind.connect().execute(stmt)` — an entry-point facade, never an
 > operator reaching `raw_connection().cursor()`.
+>
+> **Correction (2026-07-22) — what #364 actually shipped.**
+>
+> **(8)** #364 (branch `feature/issue-364/drop-EXECUTEMANY`) gave the plan its I/O and drove joins off
+> EXECUTEMANY, with three refinements to the Decision text above:
+>
+> - **A new `ExecutionStyle.EXECUTEQUERYPLAN`, not `EXECUTE`.** The Decision (line 135) said a join
+>   `Select` "runs as `ExecutionStyle.EXECUTE`; `context.py:413` is deleted." In practice `context.py`
+>   routes a join `Select` to a **new** `EXECUTEQUERYPLAN` style, which `Connection._execute_context`
+>   dispatches to `_execute_query_plan`. A distinct style keeps the plan-driven path a first-class
+>   branch beside `EXECUTE`/`EXECUTEMANY` instead of overloading `EXECUTE`'s single-cursor drive;
+>   `context.py:413` is **rerouted**, not deleted. The `bulk_operation`/`bulk_parameters` channel is
+>   untouched — it still serves DELETE / UPDATE / INSERT…RETURNING; joins simply stop borrowing it.
+>
+> - **The engine drives and synthesises together in `_execute_query_plan`.** Per Correction (7) and
+>   [ADR-0020](./0020-execution-layering-sql-builds-engine-drives.md), the drive loop lives in the
+>   engine, not the SQL hooks. `_execute_query_plan(context)` mints the DBAPI `Connection`
+>   (`Engine.raw_connection()`), builds `Planner(context).plan()`, opens it, drains `next()`
+>   accumulating rows, closes it, and synthesises the result cursor **in the same call** — no
+>   cross-hook stash (`_join_execution` / `_staged_result_cursor`), exactly the seam #364 deletes.
+>   `Select._setup_execution` is now a no-op override (base `_setup_execution` raises, so the override
+>   must stay) and `_finalize_execution` keeps only the aggregate branch.
+>
+> - **`Retrieve(Scan)` and `Sort` are concrete operators; the `Scan.style` flag is gone.**
+>   Retrieve-by-id + lax-FK semantics ([ADR-0002](./0002-fake-client-lax-fk-validation.md)) move from a
+>   `Scan.style` discriminator to a `Retrieve(Scan)` subclass that owns `open()` (mint cursor + inject
+>   description + **assign** its intrinsic `_lax_retrieve_errorhandler`, deferring execution), `next()`
+>   (drain `_iter_all` + unbound-params guard), and `execute_with()`. `Scan` is now a pure full-table
+>   scan. The residual right-side WHERE is the `Filter` operator (wraps `_Filter` + the `all(None)`
+>   phantom guard verbatim) and the residual right-side ORDER BY is the new `Sort` operator, applied
+>   WHERE-before-ORDER-BY on top of the merged stream (a faithful port of the old
+>   `JoinExecution.assemble()` sort block, empties-last, stable multi-key). `HashJoin` / `JoinExecution`
+>   do neither — the `Planner` passes them `None`. The old module-level `_join_errorhandler` in `dml.py`
+>   is deleted; the lax-FK home is now intrinsic to `Retrieve`.
+>
+> - **The `Scan` streaming shim (Correction (3)) persists, by design.** `Scan.open()` still sets
+>   `stream_results=True` and `Scan.next()` still pulls via `fetchmany(NOTION_MAX_PAGE_SIZE)`. #364
+>   delivered the **blocking** Move-A path (join/aggregate) which — as Correction (7) notes — never
+>   exercises the streaming-policy/page-size relocation; that relocation stays deferred to Move B
+>   ([ADR-0020](./0020-execution-layering-sql-builds-engine-drives.md)).
 
 ---
 
