@@ -157,7 +157,7 @@ class HashJoin(VolcanoOperator):
     def __init__(
         self,
         left_child: VolcanoOperator,
-        right_child: Retrieve,
+        right_child: VolcanoOperator,
         join: Join,
         projection: list[Column],
         right_filter: Optional[dict] = None,
@@ -182,7 +182,7 @@ class HashJoin(VolcanoOperator):
         self._right_child.open(connection)
         
     def next(self) -> Optional[list[tuple]]:
-        # drain the left child fully to get all retrieve params
+        # drain the left child fully to get all left side pages
         left_rows = self._left_child.next()
         while left_rows is not None:
             next_rows = self._left_child.next()
@@ -192,13 +192,20 @@ class HashJoin(VolcanoOperator):
 
         if left_rows is None:
             return None
-        
+
         retrieve_batch = self._join_exec.prepare(left_rows)
-        self._right_child.execute_with(retrieve_batch)
+
+        # drain the right child fully to get all right side pages
         right_rows = self._right_child.next()
-        if right_rows is None:
-            return None
-        
+        while right_rows is not None:
+            next_rows = self._right_child.next()
+            if next_rows is None:
+                break
+            right_rows.extend(next_rows)
+
+        # an outer join with an all-dangling / empty right must still keep its left rows None-filled
+        right_rows = right_rows or []
+
         self._result_schema, merged_rows = self._join_exec.assemble(right_rows)
         return merged_rows
     
@@ -391,8 +398,9 @@ class Planner:
             join.onclause
         )
         left_child = Scan(ctx.operation, ctx.parameters, schema=left_schema)
-        right_child = Retrieve(
-            parameters=None,
+        right_child = Scan(
+            ctx.operation,
+            parameters={"path_params": {"data_source_id": join.right.get_data_source_id()}},
             schema=right_schema,
         )
         plan = HashJoin(

@@ -5,8 +5,6 @@ import pytest
 
 from normlite import Relation, ForeignKey
 from normlite.engine.base import Engine
-from normlite.notiondbapi import DatabaseError
-from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import insert, select
 from normlite.sql.schema import Column, MetaData, Table
@@ -699,70 +697,6 @@ def test_join_projects_explicit_colliding_columns_from_both_tables(engine: Engin
     assert m["students.title"] == "Galileo Galilei"
     assert m["courses.title"] == "Astronomy"
 
-
-def test_join_propagates_non_404_retrieve_error(engine: Engine, monkeypatch):
-    # Differential to the dangling-reference tests above: a phase-2
-    # `pages.retrieve` that 404s (`object_not_found`) is benign and silenced
-    # (ADR-0002 lax-FK: a dangling relation entry is an absent reference, not
-    # an error). But ANY OTHER retrieve error — here a 500 server error on a
-    # legitimately-referenced right page — must NOT be swallowed: it propagates
-    # via `_join_errorhandler`'s default raise path as a DBAPI DatabaseError.
-    metadata = MetaData()
-    courses = Table(
-        "courses",
-        metadata,
-        Column("title", String(is_title=True)),
-    )
-    students = Table(
-        "students",
-        metadata,
-        Column("name", String(is_title=True)),
-        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
-    )
-    metadata.create_all(engine)
-
-    with engine.connect() as connection:
-        # Seed a genuine match so phase-2 actually issues a retrieve on a real,
-        # resolvable right page (not a dangling id that would 404).
-        astronomy_oid = (
-            connection.execute(
-                insert(courses)
-                .values(title="Astronomy")
-                .returning(courses.c.object_id)
-            )
-            .first()
-            .object_id
-        )
-        connection.execute(
-            insert(students).values(
-                name="Galileo Galilei",
-                enrolled_in=[astronomy_oid],
-            )
-        )
-
-        # Make phase-2 `pages.retrieve` fail with a non-404 server error AFTER
-        # seeding, so only the join's retrieve is affected.
-        def boom(self, path_params=None, query_params=None, payload=None):
-            raise NotionError(
-                "Internal server error",
-                status_code=500,
-                code="internal_server_error",
-            )
-
-        monkeypatch.setattr(InMemoryNotionClient, "pages_retrieve", boom)
-
-        # Act + Assert: the server error propagates rather than being silenced.
-        with pytest.raises(DatabaseError) as exc_info:
-            connection.execute(
-                select(students, courses).outerjoin(students.c.enrolled_in)
-            )
-
-    # The propagated DBAPI error carries the original NotionError as its cause,
-    # and it is the non-404 we injected — not an accidental silencing/other path.
-    cause = exc_info.value.__cause__
-    assert isinstance(cause, NotionError)
-    assert cause.code == "internal_server_error"
-    assert cause.status_code == 500
 
 def test_join_qualifies_colliding_column_names_by_table(engine: Engine):
     # Arrange: two tables that BOTH declare a `name` column, FK-linked.

@@ -45,40 +45,6 @@ class _RowSource:
         pass
 
 
-class _RecordingSource:
-    """VolcanoOperator child that records the lifecycle calls it receives, in
-    order, so the way a parent drives it can be observed.
-
-    A spy across the open/next/close contract — there is no other way to see
-    whether a parent opened and closed its child.
-    """
-
-    def __init__(self, rows: list[tuple]) -> None:
-        self._rows = rows
-        self._drained = False
-        self.events: list[str] = []
-        self.received_params = None
-
-    def open(self, connection) -> None:
-        self.events.append("open")
-
-    def execute_with(self, parameters) -> None:
-        # The parametrised drive: the retrieve batch arrives here, mid-parent
-        # next(), NOT at open() — its params depend on the drained left side.
-        self.events.append("execute_with")
-        self.received_params = parameters
-
-    def next(self):
-        self.events.append("next")
-        if self._drained:
-            return None
-        self._drained = True
-        return self._rows
-
-    def close(self) -> None:
-        self.events.append("close")
-
-
 class _PaginatedSource:
     """In-memory child that yields its rows across SEVERAL next() batches, one
     per call, then exhaustion -- the way a real Scan paginates a >100-row store
@@ -191,62 +157,6 @@ def test_join_operator_merges_child_rows_into_joined_tuples_as_one_batch():
     assert {"title": "Galileo Galilei"} in first[0]
     assert "Astronomy" in first[0]
     assert second is None
-
-
-def test_join_operator_opens_both_children_but_runs_the_right_only_via_execute_with():
-    # Arrange: a students->courses join whose two sides are recording child
-    # operators. The rows are irrelevant here (both empty), so the merge is a
-    # no-op — this test watches only the lifecycle. The two sides are driven
-    # DIFFERENTLY, because the right leaf's pages.retrieve parameters do not
-    # exist until the left side has been drained and prepared:
-    #   - the LEFT leaf is a self-contained scan: open() it (which mints its own
-    #     cursor and executes it), then pull it;
-    #   - the RIGHT leaf is parametrised: open() mints and shapes its OWN cursor
-    #     but does NOT execute (it is an EXECUTEMANY leaf whose retrieve params
-    #     aren't known until the left drains) — the leaf is then RUN by
-    #     execute_with(batch) mid-next(), before it is pulled.
-    # HashJoin.open() forwards the same connection to both leaves; each owns its
-    # cursor. Both are closed when the parent closes. So open() no longer means
-    # "execute" for the right leaf: it mints/shapes, and the run is deferred to
-    # execute_with.
-    metadata = MetaData()
-    courses = Table(
-        "courses",
-        metadata,
-        Column("title", String(is_title=True)),
-    )
-    students = Table(
-        "students",
-        metadata,
-        Column("name", String(is_title=True)),
-        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
-    )
-    join = Join(students, courses, students.c.enrolled_in)
-    projection = [*students.uc, *courses.uc]
-
-    left_source = _RecordingSource([])
-    right_source = _RecordingSource([])
-
-    # Act: drive the full VolcanoOperator lifecycle once.
-    join_op = HashJoin(left_source, right_source, join, projection)
-    join_op.open(None)
-    join_op.next()
-    join_op.close()
-
-    # Assert: the left leaf is opened before it is pulled and closed at the end.
-    assert "open" in left_source.events
-    assert left_source.events.index("open") < left_source.events.index("next")
-    assert left_source.events[-1] == "close"
-
-    # The right leaf IS opened — but as an EXECUTEMANY leaf open() only mints and
-    # shapes its cursor, it does not execute: its retrieve params aren't known
-    # until the left drains, so its RUN is deferred to execute_with, which lands
-    # before the pull.
-    assert "open" in right_source.events
-    assert "execute_with" in right_source.events
-    assert right_source.events.index("open") < right_source.events.index("execute_with")
-    assert right_source.events.index("execute_with") < right_source.events.index("next")
-    assert right_source.events[-1] == "close"
 
 
 def test_join_operator_surfaces_the_merged_collision_qualified_schema():
@@ -391,94 +301,6 @@ def test_filter_operator_keeps_passing_rows_and_drops_failures_and_phantoms():
     assert second is None
 
 
-def test_join_operator_feeds_the_right_child_the_retrieve_batch_it_computes_mid_next():
-    # THE DRIVING SEAM. The right leaf is a dependent scan: its pages.retrieve
-    # parameters are the deduped set of target ids the LEFT rows point at, which
-    # only exist after the left side is drained. JoinExecution.prepare(left_rows)
-    # already computes exactly that batch -- and today HashJoin.next() throws its
-    # return away (`_ = ...prepare(...)`). The join must instead CAPTURE it and
-    # hand it to the right child via execute_with, before pulling the right child.
-    #
-    # Two students both enrolled in the SAME course ("c-astro") prove the batch is
-    # prepare()'s output, not a raw echo: the two identical FKs must collapse to a
-    # SINGLE retrieve envelope. The right child is a spy: it records the batch it
-    # is handed and yields one canned course row so the merge can still be checked.
-    metadata = MetaData()
-    courses = Table(
-        "courses",
-        metadata,
-        Column("title", String(is_title=True)),
-    )
-    students = Table(
-        "students",
-        metadata,
-        Column("name", String(is_title=True)),
-        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
-    )
-    join = Join(students, courses, students.c.enrolled_in)
-    projection = [*students.uc, *courses.uc]
-
-    left_schema = SchemaInfo.from_table(
-        students,
-        execution_names=[students.c.object_id.name],
-        projected_names=[c.name for c in students.uc],
-    )
-    right_schema = SchemaInfo.from_table(
-        courses,
-        execution_names=[courses.c.object_id.name],
-        projected_names=[c.name for c in courses.uc],
-    )
-
-    def left_row(name: str, oids: list[str], oid: str) -> tuple:
-        cells = [None] * len(left_schema.columns)
-        cells[left_schema.column_index("name")] = {"title": name}
-        cells[left_schema.column_index("enrolled_in")] = {
-            "relation": [{"id": o} for o in oids]
-        }
-        cells[left_schema.column_index("object_id")] = oid
-        return tuple(cells)
-
-    def right_row(title: str, oid: str) -> tuple:
-        cells = [None] * len(right_schema.columns)
-        cells[right_schema.column_index("title")] = title
-        cells[right_schema.column_index("object_id")] = oid
-        return tuple(cells)
-
-    left_source = _RowSource([
-        left_row("Galileo Galilei", ["c-astro"], "s-1"),
-        left_row("Johannes Kepler", ["c-astro"], "s-2"),  # same course as Galileo
-    ])
-    right_source = _RecordingSource([right_row("Astronomy", "c-astro")])
-
-    # Act: drive the join. open() opens the right child (forwarding the
-    # connection) but must NOT run it — its retrieve params don't exist yet; the
-    # batch is computed and delivered via execute_with inside next().
-    join_op = HashJoin(left_source, right_source, join, projection)
-    join_op.open(None)
-
-    # the right leaf IS opened at open() — but as an EXECUTEMANY leaf it only
-    # mints/shapes its cursor; its execute_with (the actual run) still waits for
-    # next(), below.
-    assert "open" in right_source.events
-    assert "execute_with" not in right_source.events  # opened, not yet run
-
-    first = join_op.next()
-    second = join_op.next()
-    join_op.close()
-
-    # Assert: the right child was handed EXACTLY the deduped retrieve batch that
-    # prepare() computes from the left rows -- one envelope for "c-astro", not two
-    # -- and it was handed that batch before it was pulled.
-    assert right_source.received_params == [{"path_params": {"page_id": "c-astro"}}]
-    assert right_source.events.index("execute_with") < right_source.events.index("next")
-
-    # ... and the merge still produces both students joined to the one course.
-    assert first is not None
-    assert len(first) == 2
-    assert all("Astronomy" in row for row in first)
-    assert second is None
-
-
 def test_join_operator_drains_every_left_page_not_just_the_first():
     # THE BLOCKING-JOIN LANDMINE (#364 step 4). A real left Scan paginates: a
     # >100-row left store surfaces as 100 rows, then the rest, then None. But a
@@ -563,6 +385,129 @@ def test_join_operator_drains_every_left_page_not_just_the_first():
     assert all("Astronomy" in row for row in first)
     for name in ("Galileo Galilei", "Johannes Kepler", "Isaac Newton"):
         assert any({"title": name} in row for row in first)
+    assert second is None
+
+
+class _ScanSource:
+    """In-memory stand-in for the NEW right leaf under ADR-0021: a plain, full
+    ``data_sources.query`` ``Scan`` of the whole right data source.
+
+    It speaks ONLY the Volcano ``open`` / ``next`` / ``close`` contract and
+    paginates its rows one batch per ``next()`` -- exactly like the left Scan.
+    Crucially it has **no** ``execute_with``: the right side no longer depends on
+    the left (there is no retrieve-by-id batch to bind), so a symmetric drain-both
+    ``HashJoin`` must drive it the same way it drives the left, with no parametrised
+    hand-off. A source that carried a no-op ``execute_with`` would hide that.
+    """
+
+    def __init__(self, batches: list[list[tuple]]) -> None:
+        self._batches = list(batches)
+        self._i = 0
+
+    def open(self, connection) -> None:
+        pass
+
+    def next(self):
+        if self._i >= len(self._batches):
+            return None
+        batch = self._batches[self._i]
+        self._i += 1
+        return batch
+
+    def close(self) -> None:
+        pass
+
+
+def test_join_operator_drains_every_right_page_not_just_the_first():
+    # THE SYMMETRIC-DRAIN LANDMINE (#378 / ADR-0021). The mirror of
+    # test_join_operator_drains_every_left_page_not_just_the_first: now the RIGHT
+    # side is a full `data_sources.query` Scan of the whole right table, matched
+    # client-side by object_id -- NOT a retrieve-by-id of just the referenced
+    # pages. A full right scan paginates exactly like the left: a >100-row right
+    # store surfaces as 100 rows, then the rest, then None.
+    #
+    # The old asymmetric HashJoin drained the left, then pulled the right EXACTLY
+    # ONCE (one `pages.retrieve` result via `execute_with`), so it only ever saw
+    # the right's FIRST page -- and it reached for `execute_with`, which a plain
+    # Scan leaf does not have. A symmetric drain-both HashJoin must instead open
+    # BOTH independent leaves, DRAIN BOTH fully (the right across all its pages),
+    # build the right-by-object_id hash, and probe with each left row's relation
+    # array. No `prepare`, no `execute_with`, no single-shot right.
+    #
+    # Two courses live on DIFFERENT right pages (Astronomy on page 1, Physics on
+    # page 2); two students each point at one of them, split across two LEFT pages
+    # too. Only a join that drains BOTH sides fully pairs Newton (left page 2) with
+    # Physics (right page 2). A single right page (or a single left page) loses one
+    # of the two matches.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    join = Join(students, courses, students.c.enrolled_in)
+    projection = [*students.uc, *courses.uc]
+
+    left_schema = SchemaInfo.from_table(
+        students,
+        execution_names=[students.c.object_id.name],
+        projected_names=[c.name for c in students.uc],
+    )
+    right_schema = SchemaInfo.from_table(
+        courses,
+        execution_names=[courses.c.object_id.name],
+        projected_names=[c.name for c in courses.uc],
+    )
+
+    def left_row(name: str, oids: list[str], oid: str) -> tuple:
+        cells = [None] * len(left_schema.columns)
+        cells[left_schema.column_index("name")] = {"title": name}
+        cells[left_schema.column_index("enrolled_in")] = {
+            "relation": [{"id": o} for o in oids]
+        }
+        cells[left_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    def right_row(title: str, oid: str) -> tuple:
+        cells = [None] * len(right_schema.columns)
+        cells[right_schema.column_index("title")] = title
+        cells[right_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    # Both sides paginate across two pages -- the shape a full scan of a >100-row
+    # store takes. The right leaf is a plain Scan (open/next/close), NOT a
+    # parametrised retrieve.
+    left_source = _ScanSource([
+        [left_row("Galileo Galilei", ["c-astro"], "s-1")],
+        [left_row("Isaac Newton", ["c-phys"], "s-2")],
+    ])
+    right_source = _ScanSource([
+        [right_row("Astronomy", "c-astro")],
+        [right_row("Physics", "c-phys")],
+    ])
+
+    # Act: drive the join once. open() opens BOTH leaves the same way; next()
+    # drains both fully and merges.
+    join_op = HashJoin(left_source, right_source, join, projection)
+    join_op.open(None)
+    first = join_op.next()
+    second = join_op.next()
+    join_op.close()
+
+    # Assert: BOTH matches survive -- Galileo/Astronomy (both page 1) AND
+    # Newton/Physics (both page 2). Draining only the first right page would drop
+    # Newton/Physics; draining only the first left page would drop it too. The
+    # whole merged result rides in one batch, then exhaustion.
+    assert first is not None
+    assert len(first) == 2
+    assert any({"title": "Galileo Galilei"} in row and "Astronomy" in row for row in first)
+    assert any({"title": "Isaac Newton"} in row and "Physics" in row for row in first)
     assert second is None
 
 
