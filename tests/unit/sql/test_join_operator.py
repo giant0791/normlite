@@ -658,3 +658,151 @@ def test_sort_operator_orders_merged_rows_by_the_residual_right_key_descending()
         "Galileo Galilei",  # Astronomy
     ]
     assert second is None
+
+
+def _students_courses(isouter: bool):
+    """Build the standard students->courses join plus the schemas and raw-row
+    builders shared by the outer-join merge tests below.
+
+    Migrated from the retired ``test_join_execution.py`` (which drove the merge
+    through ``JoinExecution.prepare``/``assemble``). The merge now lives in
+    ``HashJoin``, so these drive the operator through the Volcano contract with
+    two ``_RowSource`` children -- the pure-compute pattern of this module.
+    """
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    join = Join(students, courses, students.c.enrolled_in, isouter=isouter)
+    projection = [*students.uc, *courses.uc]
+
+    left_schema = SchemaInfo.from_table(
+        students,
+        execution_names=[students.c.object_id.name],
+        projected_names=[c.name for c in students.uc],
+    )
+    right_schema = SchemaInfo.from_table(
+        courses,
+        execution_names=[courses.c.object_id.name],
+        projected_names=[c.name for c in courses.uc],
+    )
+
+    def left_row(name: str, oids: list[str], oid: str) -> tuple:
+        cells = [None] * len(left_schema.columns)
+        cells[left_schema.column_index("name")] = {"title": name}
+        cells[left_schema.column_index("enrolled_in")] = {
+            "relation": [{"id": o} for o in oids]
+        }
+        cells[left_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    def right_row(title: str, oid: str) -> tuple:
+        cells = [None] * len(right_schema.columns)
+        cells[right_schema.column_index("title")] = title
+        cells[right_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    return join, projection, left_row, right_row
+
+
+def _drive_once(join, projection, left_rows, right_rows):
+    """Drive a HashJoin over two single-batch in-memory leaves and return the
+    one merged batch (the join blocks, so everything arrives in one next())."""
+    join_op = HashJoin(
+        _RowSource(left_rows),
+        _RowSource(right_rows),
+        join,
+        projection,
+    )
+    join_op.open(None)
+    merged = join_op.next()
+    exhausted = join_op.next()
+    join_op.close()
+    assert exhausted is None
+    return merged
+
+
+def test_hash_join_outer_none_fills_a_dangling_left_row_that_inner_drops():
+    # Arrange: an OUTER join. "Galileo" resolves to a real course; "Phantom"
+    # points at a dangling id. Inner would drop Phantom; outer must keep it with
+    # the right side None-filled (ADR-0007 lax-FK / ADR-0005 phantom). This is
+    # the pure-compute oracle for the `if not matched and isouter` site the merge
+    # fold preserved verbatim. Migrated from test_join_execution.py.
+    join, projection, left_row, right_row = _students_courses(isouter=True)
+    left_rows = [
+        left_row("Galileo Galilei", ["c-astro"], "s-1"),
+        left_row("Phantom Student", ["c-ghost"], "s-2"),  # dangling FK
+    ]
+    right_rows = [right_row("Astronomy", "c-astro")]
+
+    # Act
+    merged_rows = _drive_once(join, projection, left_rows, right_rows)
+
+    # Assert: both left rows survive; the dangling one is None-filled on the
+    # right, not dropped and not left-filled.
+    assert len(merged_rows) == 2
+    matched = [r for r in merged_rows if "Astronomy" in r]
+    assert len(matched) == 1
+    assert {"title": "Galileo Galilei"} in matched[0]
+    phantom = [r for r in merged_rows if {"title": "Phantom Student"} in r]
+    assert len(phantom) == 1
+    assert "Astronomy" not in phantom[0]
+    assert None in phantom[0]
+
+
+def test_hash_join_outer_none_fills_a_left_row_with_an_empty_relation():
+    # Arrange: an OUTER join with a left row enrolled in NOTHING (empty relation,
+    # zero oids). Not a dangling FK -- there is no id to resolve -- but outer
+    # semantics must still preserve it, right side None-filled. Migrated from
+    # test_join_execution.py.
+    join, projection, left_row, right_row = _students_courses(isouter=True)
+    left_rows = [left_row("Hermit Student", [], "s-1")]
+    right_rows = [right_row("Astronomy", "c-astro")]
+
+    # Act
+    merged_rows = _drive_once(join, projection, left_rows, right_rows)
+
+    # Assert: exactly one row, left intact, right None-filled.
+    assert len(merged_rows) == 1
+    assert {"title": "Hermit Student"} in merged_rows[0]
+    assert "Astronomy" not in merged_rows[0]
+    assert None in merged_rows[0]
+
+
+def test_hash_join_outer_does_not_none_fill_a_row_that_already_matched():
+    # Arrange: ONE left row with two oids -- one real ("c-astro") and one
+    # dangling ("c-ghost"). The row already matched, so outer must NOT bolt on a
+    # None-filled row for the unmatched id: None-fill is a whole-row fallback,
+    # not per-oid. Migrated from test_join_execution.py.
+    join, projection, left_row, right_row = _students_courses(isouter=True)
+    left_rows = [left_row("Galileo Galilei", ["c-astro", "c-ghost"], "s-1")]
+    right_rows = [right_row("Astronomy", "c-astro")]
+
+    # Act
+    merged_rows = _drive_once(join, projection, left_rows, right_rows)
+
+    # Assert: exactly one row -- the real match, with no None-fill anywhere.
+    assert len(merged_rows) == 1
+    assert {"title": "Galileo Galilei"} in merged_rows[0]
+    assert "Astronomy" in merged_rows[0]
+    assert None not in merged_rows[0]
+
+
+def test_joinexecution_seam_is_deleted():
+    # #378 STEP 2 / ADR-0021 Decision "JoinExecution is deleted". With the merge
+    # folded into HashJoin (5c369bf), the two-phase prepare/assemble seam has no
+    # remaining purpose: prepare built the now-gone pages.retrieve dedup batch,
+    # and assemble's residual right WHERE/ORDER BY blocks are dead (the live
+    # residuals are the Filter/Sort operators). Pin the removal so the dead class
+    # cannot quietly return.
+    import normlite.sql.dml as dml
+
+    assert not hasattr(dml, "JoinExecution")

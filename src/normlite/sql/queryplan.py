@@ -26,7 +26,7 @@ from normlite.exceptions import InvalidRequestError
 from normlite.notion_sdk.client import NotionError
 from normlite.notiondbapi.dbapi2 import Connection, Cursor
 from normlite.sql.compiler import compile_residual_filter, compile_residual_sorts
-from normlite.sql.dml import Join, JoinExecution
+from normlite.sql.dml import Join
 from normlite.sql.elements import BinaryExpression
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
 from normlite.sql.schema import Column, Table
@@ -392,9 +392,9 @@ class Filter(VolcanoOperator):
         """Shape adapter applying the ``_Filter`` predicate to a merged row's
         right slice.
 
-        NOTE: verbatim strangler-duplicate of ``JoinExecution._right_side_passes``
-        (``sql/dml.py``). Both copies exist only until step 4 of #363 cuts the old
-        ``join_right_filter`` channel; edit BOTH until then. See #363.
+        This is now the sole implementation: the former strangler-duplicate on
+        ``JoinExecution`` (``sql/dml.py``) was deleted with that class once the
+        merge folded into ``HashJoin`` (#378 / ADR-0021).
         """
 
         from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
