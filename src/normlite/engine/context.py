@@ -60,7 +60,6 @@ if TYPE_CHECKING:
     from normlite.notiondbapi.dbapi2 import Cursor as DBAPICursor
     from normlite.sql.base import Executable
     from normlite.sql.elements import BindParameter
-    from normlite.sql.dml import JoinExecution
 
 class ExecutionStyle(Enum):
     """Define the execution style for a context.
@@ -306,14 +305,6 @@ class ExecutionContext:
     """The cursor used internally to route results after pre-fetch/post-fetching.
     
     .. versionadded:: 0.9.0
-    """
-
-    _join_execution: Optional[JoinExecution] = None
-    """The join-execution seam owning all join-domain state across both phases.
-
-    Collapses the former five join-only context attributes (``_join``,
-    ``_join_left_schema``, ``_join_left_rows``, ``_join_right_schema``,
-    ``join_right_filter``) into a single owner. See ADR-0008.
     """
 
     def __init__(

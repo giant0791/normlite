@@ -115,6 +115,19 @@ is the mechanism that restores the DBAPI/SQL/ENGINE layering for `SELECT`.
 >   delivered the **blocking** Move-A path (join/aggregate) which — as Correction (7) notes — never
 >   exercises the streaming-policy/page-size relocation; that relocation stays deferred to Move B
 >   ([ADR-0020](./0020-execution-layering-sql-builds-engine-drives.md)).
+>
+> **Correction (2026-07-22) — the *Scan-vs-Retrieve* decision is superseded.**
+>
+> **(9)** The Decision's *"one `Scan`, every right side is a `Retrieve` … Notion offers no `id IN (...)`
+> filter that could turn it into a query"* and the *"batched index nested-loop … one round-trip"*
+> characterisation are **superseded by [ADR-0021](./0021-scan-both-hash-join.md)**. `executemany`
+> fans out to **one HTTP round trip per id** (`dbapi2.py:797`), so a retrieve of D distinct ids is D
+> round trips, not one; and the right side *can* be a query — a **full `data_sources.query` scan**
+> matched client-side by `object_id` (the `right_by_oid` hash the merge already builds). ADR-0021
+> makes the right leaf a `Scan`, deletes `Retrieve` + its lax-FK errorhandler + `execute_with` +
+> `prepare` + `JoinExecution` (absorbing #376), and turns `HashJoin` into a real symmetric drain-both
+> hash join. Everything else in this ADR (the operator tree, `Planner`/`PlanningContext`, blocking
+> operators, engine-drives layering) stands.
 
 ---
 

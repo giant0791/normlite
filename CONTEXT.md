@@ -952,12 +952,25 @@ first planned addition). `JoinExecution` and `AggregateExecution` become Operato
 config-to-constructor discipline ([[adr-0008-joinexecution-seam]],
 [[adr-0011-aggregate-execution-seam]]) carries over intact.
 
+> **DECIDED, not yet built — [[adr-0021-scan-both-hash-join]] supersedes the next three sections.**
+> The right side becomes a **full `data_sources.query` `Scan`** matched client-side by `object_id`,
+> **not** a `Retrieve`. `Retrieve` + its lax-FK errorhandler + `execute_with` + `prepare` +
+> `JoinExecution` are deleted; `HashJoin` becomes a symmetric drain-both hash join (absorbs #376).
+> The sections below describe today's *shipped* `Retrieve` code (#364) and will be rewritten when the
+> scan-both slice lands.
+
 ### Scan vs Retrieve (the two access paths)
 A plan has **exactly one Scan** — the left-side `data_sources.query` — no matter how many joins it
 carries. Every right side is a **Retrieve**: a bulk `pages.retrieve` by `object_id`. This is not a
 v1 simplification but a property of the backend: normlite joins through a `Relation` FK, so the
 right side is always reached *by page ID*, and Notion offers no `id IN (...)` filter that could
 turn it into a query. `Scan` is the only Operator that carries a compiled payload.
+
+> **Superseded premise ([[adr-0021-scan-both-hash-join]]):** the "no `id IN` → must be a Retrieve"
+> reasoning is sound *for filtering by id*, but the right side need not be filtered by id at all — a
+> **full scan** of the right data source, matched client-side, sidesteps it. And a "batched" retrieve
+> is **D HTTP round trips** (`executemany` loops, `dbapi2.py:797`), not one, so the cost premise
+> flips too (scan-both wins when `D > ⌈R/100⌉` — the common case).
 
 ### Retrieve — a batch-bound parameterized access path
 **Retrieve is the `Join`'s second child**, and it is **parameterized**: it cannot `open()` until

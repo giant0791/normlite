@@ -7,7 +7,7 @@ from normlite.engine.base import _distill_params
 from normlite.exceptions import InvalidRequestError
 from normlite.engine.context import ExecutionContext
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
-from normlite.sql.dml import insert, select
+from normlite.sql.dml import select
 from normlite.sql.elements import or_
 from normlite.sql.queryplan import Filter, HashJoin, Planner, Scan, VolcanoOperator
 from normlite.sql.resultschema import SchemaInfo
@@ -337,29 +337,22 @@ def test_planner_turns_a_join_select_into_a_hashjoin_over_two_scans(engine):
     assert plan._left_child._operation["endpoint"] == "data_sources"
 
 
-def test_planner_right_leaf_scan_retrieves_the_batch_pages_on_its_own_cursor(engine):
-    # The structural sibling above pins the join plan's SHAPE (HashJoin over two
-    # Scans) but leaves the right leaf's operation "the open design point for the
-    # driving reds". THIS drives it: the right leaf must be a REAL
-    # Scan(pages.retrieve), not the placeholder Scan(None, None) the join branch
-    # falls through to today.
+def test_planner_builds_the_right_leaf_as_a_full_query_scan_of_the_right_data_source(engine):
+    # ADR-0021: the right side of a join is no longer a retrieve-by-id. ADR-0018
+    # built it as a `Retrieve` -- a bulk `pages.retrieve` keyed on the ids the left
+    # rows point at -- which is D HTTP round trips for D distinct referenced ids
+    # (`executemany` loops one retrieve per id at the wire). Scan-both replaces that
+    # with a FULL `data_sources.query` scan of the RIGHT data source, matched
+    # client-side by `object_id` (⌈R/100⌉ round trips, cheaper for small/medium
+    # right tables). So the Planner must build the right child as a query Scan
+    # targeting `join.right.get_data_source_id()` -- NOT a `pages.retrieve`.
     #
-    # The right leaf is a DEPENDENT scan: its retrieve parameters are the deduped
-    # ids the left rows point at, which only exist after the left side drains --
-    # so it is driven NOT by open() but by execute_with(batch) (the seam HashJoin
-    # already calls). And a join has TWO result sets -- the left
-    # data_sources.query and this pages.retrieve -- but a DBAPI cursor carries
-    # ONE, so the right leaf must run its retrieve on its OWN cursor. Handed a
-    # two-envelope batch for two seeded courses, execute_with must run the
-    # EXECUTEMANY retrieve and next() must drain BOTH retrieved pages (one result
-    # set per page). Scan(None, None) -- no execute_with, no operation -- cannot.
-    #
-    # The right leaf carries its OWN right-side schema (the Planner derives it via
-    # from_join_sides), so on open() it mints its own cursor off the connection --
-    # the join's second result set -- and shapes it itself; no schema-aware caller
-    # injects a description from outside. open() only mints and shapes the
-    # EXECUTEMANY leaf (it does not execute); execute_with supplies the batch and
-    # runs the retrieve; next() drains.
+    # The structural sibling (test_planner_turns_a_join_select_into_a_hashjoin_over_
+    # two_scans) deliberately left the right leaf's OPERATION "the open design point
+    # for the driving reds" -- it pinned only that the right child IS a Scan. THIS
+    # pins the operation: a query on the right data source, not a retrieve. Today
+    # the join branch still builds `Retrieve(parameters=None)`, whose operation is
+    # `pages.retrieve` and whose `_parameters` is None -- so both assertions fail.
     metadata = MetaData()
     courses = Table(
         "courses",
@@ -374,29 +367,8 @@ def test_planner_right_leaf_scan_retrieves_the_batch_pages_on_its_own_cursor(eng
     )
     metadata.create_all(engine)
 
-    # Seed two courses so the batch is a real EXECUTEMANY of two retrieves.
-    with engine.connect() as connection:
-        astronomy_oid = (
-            connection.execute(
-                insert(courses)
-                .values(title="Astronomy")
-                .returning(courses.c.object_id)
-            )
-            .first()
-            .object_id
-        )
-        physics_oid = (
-            connection.execute(
-                insert(courses)
-                .values(title="Physics")
-                .returning(courses.c.object_id)
-            )
-            .first()
-            .object_id
-        )
-
-    # A residual-free join, built into a real ExecutionContext the phase-1 way;
-    # the Planner reads the plan off the context, it does not run it.
+    # A residual-free join, built into a real ExecutionContext the phase-1 way; the
+    # Planner reads the plan off the context, it does not run it.
     stmt = select(students, courses).join(students.c.enrolled_in)
     compiled = stmt.compile(engine._sql_compiler)
     cursor = engine.raw_connection().cursor()
@@ -410,84 +382,19 @@ def test_planner_right_leaf_scan_retrieves_the_batch_pages_on_its_own_cursor(eng
     )
     ctx.pre_exec()
 
-    # The Planner builds the plan; its right leaf is the phase-2 retrieve Scan,
-    # already carrying its own right-side schema. On open() it mints its OWN cursor
-    # off the connection (the join's second result set) and shapes it itself.
+    join = ctx.invoked_stmt._joins[0]
+
+    # Act: the Planner compiles the join into a plan; take its right leaf.
     right_leaf = Planner(ctx).plan()._right_child
 
-    right_leaf.open(engine.raw_connection())
-
-    # Act: drive ONLY the right leaf, the parametrised way. The batch stands in
-    # for what prepare() would compute from the (undriven) left rows: one
-    # path_params envelope per target course id.
-    right_leaf.execute_with([
-        {"path_params": {"page_id": astronomy_oid}},
-        {"path_params": {"page_id": physics_oid}},
-    ])
-    right_rows = right_leaf.next()
-    
-    # Assert: both seeded course pages came back on the right leaf's own cursor --
-    # two rows, each carrying the object_id of the page it retrieved.
-    assert right_rows is not None
-    assert len(right_rows) == 2
-    assert any(astronomy_oid in row for row in right_rows)
-    assert any(physics_oid in row for row in right_rows)
-
-
-def test_unbound_retrieve_leaf_pulled_without_a_batch_raises_loudly(engine):
-    # The right leaf is an EXECUTEMANY Scan: open() only MINTS and shapes its
-    # cursor -- it deliberately does NOT execute, because its retrieve
-    # parameters are the deduped ids the left rows point at, which only exist
-    # after the left side drains. HashJoin supplies them by calling
-    # execute_with(batch) between open() and next(). But nothing structurally
-    # forces that ordering: a caller (or a future bug in the drive loop) could
-    # open() the leaf and pull next() straight away, with no batch ever bound.
-    #
-    # That pull must FAIL, and fail with a breadcrumb pointing at the actual
-    # fault -- the retrieve was never bound (its parameters are still None; no
-    # execute_with) -- NOT silently fetch nothing, and NOT leak the DBAPI
-    # cursor's generic "Cursor result set is empty. No execute*() call was
-    # issued." That generic message misdirects: from the plan's side the leaf
-    # WAS opened; what is missing is the execute_with(batch) bind. The operator
-    # owns this contract, so it must name it.
-    metadata = MetaData()
-    courses = Table(
-        "courses",
-        metadata,
-        Column("title", String(is_title=True)),
+    # Assert: the right leaf is a full data_sources.query Scan (NOT a pages.retrieve)
+    # and it scans the RIGHT data source (courses) -- the whole right table, to be
+    # matched client-side by object_id downstream.
+    assert right_leaf._operation == {"endpoint": "data_sources", "request": "query"}
+    assert (
+        right_leaf._parameters["path_params"]["data_source_id"]
+        == join.right.get_data_source_id()
     )
-    students = Table(
-        "students",
-        metadata,
-        Column("name", String(is_title=True)),
-        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
-    )
-    metadata.create_all(engine)
-
-    stmt = select(students, courses).join(students.c.enrolled_in)
-    compiled = stmt.compile(engine._sql_compiler)
-    cursor = engine.raw_connection().cursor()
-    ctx = ExecutionContext(
-        engine,
-        engine.connect(),
-        cursor=cursor,
-        compiled=compiled,
-        distilled_params=_distill_params(None),
-        execution_options={},
-    )
-    ctx.pre_exec()
-
-    right_leaf = Planner(ctx).plan()._right_child
-    right_leaf.open(engine.raw_connection())
-
-    # Act + Assert: pull the leaf with NO intervening execute_with(batch). It
-    # must raise a clear plan-level error naming the unbound retrieve / missing
-    # batch, not the DBAPI's generic empty-result-set message.
-    with pytest.raises(
-        InvalidRequestError,
-        match=r"(?i)parameters|retrieve|execute_with|batch|unbound",
-    ):
-        right_leaf.next()
 
 
 def test_hashjoin_open_forwards_the_connection_to_both_leaves():
