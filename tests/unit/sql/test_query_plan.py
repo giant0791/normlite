@@ -9,10 +9,11 @@ from normlite.engine.context import ExecutionContext
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
 from normlite.sql.dml import select
 from normlite.sql.elements import or_
-from normlite.sql.queryplan import Filter, HashJoin, Planner, Scan, VolcanoOperator
+from normlite.sql.functions import func
+from normlite.sql.queryplan import Aggregate, Filter, HashJoin, Planner, Scan, VolcanoOperator
 from normlite.sql.resultschema import SchemaInfo
 from normlite.sql.schema import Column, MetaData, Table
-from normlite.sql.type_api import Date, String
+from normlite.sql.type_api import Date, Integer, String
 
 from tests.utils.db_helpers import (
     create_students_db,
@@ -278,6 +279,65 @@ def test_planner_turns_a_plain_select_into_a_single_scan_that_yields_the_store(e
     assert first is not None
     assert len(first) == 3
     assert second is None
+
+
+def test_planner_turns_an_aggregate_select_into_an_aggregate_over_a_scan(engine):
+    # An aggregate select (`select(func.sum(headcount))`) has no join, so today it
+    # falls through the Planner's `if not _joins:` branch and gets the lone Scan a
+    # plain select gets -- the reduction lives OUTSIDE the plan, in
+    # Select._finalize_execution's `if self._is_aggregate:` hook (#362 retires it).
+    #
+    # This slice moves the reduction INTO the operator tree: the Planner must build
+    # a BLOCKING Aggregate ON TOP of the phase-1 Scan -- NOT the bare Scan a plain
+    # select gets -- so the engine drives aggregates through EXECUTEQUERYPLAN just
+    # like joins. Structural red: `plan` is a Scan today, must become an Aggregate.
+    #
+    # THE LOCKSTEP (dml.py:1037-1040): reduce() indexes operands by position into
+    # the drained row, so the Scan UNDER the Aggregate must inject the compiler's
+    # aggregate fetch_columns as its execution_names (the operand column, here
+    # "headcount") -- exactly as the plain-select Scan does. Pinned below.
+    metadata = MetaData()
+    accounts = Table(
+        "accounts",
+        metadata,
+        Column("team", String(is_title=True)),
+        Column("headcount", Integer()),
+    )
+    metadata.create_all(engine)
+
+    # An aggregate select, built into a real ExecutionContext the phase-1 way; the
+    # Planner reads the plan off the context, it does not run it.
+    stmt = select(func.sum(accounts.c.headcount))
+    compiled = stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    # Act: the Planner compiles the aggregate select into a plan.
+    plan = Planner(ctx).plan()
+
+    # Assert (shape): the top of the plan is an Aggregate wrapping a single leaf
+    # Scan -- the phase-1 data_sources.query over the store.
+    assert isinstance(plan, Aggregate)
+    assert isinstance(plan._source, Scan)
+    assert plan._source._operation["endpoint"] == "data_sources"
+
+    # Assert (result schema): the Aggregate surfaces the aggregate key ("sum") via
+    # from_aggregate, tying the plan node to THIS aggregate select.
+    assert [entry[0] for entry in plan.result_schema.as_sequence()] == ["sum"]
+
+    # Assert (lockstep): the Scan under the Aggregate injects the operand column
+    # ("headcount") as an execution name, so the drained row lays the operand cell
+    # exactly where reduce() reads it. Without this the operands misalign silently.
+    scan_names = [entry[0] for entry in plan._source.result_schema.as_sequence()]
+    assert "headcount" in scan_names
 
 
 def test_planner_turns_a_join_select_into_a_hashjoin_over_two_scans(engine):

@@ -462,6 +462,15 @@ class Planner:
                 f"The invoked statement is not a SELECT ({type(invoked_stmt).__name__})"
             )
 
+        if invoked_stmt._is_aggregate:
+            schema = SchemaInfo.from_table(
+                invoked_stmt.get_table(),
+                execution_names=ctx.compiled.fetch_columns(),
+                projected_names=ctx.compiled.result_columns(),
+            )
+            scan = Scan(ctx.operation, ctx.parameters, schema=schema)
+            return Aggregate(scan, invoked_stmt._raw_columns)
+
         if not invoked_stmt._joins:
             # SELECT statement without JOIN
             schema = SchemaInfo.from_table(
