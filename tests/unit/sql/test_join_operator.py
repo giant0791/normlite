@@ -159,6 +159,88 @@ def test_join_operator_merges_child_rows_into_joined_tuples_as_one_batch():
     assert second is None
 
 
+def test_hash_join_owns_the_merge_without_a_joinexecution_seam():
+    # THE FOLD (#378 STEP 2 / ADR-0021 Decision "JoinExecution is deleted"). Slice
+    # 1 made HashJoin drain both leaves, but the merge still lived in a
+    # JoinExecution the operator held as `self._join_exec` and drove through the
+    # dead two-phase `prepare`/`assemble` split. Step 2 folds the surviving merge
+    # (`_merge_rows` / `_project_join_row` / the `SchemaInfo.from_join` build)
+    # INTO HashJoin, so it merges with no seam object and no prepare.
+    #
+    # This is a structural red guarded by the merge oracle: the same
+    # students->courses inner join the pure-compute tests above drive must keep
+    # producing the identical merged row (Galileo/Astronomy, dangling Phantom
+    # dropped) AND the operator must no longer hold a JoinExecution. Behaviour is
+    # frozen; only the seam disappears.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    join = Join(students, courses, students.c.enrolled_in)
+    projection = [*students.uc, *courses.uc]
+
+    left_schema = SchemaInfo.from_table(
+        students,
+        execution_names=[students.c.object_id.name],
+        projected_names=[c.name for c in students.uc],
+    )
+    right_schema = SchemaInfo.from_table(
+        courses,
+        execution_names=[courses.c.object_id.name],
+        projected_names=[c.name for c in courses.uc],
+    )
+
+    def left_row(name: str, oids: list[str], oid: str) -> tuple:
+        cells = [None] * len(left_schema.columns)
+        cells[left_schema.column_index("name")] = {"title": name}
+        cells[left_schema.column_index("enrolled_in")] = {
+            "relation": [{"id": o} for o in oids]
+        }
+        cells[left_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    def right_row(title: str, oid: str) -> tuple:
+        cells = [None] * len(right_schema.columns)
+        cells[right_schema.column_index("title")] = title
+        cells[right_schema.column_index("object_id")] = oid
+        return tuple(cells)
+
+    left_source = _RowSource([
+        left_row("Galileo Galilei", ["c-astro"], "s-1"),
+        left_row("Phantom Student", ["c-ghost"], "s-2"),  # dangling FK
+    ])
+    right_source = _RowSource([
+        right_row("Astronomy", "c-astro"),
+    ])
+
+    # Act: drive the join once through the Volcano contract.
+    join_op = HashJoin(left_source, right_source, join, projection)
+    join_op.open(None)
+    first = join_op.next()
+    second = join_op.next()
+    join_op.close()
+
+    # Assert (behaviour oracle): the merge is unchanged — exactly one row,
+    # Galileo paired with Astronomy, the dangling Phantom dropped, then exhaustion.
+    assert first is not None
+    assert len(first) == 1
+    assert {"title": "Galileo Galilei"} in first[0]
+    assert "Astronomy" in first[0]
+    assert second is None
+
+    # Assert (structural): the JoinExecution seam is gone — HashJoin owns the
+    # merge itself and holds no `self._join_exec`.
+    assert not hasattr(join_op, "_join_exec")
+
+
 def test_join_operator_surfaces_the_merged_collision_qualified_schema():
     # Arrange: a students->courses join where BOTH sides carry a user column
     # named "title". Once the two sides are assembled the merged layout cannot

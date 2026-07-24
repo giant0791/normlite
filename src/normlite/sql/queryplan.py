@@ -165,13 +165,20 @@ class HashJoin(VolcanoOperator):
     ) -> None:
         self._left_child = left_child
         self._right_child = right_child
-        self._join_exec = JoinExecution(
-            join,
-            projection,
-            right_filter,
-            right_sorts
+        self._join = join
+        self._projection = projection
+        self._result_schema: Optional[SchemaInfo] = SchemaInfo.from_join(
+            self._join.left,
+            self._join.right,
+            *projection
         )
-        self._result_schema: Optional[SchemaInfo] = None
+        self._left_schema, self._right_schema = SchemaInfo.from_join_sides(
+            self._join.left,
+            self._join.right,
+            self._projection,
+            self._join.onclause
+        )
+
 
     @property
     def result_schema(self) -> Optional[SchemaInfo]:
@@ -193,8 +200,6 @@ class HashJoin(VolcanoOperator):
         if left_rows is None:
             return None
 
-        retrieve_batch = self._join_exec.prepare(left_rows)
-
         # drain the right child fully to get all right side pages
         right_rows = self._right_child.next()
         while right_rows is not None:
@@ -206,9 +211,122 @@ class HashJoin(VolcanoOperator):
         # an outer join with an all-dangling / empty right must still keep its left rows None-filled
         right_rows = right_rows or []
 
-        self._result_schema, merged_rows = self._join_exec.assemble(right_rows)
-        return merged_rows
+        return self._merge_rows(left_rows, right_rows)
     
+    def _merge_rows(self, left_rows: list[tuple], right_rows: list[tuple]) -> list[tuple]:
+        """Cross-product the captured left rows with the right rows whose
+        object_id matches the decoded relation list on each left row.
+
+        Inner vs outer differ in exactly ONE place: what to do with a left row
+        that matched zero right rows. Inner drops it; outer rescues it with a
+        single None-filled row. Every left row that matched at least once is
+        treated identically by both kinds, so ``isouter`` is consulted at one
+        site only -- the per-row fallback below.
+
+        INVARIANT (per left row, not across the batch): a given left row
+        contributes exactly one None-filled row iff THAT row's foreign keys
+        matched zero right rows. This single predicate subsumes all three
+        zero-match shapes -- empty relation, all-dangling ids, and a lone
+        dangling id -- so none of them needs its own branch.
+        """
+        onclause = self._join.onclause
+        isouter = self._join.isouter
+
+        merged_rows = []
+
+        # prepare the getters
+        relation_proc = onclause.type_.result_processor()
+        get_oids = self._left_schema.column_getter(onclause.name)
+        get_left_oid = self._left_schema.column_getter("object_id")
+        get_right_oid = self._right_schema.column_getter("object_id")
+
+        # {object_id: right_row} answers "does THIS oid resolve?" in O(1). It
+        # does NOT answer "did this left row match anything?" -- that is a
+        # per-row aggregate (see `matched`) known only after the oid loop.
+        right_by_oid = {get_right_oid(rr): rr for rr in right_rows}
+
+        for left_row in left_rows:
+            fk_oids = relation_proc(get_oids(left_row)) or []
+
+            # `matched` is reset per left row: it tracks whether THIS row found
+            # any partner. Truthiness is all we read.
+            matched = []
+            for fk_oid in fk_oids:
+                right_row = right_by_oid.get(fk_oid)
+                if right_row is None:
+                    # dangling id: contributes no row of its own. Whether the
+                    # row gets rescued is decided once, after the loop -- a
+                    # later oid in this same row may still match.
+                    continue
+
+                merged_rows.append(self._project_join_row(left_row, right_row))
+                matched.append(get_left_oid(left_row))
+
+            # The ONLY place inner and outer diverge. Under inner join a
+            # zero-match row is simply dropped; without this guard None-fill
+            # would leak into inner join and break its drop-the-unmatched
+            # contract.
+            if not matched and isouter:
+                merged_rows.append(self._project_join_row(left_row, None))
+
+        return merged_rows
+
+    def _project_join_row(
+        self,
+        left_row: tuple,
+        right_row: Optional[tuple],
+    ) -> tuple:
+        """Construct the merged row from a left row and an optional right row.
+
+        ``right_row`` is None for an outer-join phantom (no matching right row).
+        """
+        projection = self._projection
+
+        if projection is not None:
+            # Project in PROJECTION ORDER, exactly one value per projected
+            # column, sourced from the column's OWNING table. Ownership is
+            # decided by identity (col.parent is left), NOT by name membership:
+            # under a name collision both schemas contain the name, so name
+            # membership is ambiguous.
+            left_table = self._join.onclause.parent
+            projected = tuple()
+            for col in projection:
+                if col.parent is left_table:
+                    getter = self._left_schema.column_getter(col.name)
+                    projected += (getter(left_row),)
+                elif right_row is not None:
+                    getter = self._right_schema.column_getter(col.name)
+                    projected += (getter(right_row),)
+                else:
+                    # right-owned column with no right row (outer-join phantom)
+                    projected += (None,)
+
+            return projected
+
+        # No projection: project ALL user columns from both sides (left then
+        # right), skipping object_id. Right side is None-filled when there is no
+        # matching right row.
+        left_projected = tuple([
+            left_row[self._left_schema.column_index(lc.name)]
+            for lc in self._left_schema.columns
+            if lc.name != "object_id"
+        ])
+
+        if right_row is not None:
+            right_projected = tuple([
+                right_row[self._right_schema.column_index(rc.name)]
+                for rc in self._right_schema.columns
+                if rc.name != "object_id"
+            ])
+        else:
+            right_projected = tuple([
+                None
+                for rc in self._right_schema.columns
+                if rc.name != "object_id"
+            ])
+
+        return (*left_projected, *right_projected)
+
     def close(self) -> None:
         self._left_child.close()
         self._right_child.close()
