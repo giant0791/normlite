@@ -101,3 +101,46 @@ def test_aggregate_operator_reduces_child_rows_into_one_synthetic_sum_row():
     assert {"number": 18} in first[0]
     assert [entry[0] for entry in agg.result_schema.as_sequence()] == ["sum"]
     assert second is None
+
+
+def test_aggregate_operator_over_zero_rows_still_emits_exactly_one_row():
+    # THE BLOCKING-DRAIN-IS-STRUCTURAL PIN (ADR-0011: rowcount == 1
+    # unconditionally, even over an empty store). A `select(func.sum(headcount))`
+    # whose child yields NO rows -- the shape a scan of an empty data source
+    # takes: next() returns None immediately. Because Aggregate BLOCKS, it must
+    # drain to [] and STILL emit ONE synthetic row (the reduced row for the empty
+    # set), not zero rows. Downstream, `_execute_query_plan`'s drain loop then
+    # collects that single row -> the result cursor has one row -> rowcount 1.
+    #
+    # An operator that forwarded child exhaustion (returned None when the child
+    # is empty) would emit zero rows and rowcount would collapse to 0 -- the bug
+    # this pins out. `sum` of the empty set is None (raw cell None, NOT
+    # {"number": None} and NOT a row count).
+    metadata = MetaData()
+    accounts = Table(
+        "accounts",
+        metadata,
+        Column("team", String(is_title=True)),
+        Column("headcount", Integer()),
+    )
+    stmt = select(func.sum(accounts.c.headcount))
+    raw_columns = stmt._raw_columns
+
+    # An empty child: open/next/close with no rows to drain.
+    source = _RowSource([])
+
+    # Act: drive the blocking operator over the empty source.
+    agg = Aggregate(source, raw_columns)
+    agg.open(None)
+    first = agg.next()
+    second = agg.next()
+    agg.close()
+
+    # Assert: exactly ONE synthetic row survives the empty drain -- the sum of no
+    # rows is None -- and a second next() reports exhaustion. One row, not zero:
+    # this is what keeps rowcount at 1 through the plan path.
+    assert first is not None
+    assert len(first) == 1
+    assert first[0] == (None,)
+    assert [entry[0] for entry in agg.result_schema.as_sequence()] == ["sum"]
+    assert second is None
