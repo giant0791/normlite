@@ -12,6 +12,7 @@ from normlite.sql.reflection import ReflectedTableInfo
 from normlite.notion_sdk.getters import get_object_id
 from normlite.sql.ddl import CreateTable, DropTable
 from normlite.sql.dml import insert, select, delete
+from normlite.sql.functions import func
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, String
 
@@ -203,6 +204,44 @@ def test_execution_style_delete(engine, populated_students, students):
     _, ctx = run_context(engine, stmt)
 
     assert ctx.execution_style == ExecutionStyle.EXECUTEMANY
+
+def test_aggregate_select_is_driven_through_the_query_plan(engine):
+    # #362 cut-over: an aggregate select (e.g. select(func.sum(col))) must be driven
+    # by the operator tree, exactly like a join select. Today the Planner already
+    # builds the blocking Aggregate-over-Scan (b207dc4), but routing still sends
+    # aggregates to EXECUTE, so the plan is inert -- the reduction runs in the
+    # Select._finalize_execution `if self._is_aggregate:` hook instead.
+    #
+    # This routing fact is red until context.py routes aggregate selects to
+    # EXECUTEQUERYPLAN. Making it green while KEEPING the hook would double-drive:
+    # _execute_query_plan synthesises the result cursor, then the hook fires,
+    # fetchall()s the never-executed exec cursor and clobbers it with reduce([]).
+    # The existing test_aggregate_pipeline oracle forces the hook's retirement in
+    # the SAME change -- the routing flip and the hook deletion are atomic.
+    metadata = MetaData()
+    accounts = Table(
+        "accounts",
+        metadata,
+        Column("team", String(is_title=True)),
+        Column("headcount", Integer()),
+    )
+    metadata.create_all(engine)
+
+    stmt = select(func.sum(accounts.c.headcount))
+    compiled = stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+
+    ctx.pre_exec()
+
+    assert ctx.execution_style == ExecutionStyle.EXECUTEQUERYPLAN
 
 def test_insert_missing_values_raises(engine, students, students_db):
     stmt = insert(students)
