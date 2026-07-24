@@ -1033,7 +1033,7 @@ class AggregateExecution:
     def result_schema(self) -> SchemaInfo:
         return self._result_schema
     
-    def reduce(self, rows: list[tuple]) -> list[tuple[Any, ...]]:
+    def reduce(self, rows: list[tuple]) -> tuple[SchemaInfo, list[tuple[Any, ...]]]:
         # **IMPORTANT** - Resolve each func to the pos of its operand column in
         # the order-preserving deduped list of operand names. This mirrors how the
         # drained row is laid out (SchemaInfo.from_table -> _merge_names dedup over
