@@ -129,6 +129,26 @@ is the mechanism that restores the DBAPI/SQL/ENGINE layering for `SELECT`.
 > hash join. Everything else in this ADR (the operator tree, `Planner`/`PlanningContext`, blocking
 > operators, engine-drives layering) stands.
 
+> **Correction (2026-07-24) — #362 completes the aggregate migration.**
+>
+> **(10)** #362 (branch `feature/issue-362/aggregate-operator`) moved aggregation into the operator
+> tree, closing the last execution-hook branch. An aggregate `Select` (`_is_aggregate`) now routes to
+> **`EXECUTEQUERYPLAN`** — the same plan-driven path as joins — where the `Planner` builds a **blocking
+> `Aggregate` operator over a phase-1 `data_sources.query` `Scan`** and `_execute_query_plan` drains it,
+> reduces to one synthetic row, and synthesises the result cursor. `Aggregate` wraps `AggregateExecution`
+> verbatim (its [ADR-0011](./0011-aggregate-execution-seam.md) config-to-constructor discipline intact),
+> draining its child on the first `next()` — so [ADR-0010](./0010-streaming-result-token-pagination.md)'s
+> "aggregates force drain-all" is now **structural** (the operator blocks), not a `stream_results` flag
+> anyone can miss.
+>
+> This **supersedes Correction (8)'s** "`_finalize_execution` keeps only the aggregate branch": the
+> `if self._is_aggregate:` block is now **deleted**, so `Select._finalize_execution` is a full no-op
+> override (base `_finalize_execution` raises, so the override stays), matching `_setup_execution`. The
+> `if self._joins:` / `if self._is_aggregate:` hook branching in `_setup_execution` / `_finalize_execution`
+> that motivated this ADR is now **entirely gone**. Behaviour-preserving — the aggregate pipeline suite
+> (sum, avg, count, `sum_1`/`sum_2`, `Decimal`, `COUNT(*)` via `select_from`, `rowcount == 1` over zero
+> rows) stays green without edits.
+
 ---
 
 ## Context

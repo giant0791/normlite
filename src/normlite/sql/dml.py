@@ -18,7 +18,6 @@
 
 from __future__ import annotations
 from normlite.notiondbapi import Error
-from normlite.notiondbapi.resultset import ResultSet
 from normlite.sql.functions import FunctionElement
 
 from types import MappingProxyType
@@ -587,6 +586,10 @@ class Select(HasTable, ExecutableClauseElement):
     """
 
     _is_aggregate: bool = False
+    """``True`` if this SELECT statement is an aggregate.
+    
+    .. versionadded:: 0.12.0
+    """
 
     def __init__(self, *entities: Union[Table, Column]):
         from normlite.sql.schema import Column, Table
@@ -811,18 +814,8 @@ class Select(HasTable, ExecutableClauseElement):
         pass
 
     def _finalize_execution(self, context: ExecutionContext) -> None:       
-        if self._is_aggregate:
-            rows = context._get_exec_cursor().fetchall()
-            aggregate = AggregateExecution(self._raw_columns)
-            result_schema, synthetic_rows = aggregate.reduce(rows)
-            context._result_cursor = context.engine.raw_connection().cursor()
-            context._result_cursor._result_sets.append(
-                ResultSet(
-                    result_schema.as_sequence(),
-                    "page",
-                    synthetic_rows
-                )
-            )
+        # no-op after issue #362, see Aggregate volcano operator
+        pass
     
 def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)
@@ -1033,7 +1026,7 @@ class AggregateExecution:
     def result_schema(self) -> SchemaInfo:
         return self._result_schema
     
-    def reduce(self, rows: list[tuple]) -> list[tuple[Any, ...]]:
+    def reduce(self, rows: list[tuple]) -> tuple[SchemaInfo, list[tuple[Any, ...]]]:
         # **IMPORTANT** - Resolve each func to the pos of its operand column in
         # the order-preserving deduped list of operand names. This mirrors how the
         # drained row is laid out (SchemaInfo.from_table -> _merge_names dedup over

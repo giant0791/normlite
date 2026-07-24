@@ -699,7 +699,10 @@ API**. Therefore an aggregate over a plain database **has no Notion backend**: i
 The `.where()` filter still rides into the `databases.query` payload (Notion-side narrowing);
 the **reduction happens after the result set drains**, in normlite. An aggregate query therefore
 **forces drain-all** (you cannot average a half-consumed stream), regardless of
-`stream_results` — same rule that already governs joins and two-phase mutations.
+`stream_results` — same rule that already governs joins and two-phase mutations. Since #362 this
+is enforced **structurally** by the plan's blocking `Aggregate` operator (which drains its child
+before reducing), not by a drain-all flag — see §Query Planning and
+[[adr-0018-query-plan-operator-tree]] Correction (10).
 
 ### Aggregate query — v1 scope (whole-set, all-aggregate)
 v1 supports **only whole-set aggregates with no `GROUP BY`**:
@@ -760,10 +763,14 @@ AggregateExecution(projection)
     .reduce(drained_rows) -> (SchemaInfo, [synthetic_row])
 ```
 
-Constructed and called in `Select._finalize_execution` after the result set has drained.
-Keeping it in a single owner (rather than free functions in `_finalize_execution`/`CursorResult`)
-is the same lesson ADR-0008 drew from the join code. See
-[[adr-0011-aggregate-execution-seam]].
+Since #362 the reduction is driven by the **operator tree**, not an execution hook: an aggregate
+`Select` routes to `EXECUTEQUERYPLAN`, where the `Planner` wraps `AggregateExecution` in a
+**blocking `Aggregate` operator** over a phase-1 `data_sources.query` `Scan`, and
+`_execute_query_plan` drains the child and reduces (the `if self._is_aggregate:`
+`_finalize_execution` hook is deleted; drain-all is now structural, not a `stream_results` flag).
+Keeping the reduction in a single owner (rather than free functions in a hook / `CursorResult`) is
+the same lesson ADR-0008 drew from the join code. See [[adr-0011-aggregate-execution-seam]] and
+[[adr-0018-query-plan-operator-tree]] Correction (10).
 
 ### Aggregate query — clause interaction guards (v1)
 In the whole-set/all-aggregate v1, an aggregate projection combined with:

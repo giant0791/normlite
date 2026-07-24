@@ -399,7 +399,7 @@ class ExecutionContext:
         
         # REFACTORED: Select with joins is driven by the query planner
         # (see #364, drop EXECUTEMANY for select with joins)
-        if stmt.is_select and stmt._joins:
+        if stmt.is_select and (stmt._joins or stmt._is_aggregate):
             return ExecutionStyle.EXECUTEQUERYPLAN
         
         # select or insert without returning

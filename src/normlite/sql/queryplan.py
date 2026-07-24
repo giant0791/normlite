@@ -25,8 +25,9 @@ from normlite.engine.context import ExecutionContext
 from normlite.exceptions import InvalidRequestError
 from normlite.notiondbapi.dbapi2 import Connection
 from normlite.sql.compiler import compile_residual_filter, compile_residual_sorts
-from normlite.sql.dml import Join
+from normlite.sql.dml import AggregateExecution, Join
 from normlite.sql.elements import BinaryExpression
+from normlite.sql.functions import FunctionElement
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
 from normlite.sql.schema import Column, Table
 from normlite.sql.type_api import type_mapper
@@ -413,6 +414,37 @@ class Sort(VolcanoOperator):
             merged_rows.sort(key=sort_key, reverse=reverse)
         return merged_rows
 
+class Aggregate(VolcanoOperator):
+    """Aggregate columns value over all rows in the table."""
+
+    def __init__(self, source: VolcanoOperator, raw_cols: tuple[FunctionElement]) -> None:
+        self._source = source
+        self._agg = AggregateExecution(raw_cols)
+        self._done = False
+
+    @property
+    def result_schema(self) -> SchemaInfo:
+        return self._agg.result_schema
+
+    def open(self, connection: Connection):
+        self._source.open(connection)
+        self._done = False
+
+    def next(self) -> Optional[list[tuple]]:
+        if self._done:
+            return None
+
+        self._done = True
+        rows = []
+        while (batch := self._source.next()) is not None:
+            rows.extend(batch)
+
+        _, synthetic_row = self._agg.reduce(rows)
+        return synthetic_row
+
+    def close(self) -> None:
+        self._source.close()
+
 class Planner:
     """Provide a query plan as a pipeline composed of Volcano operators."""
 
@@ -429,6 +461,15 @@ class Planner:
                 f"Query planner build plans for SELECT statements only. "
                 f"The invoked statement is not a SELECT ({type(invoked_stmt).__name__})"
             )
+
+        if invoked_stmt._is_aggregate:
+            schema = SchemaInfo.from_table(
+                invoked_stmt.get_table(),
+                execution_names=ctx.compiled.fetch_columns(),
+                projected_names=ctx.compiled.result_columns(),
+            )
+            scan = Scan(ctx.operation, ctx.parameters, schema=schema)
+            return Aggregate(scan, invoked_stmt._raw_columns)
 
         if not invoked_stmt._joins:
             # SELECT statement without JOIN
