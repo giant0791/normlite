@@ -18,9 +18,9 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 """Provide 3 value ternary system singletons."""
+from __future__ import annotations
 
-from normlite.sql.elements import BinaryExpression, ColumnElement, UnaryExpression
-
+from normlite.sql.elements import BinaryExpression, BooleanClauseList, ColumnElement, UnaryExpression
 
 class Ternary:
     def __call__(self, *args, **kwds):
@@ -36,6 +36,12 @@ def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
         if value is UNKNOWN:
             return UNKNOWN
 
+        if value is FALSE:
+            return TRUE
+
+        if value is TRUE:
+            return FALSE
+
     if isinstance(predicate, BinaryExpression):
         effective_val = predicate.value.effective_value
         prop_val = prop.get(predicate.column.name)
@@ -47,9 +53,27 @@ def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
                 return UNKNOWN
 
             return TRUE if effective_val == value else FALSE
-    else:
-        raise NotImplementedError(f"{type(predicate).__name__} not supported.")
-            
-    
 
-    
+    if isinstance(predicate, BooleanClauseList):
+        clauses = [
+            eval3(c, prop, schema=schema)
+            for c in predicate.clauses
+        ]
+
+        if predicate.operator == "and":
+            if any(c is FALSE for c in clauses):
+                return FALSE        # FALSE dominates and operator
+
+            if any(c is UNKNOWN for c in clauses):
+                return UNKNOWN
+
+            return TRUE
+
+        if predicate.operator == "or":
+            if any(c is TRUE for c in clauses):
+                return TRUE         # TRUE dominates or operator
+
+            if any(c is UNKNOWN for c in clauses):
+                return UNKNOWN
+
+            return FALSE

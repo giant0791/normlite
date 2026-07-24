@@ -80,3 +80,111 @@ def test_not_of_unknown_is_unknown():
     assert result is UNKNOWN
     assert result is not TRUE
     assert result is not FALSE
+
+
+def test_not_of_true_is_false():
+    """Kleene NOT axiom: ``NOT TRUE = FALSE``.
+
+    Where ``NOT UNKNOWN`` stays UNKNOWN, negating a *determinate* truth value
+    must flip it. ``~(a == 1)`` over ``{"number": 1}`` evaluates its inner
+    comparison to TRUE, so NOT must return the FALSE singleton. This is the row
+    that forces NOT out of the UNKNOWN short-circuit into a complete rule that
+    returns for all three inputs.
+    """
+    a = Column("a", Integer())
+    predicate = ~(a == 1)
+    cells = {"a": {"number": 1}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is FALSE
+    assert result is not TRUE
+    assert result is not UNKNOWN
+
+
+def test_not_of_false_is_true():
+    """Kleene NOT axiom: ``NOT FALSE = TRUE``.
+
+    The sibling of ``NOT TRUE = FALSE``: negating the other determinate truth
+    value flips it the opposite way. ``~(a == 2)`` over ``{"number": 1}``
+    evaluates its inner comparison to FALSE, so NOT must return the TRUE
+    singleton. Together with ``NOT TRUE = FALSE`` and ``NOT UNKNOWN =
+    UNKNOWN``, this pins every row of the Kleene NOT table.
+    """
+    a = Column("a", Integer())
+    predicate = ~(a == 2)
+    cells = {"a": {"number": 1}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
+
+
+def test_unknown_and_false_is_false():
+    """Kleene AND axiom: ``UNKNOWN AND FALSE = FALSE``.
+
+    This is the row that proves AND is not a naive fold over sub-results: a
+    ``bool`` evaluator that treated the NULL comparison as false-ish would
+    still land FALSE here, but one that propagated UNKNOWN through an
+    ``all(...)`` would wrongly return UNKNOWN. FALSE *dominates* AND — one
+    determinate FALSE operand makes the whole conjunction FALSE regardless of
+    the UNKNOWN sibling. ``a == 1`` over ``{"number": None}`` is UNKNOWN and
+    ``b == 2`` over ``{"number": 3}`` is FALSE, so the conjunction is FALSE.
+    """
+    a = Column("a", Integer())
+    b = Column("b", Integer())
+    predicate = (a == 1) & (b == 2)
+    cells = {"a": {"number": None}, "b": {"number": 3}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is FALSE
+    assert result is not TRUE
+    assert result is not UNKNOWN
+
+
+def test_unknown_and_true_is_unknown():
+    """Kleene AND axiom: ``UNKNOWN AND TRUE = UNKNOWN``.
+
+    The direct contrast to ``UNKNOWN AND FALSE = FALSE``: same UNKNOWN operand,
+    but a TRUE sibling instead of FALSE. TRUE does *not* dominate AND, so the
+    UNKNOWN survives — the conjunction is UNKNOWN, not TRUE. This pins that it
+    is specifically FALSE (not just "any determinate value") that absorbs an
+    UNKNOWN in a conjunction. ``a == 1`` over ``{"number": None}`` is UNKNOWN
+    and ``b == 2`` over ``{"number": 2}`` is TRUE, so the conjunction is
+    UNKNOWN.
+    """
+    a = Column("a", Integer())
+    b = Column("b", Integer())
+    predicate = (a == 1) & (b == 2)
+    cells = {"a": {"number": None}, "b": {"number": 2}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is UNKNOWN
+    assert result is not TRUE
+    assert result is not FALSE
+
+
+def test_unknown_or_true_is_true():
+    """Kleene OR axiom: ``UNKNOWN OR TRUE = TRUE``.
+
+    The dual of ``UNKNOWN AND FALSE = FALSE``: where FALSE dominates a
+    conjunction, TRUE *dominates* a disjunction. One determinate TRUE operand
+    makes the whole disjunction TRUE regardless of the UNKNOWN sibling — the
+    unknown truth of the other operand cannot change an already-satisfied OR.
+    ``a == 1`` over ``{"number": None}`` is UNKNOWN and ``b == 2`` over
+    ``{"number": 2}`` is TRUE, so the disjunction is TRUE.
+    """
+    a = Column("a", Integer())
+    b = Column("b", Integer())
+    predicate = (a == 1) | (b == 2)
+    cells = {"a": {"number": None}, "b": {"number": 2}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
