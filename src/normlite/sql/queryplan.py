@@ -19,12 +19,11 @@
 
 """Provide abstractions for a query planner based on the Volcano iterator model."""
 
-from typing import Any, Callable, Optional, Protocol, Sequence, Type, Union, runtime_checkable
+from typing import Any, Callable, Optional, Protocol, Sequence, Union, runtime_checkable
 
 from normlite.engine.context import ExecutionContext
 from normlite.exceptions import InvalidRequestError
-from normlite.notion_sdk.client import NotionError
-from normlite.notiondbapi.dbapi2 import Connection, Cursor
+from normlite.notiondbapi.dbapi2 import Connection
 from normlite.sql.compiler import compile_residual_filter, compile_residual_sorts
 from normlite.sql.dml import Join
 from normlite.sql.elements import BinaryExpression
@@ -87,72 +86,6 @@ class Scan(VolcanoOperator):
     def result_schema(self) -> SchemaInfo:
         return self._schema
     
-class Retrieve(Scan):
-    """Retrieve joining rows by id with lax semantics.
-    
-    Silences `object_not_found` from `pages.retrieve` (ADR-0002 lax-FK semantics:
-    a dangling relation entry is an absent reference, not an error). All other
-    errors propagate via the default DBAPI raise path.
-    """
-
-    def __init__(
-        self, 
-        parameters: list[dict], 
-        schema: SchemaInfo
-    ):
-        super().__init__(
-            {"endpoint": "pages", "request": "retrieve"}, 
-            parameters, 
-            schema
-        )
-
-    def open(self, connection: Connection) -> None:
-        self._cursor = connection.cursor()
-        self._cursor._inject_description(self._schema.as_sequence())
-        self._cursor.errorhandler = self._lax_retrieve_errorhandler
-
-    def execute_with(self, batch: list[dict]) -> None:
-        self._parameters = batch
-        self._cursor.executemany(
-            self._operation,
-            self._parameters
-        )
-
-    def next(self) -> Optional[list[tuple]]:
-        if self._parameters is None:
-            raise InvalidRequestError(
-                "No parameters provided: Retrieve on the right side needs the ids to fetch the rows."
-            )
-        
-        # drain across result sets (one per page)
-        next_batch = [
-            row 
-            for row in self._cursor._iter_all()
-        ]
-        return next_batch if next_batch else None
-
-    def _lax_retrieve_errorhandler(
-        self, 
-        connection: Connection, 
-        cursor: Cursor, 
-        errorclass: Type[BaseException],
-        errorvalue: BaseException) -> None:
-        """Errorhandler for lax semantics.
-
-        Silences `object_not_found` from `pages.retrieve` (ADR-0002 lax-FK semantics:
-        a dangling relation entry is an absent reference, not an error). All other
-        errors propagate via the default DBAPI raise path.
-        """
-        cause = errorvalue.__cause__
-        if isinstance(cause, NotionError) and cause.code == "object_not_found":
-            # Dangling-FK / lax-reference semantics (ADR-0002):
-            # missing pages are treated as absent references
-            # INNER JOIN silently drops left rows whose relation list resolves 
-            # to zero existing right rows
-            return                       
-
-        raise errorvalue                 # propagate everything else
-
 class HashJoin(VolcanoOperator):
     def __init__(
         self,

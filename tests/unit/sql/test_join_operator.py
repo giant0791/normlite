@@ -19,8 +19,10 @@ from normlite.sql.type_api import Integer, String
 class _RowSource:
     """In-memory VolcanoOperator child: yields one fixed batch, then exhaustion.
 
-    Stands in for whatever operator produces this side's rows (a Scan, a
-    parametrised retrieve, …) so the Join can be driven as pure compute.
+    Stands in for whatever operator produces this side's rows (a Scan) so the
+    Join can be driven as pure compute. It speaks only the Volcano
+    open/next/close contract -- since ADR-0021 both leaves are independent Scans,
+    so neither side is driven by a parametrised hand-off.
     """
 
     def __init__(self, rows: list[tuple]) -> None:
@@ -28,11 +30,6 @@ class _RowSource:
         self._drained = False
 
     def open(self, connection) -> None:
-        pass
-
-    def execute_with(self, parameters) -> None:
-        # A parametrised leaf (the right retrieve) is driven by execute_with
-        # instead of open; a plain source ignores the batch.
         pass
 
     def next(self):
@@ -60,9 +57,6 @@ class _PaginatedSource:
         self._i = 0
 
     def open(self, connection) -> None:
-        pass
-
-    def execute_with(self, parameters) -> None:
         pass
 
     def next(self):
@@ -806,3 +800,20 @@ def test_joinexecution_seam_is_deleted():
     import normlite.sql.dml as dml
 
     assert not hasattr(dml, "JoinExecution")
+
+
+def test_retrieve_operator_is_deleted():
+    # #378 STEP 2 / ADR-0021 Decision "A plan has no Retrieve -- both leaves are
+    # Scans". Slice 1 (0142abf) made the Planner build the right leaf as a full
+    # data_sources.query Scan, so the retrieve-by-id operator is dead: nothing
+    # constructs it. Deleting the class also removes execute_with (the lifecycle
+    # inversion that bound the right leaf to the left's ids) and
+    # _lax_retrieve_errorhandler (the object_not_found silencer) -- a dangling id
+    # is now simply a hash miss, dropped (inner) or None-filled (outer). That
+    # absent-reference behaviour is already pinned WITHOUT any errorhandler by
+    # test_hash_join_owns_the_merge_without_a_joinexecution_seam (Phantom dropped)
+    # and test_hash_join_outer_none_fills_a_dangling_left_row_that_inner_drops.
+    # This tombstone just stops the dead operator returning.
+    import normlite.sql.queryplan as queryplan
+
+    assert not hasattr(queryplan, "Retrieve")
