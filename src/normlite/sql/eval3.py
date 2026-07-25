@@ -152,7 +152,10 @@ def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
             return UNKNOWN
 
         opkey = f"{type_}.{op}"
-        return TRUE if _OPERATORS[opkey](value, effective_val) else FALSE
+        rule = _OPERATORS.get(opkey)
+        if rule is None:
+            raise NotImplementedError(f"eval3 has no rule for {opkey!r}")
+        return TRUE if rule(value, effective_val) else FALSE
 
     if isinstance(predicate, BooleanClauseList):
         clauses = [

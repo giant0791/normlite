@@ -509,9 +509,19 @@ def test_planner_layers_a_filter_carrying_the_residual_over_the_hashjoin(engine)
     # databases.query cannot answer it in phase-1, so the compiler holds it
     # back as the residual on the PlanningContext. The Planner must honour that
     # residual by layering a Filter ON TOP of the HashJoin (Red 1's whole tree),
-    # carrying the predicate as the Notion filter the Filter evaluates client-
-    # side -- the AST residual compiled to JSON with its value ("Astronomy")
-    # inlined, exactly the shape join_right_filter used to travel as.
+    # carrying the predicate the Filter evaluates client-side.
+    #
+    # That predicate is now the residual AST ITSELF, handed over untouched --
+    # not compiled to Notion JSON. The Filter answers it with eval3, which
+    # needs what only the AST carries: the column's type_, to pick the per-type
+    # operator rule, and a node shape that can express AND/OR/NOT so a verdict
+    # can come back UNKNOWN. Compiling to JSON threw both away, and forced the
+    # answer back through the fake client's _Filter -- the notion_sdk import
+    # ADR-0019 exists to sever.
+    #
+    # Identity, not equality: the Planner must PASS the residual, not rebuild
+    # something equal to it. An equal-but-rebuilt node would mean a second
+    # renderer still sits on this path.
     metadata = MetaData()
     courses = Table(
         "courses",
@@ -548,24 +558,34 @@ def test_planner_layers_a_filter_carrying_the_residual_over_the_hashjoin(engine)
 
     # Assert: the top of the plan is a Filter (NOT the bare HashJoin a
     # residual-free join gets), its source is the HashJoin, and its predicate
-    # is the residual as inlined Notion JSON.
+    # is the very residual the compiler held back.
     assert isinstance(plan, Filter)
     assert isinstance(plan._source, HashJoin)
-    assert plan._filter == {"property": "title", "title": {"equals": "Astronomy"}}
+    assert plan._filter is ctx.compiled.planning_context.residual_where
 
 
-def test_planner_processes_the_residual_value_the_same_way_a_bindparam_would(engine):
-    # The residual travels as AST and the Planner renders it to inlined Notion
-    # JSON. Rendering must apply the column type's filter_value_processor()
-    # exactly as ExecutionContext._resolve_bindparam would for a COLUMN_FILTER
-    # bind -- otherwise the inlined value is the RAW Python object, and the
-    # Notion filter silently carries the wrong shape.
+def test_planner_hands_the_residual_over_with_its_literal_unprocessed(engine):
+    # The mirror of the test above, and the reason the two are separate.
     #
-    # String's processor is None, so the existing residual test (title ==
-    # "Astronomy") can't see this: a raw pass-through and a processed value
-    # look identical. Date HAS a real processor (date -> ISO string), so a
-    # right-side Date residual forces the question: the Filter's predicate must
-    # carry "2026-01-01", NOT a bare datetime.date object.
+    # This test used to assert the OPPOSITE: that the Planner renders the
+    # residual to inlined Notion JSON, applying the column type's
+    # filter_value_processor() exactly as _resolve_bindparam does for a
+    # COLUMN_FILTER bind, so the date arrives as "2026-01-01" rather than a
+    # bare datetime.date. Nothing renders the residual any more, so no
+    # processor runs on this path at all -- the literal reaches the Filter as
+    # the Python object the user wrote.
+    #
+    # That is safe, but NOT trivially so, and it is the one thing worth pinning
+    # here: eval3's date rules normalise the literal themselves, routing it
+    # through the same b.isoformat() the pushed filter would have used. So a
+    # residual date predicate and a pushed one still agree -- which is the
+    # pushdown-soundness invariant ADR-0019 names, at the one type where the
+    # two sides speak different languages (ISO strings on the wire, date
+    # objects in the AST).
+    #
+    # Date is what makes this observable: String's processor is None, so the
+    # title residual above cannot tell an unprocessed literal from a processed
+    # one. Here the two are visibly different objects.
     metadata = MetaData()
     courses = Table(
         "courses",
@@ -601,10 +621,11 @@ def test_planner_processes_the_residual_value_the_same_way_a_bindparam_would(eng
     # Act: the Planner compiles the join-with-Date-residual into a plan.
     plan = Planner(ctx).plan()
 
-    # Assert: the residual's value is processed to Notion's ISO date string,
-    # not left as the raw date object.
+    # Assert: the residual arrives as the AST, and its literal is still the
+    # date object the user wrote -- NOT Notion's "2026-01-01" ISO string.
     assert isinstance(plan, Filter)
-    assert plan._filter == {"property": "start_date", "date": {"after": "2026-01-01"}}
+    assert plan._filter is ctx.compiled.planning_context.residual_where
+    assert plan._filter.value.effective_value == date(2026, 1, 1)
 
 
 def test_planner_rejects_a_compound_residual_loudly_instead_of_crashing(engine):

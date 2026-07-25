@@ -302,16 +302,22 @@ def test_filter_operator_keeps_passing_rows_and_drops_failures_and_phantoms():
     # Arrange: a students->courses OUTER join's already-merged rows, fed by an
     # in-memory child (the merge itself is not under test here). The residual
     # right-side WHERE `courses.rank > 100` must be answered over the RIGHT slice
-    # of each merged row, keyed by the bare property name the compiled Notion
-    # filter references. Three rows exercise the three outcomes:
+    # of each merged row, keyed by the bare property name the residual AST's
+    # column carries. Three rows exercise the three outcomes:
     #   - Astronomy (rank 150) passes and is kept,
     #   - Botany (rank 50) fails the predicate and is dropped,
     #   - an outer-join phantom (right slice all None) is dropped BEFORE the
     #     predicate even runs, by the all-None guard (a NULL right side fails
     #     every right-side predicate; see ADR-0005).
     # The row cells are the raw phase shapes production actually merges (title as
-    # the retrieve list-of-text shape, number as {"number": n}) so the operator's
-    # page-building ({"type": typ, **cell}) sees real input.
+    # the retrieve list-of-text shape, number as {"number": n}) so the operator
+    # sees real input.
+    #
+    # The phantom is the case to watch as #365 lands. ADR-0019 will DERIVE its
+    # drop -- a None cell makes every comparison UNKNOWN, and WHERE drops
+    # UNKNOWN -- and delete the structural guard. That is #366's behaviour
+    # change, not this slice's: the guard stays verbatim here, and this test
+    # holds it to that. If it ever goes red, the semantics moved.
     from normlite.sql.queryplan import Filter
 
     metadata = MetaData()
@@ -354,8 +360,8 @@ def test_filter_operator_keeps_passing_rows_and_drops_failures_and_phantoms():
     ]
     source = _RowSource(rows)
 
-    # The bound Notion filter dict for `courses.c.rank > 100`.
-    right_filter = {"property": "rank", "number": {"greater_than": 100}}
+    # The residual predicate as the Planner hands it over: the AST, uncompiled.
+    right_filter = courses.c.rank > 100
 
     # Act: drive the Filter over its child through the VolcanoOperator contract.
     filter_op = Filter(
@@ -374,6 +380,92 @@ def test_filter_operator_keeps_passing_rows_and_drops_failures_and_phantoms():
     assert first is not None
     assert len(first) == 1
     assert {"title": "Galileo Galilei"} in first[0]
+    assert second is None
+
+
+def test_filter_operator_evaluates_a_residual_ast_predicate():
+    """The Filter answers the residual WHERE from the **AST**, not from compiled
+    Notion JSON.
+
+    Everything #365 has built so far — the Kleene tables, the 36 per-type
+    operator rules — is unreachable, because the only caller of a residual
+    predicate still speaks the fake client's dialect: the Planner compiles the
+    residual to a Notion filter dict and ``_right_side_passes`` re-wraps the row
+    into a synthetic page so ``_Filter`` can read it. That round trip is what
+    ADR-0019 rules out: it makes the SQL layer depend on
+    ``notion_sdk.client``'s internals, and it forces the answer through a
+    ``bool``, which cannot distinguish "false" from "unknown".
+
+    So the predicate handed to ``Filter`` becomes the residual AST itself —
+    ``courses.c.title == "Maths"`` — and the operator evaluates it with
+    ``eval3`` over the row's raw right-side cells, keyed by bare name. Nothing
+    else about the operator moves in this test: the cells stay raw (no decode,
+    ADR-0019's lossiness argument), the right slice is still selected by table
+    identity, and WHERE still keeps a row only when the verdict is TRUE.
+
+    Note what the AST already carries that the compiled dict had to be told:
+    the column's *type*. ``eval3`` reads ``predicate.column.type_`` to pick the
+    per-type rule, which is why the cells below need no ``{"type": ...}``
+    wrapper — a plain raw cell per column is the whole shape.
+    """
+    from normlite.sql.queryplan import Filter
+
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("rank", Integer()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+
+    projection = [*students.uc, *courses.uc]
+    merged_schema = SchemaInfo.from_join(students, courses, *projection)
+
+    def merged_row(name, oids, title, rank) -> tuple:
+        cells = [None] * len(merged_schema.columns)
+        cells[merged_schema.column_index("name")] = {"title": name}
+        cells[merged_schema.column_index("enrolled_in")] = {
+            "relation": [{"id": o} for o in oids]
+        }
+        cells[merged_schema.column_index("title")] = (
+            None if title is None else {"title": [{"text": {"content": title}}]}
+        )
+        cells[merged_schema.column_index("rank")] = (
+            None if rank is None else {"number": rank}
+        )
+        return tuple(cells)
+
+    rows = [
+        merged_row("Hypatia", ["c-math"], "Maths", 150),    # keep: TRUE
+        merged_row("Kepler", ["c-bot"], "Botany", 50),      # drop: FALSE
+    ]
+    source = _RowSource(rows)
+
+    # The residual predicate as the Planner holds it: an AST node, uncompiled.
+    right_filter = courses.c.title == "Maths"
+
+    # Act: drive the Filter over its child through the VolcanoOperator contract.
+    filter_op = Filter(
+        source,
+        filter=right_filter,
+        schema=merged_schema,
+        table=courses,
+    )
+    filter_op.open(None)
+    first = filter_op.next()
+    second = filter_op.next()
+    filter_op.close()
+
+    # Assert: the matching row survives, the non-matching one is dropped.
+    assert first is not None
+    assert len(first) == 1
+    assert {"title": "Hypatia"} in first[0]
     assert second is None
 
 
