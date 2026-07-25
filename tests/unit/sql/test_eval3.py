@@ -244,6 +244,75 @@ def test_ne_against_null_cell_is_unknown():
     assert result is not FALSE
 
 
+def test_gt_against_greater_cell_is_true():
+    """``>`` is TRUE when the *cell* exceeds the literal — order matters.
+
+    ``Operator.GT`` maps to ``"greater_than"``, so like every operator before
+    it this needs its own dispatch branch. But GT is the first *asymmetric*
+    leaf: ``equals`` and ``does_not_equal`` give the same answer whichever way
+    their operands are written, so neither pins which side is which. GT does.
+
+    ``a > 1`` asks whether the value stored in the row exceeds the literal from
+    the predicate — ``value > effective_val``, not the reverse. Over
+    ``{"number": 2}`` that is ``2 > 1`` = TRUE. An implementation that copied
+    the existing branches' ``effective_val <op> value`` spelling would compute
+    ``1 > 2`` and answer FALSE, so this test fails for the inversion as well as
+    for the missing branch.
+    """
+    a = Column("a", Integer())
+    predicate = a > 1
+    cells = {"a": {"number": 2}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
+
+
+def test_gt_against_equal_cell_is_false():
+    """``>`` is strict: a cell *equal* to the literal is FALSE, not TRUE.
+
+    The mismatch half of GT's table, taken at its sharpest point. A cell of 0
+    against ``a > 1`` would also be FALSE, but it stays FALSE under a ``>=``
+    slip too, so it proves less. The equality boundary is the single row where
+    ``>`` and ``>=`` disagree — pinning it fixes the operator's strictness, and
+    with it the seam where GE (``greater_than_or_equal_to``) must behave
+    differently rather than share a branch.
+    """
+    a = Column("a", Integer())
+    predicate = a > 1
+    cells = {"a": {"number": 1}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is FALSE
+    assert result is not TRUE
+    assert result is not UNKNOWN
+
+
+def test_gt_against_null_cell_is_unknown():
+    """``>`` against a NULL cell is UNKNOWN — and must not raise.
+
+    GT's row of the 3VL guard, and the first where the guard prevents a *crash*
+    rather than a wrong answer: Python 3 refuses to order ``None`` against an
+    ``int``, so an unguarded ordering comparison raises ``TypeError`` instead
+    of quietly answering. That makes this test the canary for the hoisted
+    allowlist — it fails the moment an ordering operator gains a dispatch
+    branch without being registered as a comparison, which is exactly the
+    two-place-registration slip the current shape allows.
+    """
+    a = Column("a", Integer())
+    predicate = a > 1
+    cells = {"a": {"number": None}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is UNKNOWN
+    assert result is not TRUE
+    assert result is not FALSE
+
+
 def test_unknown_or_true_is_true():
     """Kleene OR axiom: ``UNKNOWN OR TRUE = TRUE``.
 

@@ -19,6 +19,7 @@
 
 """Provide 3 value ternary system singletons."""
 from __future__ import annotations
+import operator
 
 from normlite.sql.elements import BinaryExpression, BooleanClauseList, ColumnElement, UnaryExpression
 
@@ -29,6 +30,12 @@ class Ternary:
 TRUE = Ternary()
 FALSE = Ternary()
 UNKNOWN = Ternary()
+
+_COMP_OPERATORS = {
+    "equals": operator.eq,
+    "does_not_equal": operator.ne,
+    "greater_than": operator.gt,
+}
 
 def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
     if isinstance(predicate, UnaryExpression):
@@ -48,17 +55,12 @@ def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
         value = prop_val.get(predicate.column.type_.get_col_spec())
 
         op = predicate.column.type_.supported_ops.get(predicate.operator)
-        if op == "equals":
+        if op in _COMP_OPERATORS:
             if value is None:
                 return UNKNOWN
 
-            return TRUE if effective_val == value else FALSE
+            return TRUE if _COMP_OPERATORS[op](value, effective_val) else FALSE
 
-        elif op == "does_not_equal":
-            if value is None:
-                return UNKNOWN
-
-            return TRUE if effective_val != value else FALSE
 
     if isinstance(predicate, BooleanClauseList):
         clauses = [
