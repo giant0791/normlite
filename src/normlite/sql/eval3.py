@@ -124,6 +124,9 @@ _COMPARISONS = {
 } - _PRESENCE_TESTS
 # set of comparison operators: when comparing with None value they all return UNKNOWN
 
+def _has_no_value(val: dict) -> bool:
+    return val is None or val == {}
+
 def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
     if isinstance(predicate, UnaryExpression):
         value = eval3(predicate.element, prop, schema=schema)
@@ -148,7 +151,7 @@ def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
 
         type_ = predicate.column.type_.get_col_spec()
         value = prop_val.get(type_)
-        if op in _COMPARISONS and value is None:
+        if op in _COMPARISONS and _has_no_value(val=value):
             return UNKNOWN
 
         opkey = f"{type_}.{op}"

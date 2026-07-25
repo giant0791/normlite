@@ -627,6 +627,59 @@ def test_date_is_empty_on_empty_mapping_is_true():
     assert result is not UNKNOWN
 
 
+def test_date_does_not_equal_on_unset_date_is_unknown():
+    """``!=`` on an *unset* date is UNKNOWN — the NULL guard must be per-type.
+
+    Found by the differential, not by hand: driving ``ReferenceGenerator``'s
+    leaf conditions through a JSON-to-AST bridge and comparing ``eval3`` against
+    ``reference_eval`` turned up exactly one divergent leaf in ~80 000
+    evaluations, and this is it. ``d != <literal>`` over ``{"date": {}}`` gives
+    TRUE, while both the reference evaluator and the fake client's ``_Filter``
+    give False.
+
+    It is a **pushdown-soundness** failure, ADR-0019's named invariant, not a
+    disagreement with a test oracle. ``does_not_equal`` is pushable, so the same
+    predicate may be answered Notion-side or here depending on a planner
+    decision the user cannot see. ``_Condition.eval`` (``client.py``) hard-returns
+    ``False`` for *every* binary date operator when the page date has no instant
+    — overriding its own ``a != b`` entry — so pushed, this row is dropped;
+    residually it is kept. The result depends on where the predicate landed.
+
+    The cause is that the 3VL guard recognises only a literal ``None`` as "holds
+    no value" (``value = prop_val.get(type_)``, then ``value is None``), but
+    every Notion type spells emptiness differently: number ``None``, rich_text
+    ``[]``, date ``{}``, relation ``[]``. A date's ``{}`` is not ``None``, so the
+    guard never fires and the comparison runs — reaching ``_date_cmp``'s
+    ``on_incomparable=True``, the "negative operators stay proper negations"
+    default. That default is safe only where the valueless case short-circuits
+    *before* the operator table, which is exactly what fails to happen here.
+
+    UNKNOWN rather than FALSE, for the same reason as
+    ``test_is_empty_on_absent_cell_is_unknown``: under a bare WHERE the two are
+    indistinguishable — both drop the row, restoring parity with the pushed
+    False whichever evaluator is the more faithful to Notion — but under
+    negation FALSE flips to TRUE and resurrects a row that has no value to
+    compare, while UNKNOWN stays UNKNOWN. ``{"date": {}}`` is already pinned as
+    present-but-valueless by ``test_date_is_empty_on_empty_mapping_is_true``;
+    this test says a *comparison* against that same cell has no truth value.
+
+    Note the sibling operators (``equals``, ``after``, ``before``) reach FALSE
+    through ``on_incomparable=False`` and so agree with the pushed side by
+    coincidence, in both polarities. Only the negative operator's opposite
+    default makes the gap visible — which is why one leaf, and not four,
+    diverged.
+    """
+    d = Column("d", Date())
+    predicate = d != date(2024, 6, 1)
+    cells = {"d": {"date": {}}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is UNKNOWN
+    assert result is not TRUE
+    assert result is not FALSE
+
+
 def test_unknown_or_true_is_true():
     """Kleene OR axiom: ``UNKNOWN OR TRUE = TRUE``.
 
