@@ -632,16 +632,19 @@ def test_planner_rejects_a_compound_residual_loudly_instead_of_crashing(engine):
     # A compound OR spanning both join sides is held back WHOLE as the residual
     # (see test_compound_or_spanning_both_sides in test_join_compilation): the
     # residual is a BooleanClauseList (.operator / .clauses), not a single
-    # BinaryExpression. The Planner's residual renderer reaches for
+    # BinaryExpression. The guard was written when the Planner still rendered
+    # the residual to Notion JSON: the renderer reached for
     # residual_where.column / .operator / .value -- attributes a
-    # BooleanClauseList does not have -- so today it dies with a bare, opaque
+    # BooleanClauseList does not have -- and died with a bare, opaque
     # AttributeError deep inside _compile_type_filter.
     #
-    # Compound residuals are out of scope for this slice, but the boundary must
-    # be HANDLED, not stumbled into: the Planner must reject a non-single-binary
-    # residual loudly, with a breadcrumb naming the limitation and the issue,
-    # rather than leaking an AttributeError. (Carrying the AST to the Filter and
-    # rendering compounds at the edge is the ADR-0019 slice-2 endpoint.)
+    # That renderer is gone, and eval3 handles AND/OR/NOT natively, so nothing
+    # would CRASH on a compound residual any more. The guard stays anyway, and
+    # deliberately: lifting it is a behaviour change that opens compound
+    # residuals to users, and it needs its own slice with its own tests. What
+    # this test now pins is that the limit is still declared out loud rather
+    # than quietly lapsing -- the failure mode it was written against would now
+    # be silent acceptance, not an AttributeError.
     metadata = MetaData()
     courses = Table(
         "courses",
