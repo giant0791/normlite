@@ -313,6 +313,64 @@ def test_gt_against_null_cell_is_unknown():
     assert result is not FALSE
 
 
+def test_lt_against_lesser_cell_is_true():
+    """``<`` is TRUE when the *cell* falls below the literal.
+
+    ``Operator.LT`` maps to ``"less_than"``, GT's mirror: ``a < 2`` over
+    ``{"number": 1}`` is ``1 < 2`` = TRUE, and an inverted branch would compute
+    ``2 < 1`` and answer FALSE.
+
+    This is the fourth near-identical leaf, and the one that makes the shape of
+    the dispatch the real subject. Three more ordering operators (LE, GE) plus
+    the string operators would each add a token to the comparison allowlist and
+    an ``elif`` that differs from its neighbours only by a Python operator —
+    two edits per operator, where forgetting the first turns a wrong answer
+    into a ``TypeError``. Whether this test is satisfied by a fifth ``elif`` or
+    by collapsing the branches into a single token-to-callable mapping is a
+    production decision; the test pins the behaviour either way.
+    """
+    a = Column("a", Integer())
+    predicate = a < 2
+    cells = {"a": {"number": 1}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
+
+
+def test_comparison_against_absent_cell_is_unknown():
+    """A comparison against an *absent* cell is UNKNOWN — ADR-0019's phantom.
+
+    The raw shape here is not ``{"number": None}`` (a property present but
+    holding no value) but no cell at all: the outer join's unmatched right
+    slice, where ADR-0019 places SQL NULL. Comparing against nothing has no
+    more truth value than comparing against a valueless cell, so both land
+    UNKNOWN — and WHERE's UNKNOWN-drops policy then *derives* ADR-0005's
+    outcome instead of enforcing it structurally.
+
+    The two ``None``\\ s must not be collapsed into one check, though. They
+    agree only for comparisons: at raw level one is a dict and the other is
+    literally ``None``, which is precisely what makes ``is_null()`` (TRUE here,
+    FALSE for a valueless cell) implementable at all. Keeping the checks
+    separate is what lets those operators diverge later without revisiting
+    this row.
+
+    Today ``prop.get(name)`` returns ``None`` and the next line calls
+    ``.get()`` on it, so this raises ``AttributeError`` rather than answering.
+    """
+    a = Column("a", Integer())
+    predicate = a == 1
+    cells = {}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is UNKNOWN
+    assert result is not TRUE
+    assert result is not FALSE
+
+
 def test_unknown_or_true_is_true():
     """Kleene OR axiom: ``UNKNOWN OR TRUE = TRUE``.
 

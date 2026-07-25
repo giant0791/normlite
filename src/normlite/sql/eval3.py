@@ -35,6 +35,7 @@ _COMP_OPERATORS = {
     "equals": operator.eq,
     "does_not_equal": operator.ne,
     "greater_than": operator.gt,
+    "less_than": operator.lt,
 }
 
 def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
@@ -52,6 +53,12 @@ def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
     if isinstance(predicate, BinaryExpression):
         effective_val = predicate.value.effective_value
         prop_val = prop.get(predicate.column.name)
+
+        if prop_val is None:
+            # guard against cells shape: {"a": {"number": None}}
+            # Indistiguishable from {"a": None} without using the schema argument
+            return UNKNOWN
+
         value = prop_val.get(predicate.column.type_.get_col_spec())
 
         op = predicate.column.type_.supported_ops.get(predicate.operator)
