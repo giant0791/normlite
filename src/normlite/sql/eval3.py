@@ -21,6 +21,7 @@
 from __future__ import annotations
 import operator
 
+from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.sql.elements import BinaryExpression, BooleanClauseList, ColumnElement, UnaryExpression
 
 class Ternary:
@@ -31,11 +32,22 @@ TRUE = Ternary()
 FALSE = Ternary()
 UNKNOWN = Ternary()
 
-_COMP_OPERATORS = {
-    "equals": operator.eq,
-    "does_not_equal": operator.ne,
-    "greater_than": operator.gt,
-    "less_than": operator.lt,
+_COMPARISONS = {"equals", "does_not_equal", "greater_than", "less_than"}
+# set of comparison operators: UNKNOWN is returned in comparisons with None value
+
+_ABSENT_AWARE: set[str] = set()
+# operators that must inspect an absent cell themselves rather than
+# short-circuit to UNKNOWN; is_null() joins this set in #366
+
+_OPERATORS = {
+    "number.equals": operator.eq,
+    "number.does_not_equal": operator.ne,
+    "number.greater_than": operator.gt,
+    "number.less_than": operator.lt,
+    "number.is_empty": lambda a, _: a is None,
+
+    "rich_text.is_empty": lambda a, _: a is None or len(a) == 0,
+    "rich_text.equals": lambda a, b: rich_text_to_plain_text(a) == b,
 }
 
 def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
@@ -52,22 +64,21 @@ def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
 
     if isinstance(predicate, BinaryExpression):
         effective_val = predicate.value.effective_value
+        op = predicate.column.type_.supported_ops.get(predicate.operator)
         prop_val = prop.get(predicate.column.name)
-
-        if prop_val is None:
-            # guard against cells shape: {"a": {"number": None}}
-            # Indistiguishable from {"a": None} without using the schema argument
+        if prop_val is None and op not in _ABSENT_AWARE:
+            # guard against cells shape: {"a": None}
+            # Indistinguishable from absent key {"b": ...} 
+            # the absent key case needs the schema argument
             return UNKNOWN
 
-        value = prop_val.get(predicate.column.type_.get_col_spec())
+        type_ = predicate.column.type_.get_col_spec()
+        value = prop_val.get(type_)
+        if op in _COMPARISONS and value is None:
+            return UNKNOWN
 
-        op = predicate.column.type_.supported_ops.get(predicate.operator)
-        if op in _COMP_OPERATORS:
-            if value is None:
-                return UNKNOWN
-
-            return TRUE if _COMP_OPERATORS[op](value, effective_val) else FALSE
-
+        opkey = f"{type_}.{op}"
+        return TRUE if _OPERATORS[opkey](value, effective_val) else FALSE
 
     if isinstance(predicate, BooleanClauseList):
         clauses = [

@@ -23,7 +23,7 @@ distinct, first-class result no ``bool`` evaluator can produce.
 """
 from normlite.sql.eval3 import eval3, TRUE, FALSE, UNKNOWN
 from normlite.sql.schema import Column
-from normlite.sql.type_api import Integer
+from normlite.sql.type_api import Integer, String
 
 
 def test_comparison_against_null_cell_is_unknown():
@@ -363,6 +363,153 @@ def test_comparison_against_absent_cell_is_unknown():
     a = Column("a", Integer())
     predicate = a == 1
     cells = {}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is UNKNOWN
+    assert result is not TRUE
+    assert result is not FALSE
+
+
+def test_is_empty_on_valueless_cell_is_true():
+    """``is_empty`` on a present-but-valueless cell is TRUE — determinate.
+
+    The first operator that must live *outside* ``_COMP_OPERATORS``, and it
+    inverts the rule every leaf before it obeyed. For a comparison, a cell
+    holding no value is a reason to give up: there is nothing to compare, so
+    the answer is UNKNOWN. For ``is_empty`` that same cell *is* the answer —
+    ``{"number": None}`` is Notion for "this property holds no value", which is
+    exactly what the operator asks about. Routing it through the comparison
+    guard would return UNKNOWN and make ``is_empty`` unable to ever say TRUE.
+
+    It also has no operand to compare against: ``a.is_empty()`` coerces
+    ``None`` into the bind parameter, so ``value.effective_value`` is ``None``.
+    ``is_empty`` is a unary predicate in a ``BinaryExpression`` shape and must
+    not be dispatched through a two-argument callable.
+
+    The determinate verdict is not a stylistic choice — it is ADR-0019's
+    pushdown-soundness invariant. ``is_empty`` is Notion-semantic and
+    **pushable**, so the same predicate may be evaluated Notion-side (in the
+    ``Scan`` payload) or client-side here, depending on a planner decision the
+    user never sees. Notion's ``is_empty`` filter matches this row; if the
+    client-side evaluator answered UNKNOWN, WHERE would drop a row the pushed
+    form keeps, and the result would depend on where the predicate landed.
+    """
+    a = Column("a", Integer())
+    predicate = a.is_empty()
+    cells = {"a": {"number": None}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
+
+
+def test_is_empty_on_zero_cell_is_false():
+    """``is_empty`` on a cell holding ``0`` is FALSE — present beats falsy.
+
+    Zero is a *value*. The property holds it, so the property is not empty,
+    and the row must survive an ``is_empty`` predicate's negation just as it
+    would in SQL.
+
+    This is the row that separates "holds no value" from "holds something
+    falsy", and it rules out implementing the operator as truthiness over the
+    raw value: ``not 0`` is ``True``, so a truthiness test would call this cell
+    empty and silently drop or admit rows on the strength of a zero. The same
+    trap waits for ``0.0`` and ``False``.
+    """
+    a = Column("a", Integer())
+    predicate = a.is_empty()
+    cells = {"a": {"number": 0}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is FALSE
+    assert result is not TRUE
+    assert result is not UNKNOWN
+
+
+def test_is_empty_on_empty_rich_text_is_true():
+    """``is_empty`` on ``{"rich_text": []}`` is TRUE — emptiness is per-type.
+
+    The counterweight to the zero case, and the reason the operator cannot be
+    a single expression over the raw value. A number is empty when it is
+    ``None``; a rich_text is empty when its array has no elements — the value
+    here is ``[]``, which is emphatically not ``None``. The reference
+    evaluator encodes exactly this split, with a different test per Notion
+    type (``date.is_empty`` on ``None``, ``rich_text.is_empty`` on the empty
+    sentinel, ``relation.is_empty`` on length) rather than one rule.
+
+    ADR-0019 leans on this very cell: ``{"rich_text": []}`` and
+    ``{"rich_text": [{"text": {"content": ""}}]}`` both decode to ``""`` yet
+    differ under ``is_empty``. That is why the evaluator reads raw cells, and
+    why an implementation that reached for the decoded value could not answer
+    this test and its neighbour differently.
+    """
+    t = Column("t", String())
+    predicate = t.is_empty()
+    cells = {"t": {"rich_text": []}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
+
+
+def test_equals_on_matching_rich_text_is_true():
+    """``equals`` is per-type too: a rich_text cell matching its literal.
+
+    ``equals`` looked type-generic while only ``Integer`` exercised it, but the
+    two sides of the comparison have different shapes. The raw cell holds
+    Notion's array — ``[{"text": {"content": "x"}}]`` — while the predicate's
+    literal stays a plain Python ``str``: ``effective_value`` is the value as
+    written, since ``bind_processor`` is not applied when building the bind
+    parameter. Comparing them directly is comparing a list to a string, which
+    is FALSE for every input and TRUE for none.
+
+    So the operator needs the type's own reading of the cell (the array's
+    plain text) before any comparison, exactly as ``is_empty`` needs the
+    type's own notion of emptiness. This is the same lesson one operator
+    earlier, and it says the type dimension belongs in the dispatch rather
+    than inside individual branches.
+    """
+    t = Column("t", String())
+    predicate = t == "x"
+    cells = {"t": {"rich_text": [{"text": {"content": "x"}}]}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
+
+
+def test_is_empty_on_absent_cell_is_unknown():
+    """``is_empty`` on an absent cell is UNKNOWN — not empty, *not there*.
+
+    An outer join's unmatched right slice carries a literal ``None`` where a
+    raw cell would be. That is not a property holding no value, which is what
+    ``is_empty`` asks about; it is the absence of the property altogether, and
+    ADR-0019 gives that its own operator (``is_null()``, #366).
+
+    UNKNOWN rather than FALSE, and the deciding case is negation, not WHERE.
+    Both verdicts drop the phantom under a bare ``WHERE``, so they look
+    interchangeable — but under ``~col.is_empty()`` a FALSE flips to TRUE and
+    *resurrects* the phantom, while UNKNOWN stays UNKNOWN and it stays
+    dropped. ADR-0005's rule, which ADR-0019 preserves, is that a phantom
+    fails every right-side predicate; only UNKNOWN keeps that true once the
+    predicate is compounded.
+
+    The guard must therefore sit above the operator dispatch, where it was
+    before the per-type table, rather than inside the comparison allowlist —
+    ``is_empty`` currently reaches ``prop_val.get(...)`` and raises
+    ``AttributeError``.
+    """
+    a = Column("a", Integer())
+    predicate = a.is_empty()
+    cells = {"a": None}
 
     result = eval3(predicate, cells, schema=None)
 
