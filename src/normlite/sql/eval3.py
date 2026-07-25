@@ -54,6 +54,12 @@ def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
 
             return TRUE if effective_val == value else FALSE
 
+        elif op == "does_not_equal":
+            if value is None:
+                return UNKNOWN
+
+            return TRUE if effective_val != value else FALSE
+
     if isinstance(predicate, BooleanClauseList):
         clauses = [
             eval3(c, prop, schema=schema)

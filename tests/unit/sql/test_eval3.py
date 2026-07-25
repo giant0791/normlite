@@ -168,6 +168,82 @@ def test_unknown_and_true_is_unknown():
     assert result is not FALSE
 
 
+def test_ne_against_matching_cell_is_false():
+    """``!=`` against a present, equal raw cell is FALSE.
+
+    The first leaf comparison beyond ``equals``. ``eval3`` dispatches on the
+    backend-agnostic :class:`Operator` enum through the type's
+    ``supported_ops`` mapping, where ``Operator.NE`` maps to
+    ``"does_not_equal"`` — a token the ``equals`` branch cannot match. So
+    ``a != 1`` over ``{"number": 1}`` has a real value to compare and fails
+    the predicate, and ``eval3`` must return the FALSE singleton rather than
+    falling off the end of the dispatch and yielding implicit ``None``.
+
+    This is the row that forces the evaluator to grow a second leaf operator:
+    the Kleene compounds already dispatch over whatever the leaves return, so
+    a leaf that returns nothing poisons every predicate built on it.
+    """
+    a = Column("a", Integer())
+    predicate = a != 1
+    cells = {"a": {"number": 1}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is FALSE
+    assert result is not TRUE
+    assert result is not UNKNOWN
+
+
+def test_ne_against_mismatching_cell_is_true():
+    """``!=`` against a present, unequal raw cell is TRUE.
+
+    The sibling outcome of ``test_ne_against_matching_cell_is_false``: same
+    operator, same cell shape, opposite verdict. ``a != 2`` over
+    ``{"number": 1}`` has a real value to compare and satisfies the predicate,
+    so the result is TRUE.
+
+    Landed green — the ternary that closed the matching case answered this one
+    with it. Kept as a truth-table pin: it fixes NE's *polarity*, so a future
+    refactor that folded ``does_not_equal`` into the ``equals`` branch without
+    negating would be caught here rather than in a differential run.
+    """
+    a = Column("a", Integer())
+    predicate = a != 2
+    cells = {"a": {"number": 1}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
+
+
+def test_ne_against_null_cell_is_unknown():
+    """``!=`` against a NULL cell is UNKNOWN — the 3VL guard is per-operator.
+
+    The counterpart of ``test_comparison_against_null_cell_is_unknown`` for the
+    second leaf operator. It pins the rule that the NULL guard belongs to every
+    *comparison*, not just to ``equals``: without it, ``effective_val != value``
+    would evaluate ``1 != None`` as Python truth and return TRUE, silently
+    turning a valueless cell into a match — the exact inversion ADR-0019's
+    UNKNOWN exists to prevent, and the one a ``bool`` evaluator cannot avoid.
+
+    Landed green. This is the row that makes the guard duplication real: two
+    operators now repeat it, which is the trigger to hoist it over the
+    comparison operators (but *not* over ``is_empty``/``is_not_empty``, whose
+    verdict on a NULL cell is determinate).
+    """
+    a = Column("a", Integer())
+    predicate = a != 1
+    cells = {"a": {"number": None}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is UNKNOWN
+    assert result is not TRUE
+    assert result is not FALSE
+
+
 def test_unknown_or_true_is_true():
     """Kleene OR axiom: ``UNKNOWN OR TRUE = TRUE``.
 
