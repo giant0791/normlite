@@ -21,9 +21,11 @@
 opposite, both-SQL-correct policies to UNKNOWN, so the third value must be a
 distinct, first-class result no ``bool`` evaluator can produce.
 """
+from datetime import date
+
 from normlite.sql.eval3 import eval3, TRUE, FALSE, UNKNOWN
 from normlite.sql.schema import Column
-from normlite.sql.type_api import Integer, String
+from normlite.sql.type_api import Date, Integer, String
 
 
 def test_comparison_against_null_cell_is_unknown():
@@ -516,6 +518,113 @@ def test_is_empty_on_absent_cell_is_unknown():
     assert result is UNKNOWN
     assert result is not TRUE
     assert result is not FALSE
+
+
+def test_every_declared_operator_has_an_eval3_rule():
+    """Every operator a type advertises must have a rule in ``_OPERATORS``.
+
+    ``supported_ops`` is normlite's public promise about what a column of a
+    given type can be filtered on, and ``Comparator.operate`` enforces it at
+    construction: a predicate that reaches ``eval3`` has already been declared
+    supported. If the dispatch table lacks the matching rule the evaluator
+    fails with a bare ``KeyError`` from inside a WHERE evaluation — a promise
+    made in one module and broken in another, which no per-operator test will
+    catch because the missing ones are exactly those nobody wrote a test for.
+
+    Walking ``type_mapper`` rather than a hand-written list is what makes this
+    a guard rather than a snapshot: a newly registered type arrives here
+    automatically instead of being quietly unsupported.
+
+    Note this proves *registration*, not correctness — a rule can exist and
+    still be wrong, as ``equals`` was for rich_text. Behavioural coverage comes
+    from the per-operator tests and the differential suite.
+    """
+    from normlite.sql.eval3 import _OPERATORS
+    from normlite.sql.type_api import type_mapper
+
+    declared = {}
+    for type_ in type_mapper.values():
+        supported_ops = getattr(type_, "supported_ops", None)
+        if not supported_ops:
+            continue  # not filterable: ObjectId, PropertyId, TimeStampStringISO8601
+        try:
+            col_spec = type_.get_col_spec()
+        except NotImplementedError:
+            continue  # no Notion property shape of its own: ArchivalFlag
+        for token in supported_ops.values():
+            declared.setdefault(f"{col_spec}.{token}", set()).add(type(type_).__name__)
+
+    missing = {key: sorted(types) for key, types in declared.items() if key not in _OPERATORS}
+
+    assert not missing, (
+        f"{len(missing)} of {len(declared)} declared operators have no eval3 rule: "
+        + ", ".join(f"{key} ({'/'.join(types)})" for key, types in sorted(missing.items()))
+    )
+
+
+def test_date_equals_matching_cell_is_true():
+    """``equals`` on a date compares instants, not representations.
+
+    The raw cell carries Notion's ISO strings (``{"start": "2024-06-01"}``)
+    while the predicate's literal stays a Python ``date`` — the two sides of a
+    date comparison never arrive in the same form. Comparing them directly is
+    a dict against a ``date`` object, which is FALSE for every input, so the
+    operator needs both sides normalised before it can answer.
+    """
+    d = Column("d", Date())
+    predicate = d == date(2024, 6, 1)
+    cells = {"d": {"date": {"start": "2024-06-01", "end": None}}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
+
+
+def test_date_after_earlier_cell_is_true():
+    """``after`` orders the cell's start against the literal.
+
+    The ordering counterpart, and the one where the shape mismatch stops being
+    a wrong answer and becomes a crash: reading ``["start"]`` off the literal
+    raises, because the literal is a ``date`` object rather than the
+    ``{"start": ...}`` mapping the rule expects.
+
+    Normalising only the cell is not enough either — that yields ``datetime``
+    while the literal stays ``date``, and Python refuses to order the two. Both
+    sides have to reach the same domain, and reaching it the way the pushed
+    filter does is what keeps a residual date predicate agreeing with a pushed
+    one.
+    """
+    d = Column("d", Date())
+    predicate = d.after(date(2024, 1, 1))
+    cells = {"d": {"date": {"start": "2024-06-01", "end": None}}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
+
+
+def test_date_is_empty_on_empty_mapping_is_true():
+    """A date cell of ``{}`` holds no value — ``is_empty`` is TRUE.
+
+    Notion echoes an unset date as an empty mapping rather than ``None``, so
+    testing the raw value against ``None`` misses it. This is rich_text's
+    ``[]`` again in another shape: a *present but valueless* cell, which is
+    determinate — TRUE for ``is_empty``, and not to be confused with the
+    literal ``None`` in the value slot that makes a comparison UNKNOWN.
+    """
+    d = Column("d", Date())
+    predicate = d.is_empty()
+    cells = {"d": {"date": {}}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
 
 
 def test_unknown_or_true_is_true():
