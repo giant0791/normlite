@@ -112,7 +112,8 @@ TOKEN, DSID = _load_env(
 )
 
 
-def _call(method: str, path: str, body: dict | None = None) -> dict:
+def _request(method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
+    """Return ``(status, payload)``; never raises for an HTTP error status."""
     req = urllib.request.Request(
         f"{API}{path}",
         method=method,
@@ -126,15 +127,66 @@ def _call(method: str, path: str, body: dict | None = None) -> dict:
     time.sleep(PACE)
     try:
         with urllib.request.urlopen(req) as resp:
-            return json.load(resp)
+            return resp.status, json.load(resp)
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode()
-        # report the response only -- the request's headers carry the token
-        sys.exit(f"{method} {path} -> HTTP {exc.code}: {detail[:600]}")
+        # the response only -- the request's headers carry the token
+        try:
+            return exc.code, json.loads(exc.read().decode())
+        except ValueError:
+            return exc.code, {}
+
+
+def _call(method: str, path: str, body: dict | None = None) -> dict:
+    status, payload = _request(method, path, body)
+    if status != 200:
+        sys.exit(f"{method} {path} -> HTTP {status}: {json.dumps(payload)[:600]}")
+    return payload
+
+
+def _resolve_data_source(ident: str) -> str:
+    """Accept a data_source_id OR a database_id.
+
+    Since Notion 2025-09-03 a database and its data sources are distinct objects
+    with distinct ids, and the id in a Notion URL is the **database**. Passing it
+    to /data_sources gives a 404 whose message blames sharing, which sends you
+    hunting for the wrong problem -- so resolve it here instead.
+    """
+    status, _ = _request("GET", f"/data_sources/{ident}")
+    if status == 200:
+        return ident
+
+    status, db = _request("GET", f"/databases/{ident}")
+    if status != 200:
+        sys.exit(
+            f"{ident} is neither a data source nor a database this integration can read.\n"
+            "Check that the page or database is shared with the integration."
+        )
+
+    sources = db.get("data_sources") or []
+    if len(sources) == 1:
+        print(f"note: {ident} is a DATABASE id; using its data source {sources[0]['id']}\n")
+        return sources[0]["id"]
+    if not sources:
+        sys.exit(f"database {ident} has no data sources")
+    listing = "\n".join(f"  {s['id']}  {s.get('name')!r}" for s in sources)
+    sys.exit(
+        f"database {ident} has {len(sources)} data sources; set NOTION_DATA_SOURCE_ID "
+        f"to one of them:\n{listing}"
+    )
+
+
+_RESOLVED: str | None = None
+
+
+def _dsid() -> str:
+    global _RESOLVED
+    if _RESOLVED is None:
+        _RESOLVED = _resolve_data_source(DSID)
+    return _RESOLVED
 
 
 def _schema() -> dict[str, str]:
-    ds = _call("GET", f"/data_sources/{DSID}")
+    ds = _call("GET", f"/data_sources/{_dsid()}")
     props = ds.get("properties") or {}
     return {name: spec.get("type", "?") for name, spec in props.items()}
 
@@ -185,10 +237,34 @@ def _classify_number(props: dict, prop: str) -> str:
         return "absent-property"
     cell = props[prop].get("number")
     if cell is None:
-        return "null"
+        return "null"  # {"number": null} -- the #381 case
     if cell == 0:
         return "zero"
     return "value"
+
+
+def _classify_date(props: dict, prop: str) -> str:
+    if prop not in props:
+        return "absent-property"
+    cell = props[prop].get("date")
+    if cell is None:
+        return "null"
+    if cell == {}:
+        return "empty-mapping"  # the shape 4abe0d1 fixed
+    if cell.get("start") is None:
+        return "no-start"
+    return "range" if cell.get("end") else "start-only"
+
+
+def _classify_relation(props: dict, prop: str) -> str:
+    if prop not in props:
+        return "absent-property"
+    cell = props[prop].get("relation")
+    if cell is None:
+        return "null"
+    if cell == []:
+        return "empty-array"
+    return f"{len(cell)}-item" if len(cell) > 1 else "1-item"
 
 
 def _title_of(props: dict) -> str:
@@ -205,17 +281,27 @@ def _drain(body: dict) -> list[dict]:
         payload = dict(body, page_size=100)
         if cursor:
             payload["start_cursor"] = cursor
-        page = _call("POST", f"/data_sources/{DSID}/query", payload)
+        page = _call("POST", f"/data_sources/{_dsid()}/query", payload)
         rows.extend(page["results"])
         if not page.get("has_more"):
             return rows
         cursor = page["next_cursor"]
 
 
+# type -> (classifier, raw-cell key)
+CLASSIFIERS = {
+    "rich_text": (_classify_text, "rich_text"),
+    "number": (_classify_number, "number"),
+    "date": (_classify_date, "date"),
+    "relation": (_classify_relation, "relation"),
+}
+
+
 def cmd_pages() -> None:
     schema = _schema()
-    text_props = _pick_all(schema, "rich_text")
-    num_prop = _pick(schema, "number")
+    probed = {
+        typ: _pick_all(schema, typ) for typ in CLASSIFIERS
+    }
     formula_props = _pick_all(schema, "formula")
     rows = _drain({})
 
@@ -223,50 +309,45 @@ def cmd_pages() -> None:
     for row in rows:
         props = row["properties"]
         entry = {"title": _title_of(props)}
-        for prop in text_props:
-            entry[f"shape:{prop}"] = _classify_text(props, prop)
-            entry[f"raw:{prop}"] = props.get(prop, {}).get("rich_text")
+        for typ, names in probed.items():
+            classify, key = CLASSIFIERS[typ]
+            for prop in names:
+                entry[f"shape:{prop}"] = classify(props, prop)
+                entry[f"raw:{prop}"] = props.get(prop, {}).get(key)
         for prop in formula_props:
             entry[f"formula:{prop}"] = _formula_value(props.get(prop, {}))
-        if num_prop:
-            entry["num_shape"] = _classify_number(props, num_prop)
         inventory[row["id"]] = entry
 
     INVENTORY.write_text(
         json.dumps(
-            {
-                "text_props": text_props,
-                "num_prop": num_prop,
-                "formula_props": formula_props,
-                "pages": inventory,
-            },
-            indent=2,
+            {"probed": probed, "formula_props": formula_props, "pages": inventory}, indent=2
         )
     )
 
     print(f"{len(rows)} pages\n")
-    for prop in text_props:
-        by_shape = defaultdict(list)
-        for entry in inventory.values():
-            by_shape[entry[f"shape:{prop}"]].append(entry["title"])
-        print(f"rich_text {prop!r}:")
-        for shape, titles in sorted(by_shape.items()):
-            sample = ", ".join(titles[:3]) + (" ..." if len(titles) > 3 else "")
-            print(f"  {shape:24} x{len(titles):<3}  e.g. {sample}")
-        print()
+    for typ, names in probed.items():
+        for prop in names:
+            by_shape = defaultdict(list)
+            for entry in inventory.values():
+                by_shape[entry[f"shape:{prop}"]].append(entry["title"])
+            print(f"{typ} {prop!r}:")
+            for shape, titles in sorted(by_shape.items()):
+                sample = ", ".join(titles[:3]) + (" ..." if len(titles) > 3 else "")
+                print(f"  {shape:24} x{len(titles):<3}  e.g. {sample}")
+            print()
 
     if formula_props:
         print("formula columns, per page -- NOT evidence about filter behaviour:")
-        head = f"  {'title':22} | " + " | ".join(f"{p:>10}" for p in formula_props)
-        print(head)
-        print("  " + "-" * (len(head) - 2))
         for entry in inventory.values():
-            shapes = "/".join(entry[f"shape:{p}"] for p in text_props)
-            vals = " | ".join(f"{entry[f'formula:{p}']!s:>10}" for p in formula_props)
-            print(f"  {entry['title'][:20]:22} | {vals}   [{shapes}]")
+            vals = " | ".join(f"{p}={entry[f'formula:{p}']!s}" for p in formula_props)
+            print(f"  {entry['title'][:24]:26} | {vals}")
 
     print(f"\nwrote {INVENTORY}")
 
+
+# Filter matrices. These deliberately probe EVERY operator normlite's type layer
+# declares in `supported_ops`, including the ones the fake client refuses -- which
+# is the question #381 asks and could not answer locally.
 
 TEXT_FILTERS = [
     ("is_empty", True),
@@ -286,7 +367,38 @@ NUMBER_FILTERS = [
     ("does_not_equal", 0),
     ("greater_than", 0),
     ("less_than", 0),
+    ("greater_than_or_equal_to", 0),
+    ("less_than_or_equal_to", 0),
 ]
+
+DATE_FILTERS = [
+    ("is_empty", True),
+    ("is_not_empty", True),
+    ("equals", "2026-01-01"),
+    ("does_not_equal", "2026-01-01"),
+    ("after", "2026-01-01"),
+    ("before", "2026-01-01"),
+    ("on_or_after", "2026-01-01"),
+    ("on_or_before", "2026-01-01"),
+]
+
+# a syntactically valid id that matches nothing: `contains` must be false of every
+# row and `does_not_contain` true of every row, so the pair doubles as a control
+NO_SUCH_PAGE = "00000000-0000-4000-8000-000000000000"
+
+RELATION_FILTERS = [
+    ("is_empty", True),
+    ("is_not_empty", True),
+    ("contains", NO_SUCH_PAGE),
+    ("does_not_contain", NO_SUCH_PAGE),
+]
+
+FILTERS = {
+    "rich_text": TEXT_FILTERS,
+    "number": NUMBER_FILTERS,
+    "date": DATE_FILTERS,
+    "relation": RELATION_FILTERS,
+}
 
 # Operators that are exact complements. If a filter and its complement BOTH
 # select every row, neither ran -- Notion discarded the condition. Detecting
@@ -321,9 +433,24 @@ def _verdicts(matched: set[str], inventory: dict, shape_key: str) -> dict[str, s
 def _run(prop: str, typ: str, filters: list, shape_key: str, inventory: dict) -> None:
     all_ids = set(inventory)
     matched: dict[str, set[str]] = {}
+    rejected: dict[str, str] = {}
     for op, value in filters:
-        rows = _drain({"filter": {"property": prop, typ: {op: value}}})
-        matched[f"{op}({value!r})"] = {r["id"] for r in rows}
+        label = f"{op}({value!r})"
+        status, payload = _request(
+            "POST",
+            f"/data_sources/{_dsid()}/query",
+            {"filter": {"property": prop, typ: {op: value}}, "page_size": 100},
+        )
+        if status != 200:
+            # an operator the real API does not accept for this type -- a finding,
+            # not a failure, so keep going and report it
+            rejected[label] = payload.get("code", str(status))
+            continue
+        if payload.get("has_more"):
+            rows = _drain({"filter": {"property": prop, typ: {op: value}}})
+            matched[label] = {r["id"] for r in rows}
+        else:
+            matched[label] = {r["id"] for r in payload["results"]}
 
     # a filter and its complement both selecting everything means neither ran
     noop = set()
@@ -363,12 +490,20 @@ def _run(prop: str, typ: str, filters: list, shape_key: str, inventory: dict) ->
             "     evaluated. Those rows say nothing about Notion's semantics -- and a\n"
             "     predicate like that must never be pushed down (see #382)."
         )
+    for label, code in rejected.items():
+        print(f"{label:30} | XX REJECTED by the API ({code})")
+
     if ambiguous:
         print(
             "\n  ?? An empty-string literal that returned every row, with no complement to\n"
             "     cross-check. `starts_with(\"\")` is vacuously true of every string, so a\n"
             "     discarded condition and a satisfied one look identical here. Treat as NO\n"
             "     evidence either way -- do not record a semantics finding from this row."
+        )
+    if rejected:
+        print(
+            "\n  XX The real API refuses these operators for this type. normlite's\n"
+            "     `supported_ops` declares them, so anything it can compile it cannot push."
         )
 
 
@@ -378,14 +513,9 @@ def cmd_query() -> None:
     data = json.loads(INVENTORY.read_text())
     inventory = data["pages"]
 
-    # only the text properties that actually carry a shape worth probing
-    for prop in data["text_props"]:
-        shapes = {e[f"shape:{prop}"] for e in inventory.values()}
-        if shapes & {"blank", "empty-array", "absent-property", "null"}:
-            _run(prop, "rich_text", TEXT_FILTERS, f"shape:{prop}", inventory)
-
-    if data.get("num_prop"):
-        _run(data["num_prop"], "number", NUMBER_FILTERS, "num_shape", inventory)
+    for typ, names in data["probed"].items():
+        for prop in names:
+            _run(prop, typ, FILTERS[typ], f"shape:{prop}", inventory)
 
 
 if __name__ == "__main__":
