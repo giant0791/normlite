@@ -22,7 +22,6 @@ This is a very simple and dump implementation of the query engine used by :class
 It represents the ground-truth for differential testing.
 """
 
-import pdb
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
 
 def extract_page_value(page, prop, typ):
@@ -34,7 +33,7 @@ def extract_page_value(page, prop, typ):
     if typ in ("title", "rich_text"):
         items = prop_obj.get(typ, [])
         if not items:
-            return ""
+            return []
         return items[0]["text"]["content"]
 
     if typ == "date":
