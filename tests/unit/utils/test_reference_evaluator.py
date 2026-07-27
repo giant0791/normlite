@@ -26,7 +26,7 @@ differential can prove.
 
 import pytest
 
-from tests.utils.evaluator import extract_page_value
+from tests.utils.evaluator import extract_page_value, reference_eval
 
 
 def _page(prop_type: str, value) -> dict:
@@ -65,3 +65,34 @@ def test_an_absent_text_value_decodes_differently_from_a_blank_one(prop_type):
     blank_value = extract_page_value(blank, "note", prop_type)
 
     assert absent_value != blank_value
+
+
+@pytest.mark.parametrize("prop_type", ["rich_text", "title"])
+@pytest.mark.parametrize("op", ["starts_with", "ends_with"])
+def test_a_prefix_or_suffix_test_on_an_absent_text_value_is_false(prop_type, op):
+    """An absent text cell begins with nothing and ends with nothing.
+
+    ``{"rich_text": []}`` holds no text value, so no non-empty needle can sit
+    at either end of it. The answer is **false**, not an error: Notion measures
+    ``contains "x"`` at zero rows and ``does_not_contain "x"`` at every row
+    against cells of exactly this shape, and both
+    :class:`~normlite.notion_sdk.client._Filter` and ``eval3`` already answer
+    false here. The oracle is the lone dissenter.
+
+    It dissents by *crashing*. Since ``48c4cea`` an absent text value decodes
+    to ``[]`` rather than to a forged ``""`` (see
+    :func:`test_an_absent_text_value_decodes_differently_from_a_blank_one`),
+    and these two branches are the only ones in the evaluator that reach for a
+    string method -- ``list`` has no ``startswith``. Every neighbouring
+    operator absorbed ``[]`` unchanged, which is what made that return value
+    the right one; these two did not.
+
+    The crash is louder than the silently wrong ``True`` it replaced, so it is
+    worth repairing rather than routing around: the moment the generator emits
+    an absent text cell, the differential dies of an ``AttributeError`` instead
+    of reporting the divergence it was built to find.
+    """
+    page = _page(prop_type, [])
+    filt = {"property": "note", prop_type: {op: "x"}}
+
+    assert reference_eval(page, filt) is False

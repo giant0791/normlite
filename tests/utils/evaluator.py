@@ -117,10 +117,14 @@ def reference_eval(page: dict, filt: dict) -> bool:
         return val in page_val
     if op == "does_not_contain":
         return val not in page_val
+    # An absent text value decodes to ``[]`` (or to ``None`` when the property
+    # is missing outright), and nothing sits at either end of a value that is
+    # not there: the answer is False. These two branches are the only ones that
+    # reach for a string method, so they are the only ones that have to say so.
     if op == "starts_with":
-        return page_val.startswith(val)
+        return isinstance(page_val, str) and page_val.startswith(val)
     if op == "ends_with":
-        return page_val.endswith(val)
+        return isinstance(page_val, str) and page_val.endswith(val)
     if op == "greater_than":
         return page_val > val
     if op == "less_than":
