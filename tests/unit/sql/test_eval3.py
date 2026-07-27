@@ -492,6 +492,38 @@ def test_is_empty_on_blank_rich_text_is_true():
     assert result is not UNKNOWN
 
 
+def test_is_not_empty_on_blank_rich_text_is_false():
+    """``is_not_empty`` on ``[{"text": {"content": ""}}]`` is FALSE — the mirror.
+
+    ``bool(a)`` is True for a one-item array whatever that item holds, so this
+    rule reads the array's length exactly as ``is_empty`` did before the
+    content test landed. Against the same live Notion pages, ``is_not_empty``
+    matched **none** of the six rows the blank and empty-array cells sit in,
+    while ``is_empty`` matched all six.
+
+    The two operators are negations of each other, and on a determinate cell
+    that has to hold: with ``is_empty`` now answering TRUE here and this rule
+    still answering TRUE, ``eval3`` currently calls the same cell both empty
+    and not empty. No composition of the two is trustworthy while that stands
+    — ``NOT is_empty()`` and ``is_not_empty()`` are the same question, and a
+    predicate that asks it twice would contradict itself mid-row.
+
+    Emptiness stays a question about content, so the fix mirrors its
+    counterpart. Like ``is_empty`` this is a presence test, bypassing the
+    ``_has_no_value`` guard, so it must also stay determinate — FALSE, not
+    UNKNOWN — on a cell that carries no value at all.
+    """
+    t = Column("t", String())
+    predicate = t.is_not_empty()
+    cells = {"t": {"rich_text": [{"text": {"content": ""}}]}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is FALSE
+    assert result is not TRUE
+    assert result is not UNKNOWN
+
+
 def test_equals_on_matching_rich_text_is_true():
     """``equals`` is per-type too: a rich_text cell matching its literal.
 
