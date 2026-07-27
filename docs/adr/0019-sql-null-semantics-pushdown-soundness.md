@@ -84,6 +84,7 @@ cell whose verdict was measured to be the opposite:
 | `{"rich_text": []}` | **TRUE** | measured | `""` |
 | `{"rich_text": [{"text": {"content": ""}}]}` | **TRUE** **[corrected]**, was FALSE | measured | `""` |
 | `{"number": null}` | **TRUE** | measured | `None` |
+| `{"number": 0}` | **FALSE** | measured | `0` |
 | `{"relation": []}` | **TRUE** | measured | `[]` |
 
 Emptiness is **per-type**: a number is empty when it is `null`, a text when the plain text it spells
@@ -95,12 +96,20 @@ by the time it must choose a rule, so it could not reproduce `is_empty`, and pus
 break. Note that the decoded column alone cannot stand in for the type either: `""` above could have
 come from a `rich_text` or a `title`, which are distinct Notion operators.
 
-> **Unsettled — `{"number": 0}` and `{"checkbox": false}`.** Notion's documentation describes an
-> empty value as one "equating to empty — `0`, `false`, `""`, `[]`", which read literally makes a
-> zero **empty**. normlite models both as NOT empty (`number.is_empty` is `a is None`, pinned by
-> `test_is_empty_on_zero_cell_is_false`). **Neither was probed** — the number probe carried a
-> `null`, never a `0`. This is the same shape as the bug Correction (1) fixed, so treat the FALSE as
-> normlite's model, not as Notion's answer, until a probe settles it.
+**The `{"number": 0}` row is the sharpest of the five, and it was measured to settle a doubt.**
+Notion's documentation describes an empty value as one "equating to empty — `0`, `false`, `""`,
+`[]`", which read literally makes a zero empty — and since that same wording turned out **true** of
+text (Correction (1)), there was every reason to expect it true of numbers too. It is not: probed
+against a live `{"number": 0}` cell, `is_empty` matched **nothing** while `is_not_empty` matched it,
+with `equals(0)` discriminating it from the non-zero rows to prove the condition ran.
+
+So the "equating to empty" rule is itself **type-dependent on the filter surface**: `""` in a text
+is empty, `0` in a number is not. There is no falsiness rule that spans the types — which is the
+type-tag argument again, this time measured rather than reasoned.
+
+> **Still unprobed: `{"checkbox": false}`.** The same doubt applies, but it is off normlite's path —
+> `Boolean.supported_ops` declares only `equals` / `does_not_equal`, so there is no
+> `checkbox.is_empty` for normlite to be wrong about.
 
 ## Decision
 
