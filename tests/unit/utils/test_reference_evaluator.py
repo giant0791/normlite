@@ -39,16 +39,24 @@ def test_an_absent_text_value_decodes_differently_from_a_blank_one(prop_type):
 
     ``{"rich_text": []}`` carries no text value at all; ``[{"text":
     {"content": ""}}]`` carries one whose content happens to be the empty
-    string. They are different cells, and the pushed-down evaluator
-    (:class:`normlite.notion_sdk.client._Filter`) answers them differently --
-    ``is_empty`` is true of the first and false of the second, and the four
-    matching operators (``contains``, ``starts_with``, ``ends_with``,
-    ``equals``) with an empty literal are false of the first and true of the
-    second.
+    string. They are different cells, so they must decode to different values:
+    the oracle's job is to hand an operator the cell it was really given, and
+    ``[]`` *is* that cell. Collapsing the pair into one blank string forges a
+    value the page never held.
 
-    Collapsing them here is the lossy decode ADR-0019 exists to forbid, and it
-    makes the oracle disagree with the pushed side on exactly the inputs where
-    a residual evaluator has to agree with it.
+    An earlier version of this docstring justified the split by claiming the
+    two differ under ``is_empty`` -- true of the first, false of the second.
+    Measured against the real API they do **not** differ: ``is_empty`` is true
+    of both, because it tests the cell's content rather than its array length
+    (ADR-0019 Correction 2026-07-27). :class:`~normlite.notion_sdk.client._Filter`
+    does answer them differently, but that is the fake client carrying the bug
+    ``eval3`` has now shed (**#381**), not evidence about Notion. Nor can the
+    empty-literal half of the old claim be checked: Notion **discards** an
+    empty-string literal and returns the data source unfiltered (**#382**), so
+    it has no opinion to compare against.
+
+    The assertion stands on cell identity alone, which needs no operator to
+    adjudicate it.
     """
     absent = _page(prop_type, [])
     blank = _page(prop_type, [{"text": {"content": ""}}])

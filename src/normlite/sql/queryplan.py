@@ -326,9 +326,13 @@ class Filter(VolcanoOperator):
 
         Shape adapter around :func:`eval3`: the merged row is a flat tuple of
         raw cells, while the evaluator reads them keyed by column name. The
-        cells stay RAW -- decoding first would collapse ``{"rich_text": []}``
-        and ``{"rich_text": [{"text": {"content": ""}}]}`` to the same ``""``
-        and break pushdown parity for ``is_empty`` (ADR-0019).
+        cells stay RAW because decoding erases the Notion TYPE TAG, and
+        emptiness is per-type -- a number is empty when it is ``null``, a text
+        when its plain text is ``""``, a relation when it holds no items.
+        Picking the right rule needs the type, ``eval3`` dispatches on
+        ``"<col_spec>.<op>"``, and ``<col_spec>`` *is* the raw cell's key --
+        a decoded value cannot supply it, so pushdown parity for ``is_empty``
+        would break (ADR-0019, as amended by its 2026-07-27 Correction).
 
         ``eval3`` returns a Ternary; the ``is TRUE`` here is the WHERE policy,
         which drops UNKNOWN along with FALSE. A ``CheckConstraint`` over the

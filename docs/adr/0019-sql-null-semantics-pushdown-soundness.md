@@ -3,6 +3,47 @@
 **Status:** Accepted — supersedes [ADR-0005](./0005-outer-join-phantom-null-semantics.md)
 **Date:** 2026-07-15
 
+> **Correction (2026-07-27) — the motivating example is factually wrong; the decision stands.**
+>
+> **(1) Real Notion answers `is_empty` TRUE on `{"rich_text": [{"text": {"content": ""}}]}`.** The
+> Context table below said FALSE. That cell was never measured — it was inferred from the fake
+> client's `_Filter`, which is a model, not evidence. A read-only probe against the live API
+> (`src/tools/notion_probe.py`, `Notion-Version: 2026-03-11`,
+> `POST /v1/data_sources/{id}/query`) matched **all six** rows holding blank *and* empty-array
+> cells with `is_empty`, and **none** with `is_not_empty`. Notion's `is_empty` is a test on the
+> **content** the cell spells out, not on the length of the array spelling it. `eval3` was wrong in
+> the same way and is fixed (#365); `_Filter` still carries the bug (**#381** family).
+>
+> **(2) So the "the decode is lossy" argument does not hold as written.** Its two cells do *not*
+> differ under `is_empty` — they agree, and both decode to `""`. A `rich_text`-only evaluator over
+> decoded text could in fact reproduce `is_empty` for these two cells. The argument is replaced,
+> not repaired; see (3).
+>
+> **(3) The raw cell is required for a structural reason instead: it carries the Notion type tag.**
+> Emptiness is **per-type** — a number is empty when it is `null`, a text when its plain text is
+> `""`, a relation when it holds no items — and there is no single expression over a decoded value
+> that answers all three (`0` and `False` are falsy but *not* empty; `[]` and `""` are). The
+> evaluator dispatches on `"<col_spec>.<op>"`, and `<col_spec>` **is** the raw cell's key. Decoding
+> to a Python scalar erases which rule applies before the rule is chosen. This does not rest on any
+> single disputed cell, and it is the argument the Decision below actually needs.
+>
+> **(4) The `None` vs `{...}` distinction — the "distinguishable **at raw level**" bullet under
+> `is_null()` in **Decision** — is untouched and still load-bearing.** It is a
+> different claim from the lossy-decode one — a phantom's cell is literally `None` while a real
+> empty cell is a dict — and the probe confirms its premise rather than denying it: **no
+> `absent-property` cell ever arrives from Notion**, since a query response always carries every
+> property. `eval3`'s absent-cell UNKNOWN guard is therefore reachable *only* from normlite's own
+> outer-join phantom.
+>
+> **(5) Never cite Notion's formula surface as evidence about its filter surface.** The formula
+> `.equal("")` *does* separate a blank cell from `[]`; the filter `equals("")` separates nothing —
+> it is discarded and returns the data source unfiltered (**#382**, a live silent wrong-rows bug).
+> Reading formula behaviour as filter behaviour produced a wrong conclusion here once already.
+>
+> The corrected sentences are marked **[corrected]** inline. Nothing in **Decision** changes: the
+> Filter Operator still evaluates raw cells, `is_empty()` stays Notion-semantic and pushable, and
+> `is_null()` stays SQL-semantic and never pushed.
+
 ---
 
 ## Context
@@ -34,15 +75,32 @@ planner decision the user cannot see.** This invariant holds today only because 
 Notion-semantic over **raw cells** — `_right_side_passes` re-wraps raw cells into a synthetic page
 precisely to preserve that fidelity.
 
-And the fidelity is necessary, because **the decode is lossy**:
+And the fidelity is necessary, because **the decode erases the type tag** — **[corrected]**, see
+Correction (1)–(3); this paragraph and its table originally argued from a lossy *value* decode and a
+cell whose verdict was measured to be the opposite:
 
-| Notion raw cell | `is_empty` (Notion) | decodes to |
-|---|---|---|
-| `{"rich_text": []}` | **TRUE** | `""` |
-| `{"rich_text": [{"text": {"content": ""}}]}` | **FALSE** | `""` |
+| Notion raw cell | `is_empty` (Notion) | provenance | decodes to |
+|---|---|---|---|
+| `{"rich_text": []}` | **TRUE** | measured | `""` |
+| `{"rich_text": [{"text": {"content": ""}}]}` | **TRUE** **[corrected]**, was FALSE | measured | `""` |
+| `{"number": null}` | **TRUE** | measured | `None` |
+| `{"relation": []}` | **TRUE** | measured | `[]` |
 
-Both collapse to `""` via `rich_text_to_plain_text` (`getters.py:93`). A client-side evaluator over
-**decoded** values could not reproduce `is_empty`, and pushdown parity would break.
+Emptiness is **per-type**: a number is empty when it is `null`, a text when the plain text it spells
+out is `""`, a relation when it holds no items, a date when it has no start instant. Those are four
+different rules, and picking the right one requires knowing the property's Notion type. The raw cell
+is where that type is written — it *is* the key — and the evaluator's dispatch is literally
+`"<col_spec>.<op>"`. A client-side evaluator over **decoded** values has already thrown the key away
+by the time it must choose a rule, so it could not reproduce `is_empty`, and pushdown parity would
+break. Note that the decoded column alone cannot stand in for the type either: `""` above could have
+come from a `rich_text` or a `title`, which are distinct Notion operators.
+
+> **Unsettled — `{"number": 0}` and `{"checkbox": false}`.** Notion's documentation describes an
+> empty value as one "equating to empty — `0`, `false`, `""`, `[]`", which read literally makes a
+> zero **empty**. normlite models both as NOT empty (`number.is_empty` is `a is None`, pinned by
+> `test_is_empty_on_zero_cell_is_false`). **Neither was probed** — the number probe carried a
+> `null`, never a `0`. This is the same shape as the bug Correction (1) fixed, so treat the FALSE as
+> normlite's model, not as Notion's answer, until a probe settles it.
 
 ## Decision
 

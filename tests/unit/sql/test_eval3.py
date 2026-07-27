@@ -443,11 +443,18 @@ def test_is_empty_on_empty_rich_text_is_true():
     type (``date.is_empty`` on ``None``, ``rich_text.is_empty`` on the empty
     sentinel, ``relation.is_empty`` on length) rather than one rule.
 
-    ADR-0019 leans on this very cell: ``{"rich_text": []}`` and
-    ``{"rich_text": [{"text": {"content": ""}}]}`` both decode to ``""`` yet
-    differ under ``is_empty``. That is why the evaluator reads raw cells, and
-    why an implementation that reached for the decoded value could not answer
-    this test and its neighbour differently.
+    ADR-0019 used to lean on this very cell, claiming it differs under
+    ``is_empty`` from ``{"rich_text": [{"text": {"content": ""}}]}`` though
+    both decode to ``""``. They do **not** differ — the real API answers TRUE
+    to both, as the test below asserts — and that argument is withdrawn (see
+    ADR-0019 Correction 2026-07-27). The assertion here stands on its own: the
+    empty array is empty by any reading.
+
+    The evaluator still reads raw cells, for a structural reason rather than
+    this one. Emptiness is per-type — ``null`` for a number, plain text ``""``
+    for a text, no items for a relation — so a rule must be chosen before it
+    can be applied, and the raw cell's key *is* the type the choice runs on:
+    dispatch is ``"<col_spec>.<op>"``, which a decoded value cannot supply.
     """
     t = Column("t", String())
     predicate = t.is_empty()
