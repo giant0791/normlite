@@ -76,7 +76,7 @@ _OPERATORS = {
     "number.is_not_empty": lambda a, _: a is not None,
 
     # rich text operators
-    "rich_text.is_empty": lambda a, _: a is None or len(a) == 0,
+    "rich_text.is_empty": lambda a, _: a is None or len(a) == 0 or rich_text_to_plain_text(a) == "",
     "rich_text.is_not_empty": lambda a, _: bool(a),
     "rich_text.equals": lambda a, b: bool(a) and rich_text_to_plain_text(a) == b,
     "rich_text.does_not_equal": lambda a, b: not a or rich_text_to_plain_text(a) != b,
@@ -86,7 +86,7 @@ _OPERATORS = {
     "rich_text.ends_with": lambda a,b: bool(a) and rich_text_to_plain_text(a).endswith(b),
 
     # title operators
-    "title.is_empty": lambda a, _: a is None or len(a) == 0,
+    "title.is_empty": lambda a, _: a is None or len(a) == 0 or rich_text_to_plain_text(a) == "",
     "title.is_not_empty": lambda a, _: bool(a),
     "title.equals": lambda a, b: bool(a) and rich_text_to_plain_text(a) == b,
     "title.does_not_equal": lambda a, b: not a or rich_text_to_plain_text(a) != b,

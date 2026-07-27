@@ -460,6 +460,38 @@ def test_is_empty_on_empty_rich_text_is_true():
     assert result is not UNKNOWN
 
 
+def test_is_empty_on_blank_rich_text_is_true():
+    """``is_empty`` on ``[{"text": {"content": ""}}]`` is TRUE — content, not length.
+
+    Verified against real Notion pages: a rich_text property whose single item
+    holds the empty string matches the ``is_empty`` filter. Notion's stated
+    rule is that a value "equating to empty" — ``0``, ``false``, ``""``, ``[]``
+    — is empty, so emptiness is a question about the text the cell spells out,
+    not about how many items spell it.
+
+    A length test cannot answer this: the array has one element. Whatever rule
+    ``is_empty`` uses has to read through to the content, and it must keep
+    answering TRUE for the empty array of its neighbour above, whose plain text
+    is also the empty string.
+
+    This is a pushdown-soundness bug, the class ADR-0019 exists to prevent.
+    Notion keeps this row for a pushed ``is_empty``; a residual FALSE drops it,
+    so the same predicate selects different rows depending on which side of the
+    boundary it lands on. It also falsifies the neighbour's docstring, which
+    reasons that these two cells *differ* under ``is_empty`` — they do not, and
+    the raw-cell requirement needs its argument from elsewhere.
+    """
+    t = Column("t", String())
+    predicate = t.is_empty()
+    cells = {"t": {"rich_text": [{"text": {"content": ""}}]}}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is TRUE
+    assert result is not FALSE
+    assert result is not UNKNOWN
+
+
 def test_equals_on_matching_rich_text_is_true():
     """``equals`` is per-type too: a rich_text cell matching its literal.
 
