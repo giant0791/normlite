@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Optional, Set
 
 from normlite._constants import SpecialColumns
-from normlite.exceptions import CompileError, StatementError, InvalidRequestError
+from normlite.exceptions import CompileError, StatementError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
 from normlite.sql.base import _CompileState, ClauseElement, SQLCompiler
@@ -37,58 +37,12 @@ if TYPE_CHECKING:
     from normlite.sql.elements import UnaryExpression, BindParameter
     from normlite.sql.schema import Table
 
-def compile_residual_filter(residual: BinaryExpression) -> dict:
-    """Interim solution until issue #364
-    
-    Compile the residual expression for the right side of a JOIN statement.
-    """
-    if not isinstance(residual, BinaryExpression):
-        raise InvalidRequestError("Only single-binary expressions supported, …")
-    
-    return {
-        "property": residual.column.name,
-        **_compile_type_filter(residual.column, residual.operator, residual.value)
-    }
-
 def compile_residual_sorts(residual_sorts: OrderByClause) -> list[dict]:
     """Interim solution until issue #365 — compile held-back right ORDER BY keys."""
     return [
         {"property": c.column.name, "direction": c.direction}
         for c in residual_sorts.clauses
     ]
-
-def _compile_type_filter(
-    column: ColumnElement,
-    operator: Operator,
-    bindparam: BindParameter
-) -> dict:
-    type_ = column.type_
-    if type_ is not bindparam.type_:
-        raise CompileError(
-            f"""
-                Type mismatch between column element: {column.name} 
-                and bind parameter: {bindparam.key}:
-                column element type: {type(type_).__name__}
-                bind parameter type: {type(bindparam.type_).__name__}
-                in binary expression: {operator}
-            """
-        )
-    filter_type = type_.get_col_spec()
-    filter_op = type_.supported_ops[operator]
-
-    # process the bound value
-    # IMPORTANT - Mimic bind paramters resolution with filter value processing
-    # TypeEngine subclasses provide filter_value_processor() to process
-    # the raw value into a filter value for JSON payloads: 
-    # see ExecutionContext._resolve_bindparam()
-    filter_raw = bindparam.callable_() if bindparam.callable_ else bindparam.value
-    processor = type_.filter_value_processor()
-
-    return {
-        filter_type: {
-            filter_op: processor(filter_raw) if processor else filter_raw
-        }
-    }
 
 def _get_expression_parent_tables(expression: ClauseElement) -> Set[Table]:
     """Helper to recursively collect all parent tables corresponding to 

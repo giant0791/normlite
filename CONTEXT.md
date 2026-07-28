@@ -1050,10 +1050,20 @@ must never be conflated:
 (`{"rich_text": []}`, `{"number": None}`) while an unmatched right slice is **literally `None`** —
 distinguishable, which is exactly what makes `is_null()` implementable.
 
-**This is why decoded values are not enough.** The decode is **lossy**: `{"rich_text": []}` (Notion
-`is_empty` → TRUE) and `{"rich_text": [{"text": {"content": ""}}]}` (→ FALSE) *both* decode to `""`
-via `rich_text_to_plain_text` (`getters.py:93`). A client-side evaluator over decoded values could
-not reproduce `is_empty`, and pushdown parity would break.
+**This is why decoded values are not enough.** The decode erases the **type tag**. Emptiness is
+per-type — a number is empty when it is `null`, a text when its plain text is `""`, a relation when
+it holds no items, a date when it has no start instant — four different rules, and picking one
+requires knowing the property's Notion type. The evaluator dispatches on `"<col_spec>.<op>"`, and
+`<col_spec>` **is** the raw cell's key; decoding throws it away before the rule is chosen. The
+decoded value cannot stand in for it either — a `""` could have come from a `rich_text` or a
+`title`, which are distinct Notion operators. A client-side evaluator over decoded values could not
+reproduce `is_empty`, and pushdown parity would break.
+
+> **Corrected 2026-07-27.** This paragraph used to argue from a *lossy value* decode, claiming
+> `{"rich_text": []}` and `{"rich_text": [{"text": {"content": ""}}]}` both decode to `""` yet
+> *differ* under `is_empty` (TRUE vs FALSE). They do not differ: the real API answers **TRUE** to
+> both — `is_empty` tests the cell's **content**, not its array length. The conclusion survives on
+> the type-tag argument above. See ADR-0019 Correction (2026-07-27).
 
 ### Residual predicates are AST, evaluated over raw cells
 A **Residual** stays an **AST** (`ColumnElement`) — never round-tripped through Notion's filter

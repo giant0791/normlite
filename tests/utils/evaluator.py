@@ -22,7 +22,6 @@ This is a very simple and dump implementation of the query engine used by :class
 It represents the ground-truth for differential testing.
 """
 
-import pdb
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
 
 def extract_page_value(page, prop, typ):
@@ -34,7 +33,7 @@ def extract_page_value(page, prop, typ):
     if typ in ("title", "rich_text"):
         items = prop_obj.get(typ, [])
         if not items:
-            return ""
+            return []
         return items[0]["text"]["content"]
 
     if typ == "date":
@@ -118,15 +117,25 @@ def reference_eval(page: dict, filt: dict) -> bool:
         return val in page_val
     if op == "does_not_contain":
         return val not in page_val
+    # An absent text value decodes to ``[]`` (or to ``None`` when the property
+    # is missing outright), and nothing sits at either end of a value that is
+    # not there: the answer is False. These two branches are the only ones that
+    # reach for a string method, so they are the only ones that have to say so.
     if op == "starts_with":
-        return page_val.startswith(val)
+        return isinstance(page_val, str) and page_val.startswith(val)
     if op == "ends_with":
-        return page_val.endswith(val)
+        return isinstance(page_val, str) and page_val.endswith(val)
     if op == "greater_than":
         return page_val > val
     if op == "less_than":
         return page_val < val
     if op == "is_empty":
         return page_val in ("", None, [], {})
+    # Term for term the negation of the branch above, and written that way on
+    # purpose: the pair must not be able to drift apart when either side is
+    # extended. Spelling this one independently is exactly what once let eval3
+    # answer True to both on a blank text cell (32e53a3).
+    if op == "is_not_empty":
+        return page_val not in ("", None, [], {})
 
     raise ValueError(f"Unsupported operator: {op}")

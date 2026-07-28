@@ -24,13 +24,12 @@ from typing import Any, Callable, Optional, Protocol, Sequence, Union, runtime_c
 from normlite.engine.context import ExecutionContext
 from normlite.exceptions import InvalidRequestError
 from normlite.notiondbapi.dbapi2 import Connection
-from normlite.sql.compiler import compile_residual_filter, compile_residual_sorts
+from normlite.sql.compiler import compile_residual_sorts
 from normlite.sql.dml import AggregateExecution, Join
-from normlite.sql.elements import BinaryExpression
+from normlite.sql.elements import ColumnElement, BinaryExpression
 from normlite.sql.functions import FunctionElement
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
 from normlite.sql.schema import Column, Table
-from normlite.sql.type_api import type_mapper
 
 #: Notion's maximum (and default) result page size. A ``Scan`` pulls the store
 #: one Notion page at a time, so this is the operator's batch granularity.
@@ -270,7 +269,7 @@ class Filter(VolcanoOperator):
         self,
         source: VolcanoOperator,
         schema: SchemaInfo,
-        filter: dict[str, Any],
+        filter: ColumnElement,
         table: Table,
     ) -> None:
         self._source = source
@@ -323,33 +322,46 @@ class Filter(VolcanoOperator):
         row_getters: list[Callable[[Sequence[Any]], Any]],
         right_cols: Sequence[ResultColumn],
     ) -> bool:
-        """Shape adapter applying the ``_Filter`` predicate to a merged row's
-        right slice.
+        """Answer the residual WHERE over a merged row's right slice.
 
-        This is now the sole implementation: the former strangler-duplicate on
+        Shape adapter around :func:`eval3`: the merged row is a flat tuple of
+        raw cells, while the evaluator reads them keyed by column name. The
+        cells stay RAW because decoding erases the Notion TYPE TAG, and
+        emptiness is per-type -- a number is empty when it is ``null``, a text
+        when its plain text is ``""``, a relation when it holds no items.
+        Picking the right rule needs the type, ``eval3`` dispatches on
+        ``"<col_spec>.<op>"``, and ``<col_spec>`` *is* the raw cell's key --
+        a decoded value cannot supply it, so pushdown parity for ``is_empty``
+        would break (ADR-0019, as amended by its 2026-07-27 Correction).
+
+        ``eval3`` returns a Ternary; the ``is TRUE`` here is the WHERE policy,
+        which drops UNKNOWN along with FALSE. A ``CheckConstraint`` over the
+        same logic applies the opposite policy (reject only on FALSE), which is
+        why the evaluator never returns a bool and each caller narrows it.
+
+        This is the sole implementation: the former strangler-duplicate on
         ``JoinExecution`` (``sql/dml.py``) was deleted with that class once the
         merge folded into ``HashJoin`` (#378 / ADR-0021).
         """
 
-        from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
-        from normlite.notion_sdk.client import _Filter
+        from normlite.sql.eval3 import eval3, TRUE
 
         right_slice = tuple(getter(merged_row) for getter in row_getters)
 
         if all(c is None for c in right_slice):
             return False        # phantom: NULL fails every right-side predicate
 
-        # Key the synthetic page by the BARE name: the compiled Notion filter
-        # references the unqualified property (`title`, emitted by
-        # visit_binary_expression), and the page is right-only so bare names
-        # are unambiguous within it. See ADR-0009.
-        properties = {}
-        for col, cell in zip(right_cols, right_slice):
-            typ = type_mapper[col.type_code].get_col_spec()
-            properties[col.bare_name] = {"type": typ, **cell}
+        # Key by the BARE name: eval3 looks a leaf's cell up under
+        # predicate.column.name, which on a residual AST column is the
+        # unqualified name. The slice is right-only -- its columns were picked
+        # by table IDENTITY, not by name -- so bare names stay unambiguous here
+        # even when the merged schema had to qualify one. See ADR-0009.
+        properties = {
+            col.bare_name: cell
+            for col, cell in zip(right_cols, right_slice)
+        }
 
-        page = {"properties": properties}
-        return _Filter(page, {"filter": self._filter}).eval()
+        return eval3(self._filter, properties, schema=None) is TRUE
     
 class Sort(VolcanoOperator):
     def __init__(        
@@ -510,7 +522,7 @@ class Planner:
                     f"Only single-binary expressions supported, "
                     f"received a '{type(residual_where).__name__}' expression."
                 )
-            right_filter = compile_residual_filter(residual_where)
+            right_filter = residual_where
             merged_schema = SchemaInfo.from_join(
                 join.left,
                 join.right,

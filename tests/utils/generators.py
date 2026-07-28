@@ -80,6 +80,7 @@ class ReferenceGenerator:
             "starts_with",
             "ends_with",
             "is_empty",
+            "is_not_empty",
         },
         "rich_text": {
             "equals",
@@ -88,6 +89,7 @@ class ReferenceGenerator:
             "starts_with",
             "ends_with",
             "is_empty",
+            "is_not_empty",
         },
         "number": {
             "equals",
@@ -141,7 +143,13 @@ class ReferenceGenerator:
 
         for i in range(n):
             name = f"prop_{i}"
-            typ = self.rng.choice(tuple(self.TYPES))
+            # sorted, not tuple(): TYPES is a set of strings, so its iteration
+            # order follows the per-process string hash seed. Drawing from it
+            # directly makes the seed pin the draw *sequence* without pinning
+            # the workload -- the same seed builds a different schema in every
+            # interpreter run, and a differential over it reds or greens by
+            # hash seed rather than by the behaviour under test.
+            typ = self.rng.choice(sorted(self.TYPES))
             schema[name] = {"type": typ}
 
         return schema
@@ -163,11 +171,7 @@ class ReferenceGenerator:
         if typ in ("title", "rich_text"):
             return {
                 "type": typ,
-                typ: [{
-                    "text": {
-                        "content": self.faker.name()
-                    }
-                }]
+                typ: self._gen_text_items(),
             }
 
         if typ == "number":
@@ -226,6 +230,38 @@ class ReferenceGenerator:
 
         raise ValueError(f"Unsupported property type: {typ}")
 
+    def _gen_text_items(self) -> list[dict]:
+        """Emit one of the three text cell shapes Notion actually stores.
+
+        A text cell carrying one item of non-empty content is the only shape
+        this generator used to produce, which quietly capped what the
+        differentials could prove: ``is_empty`` has been in the operator sets
+        for both text types all along, but against a cell that always held
+        content the answer was trivially False on every side. That is why no
+        differential ever saw the ``is_empty`` defect the live API had to be
+        probed to expose.
+
+        The other two shapes are the ones that carry an opinion:
+
+        * ``[]`` -- no text value at all.
+        * ``[{"text": {"content": ""}}]`` -- a value whose content is blank.
+          ``is_empty`` is TRUE here, and it is *only* true because the operator
+          reads the cell's content rather than its array length. This shape is
+          the regression net for that reading.
+
+        The two are kept distinct rather than collapsed: they are different
+        cells, and the oracle decodes them differently on purpose.
+        """
+        roll = self.rng.random()
+
+        if roll < 0.15:
+            return []
+
+        if roll < 0.30:
+            return [{"text": {"content": ""}}]
+
+        return [{"text": {"content": self.faker.name()}}]
+
     def _gen_iso_date(self) -> str:
         return self.faker.date_between("-5y", "today").isoformat()
 
@@ -265,7 +301,7 @@ class ReferenceGenerator:
 
     def _gen_condition_value(self, typ: str, op: str):
         if typ in ("title", "rich_text"):
-            if op == "is_empty":
+            if op in ("is_empty", "is_not_empty"):
                 return self.rng.choice(["true", "false"])
             return self.faker.first_name()
 

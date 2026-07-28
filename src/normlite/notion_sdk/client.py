@@ -1631,8 +1631,8 @@ class _Condition(_Expression):
 
         # rich_text
         "rich_text.equals":             lambda a, b: a == b if a is not EMPTY_TEXT else False,
-        "rich_text.is_empty":           lambda a, _: a is EMPTY_TEXT,
-        "rich_text.is_not_empty":       lambda a, _: a is not EMPTY_TEXT,
+        "rich_text.is_empty":           lambda a, _: a is EMPTY_TEXT or a == "",
+        "rich_text.is_not_empty":       lambda a, _: a is not EMPTY_TEXT and a != "",
         "rich_text.contains":           lambda a, b: False if a is EMPTY_TEXT else b in a,
         "rich_text.does_not_contain":   lambda a, b: True if a is EMPTY_TEXT else b not in a,
         "rich_text.starts_with":        lambda a, b: False if a is EMPTY_TEXT else a.startswith(b),
@@ -1640,8 +1640,8 @@ class _Condition(_Expression):
 
         # title
         "title.equals":                 lambda a, b: a == b if a is not EMPTY_TEXT else False,
-        "title.is_empty":               lambda a, _: a is EMPTY_TEXT,
-        "title.is_not_empty":           lambda a, _: a is not EMPTY_TEXT, 
+        "title.is_empty":               lambda a, _: a is EMPTY_TEXT or a == "",
+        "title.is_not_empty":           lambda a, _: a is not EMPTY_TEXT and a != "", 
         "title.contains":               lambda a, b: False if a is EMPTY_TEXT else b in a,
         "title.does_not_contain":       lambda a, b: True if a is EMPTY_TEXT else b not in a,
         "title.starts_with":            lambda a, b: False if a is EMPTY_TEXT else a.startswith(b),
