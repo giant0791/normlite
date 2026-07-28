@@ -44,16 +44,20 @@ GENERATABLE_PAIRS = {
     for type_name in ReferenceGenerator.TYPES
     for token in ReferenceGenerator.OPERATORS[type_name]
 }
-"""The 26 ``<type>.<operator>`` pairs the reference generator can emit.
+"""The 28 ``<type>.<operator>`` pairs the reference generator can emit.
 
-``eval3`` declares 36. The 10 it cannot reach — number's ``does_not_equal``,
+``eval3`` declares 36. The 8 it cannot reach — number's ``does_not_equal``,
 ``greater_than_or_equal_to``, ``less_than_or_equal_to``, ``is_empty``,
-``is_not_empty``; ``does_not_equal`` for title and rich_text; title's and
-rich_text's ``is_not_empty``; checkbox's ``does_not_equal`` — mirror
-``_Condition._allowed_ops``, not ``supported_ops``: the generator was capped to
-what the fake client could answer. Seven of them are exactly #381's gap, so
-widening the generator belongs to #381's landing, and this set widens with it
-rather than needing an edit here.
+``is_not_empty``; ``does_not_equal`` for title and rich_text; checkbox's
+``does_not_equal`` — mirror ``_Condition._allowed_ops``, not ``supported_ops``:
+the generator was capped to what the fake client could answer. Seven of them are
+exactly #381's gap, so widening the generator belongs to #381's landing, and
+this set widens with it rather than needing an edit here.
+
+Text's ``is_not_empty`` came off that list once the oracle could answer it: the
+cap there was never the fake client, which allows the operator, but the oracle,
+which raised on it. Only the count and the list are edited — the set itself is
+derived from the generator, so it had already widened.
 """
 
 

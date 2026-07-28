@@ -80,6 +80,7 @@ class ReferenceGenerator:
             "starts_with",
             "ends_with",
             "is_empty",
+            "is_not_empty",
         },
         "rich_text": {
             "equals",
@@ -88,6 +89,7 @@ class ReferenceGenerator:
             "starts_with",
             "ends_with",
             "is_empty",
+            "is_not_empty",
         },
         "number": {
             "equals",
@@ -299,7 +301,7 @@ class ReferenceGenerator:
 
     def _gen_condition_value(self, typ: str, op: str):
         if typ in ("title", "rich_text"):
-            if op == "is_empty":
+            if op in ("is_empty", "is_not_empty"):
                 return self.rng.choice(["true", "false"])
             return self.faker.first_name()
 
