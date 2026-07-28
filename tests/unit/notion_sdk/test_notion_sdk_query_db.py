@@ -409,3 +409,42 @@ def test_filter_and_with_not_combines_title_scalar_and_relation_predicate():
     assert _Filter(alice_in_X, filter_dict).eval()       # Alice, not in Y → both pass
     assert not _Filter(alice_in_Y, filter_dict).eval()   # Alice, IS in Y → NOT fails
     assert not _Filter(bob_in_X, filter_dict).eval()     # Bob, not in Y → AND fails on name
+
+@pytest.mark.parametrize('prop_type', ['rich_text', 'title'])
+def test_is_empty_on_a_blank_text_cell_is_true(prop_type):
+    """A text cell holding one item of blank content is empty, and not non-empty.
+
+    ``_Filter`` decodes a text cell to ``texts[0]["text"]["content"]`` and falls
+    back to the ``EMPTY_TEXT`` sentinel only when the item list itself is empty,
+    so ``[{"text": {"content": ""}}]`` arrives as ``""`` and both presence tests
+    answer by identity against a sentinel that is not there. ``is_empty`` says
+    False and ``is_not_empty`` says True -- of a cell with no content in it.
+
+    That reads the *array length* where Notion reads the *content*. Measured
+    against the real API (ADR-0019 Correction 2026-07-27): ``is_empty`` matches
+    a blank cell. ``eval3`` was corrected to match in ``d9fc94e``; this is the
+    same defect one evaluator over, and it is what the widened reference
+    generator now walks into.
+
+    Both operators are pinned in one test on purpose. Repairing ``is_empty``
+    alone is what left ``eval3`` briefly answering True to *both* on a blank
+    cell, so the complement is asserted alongside it rather than trusted to
+    follow (``32e53a3``).
+    """
+    blank = {
+        'properties': {
+            'note': {'type': prop_type, prop_type: [{'text': {'content': ''}}]},
+        }
+    }
+
+    empty_check = _Condition(
+        blank,
+        {'property': 'note', prop_type: {'is_empty': True}},
+    )
+    not_empty_check = _Condition(
+        blank,
+        {'property': 'note', prop_type: {'is_not_empty': True}},
+    )
+
+    assert empty_check.eval()
+    assert not not_empty_check.eval()
