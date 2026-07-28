@@ -96,3 +96,45 @@ def test_a_prefix_or_suffix_test_on_an_absent_text_value_is_false(prop_type, op)
     filt = {"property": "note", prop_type: {op: "x"}}
 
     assert reference_eval(page, filt) is False
+
+
+@pytest.mark.parametrize("prop_type", ["rich_text", "title"])
+@pytest.mark.parametrize(
+    "items, is_empty_expected",
+    [
+        ([], True),
+        ([{"text": {"content": ""}}], True),
+        ([{"text": {"content": "Ada"}}], False),
+    ],
+    ids=["absent", "blank", "content"],
+)
+def test_a_text_presence_test_is_the_exact_complement_of_its_emptiness_test(
+    prop_type, items, is_empty_expected
+):
+    """``is_not_empty`` on text answers the negation of ``is_empty``, cell for cell.
+
+    The oracle has no generic ``is_not_empty`` branch at all: ``date`` and
+    ``relation`` each answer it inside their own section, and every other type
+    falls through to ``raise ValueError``. Text is one of those types, so the
+    operator has never been askable of it -- which is why neither differential
+    exercises it, and why ``eval3``'s ``is_not_empty`` half has no net under it
+    while its ``is_empty`` half now does.
+
+    The two operators are asserted **together, over the same cell**, rather than
+    in separate tests. That is the ``32e53a3`` lesson: fixing ``is_empty`` alone
+    once left ``eval3`` answering TRUE to *both* on a blank cell, a state no
+    single-operator test can see: the cell came out empty *and* not-empty at
+    once. A blank cell is empty because its content is blank rather than because
+    its array is short, so it is the case that separates the two readings; ``[]``
+    and a real name are the controls that keep the complement from being
+    satisfied trivially.
+    """
+    page = _page(prop_type, items)
+
+    empty = reference_eval(page, {"property": "note", prop_type: {"is_empty": "true"}})
+    not_empty = reference_eval(
+        page, {"property": "note", prop_type: {"is_not_empty": "true"}}
+    )
+
+    assert empty is is_empty_expected
+    assert not_empty is not is_empty_expected

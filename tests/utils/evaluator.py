@@ -131,5 +131,11 @@ def reference_eval(page: dict, filt: dict) -> bool:
         return page_val < val
     if op == "is_empty":
         return page_val in ("", None, [], {})
+    # Term for term the negation of the branch above, and written that way on
+    # purpose: the pair must not be able to drift apart when either side is
+    # extended. Spelling this one independently is exactly what once let eval3
+    # answer True to both on a blank text cell (32e53a3).
+    if op == "is_not_empty":
+        return page_val not in ("", None, [], {})
 
     raise ValueError(f"Unsupported operator: {op}")
