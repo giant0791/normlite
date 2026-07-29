@@ -410,7 +410,7 @@ class String(TypeEngine):
                 return None
             
             # Notion rich_text is a list of text objects → extract 'text'
-            return rich_text_to_plain_text(value.get(self.get_col_spec(), []))
+            return rich_text_to_plain_text(value[self.get_col_spec()])
         
         return process
 
