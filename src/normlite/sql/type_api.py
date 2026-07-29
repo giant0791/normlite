@@ -332,10 +332,8 @@ class Float(Number):
 
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[float]:
-            if value is None:
+            if self._is_valueless_cell(value):
                 return None
-            
-            self._raise_if_val_not_dict(value)
             return float(value.get(self.get_col_spec()))
         
         return process

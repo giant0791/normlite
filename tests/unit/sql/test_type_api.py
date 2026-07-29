@@ -18,7 +18,13 @@ from normlite import (
 )
 
 from normlite.exceptions import ArgumentError, InvalidRequestError
-from normlite.sql.type_api import DateTimeRange, ObjectId, ArchivalFlag
+from normlite.sql.type_api import (
+    ArchivalFlag,
+    DateTimeRange,
+    Float,
+    Number,
+    ObjectId,
+)
 
 @pytest.fixture
 def filter_proc():
@@ -389,3 +395,51 @@ def test_date_result_processor_decodes_a_valueless_cell_as_none():
 
     assert result(None) is None                 # absent cell
     assert result({"date": None}) is None        # present, holds no value
+
+@pytest.mark.parametrize('type_obj', [
+    Number('number'),
+    Integer(),
+    Float(),
+    Numeric(),
+    Money('euro'),
+    String(),
+    String(is_title=True),
+    Boolean(),
+    Date(),
+    Relation(),
+], ids=lambda t: type(t).__name__ + '/' + t.get_col_spec())
+def test_every_type_decodes_a_valueless_cell_as_none(type_obj: TypeEngine):
+    """Every type decodes a valueless cell to ``None`` -- no exceptions.
+
+    This is the decode invariant stated once, for all types, instead of one
+    type at a time: **a raw cell decodes to Python** ``None`` **iff the
+    raw-cell evaluator calls it valueless** (CONTEXT.md, "Raw cell <-> decoded
+    NULL"). It is user-observable, not internal tidiness -- ``None`` in a
+    decoded ``Row`` *is* how a user sees SQL NULL, and there is no second
+    channel. A type that decodes a valueless cell to anything else lets
+    ``WHERE col = x`` drop a row as UNKNOWN while ``SELECT col`` hands the user
+    a value out of that very cell.
+
+    ``{"<col_spec>": null}`` is the **only** shape a valueless cell takes.
+    ``{"<col_spec>": {}}`` is not a cell at all -- it is a *property
+    definition*, and it is unproducible in value position: the API rejects it
+    on ``POST /v1/pages`` with a 400, and clearing a cell through the Notion UI
+    stores and emits ``null``. Both measured 2026-07-29; see ADR-0019
+    Correction (6)-(10).
+
+    The two per-type tests above stay: they carry the provenance of the
+    original defect and its fix. This one guards a different thing -- that no
+    type *opts out* of the shared guard. ``Number`` routes every subclass
+    through ``TypeEngine._is_valueless_cell``, but a subclass that overrides
+    ``result_processor`` silently leaves the guard behind, and one already has.
+
+    Restricted to the user-facing data types -- the ones ADR-0019's emptiness
+    table covers. The system types (``ObjectId``, ``PropertyId``,
+    ``ArchivalFlag``, timestamps) decode read-only columns that Notion always
+    populates, so a valueless cell is not a state they can reach.
+    """
+    result = type_obj.result_processor()
+    valueless = {type_obj.get_col_spec(): None}
+
+    assert result(None) is None                 # absent cell
+    assert result(valueless) is None            # present, holds no value
