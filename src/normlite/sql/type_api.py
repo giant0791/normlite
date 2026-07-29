@@ -814,7 +814,9 @@ class Date(TypeEngine):
             if value is None:
                 return None
 
-            self._raise_if_val_not_dict(value)                
+            self._raise_if_val_not_dict(value)     
+            if value[self.get_col_spec()] is None:
+                return None           
             return DateTimeRange.from_json(value)
 
         return process

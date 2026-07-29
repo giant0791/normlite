@@ -371,3 +371,21 @@ def test_number_result_processor_decodes_a_valueless_cell_as_none():
 
     assert result(None) is None                 # absent cell
     assert result({"number": None}) is None      # present, holds no value
+
+def test_date_result_processor_decodes_a_valueless_cell_as_none():
+    """A date cell holding no value decodes to ``None``, not a crash.
+
+    The same defect as the number case one type over, and the same provenance:
+    real Notion returns ``{"date": null}`` for an empty date cell. Today
+    :meth:`DateTimeRange.from_json` reaches ``date_obj.get("start")`` on
+    ``None`` and raises ``AttributeError``.
+
+    The guard belongs in the processor, not in ``from_json``: that classmethod
+    is a constructor whose "JSON date must contain 'start'" is a legitimate
+    malformed-input signal, and a valueless cell is well-formed Notion, not
+    malformed input.
+    """
+    result = Date().result_processor()
+
+    assert result(None) is None                 # absent cell
+    assert result({"date": None}) is None        # present, holds no value
