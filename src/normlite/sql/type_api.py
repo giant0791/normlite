@@ -259,6 +259,10 @@ class Number(TypeEngine):
             
             self._raise_if_val_not_dict(value)
             num_value = value.get(self.get_col_spec())
+            if num_value is None:
+                # real Notion returns ``{"number": null}`` for an empty number cell
+                return None
+
             if isinstance(num_value, Decimal):
                 num_value = float(num_value)            
 

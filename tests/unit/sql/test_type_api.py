@@ -351,3 +351,23 @@ def test_relation_result_processor_ignores_extra_notion_fields():
 def test_relation_result_processor_rejects_unwrapped_list():
     with pytest.raises(ValueError):
         Relation().result_processor()([{"id": "p1"}])
+
+def test_number_result_processor_decodes_a_valueless_cell_as_none():
+    """A number cell holding no value decodes to ``None``, not a crash.
+
+    Real Notion returns ``{"number": null}`` for an empty number cell -- probed
+    against the live API, and it is the exact cell #384 is about. Today
+    ``int(None)`` raises ``TypeError``, so a plain SELECT over a data source
+    with one empty number cell dies in the row processor before any predicate
+    is ever considered.
+
+    Both arms are asserted together because the two ``None``s are *different
+    raw states* that must agree at the Python boundary: the cell being absent
+    (nothing here) and the cell being present but valueless. Keeping them in
+    one test pins that agreement -- a fix that guards only the outer ``None``
+    is exactly the state that already exists.
+    """
+    result = Integer().result_processor()
+
+    assert result(None) is None                 # absent cell
+    assert result({"number": None}) is None      # present, holds no value
