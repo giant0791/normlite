@@ -188,6 +188,16 @@ class TypeEngine(Protocol):
                 f'{self.get_col_spec()} value must be a dict. '
                 f'Value type is: {type(value).__name__}'
             )
+
+    def _is_valueless_cell(self, value: dict) -> bool:
+        """Enable result processors to return the Notion valid value None if the cell is valueless."""
+
+        if value is None:   
+            return True                 # absent cell
+
+        self._raise_if_val_not_dict(value)
+
+        return value[self.get_col_spec()] is None       # present, but holds no value (null)
     
 _NumericType: TypeAlias = Union[int, Decimal]
 """Type alias for numeric datatypes. It is not part of the public API."""
@@ -254,15 +264,10 @@ class Number(TypeEngine):
     
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[_NumericType]:
-            if value is None:
-                return None
-            
-            self._raise_if_val_not_dict(value)
-            num_value = value.get(self.get_col_spec())
-            if num_value is None:
-                # real Notion returns ``{"number": null}`` for an empty number cell
+            if self._is_valueless_cell(value):
                 return None
 
+            num_value = value.get(self.get_col_spec())
             if isinstance(num_value, Decimal):
                 num_value = float(num_value)            
 
@@ -401,11 +406,9 @@ class String(TypeEngine):
         
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[str]:
-            if value is None:
+            if self._is_valueless_cell(value):
                 return None
-
-            self._raise_if_val_not_dict(value)
-
+            
             # Notion rich_text is a list of text objects → extract 'text'
             return rich_text_to_plain_text(value.get(self.get_col_spec(), []))
         
@@ -459,10 +462,9 @@ class Boolean(TypeEngine):
     
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[bool]:
-            if value is None:
+            if self._is_valueless_cell(value):
                 return None
-            
-            self._raise_if_val_not_dict(value)
+
             return value.get(self.get_col_spec())
             
         return process
@@ -811,12 +813,9 @@ class Date(TypeEngine):
 
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[DateTimeRange]:
-            if value is None:
+            if self._is_valueless_cell(value):
                 return None
-
-            self._raise_if_val_not_dict(value)     
-            if value[self.get_col_spec()] is None:
-                return None           
+            
             return DateTimeRange.from_json(value)
 
         return process
@@ -930,11 +929,9 @@ class Relation(TypeEngine):
     
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[list[str]]:
-            if value is None:
+            if self._is_valueless_cell(value):
                 return None
             
-            self._raise_if_val_not_dict(value)
-
             return [d["id"] for d in value["relation"]]
         
         return process
