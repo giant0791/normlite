@@ -44,6 +44,44 @@
 > Filter Operator still evaluates raw cells, `is_empty()` stays Notion-semantic and pushable, and
 > `is_null()` stays SQL-semantic and never pushed.
 
+> **Correction (2026-07-29) — `{"<col_spec>": {}}` is not a cell. The decision stands.**
+>
+> **(6) A valueless cell is `{"<col_spec>": null}`, and that is the only shape it takes.** The
+> evaluator additionally counted `{}` as valueless (`_has_no_value(val) = val is None or val == {}`).
+> That arm was never grounded in Notion. It was added so the evaluator would agree with a **page
+> generator** that emitted `{"date": {}}` as its unset-date shape — and the generator had, in turn,
+> modelled a cell on a **property definition**.
+>
+> **(7) The two positions are different objects that share a shape.** In a *data source's*
+> `properties`, `{"date": {}}` is a **column declaration** — "this column is a date, with empty
+> configuration" — and is canonical, real and load-bearing (`TypeEngine.get_notion_spec()`, the DDL
+> compiler, the system catalog). In a *page's* `properties` it is a **cell**, and there it is
+> **unproducible**. Both halves measured 2026-07-29: the API **rejects** `{"date": {}}` on
+> `POST /v1/pages` with a 400, and clearing a date through the Notion **UI** — the more permissive
+> path — stores and emits `"date": null`, read back from a live data source
+> (`src/tools/notion_probe.py`). Nothing can produce the shape.
+>
+> **(8) So the `== {}` arm is removed, together with the fiction that motivated it.** This is a
+> deletion that is **semantics-preserving over the reachable domain** — every cell that can actually
+> arrive gets the identical verdict — and it is *not* a reopening of the Decision below. The
+> generator is changed to emit `null`, and the evaluator tests that pinned `{}` are rewritten onto
+> `null` rather than deleted: the behaviour they protect (a valueless date is UNKNOWN, so
+> `does_not_equal` does not match it) is the heart of **#384**. *(Decision recorded ahead of the
+> code; both land on `bug/issue-384/notion-does-not-equal`.)*
+>
+> **(9) The rule this cost us, stated once: never model a cell on a schema object.** An empty
+> *config* is not an empty *value*. The two are distinguished by **position**, never by shape, so a
+> shape copied out of a `CREATE TABLE` payload carries no evidence about what a query returns. This
+> is the same failure as Correction (1) and (5) — a **model** read as **evidence** — and it is now
+> the third instance in this ADR's area.
+>
+> **(10) Corollary, and it is the invariant to hold onto:** a raw cell decodes to Python `None`
+> **iff** the evaluator calls it valueless. `None` in a decoded `Row` *is* how a user observes SQL
+> NULL, so a disagreement between the decode layer and the evaluator is user-visible — `WHERE col =
+> x` dropping a row as UNKNOWN while `SELECT col` yields a value from that same cell. The two stay
+> separate functions (`TypeEngine._is_valueless_cell` takes the whole cell, `eval3._has_no_value`
+> takes the inner value); this is their contract, not an argument to merge them.
+
 ---
 
 ## Context

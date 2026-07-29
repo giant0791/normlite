@@ -1092,6 +1092,44 @@ share the backend-agnostic `Operator` enum and three-valued logic, not an implem
 earlier draft of this design claimed one evaluator could serve both — that was wrong: the shapes
 and the times differ.
 
+### Property definition vs property value (the `{"<col_spec>": {}}` trap)
+**Flagged ambiguity — one shape, two unrelated objects.** `{"date": {}}` is legal Notion in *both*
+positions and means something different in each. Never let one stand in for the other:
+
+- **Property definition** — a **column declaration**, living in a *data source's* `properties`.
+  `{"date": {}}` says "this column is a date, with empty configuration". Real, canonical and
+  load-bearing: it is what `TypeEngine.get_notion_spec()` returns, what the DDL compiler emits for
+  `CREATE TABLE`, and what the system catalog is built from.
+- **Property value** — a **cell**, living in a *page's* `properties`. Here `{"date": {}}` is
+  **unproducible**: the API rejects it on write with a 400, and clearing the cell through the Notion
+  UI stores and emits `null`. Both measured, 2026-07-29.
+
+**A valueless cell is always `{"<col_spec>": null}`** — that is the only shape "this cell holds no
+value" ever takes on the wire. **Never model an unset cell on a schema object**: an empty *config*
+is not an empty *value*, and the two are told apart by position alone, never by shape.
+
+> **Resolved 2026-07-29.** A page generator modelled an unset date as `{"date": {}}` — the shape of
+> a date *column declaration* — and the raw-cell evaluator then grew a rule (`val == {}` counts as
+> valueless) so it would agree with the generator. Neither was grounded in Notion, so the rule and
+> the fiction are removed together (code landing on `bug/issue-384/notion-does-not-equal`). This is
+> the **third** time a **model** was mistaken for **evidence** in this area; see
+> [[adr-0019-sql-null-semantics-pushdown-soundness]] Corrections.
+
+### Raw cell ⟺ decoded NULL (the decode invariant)
+**A raw cell decodes to Python `None` if and only if the raw-cell evaluator calls it valueless.**
+The two layers stay separate functions — `TypeEngine._is_valueless_cell` takes the *whole cell*,
+`eval3._has_no_value` takes the *inner value* — and this is the contract between them, not a reason
+to merge them.
+
+It is load-bearing because it is **user-observable**: `None` in a decoded `Row` *is* how a user sees
+SQL NULL, and there is no second channel. If the layers disagreed, `WHERE col = x` could drop a row
+as UNKNOWN while `SELECT col` handed the user a value out of that same cell — the same failure class
+as a pushdown-soundness violation, one layer down.
+
+The `is_empty` / `is_null` split above is an *instance* of this invariant, not an exception to it:
+`{"rich_text": []}` and `{"relation": []}` are **present** values (the empty set) on both sides, so
+they decode to `""` and `[]`, not `None`.
+
 ### Three-valued logic — UNKNOWN policy is the caller's
 The evaluator returns **TRUE / FALSE / UNKNOWN**; it must **not** return `bool`, because its two
 callers apply **opposite** (and both SQL-correct) policies to UNKNOWN:
