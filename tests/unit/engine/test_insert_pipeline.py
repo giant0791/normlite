@@ -243,3 +243,41 @@ def test_bulk_insert_with_exec_params_returns_primary_keys_rows(engine: Engine, 
 
     assert not result_insert.returns_rows
     assert len(result_insert.returned_primary_keys_rows) == 2
+
+def test_a_column_given_no_value_round_trips_as_none(engine: Engine, students: Table):
+    """A column explicitly given ``None`` stores a valueless cell and reads back ``None``.
+
+    Notion holds this as ``{"number": null}`` / ``{"date": null}`` -- a property
+    that is present but carries no value -- and returns it on every query. The
+    read half already decodes it (fc6e3af, 22a963d); this is the write half,
+    and together they are what lets a valueless row exist at all.
+
+    ``None`` here is unambiguous rather than a default: INSERT rejects a
+    statement that omits any column outright (``CompileError: Value for column
+    ... not supplied``), so reaching the processor with ``None`` can only mean
+    the caller asked for no value. Today ``bind_processor`` maps it to a bare
+    ``None``, so the payload carries ``"id": null`` in place of a property
+    object and the store rejects the page.
+
+    A number and a date are both exercised because the two types reach the
+    payload through different processors, and a fix to one is invisible to the
+    other.
+    """
+    students.create(bind=engine, checkfirst=True)
+
+    with engine.connect() as connection:
+        connection.execute(
+            insert(students).values(
+                name="Galileo Galilei",
+                id=None,
+                is_active=True,
+                start_on=None,
+                grade="A",
+            )
+        )
+        row = connection.execute(select(students)).first()
+
+    assert row.id is None           # present, holds no value
+    assert row.start_on is None     # present, holds no value
+    assert row.name == "Galileo Galilei"
+    assert row.grade == "A"

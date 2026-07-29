@@ -254,7 +254,8 @@ class Number(TypeEngine):
     def bind_processor(self):
         def process(value: Optional[Union[_NumericType, str]]) -> Optional[dict]:
             if value is None:
-                return None
+                return {self.get_col_spec(): None}
+            
             return {
                 self.get_col_spec(): 
                 float(value) if isinstance(value, Decimal) 
@@ -792,7 +793,7 @@ class Date(TypeEngine):
     def bind_processor(self):
         def process(value: Union[str, date, datetime, DateTimeRange, None]):
             if value is None:
-                return None
+                return {self.get_col_spec(): None}
 
             if isinstance(value, str) and value.startswith(':'):
                 return {self.get_col_spec(): value}
