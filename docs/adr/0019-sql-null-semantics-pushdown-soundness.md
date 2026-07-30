@@ -82,6 +82,36 @@
 > separate functions (`TypeEngine._is_valueless_cell` takes the whole cell, `eval3._has_no_value`
 > takes the inner value); this is their contract, not an argument to merge them.
 
+> **Correction (2026-07-30) — the pushdown-soundness invariant is `⊇`, not equality. The decision
+> stands; the last Consequences bullet does not.**
+>
+> **(11) "If a predicate's Notion-side and client-side evaluations can disagree, it must not be
+> pushable" is too strong, and taken literally it forbids something correct.** Written when the
+> residual was `_Filter` — Notion-semantic on both sides, so equality was free. This ADR itself
+> replaced the residual with `eval3`, which is **SQL** three-valued. The two sides are now
+> deliberately different semantics, so they *will* disagree, and the rule as stated would make
+> `number.does_not_equal` unpushable — a real narrowing, for no gain.
+>
+> **(12) The invariant that actually holds is directional**, because the residual is **always
+> re-applied** and therefore decides the answer:
+> `{rows the pushed filter keeps} ⊇ {rows the residual keeps}`. A row the push keeps and the
+> residual drops is **slack** — safe, paid for in transfer. A row the push *drops* that the residual
+> would have kept is unrecoverable. Only the second is a violation. The revised rule: **a pushable
+> predicate's pushed form must never be *narrower* than its residual form.** Disagreement in the
+> other direction is permitted and expected.
+>
+> **(13) This is now measured, not argued.** With the generator widened to all 36 declared pairs
+> (#381), across 24 000 leaf evaluations: **exactly one** pair diverges — `number.does_not_equal`
+> over `{"number": null}` — in **exactly one** direction (Notion keeps, `eval3` drops), on **exactly
+> one** cell shape, and within that pair divergence holds **iff** the cell is valueless (396 valued
+> cells agree, 104 valueless cells diverge, no exceptions either way). Zero ⊇ violations at leaf or
+> compound level. That is #384, and under the corrected invariant it is slack rather than a defect.
+>
+> **(14) Text does not join it, and the reason is load-bearing.** `title`/`rich_text`
+> `does_not_equal` agree exactly, because `[]` is a **present** value (`4abe0d1`) rather than a
+> valueless cell, so `eval3` reaches its rule and answers TRUE just as Notion does. Correction (9)'s
+> ruling and the complement law arrive at the same place independently.
+
 ---
 
 ## Context
@@ -227,5 +257,8 @@ wrapped verbatim, so the existing suite stays a true oracle; this ADR is slice 2
   column. That is an `Insert`-side constraint concern — a sibling of the deferred NOT-NULL
   constraint under ADR-0012 — not a query-planning one. Partial enforcement already exists at the
   fake-client level (`dml.py:1252`).
-- **Pushdown soundness is now a named invariant** any future pushable operator must satisfy: if a
-  predicate's Notion-side and client-side evaluations can disagree, it **must not be pushable**.
+- **Pushdown soundness is now a named invariant** any future pushable operator must satisfy: a
+  pushable predicate's **pushed form must never be narrower than its residual form**
+  (`pushed ⊇ residual`). Disagreement in the other direction — the push keeping rows the residual
+  then drops — is **slack**, and is permitted. *(Superseded wording: this bullet originally said
+  any disagreement made a predicate unpushable. See Correction (2026-07-30), items (11)–(12).)*

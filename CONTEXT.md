@@ -1026,13 +1026,35 @@ Sort pushability is **positional**: only the *leading run* of left-table ORDER B
 pushable; the first non-left key makes it and everything after it residual.
 
 ### Pushdown soundness (the invariant)
-**Pushing a predicate must never change its answer.** A predicate evaluated Notion-side (pushed)
-and the same predicate evaluated client-side (residual) must agree — otherwise the result depends
-on a Planner decision the user cannot see, which is the worst failure mode in this design.
+**The push may over-keep; it must never under-keep.**
 
-This invariant holds **today**, and not by accident: the pushed filter is Notion-semantic, and the
-residual is evaluated by `_Filter` over **raw Notion cells**, which is *also* Notion-semantic. It
-is load-bearing, and it is the reason the two operators below must stay distinct.
+```
+{rows the pushed filter keeps}  ⊇  {rows the residual keeps}
+```
+
+The residual is **always re-applied** client-side, so it is the residual that decides the answer.
+That is what makes the invariant one-directional:
+
+- A row the push **keeps** and the residual then **drops** is **slack** — safe, and paid for only
+  in transfer. The re-check removes it.
+- A row the push **drops** that the residual would have kept is **gone for good**. Nothing
+  downstream can recover it, and the query silently returns too few rows.
+
+That asymmetry is the whole content of ⊇, and it is why the result must never depend on a Planner
+decision the user cannot see.
+
+**An earlier version of this section claimed the two sides must *agree*, and justified it by saying
+the residual is evaluated by `_Filter` over raw cells, which is "also Notion-semantic". Both halves
+are now wrong.** ADR-0019 replaced `_Filter` with `eval3`, which is **SQL** three-valued over raw
+cells, while the pushed filter stays **Notion**-semantic. They are deliberately not the same
+semantics, so equality was never going to survive: **#384 is exactly where they part.** Notion's
+`does_not_equal` **matches** a valueless cell (measured — its negative operators are the set
+complement of their positive twins), where SQL's `<>` against NULL is UNKNOWN and drops the row.
+Under equality those rows are violations; under ⊇ they are slack, which is what they are.
+
+Slack is the unit both differential instruments report in, and it is no longer hypothetical:
+`number.does_not_equal` over `{"number": null}` is the **first and, as measured, only** leaf-level
+source of it.
 
 ### `is_empty()` vs `is_null()` — the overloaded-emptiness split
 **Flagged ambiguity — "empty" meant two different things.** They are now separate operators and
