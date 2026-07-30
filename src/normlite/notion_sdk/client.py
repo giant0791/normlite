@@ -1745,6 +1745,36 @@ class _Condition(_Expression):
             if operand is None or self.value is None:
                 return False
 
+        elif self.type_name == "number":
+            operand = self.property_obj["number"]
+
+            # A valueless cell -- {"number": null}, the only shape one takes on
+            # the wire -- has no value to compare against, and none of the three
+            # operators allowed on a number matches one: equals, greater_than
+            # and less_than are all positive tests. This mirrors the date arm's
+            # early return above rather than introducing a second rule.
+            #
+            # Guarded here rather than inside the three lambdas so that an
+            # operator added later cannot opt out of it -- the mistake Float
+            # made in type_api.py by overriding past a shared guard. A presence
+            # test (is_empty / is_not_empty) would need its own arm above this
+            # return, exactly as date has one, because those two *do* have an
+            # answer for a valueless cell.
+            #
+            # Measured, not inferred. #384 probed the live API against a data
+            # source holding one {"number": null} row: equals, greater_than and
+            # less_than all EXCLUDE it, which is what 3VL wants and what this
+            # returns.
+            #
+            # does_not_equal is the one that does NOT follow -- live Notion
+            # MATCHES the valueless cell there, treating the operator as the
+            # boolean complement of equals rather than as a three-valued
+            # negation. That is #384 itself. It is absent from _allowed_ops for
+            # number today (#381); when it is added it needs its own arm
+            # returning True here, and it must not inherit this return.
+            if operand is None:
+                return False
+
         else:
             operand = self.property_obj[self.type_name]
 
