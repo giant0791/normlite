@@ -562,3 +562,56 @@ def test_number_is_empty_tests_presence_not_falsiness(cell, is_empty_matches):
 
     assert empty_check.eval() is is_empty_matches
     assert not_empty_check.eval() is not is_empty_matches
+
+
+@pytest.mark.parametrize(
+    'cell, ge_matches, le_matches',
+    [
+        (None, False, False),
+        (0,    True,  True),
+        (42,   True,  False),
+    ],
+    ids=['valueless', 'boundary', 'value'],
+)
+def test_number_inclusive_ordering_includes_the_boundary_and_excludes_a_valueless_cell(
+    cell, ge_matches, le_matches
+):
+    """The inclusive ordering operators match at the literal, and match nothing
+    when there is no value to order.
+
+    The boundary cell carries the first half. ``{"number": 0}`` against the
+    literal ``0`` is where ``greater_than_or_equal_to`` parts company with
+    ``greater_than`` and ``less_than_or_equal_to`` with ``less_than`` -- it is
+    the only cell that distinguishes an inclusive rule from the strict one
+    already registered beside it, so a lambda copied from its strict neighbour
+    fails here and nowhere else.
+
+    The valueless cell carries the second. Measured against the live API
+    (#384, 2026-07-30): both operators are accepted -- they had been assumed
+    unsupported -- and both **exclude** the ``{"number": null}`` row, as
+    ``equals``, ``greater_than`` and ``less_than`` do. Nothing sits above or
+    below a value that is not there, and 3VL wants exactly that.
+
+    So unlike ``does_not_equal`` and the presence tests, these two want the
+    ``operand is None`` early return in ``_Condition.eval`` and should simply
+    inherit it. That is the claim being pinned: the valueless row asserts the
+    two new operators did **not** state an exception, which is only meaningful
+    now that two operators above them do.
+    """
+    page = {
+        'properties': {
+            'effort': {'type': 'number', 'number': cell},
+        }
+    }
+
+    ge_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'greater_than_or_equal_to': 0}},
+    )
+    le_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'less_than_or_equal_to': 0}},
+    )
+
+    assert ge_check.eval() is ge_matches
+    assert le_check.eval() is le_matches

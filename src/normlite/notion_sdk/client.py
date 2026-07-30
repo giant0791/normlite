@@ -1606,7 +1606,7 @@ class _Condition(_Expression):
     _allowed_ops = {
         "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
         "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
-        "number":    {"equals", "does_not_equal", "greater_than", "less_than", "is_empty", "is_not_empty"},
+        "number":    {"equals", "does_not_equal", "greater_than", "less_than", "is_empty", "is_not_empty", "greater_than_or_equal_to", "less_than_or_equal_to"},
         "date":      {"after", "before", "equals", "does_not_equal", "is_empty", "is_not_empty"},
         "checkbox":  {"equals", "does_not_equal"},
         "relation":  {"contains", "does_not_contain", "is_empty", "is_not_empty"},
@@ -1654,6 +1654,8 @@ class _Condition(_Expression):
         "number.does_not_equal":        lambda a, b: a != b,
         "number.is_empty":              lambda a, _: a is None,
         "number.is_not_empty":          lambda a, _: a is not None,
+        "number.greater_than_or_equal_to": lambda a, b: a >= b,
+        "number.less_than_or_equal_to": lambda a, b: a <= b,  
 
         # checkbox
         "checkbox.equals":              lambda a, b: a is b,
