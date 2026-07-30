@@ -605,15 +605,67 @@ CREATE_CASES = [
     ),
 ]
 
+# Text is the one type whose EMPTY shapes no filter can reach: is_empty needs a
+# blank cell to match, and the data source has none, so every negative text
+# operator's behaviour over an absent value is currently inference. That
+# includes one already load-bearing in production -- rich_text.does_not_contain
+# returns True on EMPTY_TEXT (client.py:1637) and nobody measured it.
+#
+# Three spellings, because CONTEXT.md's "Three value shapes (do not conflate)"
+# says they are three and the fake client already treats two of them
+# differently: [] decodes to the EMPTY_TEXT sentinel, [{"text":{"content":""}}]
+# decodes to "". Whether Notion agrees they differ is the question.
+TITLE_CREATE_CASES = [
+    (
+        "title empty-array",
+        {"title": []},
+        "the sentinel shape. _Filter decodes this to EMPTY_TEXT and branches on "
+        "it by identity (client.py:1633-1639).",
+    ),
+    (
+        "title blank-content",
+        {"title": [{"text": {"content": ""}}]},
+        "what String.bind_processor emits for \"\". _Filter decodes it to \"\" "
+        "-- a DIFFERENT branch from the one above (d9fc94e, 32e53a3).",
+    ),
+    (
+        "title omitted",
+        NO_PROPERTY,
+        "the rival spelling. For number, omission and explicit null stored "
+        "IDENTICALLY; whether text collapses the same way is unmeasured.",
+    ),
+    (
+        "title null",
+        {"title": None},
+        "CONTROL. If a bare null is accepted for a title the endpoint is not "
+        "validating text shapes, and the 200s above are weak evidence.",
+    ),
+]
+
+# Blank-title pages are untitled, so unlike the number probe they cannot be
+# found by name in the Notion UI. Every one gets this in the number property so
+# a leftover row is still identifiable and deletable.
+TITLE_PROBE_MARKER = 384
+
 
 def cmd_create(argv: list[str]) -> None:
     if "--i-mean-it" not in argv:
         sys.exit(
             "create WRITES to the Notion data source -- it is the only command here\n"
-            "that does. It creates up to 3 pages titled 'probe: ...' to measure which\n"
-            "spellings of an empty number cell POST /v1/pages accepts.\n\n"
+            "that does.\n\n"
+            "  create --i-mean-it              up to 3 pages titled 'probe: ...',\n"
+            "                                  measuring which spellings of an empty\n"
+            "                                  NUMBER cell POST /v1/pages accepts\n"
+            "  create blank-title --i-mean-it  up to 4 pages with NO title, measuring\n"
+            "                                  the same for an empty TEXT cell. They\n"
+            "                                  are untitled by construction, so each\n"
+            "                                  carries effort=384 to stay findable\n\n"
             "Re-run with --i-mean-it if that is what you want."
         )
+
+    if "blank-title" in argv:
+        _create_blank_titles()
+        return
 
     schema = _schema()
     title_prop = _pick(schema, "title")
@@ -697,6 +749,94 @@ def cmd_create(argv: list[str]) -> None:
         )
     print("\n  Pages titled 'probe: ...' were created. Delete the ones you do not want;\n"
           "  keeping 'probe: number null' fills the missing empty-number control (#384).")
+
+
+def _create_blank_titles() -> None:
+    schema = _schema()
+    title_prop = _pick(schema, "title")
+    number_prop = _pick(schema, "number")
+    if title_prop is None or number_prop is None:
+        sys.exit(
+            f"need a title property to blank and a number property to mark with; "
+            f"found title={title_prop!r} number={number_prop!r}"
+        )
+
+    print(f"data source {_dsid()}")
+    print(f"title property {title_prop!r}, marker {number_prop}={TITLE_PROBE_MARKER}\n")
+
+    results = []
+    for label, value, why in TITLE_CREATE_CASES:
+        props = {number_prop: {"number": TITLE_PROBE_MARKER}}
+        if value is not NO_PROPERTY:
+            props[title_prop] = value
+
+        status, payload = _request(
+            "POST",
+            "/pages",
+            {
+                "parent": {"type": "data_source_id", "data_source_id": _dsid()},
+                "properties": props,
+            },
+        )
+
+        sent = "(property omitted)" if value is NO_PROPERTY else json.dumps(value)
+        print(f"{label:20} POST {sent}")
+        print(f"{'':20}   {why}")
+
+        if status != 200:
+            code = payload.get("code", "?")
+            msg = (payload.get("message") or "")[:200]
+            print(f"{'':20}   -> HTTP {status}  {code}: {msg}\n")
+            results.append((label, status, code, None))
+            continue
+
+        page_id = payload["id"]
+        # Separate GET, for the reason the number probe does it: the POST
+        # response can echo the request rather than report what was stored, and
+        # here the three spellings are meant to be told apart by what comes back.
+        readback = _call("GET", f"/pages/{page_id}")
+        shape = _classify_text(readback["properties"], title_prop, "title")
+        raw = readback["properties"].get(title_prop, {}).get("title")
+        print(f"{'':20}   -> HTTP 200  {page_id}")
+        print(f"{'':20}      reads back as {shape} (raw {json.dumps(raw)})\n")
+        results.append((label, status, None, shape))
+
+    print("-" * 72)
+    for label, status, code, shape in results:
+        verdict = (
+            f"ACCEPTED, stored as {shape}" if status == 200 else f"REJECTED {status} {code}"
+        )
+        print(f"  {label:20} {verdict}")
+
+    accepted = {label: shape for label, status, _, shape in results if status == 200}
+    print()
+    if "title null" in accepted:
+        print(
+            "  WEAK EVIDENCE. The control was accepted, so this endpoint does not\n"
+            "  validate title value shapes and the 200s above confirm little. Judge\n"
+            "  by the read-back shapes, not the status codes."
+        )
+    distinct = {s for s in accepted.values() if s is not None}
+    if len(distinct) == 1 and len(accepted) > 1:
+        print(
+            f"  All accepted spellings read back IDENTICALLY as {distinct.pop()}, so\n"
+            "  Notion does not preserve the distinction the fake client branches on.\n"
+            "  EMPTY_TEXT vs \"\" would then be a distinction only normlite makes."
+        )
+    elif len(distinct) > 1:
+        print(
+            "  The spellings read back DIFFERENTLY, so the distinction survives the\n"
+            "  round trip and _Filter is right to branch on it. Which branch is\n"
+            "  correct is still a question for `query`, not for this command.\n"
+            f"  shapes: {sorted(distinct)}"
+        )
+
+    print(
+        f"\n  These pages have NO title. Find them by {number_prop}={TITLE_PROBE_MARKER}.\n"
+        "  Keep ONE to serve as the blank-text control that this data source has\n"
+        "  never had; delete the rest. Then re-run `pages` and `query` -- the title\n"
+        "  table will finally have an empty column to report against."
+    )
 
 
 def _text_literal(prop: str, inventory: dict) -> str | None:
