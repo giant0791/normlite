@@ -1606,7 +1606,7 @@ class _Condition(_Expression):
     _allowed_ops = {
         "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
         "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
-        "number":    {"equals", "does_not_equal", "greater_than", "less_than"},
+        "number":    {"equals", "does_not_equal", "greater_than", "less_than", "is_empty", "is_not_empty"},
         "date":      {"after", "before", "equals", "does_not_equal", "is_empty", "is_not_empty"},
         "checkbox":  {"equals", "does_not_equal"},
         "relation":  {"contains", "does_not_contain", "is_empty", "is_not_empty"},
@@ -1652,6 +1652,8 @@ class _Condition(_Expression):
         "number.greater_than":          lambda a, b: a > b,
         "number.less_than":             lambda a, b: a < b,
         "number.does_not_equal":        lambda a, b: a != b,
+        "number.is_empty":              lambda a, _: a is None,
+        "number.is_not_empty":          lambda a, _: a is not None,
 
         # checkbox
         "checkbox.equals":              lambda a, b: a is b,
@@ -1749,6 +1751,10 @@ class _Condition(_Expression):
         elif self.type_name == "number":
             operand = self.property_obj["number"]
 
+            # unary operators
+            if self.op in ("is_empty", "is_not_empty"):
+                return func(operand, None)
+
             # A valueless cell -- {"number": null}, the only shape one takes on
             # the wire -- is answered twice below, and which answer applies
             # depends on the operator rather than on the value.
@@ -1778,12 +1784,12 @@ class _Condition(_Expression):
             #
             # Guarded here rather than inside the lambdas so that an operator
             # added later cannot opt out of it -- the mistake Float made in
-            # type_api.py by overriding past a shared guard. does_not_equal is
-            # precisely such an operator, which is why its arm names itself
-            # above instead of silently inheriting this one. The presence tests
-            # (is_empty / is_not_empty) will need the same treatment when #381
-            # allows them, exactly as date already has one, because those two
-            # *do* have an answer for a valueless cell.
+            # type_api.py by overriding past a shared guard. Opting out is a
+            # decision each operator has to state for itself, and two above
+            # already do: does_not_equal names itself, and the presence tests
+            # are dispatched before this point entirely, because is_empty and
+            # is_not_empty *do* have an answer for a valueless cell and
+            # inheriting this return would invert the first of them.
             if operand is None:
                 return False
 

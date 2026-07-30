@@ -509,3 +509,56 @@ def test_number_does_not_equal_is_the_exact_complement_of_equals(
 
     assert equals_check.eval() is equals_matches
     assert does_not_equal_check.eval() is does_not_equal_matches
+
+
+@pytest.mark.parametrize(
+    'cell, is_empty_matches',
+    [
+        (None, True),
+        (0,    False),
+        (42,   False),
+    ],
+    ids=['valueless', 'zero', 'value'],
+)
+def test_number_is_empty_tests_presence_not_falsiness(cell, is_empty_matches):
+    """``is_empty`` on a number asks whether the cell holds a value, not whether
+    that value is falsy.
+
+    ``{"number": 0}`` is the case that separates the two readings, and it is
+    measured rather than argued: probing the live API against a data source
+    holding one, ``is_empty`` does **not** match it and ``is_not_empty`` does
+    (#384, and ``125aadd`` before it). Zero is a value. Spelling the check as
+    falsiness -- ``not a`` -- would answer True there and quietly turn every
+    zero in the table into a NULL.
+
+    That mistake has been made in this codebase before, which is why the zero
+    row is in the parametrization rather than left to the valueless row to
+    imply. ``is_not_empty`` is asserted alongside as the exact complement, for
+    the same reason ``reference_eval`` spells its own branch term-for-term
+    (``evaluator.py:141``).
+
+    Both operators are absent from ``_allowed_ops["number"]`` today (#381), so
+    this first fails by ``ValueError``. When allowed, they need an arm **above**
+    the ``operand is None`` early return in ``_Condition.eval``, exactly as
+    ``date`` already has one: a presence test *does* have an answer for a
+    valueless cell, so inheriting that return would make ``is_empty`` say False
+    of the one cell that is empty -- inverting the operator ADR-0019 builds the
+    pushdown-soundness invariant around, and the operator #381 was filed for.
+    """
+    page = {
+        'properties': {
+            'effort': {'type': 'number', 'number': cell},
+        }
+    }
+
+    empty_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'is_empty': True}},
+    )
+    not_empty_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'is_not_empty': True}},
+    )
+
+    assert empty_check.eval() is is_empty_matches
+    assert not_empty_check.eval() is not is_empty_matches
