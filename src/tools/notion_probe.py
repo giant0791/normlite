@@ -109,6 +109,7 @@ import time
 import urllib.error
 import urllib.request
 from collections import defaultdict
+from functools import partial
 from pathlib import Path
 
 API = "https://api.notion.com/v1"
@@ -319,7 +320,14 @@ def _drain(body: dict) -> list[dict]:
 
 
 # type -> (classifier, raw-cell key)
+#
+# title reuses the rich_text classifier, but only through a partial: the call
+# site passes (props, prop) and nothing else, so a bare _classify_text
+# registered here would read props[prop]["rich_text"] off a title cell, find
+# nothing, and report every title as "null". The two types differ by the key
+# their content hides behind and by nothing else.
 CLASSIFIERS = {
+    "title": (partial(_classify_text, typ="title"), "title"),
     "rich_text": (_classify_text, "rich_text"),
     "number": (_classify_number, "number"),
     "date": (_classify_date, "date"),
@@ -379,16 +387,37 @@ def cmd_pages() -> None:
 # declares in `supported_ops`, including the ones the fake client refuses -- which
 # is the question #381 asks and could not answer locally.
 
-TEXT_FILTERS = [
-    ("is_empty", True),
-    ("is_not_empty", True),
-    ("equals", ""),
-    ("does_not_equal", ""),
-    ("contains", ""),
-    ("does_not_contain", ""),
-    ("starts_with", ""),
-    ("ends_with", ""),
-]
+def text_filters(literal: str) -> list:
+    """Text operators probed twice: against ``""`` and against a real literal.
+
+    The empty-string half is what the first run used throughout, and it
+    measured nothing -- Notion discards an empty-string literal, so a filter
+    and its complement both returned every row and the CONDITION IGNORED guard
+    fired. That is #382, and it is why ``does_not_equal`` on text was recorded
+    as *accepted* (200) with its semantics still unknown.
+
+    Keeping both halves in one table is the point. A row that is ignored with
+    ``""`` and answered with a real literal shows the discard is a property of
+    the *literal*, not of the operator -- which is the reading #382 needs and
+    could not get from a table where every text row was ignored.
+
+    The literal is drawn from the data source at run time rather than hardcoded,
+    so ``equals`` is guaranteed a row to match and the ``equals`` /
+    ``does_not_equal`` partition is observable, the way literal ``0`` made it
+    observable for number.
+    """
+    return [
+        ("is_empty", True),
+        ("is_not_empty", True),
+        ("equals", ""),
+        ("does_not_equal", ""),
+        ("equals", literal),
+        ("does_not_equal", literal),
+        ("contains", literal),
+        ("does_not_contain", literal),
+        ("starts_with", literal),
+        ("ends_with", literal),
+    ]
 
 NUMBER_FILTERS = [
     ("is_empty", True),
@@ -423,8 +452,11 @@ RELATION_FILTERS = [
     ("does_not_contain", NO_SUCH_PAGE),
 ]
 
+# A list is a fixed matrix; a callable needs a literal drawn from the data
+# source and is resolved in cmd_query.
 FILTERS = {
-    "rich_text": TEXT_FILTERS,
+    "title": text_filters,
+    "rich_text": text_filters,
     "number": NUMBER_FILTERS,
     "date": DATE_FILTERS,
     "relation": RELATION_FILTERS,
@@ -464,8 +496,14 @@ def _run(prop: str, typ: str, filters: list, shape_key: str, inventory: dict) ->
     all_ids = set(inventory)
     matched: dict[str, set[str]] = {}
     rejected: dict[str, str] = {}
+    # label -> the literal it was sent with. Kept explicitly because a rejected
+    # filter never enters `matched`, so pairing the two by position drifts by
+    # one from the first rejection onward -- which happens on every date run,
+    # where does_not_equal is refused (#383).
+    literals: dict[str, object] = {}
     for op, value in filters:
         label = f"{op}({value!r})"
+        literals[label] = value
         status, payload = _request(
             "POST",
             f"/data_sources/{_dsid()}/query",
@@ -500,8 +538,8 @@ def _run(prop: str, typ: str, filters: list, shape_key: str, inventory: dict) ->
     print("-" * len(head))
     ambiguous = {
         label
-        for (op, value), label in zip(filters, matched)
-        if value == "" and label not in noop and matched[label] == all_ids
+        for label in matched
+        if literals[label] == "" and label not in noop and matched[label] == all_ids
     }
 
     for label, hit in matched.items():
@@ -661,6 +699,22 @@ def cmd_create(argv: list[str]) -> None:
           "  keeping 'probe: number null' fills the missing empty-number control (#384).")
 
 
+def _text_literal(prop: str, inventory: dict) -> str | None:
+    """A text value that really is in the data source, for `equals` to match.
+
+    Drawn from the inventory rather than hardcoded so the run cannot silently
+    degrade into the #382 case: a literal no row holds makes `equals` match
+    nothing and `does_not_equal` match everything, which is the same table an
+    ignored condition produces and is not distinguishable from it.
+    """
+    for entry in inventory.values():
+        cell = entry.get(f"raw:{prop}") or []
+        content = cell[0].get("text", {}).get("content") if cell else None
+        if content:
+            return content
+    return None
+
+
 def cmd_query() -> None:
     if not INVENTORY.exists():
         sys.exit(f"run `pages` first to build {INVENTORY}")
@@ -669,7 +723,17 @@ def cmd_query() -> None:
 
     for typ, names in data["probed"].items():
         for prop in names:
-            _run(prop, typ, FILTERS[typ], f"shape:{prop}", inventory)
+            filters = FILTERS[typ]
+            if callable(filters):
+                literal = _text_literal(prop, inventory)
+                if literal is None:
+                    print(
+                        f"\n{typ} property {prop!r}: every cell is blank or absent, so "
+                        "there is no literal to draw -- skipped"
+                    )
+                    continue
+                filters = filters(literal)
+            _run(prop, typ, filters, f"shape:{prop}", inventory)
 
 
 if __name__ == "__main__":
