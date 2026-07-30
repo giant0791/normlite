@@ -167,7 +167,51 @@ class ReferenceGenerator:
             "properties": properties
         }
 
+    _VALUELESS_KEY = {
+        "number": "number",
+        "number_with_commas": "number",
+        "dollar": "number",
+        "date": "date",
+    }
+    """The wire key of every type that can carry a *valueless* cell.
+
+    Text and relation are absent on purpose. Their empty shape is ``[]``, a
+    **present** value -- the empty set -- not the absence of one, and reading
+    it as NULL inverts the very bug this generator feeds (``4abe0d1``).
+    Checkbox is absent because Notion always stores one of the two booleans.
+    """
+
     def _gen_property_value(self, typ: str) -> dict:
+        """Emit one raw cell for ``typ``.
+
+        A valueless cell is always ``{"<col_spec>": null}`` -- that is the only
+        shape it takes on the wire. Both halves were measured 2026-07-29: the
+        API **rejects** ``{"date": {}}`` on ``POST /v1/pages`` with a 400, and
+        clearing a cell through the Notion UI -- the more permissive path --
+        stores and emits ``null``.
+
+        This generator is where the fiction came from. It used to model an
+        unset date as ``{"date": {}}``, which is the shape of a *column
+        declaration*, not of a cell; ``eval3._has_no_value`` then grew an
+        ``== {}`` arm so it would agree with this file. A model was read as
+        evidence. **Never model a cell on a schema object** -- an empty
+        *config* is not an empty *value*. See ADR-0019 Correction (6)-(10).
+
+        ``number`` had no unset arm at all until now, which is why nothing ever
+        exercised the real shape and why the pushdown fuzz measured zero leaf
+        slack: every UNKNOWN leaf needs a valueless cell, and none was
+        constructible. Note the asymmetry in the evidence -- ``{"date": null}``
+        was read back live from the probe data source, while ``{"number":
+        null}`` is inferred from it, since the probe still has no empty-number
+        control.
+        """
+        if typ in self._VALUELESS_KEY and self.rng.random() < 0.2:
+            key = self._VALUELESS_KEY[typ]
+            return {
+                "type": key,
+                key: None,
+            }
+
         if typ in ("title", "rich_text"):
             return {
                 "type": typ,
@@ -204,12 +248,6 @@ class ReferenceGenerator:
             }
 
         if typ == "date":
-            if self.rng.random() < 0.2:
-                return {
-                    "type": "date",
-                    "date": {}
-                }
-
             return {
                 "type": "date",
                 "date": {

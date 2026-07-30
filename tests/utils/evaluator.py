@@ -125,17 +125,24 @@ def reference_eval(page: dict, filt: dict) -> bool:
         return isinstance(page_val, str) and page_val.startswith(val)
     if op == "ends_with":
         return isinstance(page_val, str) and page_val.endswith(val)
+    # A valueless number cell -- ``{"number": null}``, the only shape one takes
+    # on the wire -- has no end to order against, so nothing sits above or
+    # below it. This is the date arm's early return (line 78) applied to the
+    # other ordered type rather than a second rule, and it is spelled inline
+    # for the same reason ``starts_with`` is: these are the only branches that
+    # reach for an operation the absent value cannot answer. ``equals`` needs
+    # no guard -- ``None == val`` is already False, and False is the answer.
     if op == "greater_than":
-        return page_val > val
+        return page_val is not None and page_val > val
     if op == "less_than":
-        return page_val < val
+        return page_val is not None and page_val < val
     if op == "is_empty":
-        return page_val in ("", None, [], {})
+        return page_val in ("", None, [])
     # Term for term the negation of the branch above, and written that way on
     # purpose: the pair must not be able to drift apart when either side is
     # extended. Spelling this one independently is exactly what once let eval3
     # answer True to both on a blank text cell (32e53a3).
     if op == "is_not_empty":
-        return page_val not in ("", None, [], {})
+        return page_val not in ("", None, [])
 
     raise ValueError(f"Unsupported operator: {op}")
