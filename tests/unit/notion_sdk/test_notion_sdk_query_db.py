@@ -448,3 +448,64 @@ def test_is_empty_on_a_blank_text_cell_is_true(prop_type):
 
     assert empty_check.eval()
     assert not not_empty_check.eval()
+
+
+@pytest.mark.parametrize(
+    'cell, equals_matches, does_not_equal_matches',
+    [
+        (None, False, True),
+        (0,    True,  False),
+        (42,   False, True),
+    ],
+    ids=['valueless', 'zero', 'value'],
+)
+def test_number_does_not_equal_is_the_exact_complement_of_equals(
+    cell, equals_matches, does_not_equal_matches
+):
+    """Notion's ``number.does_not_equal`` is the boolean complement of ``equals``.
+
+    Measured against the real API (#384, 2026-07-30) over a data source holding
+    a ``{"number": null}`` row, a ``{"number": 0}`` row and valued rows, with
+    the literal ``0``: ``equals`` and ``does_not_equal`` **partition** every
+    row -- disjoint and exhaustive, with no row falling outside both. That is
+    the sharpest statement of the divergence #384 is about: Notion's negation
+    leaves no room for a third truth value, where SQL's ``<>`` against NULL is
+    UNKNOWN and puts the valueless row in *neither* set.
+
+    The valueless case is the one that carries the claim, and the other two are
+    here so it cannot be satisfied by an arm that simply always answers True.
+    The pair is pinned in one test rather than two for the reason
+    ``reference_eval`` spells its ``is_not_empty`` branch term-for-term against
+    ``is_empty`` (``evaluator.py:141``): a complement asserted separately is a
+    complement free to drift.
+
+    ``does_not_equal`` is absent from ``_allowed_ops["number"]`` today (#381),
+    so this first fails by ``ValueError`` rather than by a wrong answer. Once
+    allowed, the valueless row is what forces the new rule to sit **above** the
+    ``operand is None`` early return in ``_Condition.eval`` -- the guard added
+    in ``0280fde`` is correct for ``equals``, ``greater_than`` and
+    ``less_than``, all of which the API measured as *excluding* the valueless
+    cell, and inheriting it here would answer False where Notion answers True.
+    That comment at ``client.py:1769`` was written for this test.
+
+    This is what makes #384's leaf divergence reachable by a local instrument
+    at all: date can never be the vehicle, because the API rejects
+    ``date.does_not_equal`` outright with a 400 (#383).
+    """
+    page = {
+        'properties': {
+            'effort': {'type': 'number', 'number': cell},
+        }
+    }
+
+    equals_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'equals': 0}},
+    )
+    does_not_equal_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'does_not_equal': 0}},
+    )
+
+    assert equals_check.eval() is equals_matches
+    assert does_not_equal_check.eval() is does_not_equal_matches

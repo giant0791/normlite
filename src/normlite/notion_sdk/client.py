@@ -1606,7 +1606,7 @@ class _Condition(_Expression):
     _allowed_ops = {
         "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
         "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
-        "number":    {"equals", "greater_than", "less_than"},
+        "number":    {"equals", "does_not_equal", "greater_than", "less_than"},
         "date":      {"after", "before", "equals", "does_not_equal", "is_empty", "is_not_empty"},
         "checkbox":  {"equals", "does_not_equal"},
         "relation":  {"contains", "does_not_contain", "is_empty", "is_not_empty"},
@@ -1651,6 +1651,7 @@ class _Condition(_Expression):
         "number.equals":                lambda a, b: a == b,
         "number.greater_than":          lambda a, b: a > b,
         "number.less_than":             lambda a, b: a < b,
+        "number.does_not_equal":        lambda a, b: a != b,
 
         # checkbox
         "checkbox.equals":              lambda a, b: a is b,
@@ -1749,29 +1750,40 @@ class _Condition(_Expression):
             operand = self.property_obj["number"]
 
             # A valueless cell -- {"number": null}, the only shape one takes on
-            # the wire -- has no value to compare against, and none of the three
-            # operators allowed on a number matches one: equals, greater_than
-            # and less_than are all positive tests. This mirrors the date arm's
-            # early return above rather than introducing a second rule.
+            # the wire -- is answered twice below, and which answer applies
+            # depends on the operator rather than on the value.
             #
-            # Guarded here rather than inside the three lambdas so that an
-            # operator added later cannot opt out of it -- the mistake Float
-            # made in type_api.py by overriding past a shared guard. A presence
-            # test (is_empty / is_not_empty) would need its own arm above this
-            # return, exactly as date has one, because those two *do* have an
-            # answer for a valueless cell.
-            #
-            # Measured, not inferred. #384 probed the live API against a data
-            # source holding one {"number": null} row: equals, greater_than and
-            # less_than all EXCLUDE it, which is what 3VL wants and what this
-            # returns.
-            #
-            # does_not_equal is the one that does NOT follow -- live Notion
-            # MATCHES the valueless cell there, treating the operator as the
+            # does_not_equal MATCHES it. Live Notion treats that operator as the
             # boolean complement of equals rather than as a three-valued
-            # negation. That is #384 itself. It is absent from _allowed_ops for
-            # number today (#381); when it is added it needs its own arm
-            # returning True here, and it must not inherit this return.
+            # negation. Measured, not inferred: #384 probed the live API against
+            # a data source holding a {"number": null} row, a {"number": 0} row
+            # and four valued rows, and equals / does_not_equal partition all
+            # seven -- disjoint and exhaustive, no row falling outside both, so
+            # there is no room for a third truth value. SQL's <> against NULL is
+            # UNKNOWN and drops the row, putting it in neither set. That gap is
+            # #384. eval3 keeps the SQL answer and is not changed to match; the
+            # two evaluators disagreeing here is deliberate.
+            #
+            # Stated above the return below rather than as a lambda in _op_map,
+            # because that return fires before _op_map is ever consulted.
+            if self.op == "does_not_equal" and operand is None:
+                return True
+
+            # Every other operator allowed on a number EXCLUDES the valueless
+            # cell: equals, greater_than and less_than are positive tests with
+            # nothing to compare against, and the same probe measured all three
+            # excluding it, which is what 3VL wants and what this returns. This
+            # mirrors the date arm's early return above rather than introducing
+            # a second rule.
+            #
+            # Guarded here rather than inside the lambdas so that an operator
+            # added later cannot opt out of it -- the mistake Float made in
+            # type_api.py by overriding past a shared guard. does_not_equal is
+            # precisely such an operator, which is why its arm names itself
+            # above instead of silently inheriting this one. The presence tests
+            # (is_empty / is_not_empty) will need the same treatment when #381
+            # allows them, exactly as date already has one, because those two
+            # *do* have an answer for a valueless cell.
             if operand is None:
                 return False
 
