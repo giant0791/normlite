@@ -30,10 +30,12 @@ while two real defects sat inside it, and ADR-0019's motivating example turned
 out to be factually wrong about ``is_empty``. See #382 for what the first run
 found.
 
-Read-only. Every request is a ``GET`` on the data source or a ``POST`` to its
-``/query`` endpoint; nothing here creates, updates or deletes. Needs network and
-credentials, so it must never run in CI and must never be imported by
-``tests/unit`` (``testpaths`` already excludes ``src/tools/``).
+Read-only **except for one explicitly gated command**. ``schema``, ``pages`` and
+``query`` only ``GET`` the data source or ``POST`` to its ``/query`` endpoint;
+they never create, update or delete. ``create`` does write, and refuses to run
+without ``--i-mean-it`` -- see its section below. Needs network and credentials,
+so it must never run in CI and must never be imported by ``tests/unit``
+(``testpaths`` already excludes ``src/tools/``).
 
 Credentials
 -----------
@@ -55,9 +57,37 @@ Usage
     uv run python src/tools/notion_probe.py pages    # inventory + classify every cell shape
     uv run python src/tools/notion_probe.py query    # which shapes does each filter select?
 
+    uv run python src/tools/notion_probe.py create --i-mean-it   # WRITES. see below
+
 ``pages`` writes an inventory to a temp directory (``NOTION_PROBE_OUT`` to
 override) which ``query`` reads back, so results group by *cell shape* rather
 than by page.
+
+The ``create`` command -- the one writer
+----------------------------------------
+It answers one question the other three structurally cannot: **which wire
+spellings of "this number cell has no value" does ``POST /v1/pages`` accept?**
+That cannot be read off an existing row, because a stored cell says nothing
+about which request shapes were legal on the way in.
+
+It matters because normlite emits ``{"number": null}`` on the write path
+(``f27b338``) and that had only ever been validated against the *fake* client --
+a model, and one that structurally cannot represent the rival spelling
+(omitting the property), since ``client.py:862`` requires the page's properties
+to match the schema's exactly. So the local suite can never catch this class of
+error in either direction. The adjacent datum cuts against assuming it is fine:
+``{"date": {}}`` is a **measured 400** on this same endpoint, so it does
+validate property value shapes rather than accepting anything.
+
+Three cases per run, and the third is a control: without it, a 200 on
+``{"number": null}`` might only mean numbers are not validated at all. Each
+created page is read back with a separate ``GET``, because the POST response
+could be echoing the request rather than reporting what was stored.
+
+Every page it creates is titled ``probe: ...`` and its id is printed, so the
+rows can be found and deleted. Leaving the ``null`` one **is useful** -- the
+data source still lacks an empty-number control (#384).
+
 
 Preparing a data source
 -----------------------
@@ -507,6 +537,130 @@ def _run(prop: str, typ: str, filters: list, shape_key: str, inventory: dict) ->
         )
 
 
+# ---------------------------------------------------------------------------
+# The one writer. Everything above this line only reads.
+# ---------------------------------------------------------------------------
+
+# Each case is the *inner* property-value object POSTed for the number
+# property, or NO_PROPERTY to leave the property out of the request entirely.
+# The label becomes the page title, so a leftover row is identifiable in Notion.
+NO_PROPERTY = object()
+
+CREATE_CASES = [
+    (
+        "number null",
+        {"number": None},
+        "what normlite emits today (f27b338). THE question.",
+    ),
+    (
+        "number omitted",
+        NO_PROPERTY,
+        "the rival spelling; normlite cannot express it (INSERT rejects "
+        "omission) and the fake client cannot represent it (client.py:862).",
+    ),
+    (
+        "number empty-map",
+        {"number": {}},
+        "CONTROL. The analogue of the measured {\"date\": {}} 400. If this is "
+        "accepted too, the endpoint does not validate number shapes and a 200 "
+        "above is weak evidence.",
+    ),
+]
+
+
+def cmd_create(argv: list[str]) -> None:
+    if "--i-mean-it" not in argv:
+        sys.exit(
+            "create WRITES to the Notion data source -- it is the only command here\n"
+            "that does. It creates up to 3 pages titled 'probe: ...' to measure which\n"
+            "spellings of an empty number cell POST /v1/pages accepts.\n\n"
+            "Re-run with --i-mean-it if that is what you want."
+        )
+
+    schema = _schema()
+    title_prop = _pick(schema, "title")
+    number_prop = _pick(schema, "number")
+    if title_prop is None or number_prop is None:
+        sys.exit(
+            f"need a title and a number property; found title={title_prop!r} "
+            f"number={number_prop!r}"
+        )
+
+    print(f"data source {_dsid()}")
+    print(f"title property {title_prop!r}, number property {number_prop!r}\n")
+
+    results = []
+    for label, value, why in CREATE_CASES:
+        props = {
+            title_prop: {"title": [{"text": {"content": f"probe: {label}"}}]},
+        }
+        if value is not NO_PROPERTY:
+            props[number_prop] = value
+
+        body = {
+            "parent": {"type": "data_source_id", "data_source_id": _dsid()},
+            "properties": props,
+        }
+        status, payload = _request("POST", "/pages", body)
+
+        sent = "(property omitted)" if value is NO_PROPERTY else json.dumps(value)
+        print(f"{label:18} POST {sent}")
+        print(f"{'':18}   {why}")
+
+        if status != 200:
+            code = payload.get("code", "?")
+            msg = (payload.get("message") or "")[:200]
+            print(f"{'':18}   -> HTTP {status}  {code}: {msg}\n")
+            results.append((label, status, code, None))
+            continue
+
+        page_id = payload["id"]
+        # Read it back with a separate GET: the POST response could be echoing
+        # the request rather than reporting what Notion actually stored, and
+        # that difference is the entire point of asking the API instead of a
+        # model.
+        readback = _call("GET", f"/pages/{page_id}")
+        shape = _classify_number(readback["properties"], number_prop)
+        raw = readback["properties"].get(number_prop, {}).get("number")
+        print(f"{'':18}   -> HTTP 200  {page_id}")
+        print(f"{'':18}      reads back as {shape} (raw {json.dumps(raw)})\n")
+        results.append((label, status, None, shape))
+
+    print("-" * 72)
+    for label, status, code, shape in results:
+        verdict = f"ACCEPTED, stored as {shape}" if status == 200 else f"REJECTED {status} {code}"
+        print(f"  {label:18} {verdict}")
+
+    accepted = {label: shape for label, status, _, shape in results if status == 200}
+    print()
+    if "number null" not in accepted:
+        print(
+            "  f27b338 IS A WRITE-PATH BUG. normlite emits a shape the API refuses.\n"
+            "  The fix is not a one-liner: omitting the property breaks both\n"
+            "  client.py:862's exact-match invariant and normlite's 'INSERT rejects\n"
+            "  omission' rule."
+        )
+    elif "number empty-map" in accepted:
+        print(
+            "  WEAK EVIDENCE. The control was accepted too, so this endpoint does not\n"
+            "  validate number value shapes and a 200 on null does not confirm much.\n"
+            "  Judge f27b338 on the read-back shapes above, not on the status codes."
+        )
+    else:
+        print(
+            "  f27b338 CONFIRMED. The null spelling is accepted, and the control shows\n"
+            "  the endpoint does validate number shapes rather than accepting anything."
+        )
+    omitted_shape = accepted.get("number omitted")
+    if omitted_shape is not None and omitted_shape == accepted.get("number null"):
+        print(
+            "  Note: omission and explicit null read back IDENTICALLY, so the two\n"
+            "  spellings are indistinguishable once stored."
+        )
+    print("\n  Pages titled 'probe: ...' were created. Delete the ones you do not want;\n"
+          "  keeping 'probe: number null' fills the missing empty-number control (#384).")
+
+
 def cmd_query() -> None:
     if not INVENTORY.exists():
         sys.exit(f"run `pages` first to build {INVENTORY}")
@@ -520,8 +674,12 @@ def cmd_query() -> None:
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "schema"
-    try:
-        handler = {"schema": cmd_schema, "pages": cmd_pages, "query": cmd_query}[cmd]
-    except KeyError:
-        sys.exit(f"unknown command {cmd!r}; expected schema | pages | query")
-    handler()
+    if cmd == "create":
+        # dispatched separately, and last: it is the only command that writes
+        cmd_create(sys.argv[2:])
+    else:
+        try:
+            handler = {"schema": cmd_schema, "pages": cmd_pages, "query": cmd_query}[cmd]
+        except KeyError:
+            sys.exit(f"unknown command {cmd!r}; expected schema | pages | query | create")
+        handler()
