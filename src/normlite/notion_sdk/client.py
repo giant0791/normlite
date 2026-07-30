@@ -1604,8 +1604,8 @@ EMPTY_CHECKBOX = _EmptyType()
 
 class _Condition(_Expression):
     _allowed_ops = {
-        "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
-        "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
+        "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals", "does_not_equal"},
+        "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals", "does_not_equal"},
         "number":    {"equals", "does_not_equal", "greater_than", "less_than", "is_empty", "is_not_empty", "greater_than_or_equal_to", "less_than_or_equal_to"},
         "date":      {"after", "before", "equals", "does_not_equal", "is_empty", "is_not_empty"},
         "checkbox":  {"equals", "does_not_equal"},
@@ -1631,6 +1631,7 @@ class _Condition(_Expression):
 
         # rich_text
         "rich_text.equals":             lambda a, b: a == b if a is not EMPTY_TEXT else False,
+        "rich_text.does_not_equal":     lambda a, b: True if a is EMPTY_TEXT else a != b,
         "rich_text.is_empty":           lambda a, _: a is EMPTY_TEXT or a == "",
         "rich_text.is_not_empty":       lambda a, _: a is not EMPTY_TEXT and a != "",
         "rich_text.contains":           lambda a, b: False if a is EMPTY_TEXT else b in a,
@@ -1640,6 +1641,7 @@ class _Condition(_Expression):
 
         # title
         "title.equals":                 lambda a, b: a == b if a is not EMPTY_TEXT else False,
+        "title.does_not_equal":         lambda a, b: True if a is EMPTY_TEXT else a != b,
         "title.is_empty":               lambda a, _: a is EMPTY_TEXT or a == "",
         "title.is_not_empty":           lambda a, _: a is not EMPTY_TEXT and a != "", 
         "title.contains":               lambda a, b: False if a is EMPTY_TEXT else b in a,

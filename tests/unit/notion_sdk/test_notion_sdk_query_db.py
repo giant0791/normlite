@@ -615,3 +615,65 @@ def test_number_inclusive_ordering_includes_the_boundary_and_excludes_a_valueles
 
     assert ge_check.eval() is ge_matches
     assert le_check.eval() is le_matches
+
+
+@pytest.mark.parametrize('prop_type', ['title', 'rich_text'])
+@pytest.mark.parametrize(
+    'cell, equals_matches',
+    [
+        ([],                                        False),
+        ([{'text': {'content': 'Alice'}}],          True),
+        ([{'text': {'content': 'Bob'}}],            False),
+    ],
+    ids=['blank', 'match', 'other'],
+)
+def test_text_does_not_equal_is_the_exact_complement_of_equals(
+    prop_type, cell, equals_matches
+):
+    """Text negation is the set complement of ``equals``, blank cells included.
+
+    Measured 2026-07-30 against a data source given a blank-title row for the
+    occasion -- it had never had one, which is why every negative text operator
+    had gone unmeasured over an absent value. Against the literal of a row that
+    exists, on the blank cell: ``equals`` does not match, ``does_not_equal``
+    **does**, ``contains`` does not, ``does_not_contain`` **does**, and
+    ``starts_with`` / ``ends_with`` do not.
+
+    So the rule already measured for number holds for text: each negative
+    operator is the complement of its positive twin, and a cell with no value
+    falls on the negative side because it failed the positive test. Notion has
+    no third truth value and no ``not`` operator to compose one with -- the API
+    rejects ``{"not": ...}`` outright (#383).
+
+    The same run confirmed ``does_not_contain`` returning True on ``EMPTY_TEXT``
+    (``client.py:1637``), which had been inference since it was written. This
+    test is the one that would have caught it, one operator over.
+
+    The blank cell is spelled ``[]`` and not ``[{"text": {"content": ""}}]``
+    deliberately. The second is **not storable**: POSTing it stores ``[]``, read
+    back with a separate GET, with the ``{"title": null}`` control rejected 400
+    so the endpoint is known to be validating. ``[]`` is the only blank text
+    cell that exists on the wire, and a test asserting a truth value for an
+    unproducible cell is the mistake ``17ddd0d`` was written to stop repeating.
+
+    Both operators are pinned together, over both text types, for the reason
+    the rest of this file does it: a complement asserted separately is a
+    complement free to drift.
+    """
+    page = {
+        'properties': {
+            'note': {'type': prop_type, prop_type: cell},
+        }
+    }
+
+    equals_check = _Condition(
+        page,
+        {'property': 'note', prop_type: {'equals': 'Alice'}},
+    )
+    does_not_equal_check = _Condition(
+        page,
+        {'property': 'note', prop_type: {'does_not_equal': 'Alice'}},
+    )
+
+    assert equals_check.eval() is equals_matches
+    assert does_not_equal_check.eval() is not equals_matches
