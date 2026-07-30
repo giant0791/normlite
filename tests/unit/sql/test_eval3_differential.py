@@ -44,20 +44,39 @@ GENERATABLE_PAIRS = {
     for type_name in ReferenceGenerator.TYPES
     for token in ReferenceGenerator.OPERATORS[type_name]
 }
-"""The 28 ``<type>.<operator>`` pairs the reference generator can emit.
+"""The 36 ``<type>.<operator>`` pairs the reference generator can emit.
 
-``eval3`` declares 36. The 8 it cannot reach — number's ``does_not_equal``,
-``greater_than_or_equal_to``, ``less_than_or_equal_to``, ``is_empty``,
-``is_not_empty``; ``does_not_equal`` for title and rich_text; checkbox's
-``does_not_equal`` — mirror ``_Condition._allowed_ops``, not ``supported_ops``:
-the generator was capped to what the fake client could answer. Seven of them are
-exactly #381's gap, so widening the generator belongs to #381's landing, and
-this set widens with it rather than needing an edit here.
+``eval3`` declares 36, and the differential now reaches **all** of them. The
+list of unreachable pairs this docstring used to carry is empty, which is what
+#381 was for: the generator had been capped at ``_Condition._allowed_ops``, and
+that cap was never a statement about Notion — only about what the fake client
+could answer at the time. Widening the client (``e8ef480``, ``39914da``,
+``292979a``, ``b5f6b98``) and then the generator closed the gap from both ends.
 
-Text's ``is_not_empty`` came off that list once the oracle could answer it: the
-cap there was never the fake client, which allows the operator, but the oracle,
-which raised on it. Only the count and the list are edited — the set itself is
-derived from the generator, so it had already widened.
+The set is derived from the generator rather than written out, so it widened on
+its own; only the count and this prose needed editing. That is the property to
+preserve if a type or operator is ever added.
+"""
+
+KNOWN_DIVERGENCE = "number.does_not_equal"
+"""The one leaf pair where ``eval3`` and Notion genuinely disagree — #384.
+
+Not a bug and not a temporary state: Notion's negative operators are the set
+**complement** of their positive twins (measured, both number and text), so a
+valueless cell **matches** ``does_not_equal`` because it failed ``equals``.
+SQL's ``<>`` against NULL is UNKNOWN and drops the row. ADR-0019 chose SQL, and
+#384's option C keeps the residual authoritative, so this gap is permanent by
+design. It is pinned here rather than excused because a divergence that is
+merely *tolerated* stops being visible the moment it changes.
+
+Measured over 24 000 leaf evaluations with the generator at full width: this is
+the **only** divergent pair, in the only direction (Notion keeps, ``eval3``
+drops — slack, the safe side of ⊇), on the only shape ``{"number": null}``.
+
+Text is deliberately not on this list. ``title``/``rich_text``
+``does_not_equal`` agree exactly, because ``[]`` is a **present** value
+(``4abe0d1``) rather than a valueless cell, so ``eval3`` reaches its rule and
+answers TRUE just as Notion does.
 """
 
 
@@ -77,11 +96,30 @@ def test_eval3_agrees_with_the_reference_evaluator_on_every_generated_leaf():
     quibble — the same predicate answered one way Notion-side and the other way
     here, decided by a planner choice the user never sees.
 
-    Leaves may legitimately answer UNKNOWN (an unset date under a comparison),
-    and no carve-out is needed for them: UNKNOWN drops the row and the oracle
-    says False there too, so the WHERE-policy comparison stays exact. Only
-    *compounds* can turn an UNKNOWN into a visible disagreement, which is the
-    next test.
+    Leaves answering UNKNOWN need no blanket carve-out. UNKNOWN drops the row
+    and the oracle usually says False there too, so the WHERE-policy comparison
+    stays exact — with **one** measured exception, ``KNOWN_DIVERGENCE``, which
+    is pinned rather than excused.
+
+    Pinning it, instead of skipping every UNKNOWN verdict the way the compound
+    test does, is a deliberate choice of the narrow instrument over the wide
+    one. A ``verdict is UNKNOWN`` carve-out would exempt ~1400 leaves to admit
+    104, and would swallow the very regression it most needs to catch: if
+    ``_has_no_value`` ever widened to call a *valued* cell valueless, ``eval3``
+    would answer UNKNOWN on ``{"number": 0}``, the oracle would say True, and a
+    verdict-keyed exemption could not tell that from #384.
+
+    So the exemption is keyed on the **cell**, and it is an *iff* — divergence
+    is permitted only where the cell is valueless and **required** there. Both
+    halves are measured: 396 valued cells agree, 104 valueless cells diverge,
+    with neither off-diagonal case occurring. A valued cell under the same
+    operator still has to agree exactly, and it falls through to do so.
+
+    Requiring the divergence is also what keeps the exemption honest, and it is
+    the leaf analogue of the compound test's vacuity guard: an ``eval3``
+    quietly regressed to Notion's answer, or a generator that stopped emitting
+    valueless number cells, would each make this test's exemption dead code.
+    Asserting it fires means it can never become a free pass.
 
     The coverage assertion is the point of the test as much as the agreement
     one. A differential that silently stopped exercising half the operators
@@ -91,6 +129,7 @@ def test_eval3_agrees_with_the_reference_evaluator_on_every_generated_leaf():
     generator = ReferenceGenerator(SEED)
     exercised = set()
     divergences = []
+    pinned = 0
 
     for _ in range(60):
         schema = generator.gen_schema(min_props=3, max_props=10)
@@ -99,15 +138,31 @@ def test_eval3_agrees_with_the_reference_evaluator_on_every_generated_leaf():
         for _ in range(20):
             filt = generator.gen_condition(schema)
             predicate = filter_to_ast(filt)
-            exercised.add(_leaf_key(filt))
+            key = _leaf_key(filt)
+            exercised.add(key)
 
             for page in pages:
+                cell = page["properties"][filt["property"]]
                 verdict = eval3(predicate, page["properties"])
                 expected = reference_eval(page, filt)
-                if (verdict is TRUE) != expected:
+                agrees = (verdict is TRUE) == expected
+
+                # #384, and only over a cell that actually holds no value; a
+                # valued cell falls through and must still agree exactly.
+                if key == KNOWN_DIVERGENCE and cell["number"] is None:
+                    pinned += 1
+                    if agrees:
+                        divergences.append(
+                            f"{key}: #384 divergence has VANISHED over a "
+                            f"valueless cell -- eval3 and Notion now agree "
+                            f"where they must not. filter={filt} cell={cell} "
+                            f"eval3-keeps={verdict is TRUE} oracle={expected}"
+                        )
+                    continue
+
+                if not agrees:
                     divergences.append(
-                        f"{_leaf_key(filt)}: filter={filt} "
-                        f"cell={page['properties'][filt['property']]} "
+                        f"{key}: filter={filt} cell={cell} "
                         f"eval3-keeps={verdict is TRUE} oracle={expected}"
                     )
 
@@ -119,6 +174,12 @@ def test_eval3_agrees_with_the_reference_evaluator_on_every_generated_leaf():
         "differential no longer exercises what the generator can produce; "
         f"missed={sorted(GENERATABLE_PAIRS - exercised)} "
         f"unexpected={sorted(exercised - GENERATABLE_PAIRS)}"
+    )
+    assert pinned > 0, (
+        f"the {KNOWN_DIVERGENCE} exemption was never exercised, so it is "
+        "dead code rather than a pinned fact -- the generator has stopped "
+        "producing valueless number cells, or the operator is no longer "
+        "reachable"
     )
 
 

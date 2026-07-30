@@ -52,13 +52,21 @@ probed, **more** permissive than this model, which is the safe side of the
 invariant. Nothing measured so far shows Notion dropping a row SQL would keep —
 and that, not agreement, is the property being defended.
 
-**Measured on arrival** (seed 28, 24 000 evaluations per test): leaves show
-**zero** slack — the push and the residual agree *exactly* across all 28
-generatable pairs, so ⊇ and ``==`` are indistinguishable there today. Compounds
-show **135** slack rows (0.6%), and they are the Kleene-``NOT``-over-UNKNOWN
-shape. Every case where ⊇ is *strictly* weaker than ``==`` is therefore either
-compound or ungeneratable, which is the honest limit of what a green run here
-establishes.
+**Measured** (seed 28, 24 000 evaluations per test), now that #381 has widened
+the generator to all **36** declared pairs: leaves show **104** slack rows
+(0.43%) and compounds **387** (1.61%), with zero violations either way.
+
+Leaf slack left zero for the first time here, and it has exactly one source:
+``number.does_not_equal`` over ``{"number": null}``, which is #384 itself. That
+is the case this module was written for and could not reach — ⊇ and ``==`` are
+no longer indistinguishable on leaves, and the gap between them is precisely
+the bug. Compound slack remains the Kleene-``NOT``-over-UNKNOWN shape.
+
+The count is reported rather than asserted, deliberately. The ``eval3``
+differential already pins this same divergence from the other side, keyed on
+the cell shape; asserting it here as well would couple two instruments to one
+fact and make a future *correct* change to which leaves are generated (#366's
+``is_null``, or narrowing ``date`` per #383) look like a regression.
 
 **This fuzz is one-directional by construction, and that is not a weakness to be
 fixed — it is why it does not duplicate the ``eval3`` differential.** Verified by
@@ -69,11 +77,12 @@ keep *fewer* rows, reds both ``eval3`` differentials, and leaves this module
 **green** — correctly, because under-keeping is slack. The two instruments cover
 different halves of the same net and neither subsumes the other.
 
-**The limitation to keep in view**: #384's own operator is out of reach here.
-``_Condition._allowed_ops`` refuses ``number.does_not_equal`` (#381), the
-generator is capped to what the fake client can answer, so the case that
-motivated the rule cannot be generated. Closing #381 widens
-``GENERATABLE_PAIRS`` and this fuzz reaches it with no edit here.
+**The limitation that has now been lifted**: #384's own operator used to be out
+of reach here. ``_Condition._allowed_ops`` refused ``number.does_not_equal``
+(#381) and the generator was capped to what the fake client could answer, so
+the case that motivated the rule could not be generated. #381 widened both, and
+this fuzz reached it with no edit here — the pair set is derived, exactly as
+that note predicted.
 """
 from collections import Counter
 
