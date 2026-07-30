@@ -125,7 +125,7 @@ _COMPARISONS = {
 # set of comparison operators: when comparing with None value they all return UNKNOWN
 
 def _has_no_value(val: dict) -> bool:
-    return val is None or val == {}
+    return val is None
 
 def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
     if isinstance(predicate, UnaryExpression):

@@ -23,9 +23,29 @@ distinct, first-class result no ``bool`` evaluator can produce.
 """
 from datetime import date
 
-from normlite.sql.eval3 import eval3, TRUE, FALSE, UNKNOWN
+import pytest
+
+from normlite.sql.eval3 import eval3, TRUE, FALSE, UNKNOWN, _has_no_value
 from normlite.sql.schema import Column
-from normlite.sql.type_api import Date, Integer, String
+from normlite.sql.type_api import (
+    Boolean,
+    Date,
+    Float,
+    Integer,
+    Money,
+    Number,
+    Numeric,
+    Relation,
+    String,
+    TypeEngine,
+)
+
+_DID_NOT_DECODE = object()
+"""Marker for a cell the decoder refused outright.
+
+Distinct from ``None`` on purpose: ``None`` is the decoded form of SQL NULL,
+so collapsing "raised" into it would erase the very distinction under test.
+"""
 
 
 def test_comparison_against_null_cell_is_unknown():
@@ -678,18 +698,33 @@ def test_date_after_earlier_cell_is_true():
     assert result is not UNKNOWN
 
 
-def test_date_is_empty_on_empty_mapping_is_true():
-    """A date cell of ``{}`` holds no value — ``is_empty`` is TRUE.
+def test_date_is_empty_on_valueless_cell_is_true():
+    """An unset date cell holds no value — ``is_empty`` is TRUE.
 
-    Notion echoes an unset date as an empty mapping rather than ``None``, so
-    testing the raw value against ``None`` misses it. This is rich_text's
-    ``[]`` again in another shape: a *present but valueless* cell, which is
-    determinate — TRUE for ``is_empty``, and not to be confused with the
-    literal ``None`` in the value slot that makes a comparison UNKNOWN.
+    The date analogue of ``test_is_empty_on_valueless_cell_is_true``, and not a
+    duplicate of it: ``date.is_empty`` answers through
+    ``normalize_page_date``, a different path from the number arm, and only a
+    per-type test reaches it.
+
+    This test used to construct ``{"date": {}}`` and its docstring asserted
+    that "Notion echoes an unset date as an empty mapping rather than
+    ``None``". **That was false**, and it was the source of the fiction this
+    branch unwound: ``{"<col_spec>": {}}`` is a property *definition* — a
+    column declaration — never a cell. Measured 2026-07-29: the API rejects it
+    on ``POST /v1/pages`` with a 400, and clearing a date through the UI stores
+    and emits ``null``. ``generators.py`` modelled an unset date on that schema
+    object, then ``_has_no_value`` grew an ``== {}`` arm to agree with the
+    generator, and this test pinned the result. See ADR-0019 Correction
+    (6)-(10).
+
+    The *behaviour* was right all along and is kept verbatim; only the cell it
+    is measured on changed. A present-but-valueless cell is determinate for
+    ``is_empty`` — TRUE — and must not be confused with an *absent* cell, which
+    makes the same predicate UNKNOWN (``test_is_empty_on_absent_cell_is_unknown``).
     """
     d = Column("d", Date())
     predicate = d.is_empty()
-    cells = {"d": {"date": {}}}
+    cells = {"d": {"date": None}}
 
     result = eval3(predicate, cells, schema=None)
 
@@ -704,9 +739,9 @@ def test_date_does_not_equal_on_unset_date_is_unknown():
     Found by the differential, not by hand: driving ``ReferenceGenerator``'s
     leaf conditions through a JSON-to-AST bridge and comparing ``eval3`` against
     ``reference_eval`` turned up exactly one divergent leaf in ~80 000
-    evaluations, and this is it. ``d != <literal>`` over ``{"date": {}}`` gives
+    evaluations, and this is it. ``d != <literal>`` over an unset date gave
     TRUE, while both the reference evaluator and the fake client's ``_Filter``
-    give False.
+    gave False.
 
     It is a **pushdown-soundness** failure, ADR-0019's named invariant, not a
     disagreement with a test oracle. ``does_not_equal`` is pushable, so the same
@@ -716,23 +751,37 @@ def test_date_does_not_equal_on_unset_date_is_unknown():
     — overriding its own ``a != b`` entry — so pushed, this row is dropped;
     residually it is kept. The result depends on where the predicate landed.
 
-    The cause is that the 3VL guard recognises only a literal ``None`` as "holds
-    no value" (``value = prop_val.get(type_)``, then ``value is None``), but
-    every Notion type spells emptiness differently: number ``None``, rich_text
-    ``[]``, date ``{}``, relation ``[]``. A date's ``{}`` is not ``None``, so the
-    guard never fires and the comparison runs — reaching ``_date_cmp``'s
-    ``on_incomparable=True``, the "negative operators stay proper negations"
-    default. That default is safe only where the valueless case short-circuits
-    *before* the operator table, which is exactly what fails to happen here.
+    **The original diagnosis was wrong about the cause, and correcting it is
+    why this test now reads ``null``.** It blamed each Notion type spelling
+    emptiness differently — "number ``None``, rich_text ``[]``, date ``{}``" —
+    and the fix grew an ``== {}`` arm on ``_has_no_value`` to match. But
+    ``{"date": {}}`` is a property *definition*, not a cell, and is
+    unproducible in value position (measured 2026-07-29; ADR-0019 Correction
+    (6)-(10)). The shape the differential actually needed was ``null`` all
+    along; it reached ``{}`` only because ``generators.py`` modelled an unset
+    date on a column declaration.
+
+    What the test still guards is real and unchanged: the valueless case must
+    short-circuit **before** the operator table. If it does not, ``d !=
+    <literal>`` reaches ``_date_cmp``'s ``on_incomparable=True`` — the
+    "negative operators stay proper negations" default — and answers TRUE for a
+    cell with nothing to compare. That default is safe *only* behind the guard,
+    which is precisely the ordering this pins.
 
     UNKNOWN rather than FALSE, for the same reason as
     ``test_is_empty_on_absent_cell_is_unknown``: under a bare WHERE the two are
     indistinguishable — both drop the row, restoring parity with the pushed
     False whichever evaluator is the more faithful to Notion — but under
     negation FALSE flips to TRUE and resurrects a row that has no value to
-    compare, while UNKNOWN stays UNKNOWN. ``{"date": {}}`` is already pinned as
-    present-but-valueless by ``test_date_is_empty_on_empty_mapping_is_true``;
+    compare, while UNKNOWN stays UNKNOWN. ``{"date": null}`` is already pinned
+    as present-but-valueless by ``test_date_is_empty_on_valueless_cell_is_true``;
     this test says a *comparison* against that same cell has no truth value.
+
+    This is #384's core claim on the residual side, so it must not be deleted:
+    the live API **matches** a valueless cell on ``does_not_equal`` where SQL
+    drops it. (For *date* Notion rejects that operator outright with a 400,
+    #383 — so the divergence is only reachable through
+    ``number.does_not_equal``, which is #381.)
 
     Note the sibling operators (``equals``, ``after``, ``before``) reach FALSE
     through ``on_incomparable=False`` and so agree with the pushed side by
@@ -742,7 +791,7 @@ def test_date_does_not_equal_on_unset_date_is_unknown():
     """
     d = Column("d", Date())
     predicate = d != date(2024, 6, 1)
-    cells = {"d": {"date": {}}}
+    cells = {"d": {"date": None}}
 
     result = eval3(predicate, cells, schema=None)
 
@@ -771,3 +820,73 @@ def test_unknown_or_true_is_true():
     assert result is TRUE
     assert result is not FALSE
     assert result is not UNKNOWN
+
+
+@pytest.mark.parametrize('type_obj', [
+    Number('number'),
+    Integer(),
+    Float(),
+    Numeric(),
+    Money('euro'),
+    String(),
+    String(is_title=True),
+    Boolean(),
+    Date(),
+    Relation(),
+], ids=lambda t: type(t).__name__ + '/' + t.get_col_spec())
+def test_eval3_calls_a_cell_valueless_only_if_that_cell_decodes_to_none(
+    type_obj: TypeEngine,
+):
+    """``eval3`` may only call a cell valueless if the decoder agrees.
+
+    This is the **other half** of the decode invariant (CONTEXT.md, "Raw cell
+    <-> decoded NULL"): a raw cell decodes to Python ``None`` **iff** the
+    raw-cell evaluator calls it valueless.
+    ``test_every_type_decodes_a_valueless_cell_as_none`` pins the "if"
+    direction at ``{"<col_spec>": null}``; this pins the "only if", and the two
+    together are what make it an *iff* rather than two independent rules.
+
+    It is stated as an agreement between the two functions rather than as a
+    claim about what ``{"<col_spec>": {}}`` *means*, and that distinction is
+    the point. ``{}`` in value position is **unproducible** -- the API rejects
+    it on ``POST /v1/pages`` with a 400, and clearing a cell in the UI stores
+    ``null`` -- so asserting a verdict for it would pin semantics on a cell
+    that cannot exist. That is the very mistake this branch is unwinding:
+    ``generators.py`` modelled an unset date on a *property definition*, and
+    ``_has_no_value`` then grew an ``== {}`` arm to agree with the generator.
+    Internal consistency is well defined whether or not the shape is
+    reachable, so that is what this asserts.
+
+    Why the disagreement is a defect and not dead weight: the two halves must
+    not be able to answer differently, because ``None`` in a decoded ``Row``
+    *is* how a user sees SQL NULL and there is no second channel. Today
+    ``_has_no_value({})`` is ``True`` -- so a comparison would return UNKNOWN,
+    dropping the row as NULL -- while no decoder returns ``None`` for that
+    cell; every one of them raises. One half says SQL NULL, the other says
+    "malformed, refuse to decode". Whichever is right, they cannot both be.
+
+    Dropping ``== {}`` leaves ``val is None`` and is **semantics-preserving
+    over the reachable domain**: ``eval3`` already answers UNKNOWN on ``>``,
+    ``<`` and ``==`` against ``{"number": null}`` *without* that arm, so
+    ADR-0019's Decision is not reopened. The loud failure that remains is the
+    wanted one (settled: prefer the loud form) -- a type-drifted cell must
+    raise, not decode as a silent SQL NULL.
+    """
+    result = type_obj.result_processor()
+    empty_config = {}
+    cell = {type_obj.get_col_spec(): empty_config}
+
+    try:
+        decoded = result(cell)
+    except Exception:
+        # not decoding at all is emphatically not decoding to None
+        decoded = _DID_NOT_DECODE
+
+    assert decoded is not None, (
+        "premise of this test: no type decodes an empty-config cell to None"
+    )
+    assert not _has_no_value(empty_config), (
+        "eval3 calls this cell valueless (-> UNKNOWN, a SQL NULL) but the "
+        "decoder does not produce None for it, so the decode invariant is "
+        "violated in the 'only if' direction"
+    )
