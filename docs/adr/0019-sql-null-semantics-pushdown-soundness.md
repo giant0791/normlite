@@ -123,6 +123,11 @@
 > `is_empty()`), because a phantom's cells are literally `None`, `eval3` returns UNKNOWN, and the
 > WHERE policy drops UNKNOWN. ADR-0022 does the deletion.
 >
+> > **Closed 2026-07-31.** The guard is gone — ADR-0022 step 1 deleted it from
+> > `Filter._right_side_passes`, suite unmoved at 908 (872 plus the 36-pair safety net written
+> > first). This ADR's Decision bullet is now true of the code. Correction (15) is kept as the
+> > record that it was asserted for two weeks before it was.
+>
 > **(16) "The residual is always re-applied" was never true either, and it is what makes ⊇
 > meaningful.** A conjunct is pushed **xor** evaluated client-side today, so the two sides of ⊇
 > ranged over *different predicates*: it is a property of a **predicate** (what the fuzz measures)

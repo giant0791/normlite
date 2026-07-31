@@ -348,9 +348,6 @@ class Filter(VolcanoOperator):
 
         right_slice = tuple(getter(merged_row) for getter in row_getters)
 
-        if all(c is None for c in right_slice):
-            return False        # phantom: NULL fails every right-side predicate
-
         # Key by the BARE name: eval3 looks a leaf's cell up under
         # predicate.column.name, which on a residual AST column is the
         # unqualified name. The slice is right-only -- its columns were picked

@@ -1139,15 +1139,25 @@ them. That single fact decides where join semantics live:
 
 **A phantom's verdict is derived, not hard-coded.** [[adr-0005-outer-join-phantom-null-semantics]]
 dropped phantoms with a structural row-level guard (`if all(c is None for c in right_slice)`) placed
-*above* the predicate. That is unnecessary: an outer join fills right-owned columns with literal
-Python `None`, `eval3` returns UNKNOWN for a `None` cell, and the WHERE policy drops UNKNOWN. The
-outcome falls out of the semantics. It is also **strictly more correct** — `all(None)` is a
-*row-level guess* at something `eval3` knows *per cell*, and the guess is what mislabels a real
-all-empty right row as a phantom (ADR-0005's own admitted crack).
+*above* the predicate. **That guard was deleted 2026-07-31** (ADR-0022 step 1); `Filter` now has no
+structural branch at all. An outer join fills right-owned columns with literal Python `None`,
+`eval3` returns UNKNOWN for a `None` cell, and the WHERE policy drops UNKNOWN — the outcome falls
+out of the semantics. It is also **strictly more correct**: `all(None)` was a *row-level guess* at
+something `eval3` knows *per cell*, and the guess is what mislabelled a real all-empty right row as
+a phantom (ADR-0005's own admitted crack).
 
-Measured 2026-07-31: deleting the guard leaves the suite at **872 passed / 3 skipped / 1 xfailed**,
-unchanged — and the result is **not vacuous**, because the guard's exact path is covered by an outer
-join with a dangling FK plus a right-side `is_empty()` (`tests/unit/engine/test_join_pipeline.py`).
+The deletion moved no test result — **908 passed / 3 skipped / 1 xfailed, before and after** — and
+that green is **not vacuous**, because the guard's exact path is covered by an outer join with a
+dangling FK plus a right-side `is_empty()` (`tests/unit/engine/test_join_pipeline.py`), which now
+passes for the derived reason rather than the structural one.
+
+What carries the drop instead is a *universally quantified* fact, pinned before the deletion so the
+code never depended on an unasserted property: **every one of the 36 declared
+`<col_spec>.<operator>` pairs answers UNKNOWN on a `None` cell**
+(`test_every_declared_operator_on_a_none_cell_is_unknown`, derived from `type_mapper` so a newly
+registered operator is protected on arrival). The mechanism is the guard at `eval3.py`'s binary arm,
+whose only escape hatch is `_ABSENT_AWARE` — **empty until `is_null()` joins it in #366**. Adding an
+operator to that set removes its phantom protection, and the pin reds if that happens.
 
 ### Three value shapes (do not conflate)
 The single most important distinction for anything evaluating a predicate client-side:
