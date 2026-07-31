@@ -135,9 +135,24 @@ buys no safety and leaves `Filter` with a join-only branch as it generalises to 
   shape** — yield zero invocations, `select(func.count())` yields one. So "wire the recheck on the
   scan path" is blocked until a plain `SELECT` is routed through the planner; until then the
   `Project` stage of the plan's non-join branch is correct but unreachable in production, exercised
-  only by direct `Planner(ctx).plan()` calls in `tests/unit/sql/test_query_plan.py`. The routing
-  change is behaviour-bearing on every non-join `SELECT` in the codebase and deserves its own slice
-  before step 4, not a line inside it.
+  only by direct `Planner(ctx).plan()` calls in `tests/unit/sql/test_query_plan.py`.
+
+- **The routing change is IN SCOPE for C2, and it comes before the recheck.** A first draft of this
+  ADR proposed deferring it to its own slice; that was overruled deliberately — deferring it would
+  land steps 3 and 4 on a code path no plain `SELECT` executes, i.e. ship the recheck without
+  rechecking anything for the statement shape #384 actually reports. Its cost is measured, not
+  estimated: flipping `context.py:402` to `if stmt.is_select` reds **24** tests, but **19 of those are
+  one test-harness gap** — `tests/utils/execution.py:run_context` duplicates
+  `Connection._execute_context`'s dispatch and never gained an `EXECUTEQUERYPLAN` branch, so a routed
+  `SELECT` falls through to `do_executemany` with a `None` `bulk_operation`. Giving the harness that
+  branch leaves **5 genuine failures, and they are one production gap**: `_execute_query_plan`
+  (`base.py:303-320`) drains the plan eagerly into a list and never reads `context.execution_options`,
+  so `stream_results` / `yield_per` (ADR-0010) do not survive the plan path — 4 streaming tests plus
+  one `rowcount` case. **Closing that gap is what the routing step consists of**, and the mechanism is
+  an open fork: make the plan path lazy (feed the plan to the result cursor as an iterator), cascade
+  the options into `Scan`'s page size while keeping the eager drain, or route only the `SELECT`s that
+  need a recheck. Note that the third does not dodge the problem — `stream_results=True` together with
+  a pushed `WHERE` is precisely the case that needs both.
 
 - **This ADR is Proposed, not Accepted.** ADR-0019 was marked Accepted while its `all(None)` bullet
   described code that was never written; that drift cost a session to discover. This one flips to
