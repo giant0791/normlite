@@ -25,6 +25,7 @@ from datetime import date
 
 import pytest
 
+from normlite.sql.elements import Operator
 from normlite.sql.eval3 import eval3, TRUE, FALSE, UNKNOWN, _has_no_value
 from normlite.sql.schema import Column
 from normlite.sql.type_api import (
@@ -651,6 +652,105 @@ def test_every_declared_operator_has_an_eval3_rule():
         f"{len(missing)} of {len(declared)} declared operators have no eval3 rule: "
         + ", ".join(f"{key} ({'/'.join(types)})" for key, types in sorted(missing.items()))
     )
+
+
+_NONE_CELL_LITERALS = {
+    "number": 1,
+    "title": "x",
+    "rich_text": "x",
+    "checkbox": True,
+    "date": date(2024, 6, 1),
+    "relation": "1429989f-e8ac-4eff-bc8f-57f56486db54",
+}
+"""One type-appropriate literal per ``col_spec``, so each predicate below is
+one a user could really have written. Which literal it is cannot matter: the
+cell under test holds no value to compare it against."""
+
+
+def _declared_operator_pairs() -> list[tuple[str, TypeEngine, Operator]]:
+    """Every declared ``<col_spec>.<operator>`` pair, with a type that declares it.
+
+    Derived from ``type_mapper`` by the same walk as
+    ``test_every_declared_operator_has_an_eval3_rule`` — a newly registered type
+    or operator arrives here on its own rather than waiting to be added to a
+    hand-written list. Deduplicated on the pair, which is the unit ``eval3``
+    dispatches on: the four numeric types declare one ``number`` table between
+    them, and re-running an identical dispatch under four names measures
+    nothing.
+    """
+    from normlite.sql.type_api import type_mapper
+
+    pairs: dict[str, tuple[TypeEngine, Operator]] = {}
+    for type_ in type_mapper.values():
+        supported_ops = getattr(type_, "supported_ops", None)
+        if not supported_ops:
+            continue  # not filterable: ObjectId, PropertyId, TimeStampStringISO8601
+        try:
+            col_spec = type_.get_col_spec()
+        except NotImplementedError:
+            continue  # no Notion property shape of its own: ArchivalFlag
+        for op, token in supported_ops.items():
+            pairs.setdefault(f"{col_spec}.{token}", (type_, op))
+    return [(key, type_, op) for key, (type_, op) in sorted(pairs.items())]
+
+
+_DECLARED_OPERATOR_PAIRS = _declared_operator_pairs()
+
+
+@pytest.mark.parametrize(
+    "pair, type_, op",
+    _DECLARED_OPERATOR_PAIRS,
+    ids=[pair for pair, _, _ in _DECLARED_OPERATOR_PAIRS],
+)
+def test_every_declared_operator_on_a_none_cell_is_unknown(pair, type_, op):
+    """A ``None`` cell is UNKNOWN for *every* declared operator — no exceptions.
+
+    ``test_is_empty_on_absent_cell_is_unknown`` pins one operator on this cell;
+    this pins the whole declared surface, because the property about to become
+    load-bearing is universal quantification, not one case.
+
+    **Why it is worth pinning now.** An outer join fills right-owned columns
+    with literal Python ``None`` (``HashJoin._project_join_row``), and today a
+    phantom row is dropped by a structural guard *above* the predicate —
+    ``Filter._right_side_passes`` returns ``False`` when the whole right slice
+    is ``None``. That guard is deleted in ADR-0022 step 1, after which nothing
+    is left between a phantom and the answer except this fact: every leaf over
+    a ``None`` cell is UNKNOWN, the WHERE policy drops UNKNOWN, so the row goes.
+    ADR-0005's outcome stops being hard-coded and starts being *derived*.
+
+    So the fact is incidental before the deletion and load-bearing after it,
+    and it should be asserted before the code begins to depend on it. The
+    deletion itself is measured to change no test result (872 → 872), which is
+    exactly why there is no failing test to write for it and why this safety net
+    is written instead of a manufactured red.
+
+    **UNKNOWN, not FALSE**, for the reason
+    ``test_is_empty_on_absent_cell_is_unknown`` gives at length: under
+    ``~col.is_empty()`` a FALSE flips to TRUE and resurrects the phantom, while
+    UNKNOWN stays UNKNOWN. Both verdicts look alike under a bare WHERE; only one
+    survives negation. Hence the negative assertions — ``is UNKNOWN`` alone
+    would also hold if the singletons were ever collapsed.
+
+    The mechanism under test is the guard at ``eval3.py:146``, whose escape
+    hatch is ``_ABSENT_AWARE`` — empty until ``is_null()`` arrives with #366.
+    Adding any operator to that set must fail this test for that pair, which is
+    how this assertion was proved able to fail before it was trusted.
+    """
+    col_spec = pair.split(".", 1)[0]
+    literal = (
+        None
+        if op in (Operator.IS_EMPTY, Operator.IS_NOT_EMPTY)
+        else _NONE_CELL_LITERALS[col_spec]
+    )
+    a = Column("a", type_)
+    predicate = a.operate(op, literal)
+    cells = {"a": None}
+
+    result = eval3(predicate, cells, schema=None)
+
+    assert result is UNKNOWN
+    assert result is not TRUE
+    assert result is not FALSE
 
 
 def test_date_equals_matching_cell_is_true():
