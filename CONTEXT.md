@@ -1011,19 +1011,40 @@ already stated as "joins and aggregates force drain-all" under §Pagination and
 changing it. **Scan** is the only non-blocking Operator; it is what keeps `stream_results` /
 `yield_per` working on a plain select.
 
-### Pushdown / Residual
-Every WHERE conjunct and ORDER BY key is **either** pushed **or** residual — the split is the
-Planner's central output.
+### Pushdown / Recheck / Residual
+Three terms, and they answer **different questions**. The old two-term split ("every conjunct is
+*either* pushed *or* residual") conflated them and is retired — see the note at the end.
 
 - **Pushdown** — the predicate/sort/projection is translated to Notion JSON and evaluated
   **Notion-side**, inside a **Scan**'s `data_sources.query` payload (`filter`, `sorts`,
-  `filter_properties`).
-- **Residual** — it cannot be pushed, so it is evaluated **client-side** by normlite. A residual
-  stays an **AST** (`ColumnElement`) all the way to its **Filter** Operator; it is *never*
-  compiled to Notion filter JSON.
+  `filter_properties`). It is a **transfer optimisation and nothing else**. A pushed filter is a
+  *hint*: it may keep rows the answer excludes, and it **never decides the answer**.
+- **Recheck** — the client-side re-application of a WHERE conjunct that **was** pushed, evaluated
+  over **raw cells** by `eval3` in the **Filter** Operator. Always present, and it is the recheck
+  that **decides**. Carried as an **AST** (`ColumnElement`) on `PlanningContext.recheck_where`;
+  never compiled to Notion filter JSON.
+- **Residual** — a conjunct or sort key that **has no pushed form at all**, so it is evaluated
+  client-side **once**, not re-applied. Two populations: `is_null()` (Notion cannot express "this
+  row had no join partner") and the constructs the API rejects outright (#383). Sorts are residual
+  in this original sense — see below.
 
-Sort pushability is **positional**: only the *leading run* of left-table ORDER BY keys is
-pushable; the first non-left key makes it and everything after it residual.
+**Why "Recheck", and why it is not a normlite invention.** Notion's filter is a **lossy** probe: it
+over-matches relative to SQL semantics (`does_not_equal` keeps a valueless cell — #384, measured).
+This is the same shape as a lossy bitmap index scan in Postgres, whose plans carry a `Recheck Cond`
+re-applying the predicate on the heap tuple. The index narrows; the recheck decides. In database
+literature a *residual predicate* is exactly this re-applied part, which is why the word is
+redefined here rather than replaced — and why `recheck_where` names the WHERE channel specifically.
+
+**Sorts keep the word `residual`, deliberately.** Sort pushability is **positional**: only the
+*leading run* of left-table ORDER BY keys is pushable; the first non-left key makes it and
+everything after it residual. Those keys are **never pushed and never re-applied** — they are the
+genuine leftover, applied once client-side. `residual_sorts` / `compile_residual_sorts` therefore
+keep their names; only the WHERE channel became a recheck.
+
+> **Status: decided, being built (#384 / C2).** Today only the *join* path evaluates a WHERE
+> client-side, and a left-side conjunct is pushed with **no** recheck — so the push decides alone
+> and #384's row survives. The section above states the target, which is what the ⊇ invariant below
+> already presupposes. Do not read it as a description of current code.
 
 ### Pushdown soundness (the invariant)
 **The push may over-keep; it must never under-keep.**
@@ -1042,6 +1063,14 @@ That is what makes the invariant one-directional:
 
 That asymmetry is the whole content of ⊇, and it is why the result must never depend on a Planner
 decision the user cannot see.
+
+**⊇ presupposes the Recheck, and is meaningless without it.** "Re-applied" only means something if
+the *same* conjunct was applied twice — pushed, then re-checked. Under the retired two-term split a
+conjunct was pushed **xor** evaluated client-side, so the two sides of ⊇ ranged over **different
+predicates** and the invariant had no referent in any query normlite actually ran. It was a property
+of a *predicate* — which is exactly what the fuzz measures, by handing one filter to both evaluators
+(`test_pushdown_soundness.py`) — and not yet a property of an *execution*. C2 is what closes that
+gap. Until it lands, ⊇ is asserted on the left side and enforced nowhere.
 
 **An earlier version of this section claimed the two sides must *agree*, and justified it by saying
 the residual is evaluated by `_Filter` over raw cells, which is "also Notion-semantic". Both halves
@@ -1087,17 +1116,38 @@ reproduce `is_empty`, and pushdown parity would break.
 > both — `is_empty` tests the cell's **content**, not its array length. The conclusion survives on
 > the type-tag argument above. See ADR-0019 Correction (2026-07-27).
 
-### Residual predicates are AST, evaluated over raw cells
-A **Residual** stays an **AST** (`ColumnElement`) — never round-tripped through Notion's filter
-language — and is evaluated over **raw Notion cells**, which is what the rows carry through the
-plan (decoding to Python happens later, at the `Row`/`CursorResult` level).
+### Recheck and Residual predicates are AST, evaluated over raw cells
+Both stay an **AST** (`ColumnElement`) — never round-tripped through Notion's filter language — and
+are evaluated over **raw Notion cells**, which is what the rows carry through the plan (decoding to
+Python happens later, at the `Row`/`CursorResult` level). Raw cells are required because the decode
+erases the **type tag**; see §`is_empty()` vs `is_null()`.
 
-`JoinExecution._right_side_passes` (`dml.py:1379`) re-wraps raw cells into a synthetic page. That
-re-wrapping is **not gratuitous** — it preserves the raw fidelity `is_empty` needs. What *is* wrong
-is the import: `_Filter` comes from `normlite.notion_sdk.client`, the **fake client's** internals,
-and exists *only* to simulate Notion-side filtering — a real Notion integration would delete the
-join's evaluator out from under it. The fix is to own a raw-cell evaluator, not to abandon raw
-cells.
+> **Superseded.** This section used to describe `JoinExecution._right_side_passes` (`dml.py:1379`)
+> re-wrapping raw cells into a synthetic page for the fake client's `_Filter`. `JoinExecution` was
+> deleted with the merge into `HashJoin` (#378 / [[adr-0021-scan-both-hash-join]]), and `_Filter` no
+> longer evaluates anything client-side — `eval3` does, called from `Filter` (`sql/queryplan.py`).
+> The layering complaint it recorded ("a real Notion integration would delete the join's evaluator
+> out from under it") is **resolved**: normlite owns its raw-cell evaluator.
+
+**Existence vs passage — which operator answers what.** A `Filter` removes rows; it cannot create
+them. That single fact decides where join semantics live:
+
+| concern | question | owner |
+|---|---|---|
+| outer-join NULL-fill | which rows **exist** | `HashJoin` — only it knows, per left row, whether that row matched (`_merge_rows`) |
+| predicate verdict | which rows **pass** | `Filter` / `eval3`, from the raw cells |
+
+**A phantom's verdict is derived, not hard-coded.** [[adr-0005-outer-join-phantom-null-semantics]]
+dropped phantoms with a structural row-level guard (`if all(c is None for c in right_slice)`) placed
+*above* the predicate. That is unnecessary: an outer join fills right-owned columns with literal
+Python `None`, `eval3` returns UNKNOWN for a `None` cell, and the WHERE policy drops UNKNOWN. The
+outcome falls out of the semantics. It is also **strictly more correct** — `all(None)` is a
+*row-level guess* at something `eval3` knows *per cell*, and the guess is what mislabels a real
+all-empty right row as a phantom (ADR-0005's own admitted crack).
+
+Measured 2026-07-31: deleting the guard leaves the suite at **872 passed / 3 skipped / 1 xfailed**,
+unchanged — and the result is **not vacuous**, because the guard's exact path is covered by an outer
+join with a dangling FK plus a right-side `is_empty()` (`tests/unit/engine/test_join_pipeline.py`).
 
 ### Three value shapes (do not conflate)
 The single most important distinction for anything evaluating a predicate client-side:

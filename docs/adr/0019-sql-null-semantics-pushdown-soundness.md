@@ -112,6 +112,28 @@
 > valueless cell, so `eval3` reaches its rule and answers TRUE just as Notion does. Correction (9)'s
 > ruling and the complement law arrive at the same place independently.
 
+> **Correction (2026-07-31) — two bullets in Decision/Consequences describe code that was never
+> written. See [ADR-0022](./0022-lossy-pushdown-and-the-recheck.md).**
+>
+> **(15) "The `all(None)` structural guard is deleted" is false.** The guard is live in
+> `Filter._right_side_passes` (`sql/queryplan.py`), comment and all, and slice 2 never removed it.
+> This ADR has been **Accepted** while asserting the opposite, which cost a session to discover.
+> The claim is *achievable* — measured 2026-07-31, deleting it leaves the suite unchanged at 872
+> passed, on a path that **is** covered (an outer join with a dangling FK plus a right-side
+> `is_empty()`), because a phantom's cells are literally `None`, `eval3` returns UNKNOWN, and the
+> WHERE policy drops UNKNOWN. ADR-0022 does the deletion.
+>
+> **(16) "The residual is always re-applied" was never true either, and it is what makes ⊇
+> meaningful.** A conjunct is pushed **xor** evaluated client-side today, so the two sides of ⊇
+> ranged over *different predicates*: it is a property of a **predicate** (what the fuzz measures)
+> and not of an **execution**. ADR-0022 adds the client-side re-application — the **Recheck** — that
+> the wording already assumed, and renames `residual_where` → `recheck_where` accordingly.
+> `residual_sorts` keeps its name: a held-back sort key is never pushed and never re-applied.
+>
+> **(17) The lesson is the one this ADR keeps re-learning.** Corrections (1), (5) and (9) record a
+> *model* read as *evidence*. This is the neighbouring failure: a **document** read as *code*. An
+> ADR marked Accepted is evidence about a decision, never about an implementation.
+
 ---
 
 ## Context
