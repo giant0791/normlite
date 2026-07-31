@@ -454,6 +454,50 @@ class Aggregate(VolcanoOperator):
     def close(self) -> None:
         self._source.close()
 
+class Project(VolcanoOperator):
+    def __init__(self, source: VolcanoOperator, names: Sequence[str]) -> None:
+        self._source = source
+        self._names = list(names)
+        project_idxs = [
+            source.result_schema.column_index(name)
+            for name in self._names
+        ]
+
+        self._projected_schema = SchemaInfo([
+            source.result_schema.columns[idx]
+            for idx in project_idxs
+        ])
+
+        self._getters = [
+            source.result_schema.column_getter(name)
+            for name in self._names
+        ]
+
+    @property
+    def result_schema(self) -> SchemaInfo:
+        return self._projected_schema
+
+    def open(self, connection: Connection) -> None:
+        self._source.open(connection)
+
+    def next(self) -> Optional[list[tuple]]:
+        batch = self._source.next()
+        if batch is None:
+            return None
+
+        return [self._trim(row) for row in batch]
+
+    def _trim(self, row: tuple) -> tuple:
+        trimmed = [
+            getter(row)
+            for getter in self._getters
+        ]
+
+        return tuple(trimmed)
+
+    def close(self) -> None:
+        self._source.close()
+
 class Planner:
     """Provide a query plan as a pipeline composed of Volcano operators."""
 
@@ -487,7 +531,8 @@ class Planner:
                 execution_names=ctx.compiled.fetch_columns(),
                 projected_names=ctx.compiled.result_columns(),
             )
-            return Scan(ctx.operation, ctx.parameters, schema=schema)
+            scan = Scan(ctx.operation, ctx.parameters, schema=schema)
+            return Project(scan, [c.name for c in schema.columns])
         
         # build the plan for JOIN
         join: Join = invoked_stmt._joins[0]

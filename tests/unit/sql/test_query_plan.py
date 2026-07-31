@@ -10,7 +10,15 @@ from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
 from normlite.sql.dml import select
 from normlite.sql.elements import or_
 from normlite.sql.functions import func
-from normlite.sql.queryplan import Aggregate, Filter, HashJoin, Planner, Scan, VolcanoOperator
+from normlite.sql.queryplan import (
+    Aggregate,
+    Filter,
+    HashJoin,
+    Planner,
+    Project,
+    Scan,
+    VolcanoOperator,
+)
 from normlite.sql.resultschema import SchemaInfo
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Date, Integer, String
@@ -241,11 +249,43 @@ def test_scan_open_mints_its_own_cursor_from_the_connection_and_shapes_it_with_i
     assert minted.executed == (operation, parameters, True)
 
 
-def test_planner_turns_a_plain_select_into_a_single_scan_that_yields_the_store(engine, students):
-    # A plain select has no join and no residual, so its plan is a lone leaf: one
-    # Scan over the store. The Planner reads everything the leaf needs off the
+def test_planner_turns_a_plain_select_into_a_project_over_a_single_scan(engine, students):
+    # A plain select has no join and no residual, so its plan is a two-node stem:
+    # one Scan over the store, with a Project above it owning the result schema
+    # (ADR-0022 step 2). The Planner reads everything the leaf needs off the
     # execution context (the compiled operation and the run-time parameters), and
     # the plan it hands back, when driven, yields exactly the store's rows.
+    #
+    # This test previously asserted `isinstance(plan, Scan)` and called the plan
+    # "a lone leaf, not a tree". Wiring Project deliberately made that false. It
+    # is NOT the movement ADR-0022 §2 says to stop on: that rule fires when the
+    # trimmed schema fails to reproduce what the root advertised, and the root
+    # schema is MEASURED identical before and after the wiring, on every non-join
+    # shape (`select(t)`, `select(t.c.name)`, `select(t.c.object_id)`,
+    # `select(oid, name)`). What moved was a claim about plan STRUCTURE, which
+    # the settled fork changed on purpose.
+    #
+    # Today Project trims NOTHING -- superset == projection, because nothing
+    # widens `fetch_columns` until step 4 adds the recheck's predicate columns.
+    # The schema-identity assertion below pins exactly that no-op, and it is
+    # meant to be the line that changes when step 4 lands: once the leaf is
+    # widened, the root and the leaf stop agreeing, and that divergence IS the
+    # feature.
+    #
+    # THIS TEST IS THE ONLY THING GUARDING THE NON-JOIN BRANCH. Measured: a plain
+    # SELECT does not reach the Planner at all. `context.py:402` routes a
+    # statement to EXECUTEQUERYPLAN only `if stmt.is_select and (stmt._joins or
+    # stmt._is_aggregate)`; everything else takes ExecutionStyle.EXECUTE and
+    # `_execute_single`. Driving `select(t)` and `select(t).where(t.c.effort != 5)`
+    # -- #384's own repro shape -- through a spy on `Planner.plan` gives ZERO
+    # invocations, while `select(func.count())` gives one. So the branch wired
+    # above is dead in production, and trimming it to the wrong column list was
+    # measured to break no pipeline test whatsoever.
+    #
+    # That is a PREREQUISITE for ADR-0022 step 4, and the ADR does not name it:
+    # "wire the recheck on the scan path" cannot work until a plain SELECT is
+    # routed through the query planner, or the recheck will be built in a branch
+    # the engine never executes for exactly the statement #384 is about.
     db_id = create_students_db(engine)
     attach_table_oid(students, db_id)
     populate_students(engine, students, n=3)
@@ -266,8 +306,15 @@ def test_planner_turns_a_plain_select_into_a_single_scan_that_yields_the_store(e
     # Act: the Planner compiles the statement into a plan.
     plan = Planner(ctx).plan()
 
-    # The plan is a single Scan — a leaf, not a tree.
-    assert isinstance(plan, Scan)
+    # The plan is a Project over a Scan — the leaf still does the I/O, the root
+    # owns what the user sees. Both nodes are pinned: asserting only the root
+    # would stop covering that the leaf is a Scan at all.
+    assert isinstance(plan, Project)
+    assert isinstance(plan._source, Scan)
+
+    # The trim is an IDENTITY today: the root advertises exactly what the leaf
+    # does, which is what makes wiring Project in step 2 behaviour-neutral.
+    assert plan.result_schema.as_sequence() == plan._source.result_schema.as_sequence()
 
     # ... and driving it (the leaf mints its own cursor off the connection)
     # yields the whole store, then exhaustion.
@@ -680,3 +727,161 @@ def test_planner_rejects_a_compound_residual_loudly_instead_of_crashing(engine):
     # bare AttributeError.
     with pytest.raises(InvalidRequestError, match="single-binary"):
         Planner(ctx).plan()
+
+
+class _WideSource:
+    """A ``VolcanoOperator`` yielding one fixed batch under a fixed schema.
+
+    ``Project`` has to be handed a source whose schema is WIDER than what it
+    advertises, and today no real plan builds one: the scan leaf's schema is
+    ``fetch_columns()`` and nothing widens it until step 4 of ADR-0022 adds the
+    recheck's predicate columns. Driving a stub is not a shortcut here -- it is
+    the only way to exercise the trim before the thing that needs it exists.
+    """
+
+    def __init__(self, schema: SchemaInfo, rows: list[tuple]) -> None:
+        self._schema = schema
+        self._rows = rows
+        self._drained = False
+
+    def open(self, connection) -> None:
+        self._drained = False
+
+    def next(self):
+        if self._drained:
+            return None
+        self._drained = True
+        return list(self._rows)
+
+    def close(self) -> None:
+        pass
+
+    @property
+    def result_schema(self) -> SchemaInfo:
+        return self._schema
+
+
+def test_project_trims_the_rows_and_the_schema_it_advertises_to_the_projected_names(students):
+    # ADR-0022 step 2. The recheck must READ columns the user did not project --
+    # `SELECT name WHERE effort != 5` needs `effort` in hand to re-check the
+    # predicate -- but `effort` must not reach the user's Row. `SchemaInfo`
+    # cannot express "fetch, don't return": `_merge_names` (resultschema.py:45)
+    # flattens execution and projected names into ONE ordered list and
+    # `ResultColumn` has no `projected` flag, so a widened `fetch_columns`
+    # reaches the user. A plan STAGE owns the distinction instead:
+    #
+    #     Scan(superset) -> Filter(recheck) -> Project(projection)
+    #
+    # `Project` must trim BOTH HALVES CONSISTENTLY -- the tuples it yields and
+    # the schema it advertises -- because `engine/base.py:319` PAIRS them:
+    # `ResultSet(plan.result_schema.as_sequence(), "page", rows)`. Trimming the
+    # rows alone shifts every value under the wrong key; trimming the schema
+    # alone hides a column that is still in the tuple. One behaviour, so one
+    # test asserts both.
+    #
+    # MEASURED, and it decides what the trim list IS: today the non-join plan
+    # root advertises exactly `fetch_columns()`, NOT `result_columns()`. The two
+    # differ -- `result_columns` is `fetch_columns` minus SpecialColumns
+    # (compiler.py:715) -- so for `select(students.c.object_id)` the root is
+    # `['object_id']` while `result_columns()` is `[]`, and a `Project` trimming
+    # to `result_columns()` would hand back a column-less row. Hence: the
+    # projected names are the PRE-WIDENING `fetch_columns`, and step 4 must keep
+    # that snapshot rather than recompute it after widening.
+    #
+    # Nothing in the ENGINE would catch that mistake, which is why it is pinned
+    # here and in the planner test: a plain SELECT never reaches the Planner at
+    # all today (context.py:402 -- see the note there), so trimming to
+    # `result_columns()` was MEASURED to red the planner test and not one single
+    # pipeline test.
+    #
+    # The source's second row carries `{"number": None}` -- the #384 valueless
+    # cell. Project is a positional trim over RAW cells and must not get clever
+    # about them: no decoding, no emptiness rule, no None-fill. Only `eval3`
+    # answers what a valueless cell means.
+    #
+    # Fails at import today: `Project` does not exist.
+
+    # Arrange: a source three columns wide, of which the user projected one.
+    wide = SchemaInfo.from_table(
+        students,
+        execution_names=["object_id", "name", "id"],
+    )
+    source = _WideSource(
+        wide,
+        [
+            ("page-1", {"title": [{"text": {"content": "Galileo"}}]}, {"number": 5}),
+            ("page-2", {"title": [{"text": {"content": "Isaac"}}]}, {"number": None}),
+        ],
+    )
+
+    # Act: project down to the one column the user asked for.
+    project = Project(source, ["name"])
+    project.open(None)
+    batch = project.next()
+    project.close()
+
+    # Assert: the rows are trimmed to the projected column, positionally...
+    assert batch == [
+        ({"title": [{"text": {"content": "Galileo"}}]},),
+        ({"title": [{"text": {"content": "Isaac"}}]},),
+    ]
+
+    # ...and the schema it advertises is trimmed to match, so the pair
+    # engine/base.py:319 builds the ResultSet from stays consistent.
+    assert [entry[0] for entry in project.result_schema.as_sequence()] == ["name"]
+
+
+def test_project_maps_one_source_batch_to_one_batch_and_forwards_exhaustion(students):
+    # The trim test above drives a single batch and stops, which cannot see the
+    # `next()` CONTRACT: one source batch in, one trimmed batch out, and `None`
+    # forwarded when the source is spent. Two things ride on it.
+    #
+    # EXHAUSTION. `engine/base.py:311-313` drains the plan with
+    # `while (batch := plan.next()) is not None:`. An operator that returns `[]`
+    # instead of `None` at exhaustion does not end that loop -- `[] is not None`
+    # -- so the engine spins forever. Measured against a draining implementation:
+    # 100 000 spins, 1 row, no termination. This is the sibling assertion to
+    # test_scan_yields_the_store_rows_as_a_batch_then_reports_exhaustion.
+    #
+    # STREAMING. `Scan` pulls one Notion page per `next()` on purpose, and that
+    # laziness is pinned (test_scan_pulls_pages_lazily_fetching_only_what_next_
+    # demands). `Project` is a per-row transform, so it must preserve the batch
+    # boundaries it is handed: draining the source into one big batch would
+    # materialise the whole table before the engine sees a row and would silently
+    # undo ADR-0010's pagination for every SELECT once Project is the plan root.
+    # `Aggregate` drains because a cross-row reduction cannot do otherwise;
+    # `Project` has no such excuse. `Filter` (queryplan.py:304-314) is the shape.
+
+    class _TwoBatchSource(_WideSource):
+        """A source that hands out its rows one batch per ``next()``."""
+        def next(self):
+            if not self._rows:
+                return None
+            return [self._rows.pop(0)]
+
+    wide = SchemaInfo.from_table(students, execution_names=["object_id", "name"])
+    source = _TwoBatchSource(
+        wide,
+        [
+            ("page-1", {"title": [{"text": {"content": "Galileo"}}]}),
+            ("page-2", {"title": [{"text": {"content": "Isaac"}}]}),
+        ],
+    )
+
+    # Act: drive the operator one batch at a time, one call past the end.
+    project = Project(source, ["name"])
+    project.open(None)
+    first = project.next()
+    second = project.next()
+    third = project.next()
+    project.close()
+
+    # Assert: the source's batch boundaries survive the trim -- two batches in,
+    # two batches out, NOT one drained batch of two rows.
+    assert first == [({"title": [{"text": {"content": "Galileo"}}]},)]
+    assert second == [({"title": [{"text": {"content": "Isaac"}}]},)]
+
+    # ...and exhaustion is signalled as None, which is what ends the engine's
+    # drain loop. `[]` here is the non-terminating answer, so `is None` is the
+    # assertion and `not third` would NOT do.
+    assert third is None

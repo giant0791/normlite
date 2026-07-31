@@ -127,6 +127,18 @@ buys no safety and leaves `Filter` with a join-only branch as it generalises to 
   **must land after this one**: pushing more without a recheck repeats #384 on a second axis. It
   also carries a hazard of its own — pushing into the right `Scan` changes the join's *input*, so
   under an outer join it can manufacture phantoms that then satisfy an `is_null()` predicate.
+- **A plain `SELECT` does not reach the query planner at all, and that is a prerequisite this ADR
+  did not name.** `context.py:402` routes a statement to `ExecutionStyle.EXECUTEQUERYPLAN` only
+  `if stmt.is_select and (stmt._joins or stmt._is_aggregate)`; every other `SELECT` takes
+  `ExecutionStyle.EXECUTE` and `_execute_single`, never constructing a `Planner`. Measured with a
+  spy on `Planner.plan`: `select(t)` and `select(t).where(t.c.effort != 5)` — **#384's own repro
+  shape** — yield zero invocations, `select(func.count())` yields one. So "wire the recheck on the
+  scan path" is blocked until a plain `SELECT` is routed through the planner; until then the
+  `Project` stage of the plan's non-join branch is correct but unreachable in production, exercised
+  only by direct `Planner(ctx).plan()` calls in `tests/unit/sql/test_query_plan.py`. The routing
+  change is behaviour-bearing on every non-join `SELECT` in the codebase and deserves its own slice
+  before step 4, not a line inside it.
+
 - **This ADR is Proposed, not Accepted.** ADR-0019 was marked Accepted while its `all(None)` bullet
   described code that was never written; that drift cost a session to discover. This one flips to
   Accepted when the code lands.
