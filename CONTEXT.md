@@ -831,10 +831,15 @@ Structure first, semantics second, so each slice has **one reason to fail**:
    internally, with the hooks driving I/O exactly as today. The tree is stood up *around* the
    existing choreography — ADR-0008's own delegate-then-fold discipline (#314–#317).
    Behaviour-preserving. Slice-1 `Scan` I/O is a **provisional shim, not the target contract**:
-   `next()` reads a page via `fetchmany(NOTION_MAX_PAGE_SIZE)` — a row-count stand-in that
-   re-splits the whole pages `PageIterator` already produced and lifts the page-size constant into
-   the SQL layer — and `open()` sets `stream_results=True`, an eager-vs-lazy *policy* that belongs
-   to ENGINE (and rides a non-PEP-249 `execute()` extension). The honest contract is a
+   `next()` reads a page via `fetchmany(...)` — a row-count stand-in that re-splits the whole pages
+   `PageIterator` already produced and keeps a page-size constant in the SQL layer — and `open()`
+   sets `stream_results=True`, an eager-vs-lazy *policy* that belongs to ENGINE (and rides a
+   non-PEP-249 `execute()` extension). **Narrowed by #384 step 2b, not removed**: the size is now
+   the *effective* page size (`yield_per` capped at `NOTION_MAX_PAGE_SIZE`, which remains the
+   default), cascaded from `ctx.execution_options` by the `Planner` into the plain-`SELECT` `Scan`
+   only — the aggregate and join `Scan`s keep the default, because `Aggregate.next()` and
+   `HashJoin.next()` drain their children on the first call, so a smaller page there multiplies
+   requests and buys no laziness. The honest contract is still a
    page-granular pull on the DBAPI `Cursor` (a `fetchnextpage()`-style primitive surfacing the
    `PageIterator`'s grain) reached through the **`QueryIO` port** in slice 2, where the page size
    returns to the `Cursor` and the policy moves to ENGINE. See
@@ -1045,6 +1050,13 @@ keep their names; only the WHERE channel became a recheck.
 > client-side, and a left-side conjunct is pushed with **no** recheck — so the push decides alone
 > and #384's row survives. The section above states the target, which is what the ⊇ invariant below
 > already presupposes. Do not read it as a description of current code.
+>
+> **Step 2b is DONE, and it was a prerequisite, not the feature.** Every `SELECT` now routes to
+> `ExecutionStyle.EXECUTEQUERYPLAN` (`context.py`, `if stmt.is_select`), so the scan path — `Scan`,
+> `Filter`, `Project` — is finally reachable in production for #384's own statement shape. Before
+> the flip, a plain `SELECT` never constructed a `Planner` at all, so building the recheck first
+> would have rechecked nothing for the statement #384 reports. **The recheck itself is still not
+> built** (steps 3–4): a left-side conjunct is still pushed and not re-applied.
 
 ### Pushdown soundness (the invariant)
 **The push may over-keep; it must never under-keep.**

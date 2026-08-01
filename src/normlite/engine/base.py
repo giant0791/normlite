@@ -304,20 +304,36 @@ class Connection:
         from normlite.sql.queryplan import Planner
         from normlite.notiondbapi.resultset import ResultSet
 
+        # determine if streaming is requested
+        stream_results = context.execution_options.get("stream_results")
+        yield_per = context.execution_options.get("yield_per")
+        is_streaming = stream_results or yield_per is not None
+
         # build and execute the query plan
         conn = self._engine.raw_connection()
         plan = Planner(context).plan()
         plan.open(conn)
-        rows = []
-        while (batch := plan.next()) is not None:
-            rows.extend(batch)
+
+        # The plan root IS the batch source -- next() -> Optional[list[tuple]]
+        # already. Mint the result cursor and seed it with the first batch,
+        # exactly as Cursor.execute buffers page 1 before deciding anything.
+        context._result_cursor = conn.cursor()
+        rs = ResultSet(plan.result_schema.as_sequence(), "page", plan.next() or [])
+        context._result_cursor._batch_source = plan
+
+        if is_streaming:
+            context._result_cursor._result_sets.append(rs)
+            return
+
+        # eager: drain the rest into the SAME result set. Pull through the cursor,
+        # NOT through plan.next(): _next_batch is what sets _source_exhausted, and
+        # rowcount reads that flag. Draining the plan directly leaves an attached
+        # source looking unexhausted forever, so rowcount would answer -1.
+        while (batch := context._result_cursor._next_batch()) is not None:
+            rs.extend_rows(batch)
         plan.close()
 
-        # construct the result cursor to store the joined rows
-        context._result_cursor = conn.cursor()
-        context._result_cursor._result_sets.append(
-            ResultSet(plan.result_schema.as_sequence(), "page", rows)
-        )
+        context._result_cursor._result_sets.append(rs)
 
     def _resolve_execution_options(self, stmt_execution_options: ExecutionOptions) -> ExecutionOptions:
         """Resolve the connection's execution options with the statement's ones."""

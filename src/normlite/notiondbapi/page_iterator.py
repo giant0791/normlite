@@ -18,7 +18,9 @@
 
 
 
-from typing import Optional
+from typing import Optional, Sequence
+
+from normlite.notiondbapi.resultset import ResultSet
 
 
 class PageIterator:
@@ -59,3 +61,38 @@ class PageIterator:
             self._exhausted = True
 
         return page
+
+class JsonPageSource:
+    """Adapt Notion's JSON page pagination to the batch-source contract.
+
+    Notion pages arrive as dicts and the stream ends by raising StopIteration;
+    a plan yields decoded tuples and ends by returning None. This is the side
+    with the impedance mismatch -- a plan root satisfies :meth:`next` unwrapped.
+    """
+
+    def __init__(
+        self, 
+        page_iter: PageIterator, 
+        description: Sequence[tuple], 
+        translate: callable,
+    ):
+        self._page_iter = page_iter
+        self._description = description
+        self._translate = translate      # Cursor._translate_notion_error
+
+    @property
+    def exhausted(self) -> bool:
+        return self._page_iter is None or self._page_iter.exhausted
+
+    def next(self):
+        if self.exhausted:
+            return None
+        try:
+            obj = next(self._page_iter)
+        except StopIteration:
+            return None
+        except Exception as e:
+            _, exc = self._translate(e)   # translation lives HERE, once
+            raise exc
+        return list(ResultSet.from_json(self._description, obj))
+

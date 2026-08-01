@@ -178,6 +178,88 @@ def test_scan_pulls_pages_lazily_fetching_only_what_next_demands(engine, student
     assert counting.query_calls == 2
 
 
+def test_the_plan_batches_by_yield_per_not_by_the_notion_page_maximum(engine, students):
+    # #384 / ADR-0022 step 2b, parts 2 and 3. `yield_per` must reach the wire AND
+    # size the leaf's batch; this is the only test that can see either.
+    #
+    # The two Scan tests above are BLIND to this, and not by oversight: they use
+    # 150 rows, so the backend splits at 100 + 50 and `fetchmany(100)` lines up
+    # with one Notion page BY COINCIDENCE. Under that arithmetic a leaf that
+    # ignored `yield_per` completely still looks perfectly lazy.
+    #
+    # Measured (session 21), through the real machinery with routing flipped and
+    # `yield_per=2` over 6 rows, BEFORE parts 2 and 3:
+    #
+    #     PROBE first plan.next() -> 6 rows
+    #     PROBE total rows=6 backend pages=3
+    #
+    # The FIRST batch returned the whole data source. Two independent causes, and
+    # this test fences off both:
+    #   - part 2 missing: `yield_per` never reaches `Cursor.execute`, so the
+    #     request keeps `page_size` 100 and all 6 rows arrive in one page.
+    #   - part 3 missing: `Scan.next()` asks `fetchmany(100)` regardless, and
+    #     `fetchmany` pulls FORWARD across page boundaries to satisfy its `n`
+    #     (dbapi2.py:639-646) -- so the leaf drains all 3 pages into one batch.
+    #
+    # That second cause is why the old handoff's "Scan is internally streaming
+    # already; the loss is at the drain, not in the leaf" was false. The leaf
+    # drained too.
+    #
+    # MUTATION-PROVEN, and the two causes are caught by DIFFERENT assertions:
+    #   - part 3 reverted (`fetchmany(NOTION_MAX_PAGE_SIZE)`) -> `assert 6 == 2`
+    #     on the first batch, the probe number above.
+    #   - part 2 reverted (`open()` drops `yield_per`) -> the first THREE
+    #     assertions still pass. One backend page holds all 6 rows, so a 2-row
+    #     `fetchmany` is served from the buffer and looks perfectly lazy. Only
+    #     the LAST assertion fails (`assert 1 == 2`): a second batch served from
+    #     that same buffer never pulls a second page.
+    # So the "pull again" block below is load-bearing. Delete it and this test
+    # stops seeing part 2 entirely.
+    #
+    # Driven through `Planner.plan()` rather than a hand-built `Scan` on purpose:
+    # that covers the CASCADE (part 2's `ctx.execution_options` -> `Scan`) as
+    # well as the granularity (part 3), which a direct `Scan(yield_per=2)` would
+    # skip. It does NOT go through `conn.execute`, so it stays readable while the
+    # eager drain in `_execute_query_plan` is still there to be removed by part 4.
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=6)
+
+    # Seeding is done; only the read below is counted.
+    compiled = select(students).compile(engine._sql_compiler)
+    counting = _PageCountingClient(engine._client)
+    connection = DBAPIConnection(counting)
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=connection.cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={"yield_per": 2},
+    )
+    ctx.pre_exec()
+    ctx.invoked_stmt._setup_execution(ctx)
+
+    plan = Planner(ctx).plan()
+
+    # Act: drive one batch out of the plan.
+    plan.open(connection)
+    first = plan.next()
+
+    # The batch is `yield_per` wide, not the whole store: 2 rows, not 6.
+    assert len(first) == 2
+    # ... and it cost exactly one backend page. 3 here would mean the leaf pulled
+    # forward across every page to fill a 100-row fetch -- the session-21 probe.
+    assert counting.query_calls == 1
+
+    # Pulling again advances one page further: lazy, not truncated at page 1.
+    second = plan.next()
+    assert len(second) == 2
+    assert counting.query_calls == 2
+
+    plan.close()
+
+
 def test_scan_is_recognised_as_a_volcano_operator_but_a_partial_object_is_not(engine, students):
     # The plan drives every node through one uniform contract: open / next / close.
     # Scan already speaks it, so it must be recognised as a VolcanoOperator — while
@@ -272,20 +354,27 @@ def test_planner_turns_a_plain_select_into_a_project_over_a_single_scan(engine, 
     # widened, the root and the leaf stop agreeing, and that divergence IS the
     # feature.
     #
-    # THIS TEST IS THE ONLY THING GUARDING THE NON-JOIN BRANCH. Measured: a plain
-    # SELECT does not reach the Planner at all. `context.py:402` routes a
-    # statement to EXECUTEQUERYPLAN only `if stmt.is_select and (stmt._joins or
-    # stmt._is_aggregate)`; everything else takes ExecutionStyle.EXECUTE and
-    # `_execute_single`. Driving `select(t)` and `select(t).where(t.c.effort != 5)`
-    # -- #384's own repro shape -- through a spy on `Planner.plan` gives ZERO
-    # invocations, while `select(func.count())` gives one. So the branch wired
-    # above is dead in production, and trimming it to the wrong column list was
-    # measured to break no pipeline test whatsoever.
+    # HISTORY, because this comment used to say the opposite and the reversal is
+    # the point of step 2b. Until `context.py` was flipped, this test was the ONLY
+    # thing guarding the non-join branch: a plain SELECT did not reach the Planner
+    # at all. Routing sent a statement to EXECUTEQUERYPLAN only `if stmt.is_select
+    # and (stmt._joins or stmt._is_aggregate)`; everything else took
+    # ExecutionStyle.EXECUTE and `_execute_single`. Measured with a spy on
+    # `Planner.plan`: `select(t)` and `select(t).where(t.c.effort != 5)` -- #384's
+    # own repro shape -- gave ZERO invocations, `select(func.count())` gave one.
+    # The branch wired above was dead in production, and trimming it to the wrong
+    # column list broke no pipeline test whatsoever.
     #
-    # That is a PREREQUISITE for ADR-0022 step 4, and the ADR does not name it:
-    # "wire the recheck on the scan path" cannot work until a plain SELECT is
-    # routed through the query planner, or the recheck will be built in a branch
-    # the engine never executes for exactly the statement #384 is about.
+    # That was the unnamed PREREQUISITE for ADR-0022 step 4: "wire the recheck on
+    # the scan path" cannot work while the engine never executes that path for
+    # exactly the statement #384 is about. Step 2b closed it -- routing is now
+    # `if stmt.is_select`, and `test_a_plain_select_is_driven_through_the_query_plan`
+    # (tests/unit/engine/test_context.py) is what pins it, because the streaming
+    # tests are green on BOTH sides of the flip and cannot tell the two apart.
+    #
+    # So this test no longer stands alone, but it still owns the branch's SHAPE
+    # (Project over Scan) and the schema identity below, which the routing test
+    # says nothing about.
     db_id = create_students_db(engine)
     attach_table_oid(students, db_id)
     populate_students(engine, students, n=3)

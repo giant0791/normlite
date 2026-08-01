@@ -23,7 +23,7 @@ import uuid
 
 from normlite._constants import SpecialColumns
 from normlite.notion_sdk.client import AbstractNotionClient, NotionError
-from normlite.notiondbapi.page_iterator import PageIterator
+from normlite.notiondbapi.page_iterator import JsonPageSource, PageIterator
 from normlite.notiondbapi.resultset import ResultSet
 
 DBAPIParamStyle = Literal[
@@ -213,11 +213,22 @@ class Cursor:
         .. versionadded:: 0.9.0
         """
 
-        self._page_iter: PageIterator = None
-        """Iterator for handling Notion paginated results.
+        self._batch_source = None
+        """JSON page adapter for lazy fetching of batches of pages.
         
-        .. versionadded:: 0.11.0
+        .. versionadded:: 0.13.0
         """
+
+        self._source_exhausted = False
+
+    def _next_batch(self):
+        """The ONE place the exhausted flag is set."""
+        if self._batch_source is None or self._source_exhausted:
+            return None
+        batch = self._batch_source.next()
+        if batch is None:
+            self._source_exhausted = True
+        return batch
 
     @property
     def errorhandler(self) -> DBAPIErrorHandlerType:
@@ -299,6 +310,9 @@ class Cursor:
                  on the cursor or the rowcount of the last operation cannot be 
                  determined by the interface.
 
+        .. versionchanged:: 0.13.0
+            It uses lazy reading of batches of pages to support streaming.
+
         .. versionchanged:: 0.11.0
             This version adds support for row counting when result streaming (lazy page fetching) is active.
         
@@ -308,7 +322,7 @@ class Cursor:
         if not self._result_sets:
             return -1
         
-        if self._page_iter is not None and not self._page_iter.exhausted:
+        if self._batch_source is not None and not self._source_exhausted:
             # result streaming ongoing: total is unknown until every page is pulled
             return -1
         
@@ -437,6 +451,8 @@ class Cursor:
         """Reset helper."""
         self._result_sets = []
         self._result_index = 0
+        self._batch_source = None
+        self._source_exhausted = False
 
     def __iter__(self) -> Iterator[tuple]:
         """Make cursors compatible with the iteration protocol.
@@ -472,34 +488,19 @@ class Cursor:
         return self
     
     def _try_fetch_next(self) -> Optional[tuple]:
-        if self._page_iter is None or self._page_iter.exhausted:
-            # no pages to retrieve
+        batch = self._next_batch()
+        if not batch:                     # None *or* empty: nothing to hand back
             return None
-        
-        # fetch next page and extend current result set
+        self._current_result_set.extend_rows(batch)
         try:
-            object_ = next(self._page_iter)
-            self._current_result_set.extend_from_json(object_)
-            return next(self._current_result_set)  
-        
+            return next(self._current_result_set)
         except StopIteration:
             return None
-        
-        except Exception as e:
-            # something went wrong during fetching, re-raise as DBAPI error
-            _, exc = self._translate_notion_error(e)
-            raise exc
 
     def _drain_pages(self, rs: ResultSet) -> None:
         """Helper to mutate the passed result set by draining all the remaining pages."""
-        try:
-            while self._page_iter is not None and not self._page_iter.exhausted:
-                rs.extend_from_json(next(self._page_iter))
-
-        except Exception as e:
-            # something went wrong during fetching, re-raise as DBAPI error
-            _, exc = self._translate_notion_error(e)
-            raise exc
+        while (batch := self._next_batch()) is not None:
+            rs.extend_rows(batch)
 
     def fetchone(self) -> Optional[tuple]:
         """Fetch the next row of a query result set.
@@ -750,31 +751,34 @@ class Cursor:
 
         object_ = {}
         is_streaming = stream_results or yield_per is not None
+        self._reset_results()
+        page_iter = PageIterator(page_fetcher=page_fetcher, page_size=page_size)
         
-        try:
-            self._page_iter = PageIterator(page_fetcher=page_fetcher, page_size=page_size)
-            
+        try:            
             # fetch the first page
             # construct a temporary result set to handle mid-drain error translation:
             # all-or-nothing result
-            object_ = next(self._page_iter)
-            rs = ResultSet.from_json(self._description, notion_obj=object_)     
+            object_ = next(page_iter)
+            rs = ResultSet.from_json(self._description, notion_obj=object_) 
+
+            self._batch_source = JsonPageSource(
+                page_iter, self._description, self._translate_notion_error
+            )
+            self._source_exhausted = page_iter.exhausted
+
             if is_streaming:
                 # fetch pages lazily using the yield_per as page_size 
-                self._reset_results()
                 self._result_sets.append(rs)  
                 return self
            
             # retrieve remaining pages eargerly
-            for object_ in self._page_iter:
-                rs.extend_from_json(object_)
-
+            while (batch := self._next_batch()) is not None:           
+                rs.extend_rows(batch)
 
         except (KeyError, ValueError, NotionError) as e:
             _, exc = self._translate_notion_error(e)
             raise exc
 
-        self._reset_results()
         self._result_sets.append(rs)  
         return self
     

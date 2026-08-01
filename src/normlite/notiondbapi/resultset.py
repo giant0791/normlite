@@ -138,7 +138,14 @@ class ResultSet:
             notion_obj (dict): The Notion result object whose "results" objects need to be added.
         """
         other = ResultSet.from_json(self._description, notion_obj)
-        self._rows.extend(other._rows)
+        self.extend_rows(other._rows)
+
+    def extend_rows(self, rows: list[tuple]) -> None:
+        """Append already decoded tuples.
+        
+        .. versionadded:: 0.13.0
+        """
+        self._rows.extend(rows)
             
     @classmethod
     def _process_page(

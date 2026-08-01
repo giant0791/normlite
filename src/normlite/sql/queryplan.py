@@ -60,11 +60,15 @@ class Scan(VolcanoOperator):
         operation: dict, 
         parameters: Union[dict, list[dict]],
         schema: SchemaInfo,
+        *,
+        yield_per: Optional[int] = None
     ) -> None:
         self._operation = operation
         self._parameters = parameters
         self._schema = schema
         self._cursor = None
+        self._yield_per = yield_per
+        self._page_size = min(yield_per, NOTION_MAX_PAGE_SIZE) if yield_per else NOTION_MAX_PAGE_SIZE
 
     def open(self, connection: Connection) -> None:
         self._cursor = connection.cursor()
@@ -73,10 +77,11 @@ class Scan(VolcanoOperator):
             self._operation,
             self._parameters, 
             stream_results=True,
+            yield_per=self._yield_per
         )
 
     def next(self) -> Optional[list[tuple]]:
-        next_batch = self._cursor.fetchmany(size=NOTION_MAX_PAGE_SIZE)            
+        next_batch = self._cursor.fetchmany(size=self._page_size)            
         return next_batch if next_batch else None
     
     def close(self) -> None:
@@ -531,7 +536,13 @@ class Planner:
                 execution_names=ctx.compiled.fetch_columns(),
                 projected_names=ctx.compiled.result_columns(),
             )
-            scan = Scan(ctx.operation, ctx.parameters, schema=schema)
+            scan = Scan(
+                ctx.operation, 
+                ctx.parameters, 
+                schema=schema, 
+                # the operator above this Scan can consume batch-by-batch
+                yield_per=ctx.execution_options.get("yield_per")    
+            )
             return Project(scan, [c.name for c in schema.columns])
         
         # build the plan for JOIN

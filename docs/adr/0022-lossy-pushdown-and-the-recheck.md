@@ -127,32 +127,51 @@ buys no safety and leaves `Filter` with a join-only branch as it generalises to 
   **must land after this one**: pushing more without a recheck repeats #384 on a second axis. It
   also carries a hazard of its own — pushing into the right `Scan` changes the join's *input*, so
   under an outer join it can manufacture phantoms that then satisfy an `is_null()` predicate.
-- **A plain `SELECT` does not reach the query planner at all, and that is a prerequisite this ADR
-  did not name.** `context.py:402` routes a statement to `ExecutionStyle.EXECUTEQUERYPLAN` only
-  `if stmt.is_select and (stmt._joins or stmt._is_aggregate)`; every other `SELECT` takes
-  `ExecutionStyle.EXECUTE` and `_execute_single`, never constructing a `Planner`. Measured with a
-  spy on `Planner.plan`: `select(t)` and `select(t).where(t.c.effort != 5)` — **#384's own repro
-  shape** — yield zero invocations, `select(func.count())` yields one. So "wire the recheck on the
-  scan path" is blocked until a plain `SELECT` is routed through the planner; until then the
-  `Project` stage of the plan's non-join branch is correct but unreachable in production, exercised
-  only by direct `Planner(ctx).plan()` calls in `tests/unit/sql/test_query_plan.py`.
+- **A plain `SELECT` did not reach the query planner at all, and that was a prerequisite this ADR
+  did not name — now closed (step 2b).** `context.py:402` used to route a statement to
+  `ExecutionStyle.EXECUTEQUERYPLAN` only `if stmt.is_select and (stmt._joins or
+  stmt._is_aggregate)`; every other `SELECT` took `ExecutionStyle.EXECUTE` and `_execute_single`,
+  never constructing a `Planner`. Measured with a spy on `Planner.plan`: `select(t)` and
+  `select(t).where(t.c.effort != 5)` — **#384's own repro shape** — yielded zero invocations,
+  `select(func.count())` one. So "wire the recheck on the scan path" was blocked, and the `Project`
+  stage of the non-join branch was correct but unreachable in production, exercised only by direct
+  `Planner(ctx).plan()` calls in `tests/unit/sql/test_query_plan.py`. **The routing is now
+  `if stmt.is_select`**, pinned by `test_a_plain_select_is_driven_through_the_query_plan`
+  (`tests/unit/engine/test_context.py`) — which exists because the streaming tests are green on
+  **both** sides of the flip and therefore cannot pin it.
 
-- **The routing change is IN SCOPE for C2, and it comes before the recheck.** A first draft of this
-  ADR proposed deferring it to its own slice; that was overruled deliberately — deferring it would
-  land steps 3 and 4 on a code path no plain `SELECT` executes, i.e. ship the recheck without
-  rechecking anything for the statement shape #384 actually reports. Its cost is measured, not
-  estimated: flipping `context.py:402` to `if stmt.is_select` reds **24** tests, but **19 of those are
-  one test-harness gap** — `tests/utils/execution.py:run_context` duplicates
-  `Connection._execute_context`'s dispatch and never gained an `EXECUTEQUERYPLAN` branch, so a routed
-  `SELECT` falls through to `do_executemany` with a `None` `bulk_operation`. Giving the harness that
-  branch leaves **5 genuine failures, and they are one production gap**: `_execute_query_plan`
-  (`base.py:303-320`) drains the plan eagerly into a list and never reads `context.execution_options`,
-  so `stream_results` / `yield_per` (ADR-0010) do not survive the plan path — 4 streaming tests plus
-  one `rowcount` case. **Closing that gap is what the routing step consists of**, and the mechanism is
-  an open fork: make the plan path lazy (feed the plan to the result cursor as an iterator), cascade
-  the options into `Scan`'s page size while keeping the eager drain, or route only the `SELECT`s that
-  need a recheck. Note that the third does not dodge the problem — `stream_results=True` together with
-  a pushed `WHERE` is precisely the case that needs both.
+- **The routing change is IN SCOPE for C2, and it comes before the recheck — DONE.** A first draft of
+  this ADR proposed deferring it to its own slice; that was overruled deliberately — deferring it
+  would land steps 3 and 4 on a code path no plain `SELECT` executes, i.e. ship the recheck without
+  rechecking anything for the statement shape #384 actually reports. Its cost was measured, not
+  estimated: flipping `context.py:402` to `if stmt.is_select` redded **24** tests, but **19 of those
+  were one test-harness gap** — `tests/utils/execution.py:run_context` duplicates
+  `Connection._execute_context`'s dispatch and had never gained an `EXECUTEQUERYPLAN` branch, so a
+  routed `SELECT` fell through to `do_executemany` with a `None` `bulk_operation`. Giving the harness
+  that branch left **5 genuine failures spanning TWO gaps**: `_execute_query_plan` drained the plan
+  eagerly and never read `context.execution_options`, so `stream_results` / `yield_per` (ADR-0010)
+  did not survive the plan path (4 streaming tests); and `post_exec` read the wrong cursor's
+  `rowcount` (**#392**, which reproduced on `main` with no routing change and was fixed separately).
+
+  **Resolution: make the plan path lazy.** The two rejected alternatives are recorded because both
+  were measured, not guessed. *Cascade the options into `Scan`'s page size while keeping the eager
+  drain* costs **4 reds, not 1**, and regresses ADR-0010 in a specific way: a mid-stream backend
+  failure moves out of the iteration boundary into `conn.execute()`, so page-1 rows the contract
+  promises "stay pulled" are never handed over. *Route only the `SELECT`s that need a recheck*
+  measured **0 reds against a suite with a hole in it** — nothing combined streaming with a WHERE
+  until `test_streaming_survives_a_where_clause` was written; with it, that option costs 1. It also
+  gives one statement kind two execution paths keyed on its predicate, which is the shape of thing
+  that produced #384.
+
+  What landed, as one commit: the routing flip; `yield_per` cascaded into the plain-`SELECT` `Scan`
+  (**not** into the aggregate or join `Scan`s, whose parents drain by nature, where a smaller page
+  only multiplies requests); `Scan.next()` batching by that page size instead of the constant 100;
+  and a **batch source** seam — `Cursor` refills from anything answering
+  `next() -> Optional[list[tuple]]`, satisfied by a new `JsonPageSource` adapter over `PageIterator`
+  and by **a plan root unwrapped**, since `Project.next()` already has that shape. Laziness is gated
+  on `stream_results` / `yield_per`, mirroring `_execute_single`'s `streamable=` gate; without it a
+  non-streaming plan path would report `rowcount == -1`, because `post_exec` memoizes
+  `self.cursor.rowcount` immediately after execution.
 
 - **This ADR is Proposed, not Accepted.** ADR-0019 was marked Accepted while its `all(None)` bullet
   described code that was never written; that drift cost a session to discover. This one flips to

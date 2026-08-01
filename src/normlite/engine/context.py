@@ -397,9 +397,9 @@ class ExecutionContext:
         if stmt.is_delete or stmt.is_update:
             return ExecutionStyle.EXECUTEMANY
         
-        # REFACTORED: Select with joins is driven by the query planner
-        # (see #364, drop EXECUTEMANY for select with joins)
-        if stmt.is_select and (stmt._joins or stmt._is_aggregate):
+        # REFACTORED: SELECT statements are now always query plan driven
+        # (see #384, routing is inside C2)
+        if stmt.is_select:
             return ExecutionStyle.EXECUTEQUERYPLAN
         
         # select or insert without returning
