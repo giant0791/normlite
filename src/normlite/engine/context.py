@@ -552,7 +552,7 @@ class ExecutionContext:
 
         exec_opts = self.execution_options
         if exec_opts.get('preserve_rowcount', False):
-            self._rowcount =  self._cursor.rowcount
+            self._rowcount =  self.cursor.rowcount
             return
         
         self._rowcount = -1

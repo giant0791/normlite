@@ -342,6 +342,42 @@ def test_select_rowcount(engine, populated_students, students, preserve_rowcount
     assert result.rowcount == expected
 
 
+@pytest.mark.parametrize("preserve_rowcount,expected", [
+    (True, 1),
+    (False, -1)
+])
+def test_aggregate_select_rowcount(engine, populated_students, students, preserve_rowcount, expected):
+    # #392. The sibling of test_select_rowcount for the QUERY-PLAN path.
+    #
+    # There are two cursors on the plan path, and post_exec used to read the one
+    # that never executed. _execute_query_plan drains the plan and parks the rows
+    # on a NEW cursor, `context._result_cursor` (base.py), leaving `_cursor`
+    # untouched -- so `_cursor.rowcount` answered with its -1 sentinel and
+    # post_exec memoized that. `ExecutionContext.cursor` resolves
+    # `_result_cursor or _cursor`, which is why the ROWS were right while the
+    # COUNT was not, and reading through that property is the fix.
+    #
+    # An aggregate select is the cheapest statement that reaches the plan path
+    # (joins reach it too, and were equally affected). One row out, so the
+    # expected count is 1, not the 2 rows the table holds.
+    #
+    # This was never a #384 regression -- it reproduced on main with no routing
+    # change at all. It is pinned here because ADR-0022 step 2b routes plain
+    # SELECTs through the planner, at which point the bug would have swallowed
+    # test_select_rowcount[True-2] above and step 2b could not have been green.
+    # The False case is here so a fix cannot simply stop consulting the sentinel.
+    stmt = select(func.count()).select_from(students)
+
+    result = run_execute(
+        engine,
+        stmt,
+        execution_options={"preserve_rowcount": preserve_rowcount},
+    )
+
+    assert len(result.all()) == 1
+    assert result.rowcount == expected
+
+
 # =========================================================
 # DDL tests (merged)
 # =========================================================
