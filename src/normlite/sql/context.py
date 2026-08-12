@@ -27,6 +27,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class PlanningContext:
-    residual_where: Optional[ColumnElement] = None
+    recheck_where: Optional[ColumnElement] = None
     residual_sorts: Optional[OrderByClause] = None
 

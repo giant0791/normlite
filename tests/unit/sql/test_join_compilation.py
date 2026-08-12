@@ -328,7 +328,7 @@ def test_compound_and_where_pushes_only_left_conjunct_into_phase_one(
       # The right (courses.title) conjunct is held back for client-side evaluation —
       # it must be held back, not dropped, or the join would answer a broader question
       # than it was asked. It now travels as AST on the PlanningContext ...
-      residual = compiled.planning_context.residual_where
+      residual = compiled.planning_context.recheck_where
       assert residual.column is courses.c.title
       assert residual.value.value == "Astronomy"
 
@@ -358,7 +358,7 @@ def test_compound_or_spanning_both_sides_pushes_nothing_into_phase_one(
 
     # ... and the whole OR is held back for client-side eval, with BOTH disjuncts
     # still present and joined by "or" — i.e. the connective was never split.
-    residual = compiled.planning_context.residual_where
+    residual = compiled.planning_context.recheck_where
     assert residual.operator == "or"
     assert {clause.column for clause in residual.clauses} == {
         students.c.name,

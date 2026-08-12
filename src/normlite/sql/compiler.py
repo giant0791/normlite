@@ -673,7 +673,7 @@ class NotionCompiler(SQLCompiler):
                             if _get_expression_parent_tables(clause) != {select._table}
                         ]
                         if right_clauses:
-                            self.planning_context.residual_where = (
+                            self.planning_context.recheck_where = (
                                 right_clauses[0] if len(right_clauses) == 1
                                 else BooleanClauseList("and", right_clauses)
                             )
@@ -685,7 +685,7 @@ class NotionCompiler(SQLCompiler):
                             # for the right table, hold the residual as raw AST for
                             # client-side evaluation after the merge; do NOT dispatch it
                             # (that would register an unconsumed bind — see #363).
-                            self.planning_context.residual_where = expression
+                            self.planning_context.recheck_where = expression
         
         projection = self._compiler_state.stmt._projection
 

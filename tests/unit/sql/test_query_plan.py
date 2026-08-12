@@ -697,7 +697,7 @@ def test_planner_layers_a_filter_carrying_the_residual_over_the_hashjoin(engine)
     # is the very residual the compiler held back.
     assert isinstance(plan, Filter)
     assert isinstance(plan._source, HashJoin)
-    assert plan._filter is ctx.compiled.planning_context.residual_where
+    assert plan._filter is ctx.compiled.planning_context.recheck_where
 
 
 def test_planner_hands_the_residual_over_with_its_literal_unprocessed(engine):
@@ -760,7 +760,7 @@ def test_planner_hands_the_residual_over_with_its_literal_unprocessed(engine):
     # Assert: the residual arrives as the AST, and its literal is still the
     # date object the user wrote -- NOT Notion's "2026-01-01" ISO string.
     assert isinstance(plan, Filter)
-    assert plan._filter is ctx.compiled.planning_context.residual_where
+    assert plan._filter is ctx.compiled.planning_context.recheck_where
     assert plan._filter.value.effective_value == date(2026, 1, 1)
 
 

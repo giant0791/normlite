@@ -1055,8 +1055,15 @@ keep their names; only the WHERE channel became a recheck.
 > `ExecutionStyle.EXECUTEQUERYPLAN` (`context.py`, `if stmt.is_select`), so the scan path — `Scan`,
 > `Filter`, `Project` — is finally reachable in production for #384's own statement shape. Before
 > the flip, a plain `SELECT` never constructed a `Planner` at all, so building the recheck first
-> would have rechecked nothing for the statement #384 reports. **The recheck itself is still not
-> built** (steps 3–4): a left-side conjunct is still pushed and not re-applied.
+> would have rechecked nothing for the statement #384 reports.
+>
+> **Step 3's identifier rename is DONE**: `PlanningContext.recheck_where` is the field's real name
+> in code, so the glossary above now names something that exists. `residual_sorts` and
+> `compile_residual_sorts` were left alone, deliberately — see "Sorts keep the word `residual`".
+> Still outstanding from step 3 is the **vocabulary pass** over the bare word `residual` in comments
+> and docstrings, where each occurrence has to be classified as a recheck or a genuine residual.
+> **The recheck itself is still not built** (step 4): a left-side conjunct is still pushed and not
+> re-applied, so the paragraph above remains the target and not a description of current code.
 
 ### Pushdown soundness (the invariant)
 **The push may over-keep; it must never under-keep.**

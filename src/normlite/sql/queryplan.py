@@ -568,14 +568,14 @@ class Planner:
         )
     
         # add a filter on top of the plan, if there is a WHERE-clause on the right table
-        residual_where = ctx.compiled.planning_context.residual_where
-        if residual_where is not None:
-            if not isinstance(residual_where, BinaryExpression):
+        recheck_where = ctx.compiled.planning_context.recheck_where
+        if recheck_where is not None:
+            if not isinstance(recheck_where, BinaryExpression):
                 raise InvalidRequestError(
                     f"Only single-binary expressions supported, "
-                    f"received a '{type(residual_where).__name__}' expression."
+                    f"received a '{type(recheck_where).__name__}' expression."
                 )
-            right_filter = residual_where
+            right_filter = recheck_where
             merged_schema = SchemaInfo.from_join(
                 join.left,
                 join.right,

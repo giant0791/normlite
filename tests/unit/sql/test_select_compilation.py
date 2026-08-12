@@ -548,4 +548,4 @@ def test_plain_select_harvests_a_planning_context_that_holds_nothing_back(
     compiled = select_stmt.compile(NotionCompiler())
 
     assert compiled.planning_context is not None
-    assert compiled.planning_context.residual_where is None
+    assert compiled.planning_context.recheck_where is None
