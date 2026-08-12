@@ -1100,3 +1100,99 @@ def test_join_with_parameterised_right_side_where_executes_with_residual_off_the
 
     # Assert: the residual is gone from the compiled dict, which stays JSON-like data.
     assert "join_right_filter" not in compiled_dict
+
+
+def test_compound_and_where_applies_both_the_pushed_and_the_held_conjunct(
+    engine: Engine,
+):
+    # A compound `left AND right` WHERE is the one routing path with no behavioural
+    # coverage: the compiler splits it, pushing the left conjunct into phase-1 and
+    # holding the right one as AST for the Filter (compiler.py, the `right_clauses`
+    # branch). Only ONE compile-level assertion guarded that branch
+    # (test_compound_and_where_pushes_only_left_conjunct_into_phase_one) — measured by
+    # reverting the branch's write site, which redded that test and nothing else. So a
+    # dropped right conjunct would have returned a BROADER answer with no test
+    # observing a wrong ROW. This is that observer.
+    #
+    # This test pins the HELD conjunct only, and that is not a shortcoming: per
+    # ADR-0022 pushing is a transfer optimisation that never DECIDES, so whether the
+    # left conjunct is pushed or evaluated client-side, the correct answer is the same.
+    # A row-level assertion is therefore blind to pushdown BY DESIGN -- where the left
+    # conjunct went is pinned at compile level, by the phase-1 payload assertions in
+    # test_compound_and_where_pushes_only_left_conjunct_into_phase_one. (Measured: no
+    # honest mutation of the push reds this test. Suppressing the push while still
+    # dispatching it trips #363's unused-bind guard, and making the simulated client
+    # stop filtering altogether breaks create_all's checkfirst probe -- both die before
+    # a row is ever compared.)
+    #
+    # Arrange: Galileo satisfies the LEFT conjunct and fails the RIGHT, so only the
+    # held conjunct can drop him. Kepler is the universe control: he makes a
+    # Chemistry-titled course exist AND be reachable through this join, so `[]` means
+    # "the predicate rejected Galileo's actual pairing", not "nothing was there".
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses).values(title="Astronomy").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        chemistry_oid = (
+            connection.execute(
+                insert(courses).values(title="Chemistry").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+
+        connection.execute(
+            insert(students).values(name="Galileo Galilei", enrolled_in=[astronomy_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Johannes Kepler", enrolled_in=[chemistry_oid])
+        )
+
+        # A statement is single-shot: compiling assigns bind roles, so each execution
+        # needs its own fresh statement.
+        def galileo_enrolled_in(course_title: str):
+            return (
+                select(students, courses)
+                .join(students.c.enrolled_in)
+                .where(students.c.name == "Galileo Galilei")   # LEFT  — pushed
+                .where(courses.c.title == course_title)        # RIGHT — held back
+            )
+
+        # Act: ask for a pairing that exists in NEITHER student's row.
+        contradictory = connection.execute(
+            galileo_enrolled_in("Chemistry")
+        ).fetchall()
+
+        # Act: the positive control — the same compound shape, satisfiable.
+        satisfiable = connection.execute(
+            galileo_enrolled_in("Astronomy")
+        ).fetchall()
+
+    # Assert: the held conjunct discriminates -- Galileo reaches the client paired with
+    # Astronomy, and `title == "Chemistry"` drops him there. Drop the held conjunct and
+    # this row survives, which is the whole failure mode: a silently broader answer.
+    assert contradictory == []
+
+    # Assert: and the answer is not simply always-empty — swap only the right-hand
+    # value and the pair survives. Without this, dropping every row would pass.
+    assert {(row.name, row.title) for row in satisfiable} == {
+        ("Galileo Galilei", "Astronomy")
+    }
