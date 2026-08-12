@@ -1196,3 +1196,79 @@ def test_compound_and_where_applies_both_the_pushed_and_the_held_conjunct(
     assert {(row.name, row.title) for row in satisfiable} == {
         ("Galileo Galilei", "Astronomy")
     }
+
+
+def test_join_with_a_left_only_where_keeps_the_matching_pair(engine: Engine):
+    # SAFETY NET, green on arrival (session 24). Written because this statement
+    # shape -- a JOIN whose ONLY WHERE conjunct belongs to the LEFT table -- has
+    # no observer anywhere in the suite, at row level or compile level.
+    #
+    # Every other single-conjunct join WHERE here filters `courses`, the RIGHT
+    # table, so they all exercise compiler.py's hold branch. The sibling branch
+    # (`parent_tables == {select._table}`) is reached only by this shape, and a
+    # change to it returns a silently wrong answer with 920 tests still green.
+    #
+    # That is not hypothetical. C2 step 4 makes every pushed conjunct ALSO
+    # re-checked client-side, and the first draft of it -- holding the conjunct
+    # without teaching Planner.plan which table the predicate reads -- built a
+    # Filter over the LEFT predicate while slicing the RIGHT columns, so eval3
+    # saw no `name` cell, answered UNKNOWN for every row, and this query returned
+    # []. The full suite stayed green. This test is what turns that into a red.
+    #
+    # It is deliberately NOT a claim about pushdown: per ADR-0022 the push never
+    # decides, so this assertion cannot tell where the conjunct was evaluated,
+    # only that it was evaluated exactly once and correctly. Where it went is
+    # pinned at compile level, by the phase-1 payload assertions.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses).values(title="Astronomy").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        chemistry_oid = (
+            connection.execute(
+                insert(courses).values(title="Chemistry").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+
+        # Kepler is the discriminator: he is a second, fully joinable pair that
+        # the LEFT conjunct must exclude. Without him a filter that kept
+        # everything would be indistinguishable from one that worked.
+        connection.execute(
+            insert(students).values(name="Galileo Galilei", enrolled_in=[astronomy_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Johannes Kepler", enrolled_in=[chemistry_oid])
+        )
+
+        rows = connection.execute(
+            select(students, courses)
+            .join(students.c.enrolled_in)
+            .where(students.c.name == "Galileo Galilei")   # LEFT — the only conjunct
+        ).fetchall()
+
+    # Assert: the pair survives the join intact. A predicate evaluated against
+    # the wrong column slice drops it, which is the failure this net exists for.
+    assert {(row.name, row.title) for row in rows} == {("Galileo Galilei", "Astronomy")}
+
+    # Assert: and the conjunct actually discriminates -- Kepler is joinable and
+    # is excluded. Without this, returning every row would pass.
+    assert len(rows) == 1
