@@ -21,10 +21,11 @@
 
 from typing import Any, Callable, Optional, Protocol, Sequence, Union, runtime_checkable
 
+from normlite._constants import SpecialColumns
 from normlite.engine.context import ExecutionContext
 from normlite.exceptions import InvalidRequestError
 from normlite.notiondbapi.dbapi2 import Connection
-from normlite.sql.compiler import compile_residual_sorts
+from normlite.sql.compiler import _get_expression_parent_tables, compile_residual_sorts, _get_expression_columns
 from normlite.sql.dml import AggregateExecution, Join
 from normlite.sql.elements import ColumnElement, BinaryExpression
 from normlite.sql.functions import FunctionElement
@@ -282,17 +283,27 @@ class Filter(VolcanoOperator):
         self._filter = filter
         self._table = table
 
-        # right-side WHERE is answered client-side, AFTER the join
-        # (ADR-0005): build getters from the merged schema and keep only
-        # rows whose right slice passes the predicate.
-        # Select the right-side result columns by IDENTITY (provenance),
-        # not by name: under a collision the right column is keyed
-        # fully-qualified (`courses.title`) and would never match
-        # `c.name in right.uc`. The getter is taken at the merged
-        # (qualified) name via the existing index. See ADR-0009.
+        # The WHERE is answered client-side over the slice of the row owned by
+        # `table` -- the table the PREDICATE reads. That is NOT always the
+        # join's right side any more (ADR-0022): on the scan path it is the
+        # statement's only table, and on the join path it is whichever side the
+        # conjunct belongs to, derived from the predicate in `Planner.plan`.
+        # A conjunct reading the LEFT table was evaluated against the RIGHT
+        # slice while this argument was hardcoded, which found no cell, answered
+        # UNKNOWN for every row, and returned nothing -- silently (#384 / C2).
+        #
+        # Select the slice's result columns by IDENTITY (provenance), not by
+        # name: under a collision the column is keyed fully-qualified
+        # (`courses.title`) and would never match a bare-name test. The getter
+        # is taken at the merged (qualified) name via the existing index.
+        # See ADR-0009.
         # 
         # IMPORTANT:
         # identity-by-table is collision-proof but **not self-join-proof**
+        #
+        # NOTE: the `_right_*` names below predate the generalisation and now
+        # read narrower than the code is; renaming them belongs to step 3's
+        # vocabulary pass, not here.
         self._right_cols = [c for c in self._merged_schema.columns if c.table is self._table]
         self._right_getters = [
             self._merged_schema.column_getter(c.name) 
@@ -327,7 +338,13 @@ class Filter(VolcanoOperator):
         row_getters: list[Callable[[Sequence[Any]], Any]],
         right_cols: Sequence[ResultColumn],
     ) -> bool:
-        """Answer the residual WHERE over a merged row's right slice.
+        """Answer the WHERE over the slice of a row owned by the predicate's table.
+
+        On the join path that slice may be either side; on the scan path it is
+        the whole row. The WHERE reaching here is usually a **recheck** -- a
+        conjunct that was also pushed, re-applied because a Notion filter is a
+        lossy probe and never decides (ADR-0022) -- and sometimes a genuine
+        **residual**, a conjunct with no pushed form at all.
 
         Shape adapter around :func:`eval3`: the merged row is a flat tuple of
         raw cells, while the evaluator reads them keyed by column name. The
@@ -354,10 +371,16 @@ class Filter(VolcanoOperator):
         right_slice = tuple(getter(merged_row) for getter in row_getters)
 
         # Key by the BARE name: eval3 looks a leaf's cell up under
-        # predicate.column.name, which on a residual AST column is the
-        # unqualified name. The slice is right-only -- its columns were picked
-        # by table IDENTITY, not by name -- so bare names stay unambiguous here
-        # even when the merged schema had to qualify one. See ADR-0009.
+        # predicate.column.name, which on a held AST column is the unqualified
+        # name. The slice is SINGLE-TABLE -- its columns were picked by table
+        # IDENTITY, not by name -- so bare names stay unambiguous here even when
+        # the merged schema had to qualify one. See ADR-0009.
+        #
+        # That is what a two-table predicate would break, and it is why the
+        # compound join residual is still refused by Planner's single-binary
+        # guard: a flat bare-name dict cannot hold both `students.title` and
+        # `courses.title`. Lifting the guard needs eval3 to resolve a leaf by
+        # provenance first (#384 / C2).
         properties = {
             col.bare_name: cell
             for col, cell in zip(right_cols, right_slice)
@@ -514,11 +537,14 @@ class Planner:
     def plan(self) -> VolcanoOperator:
         invoked_stmt = self._exec_ctx.invoked_stmt
         ctx: ExecutionContext = self._exec_ctx
+
         if not invoked_stmt.is_select:
             raise InvalidRequestError(
                 f"Query planner build plans for SELECT statements only. "
                 f"The invoked statement is not a SELECT ({type(invoked_stmt).__name__})"
             )
+
+        recheck_where = ctx.compiled.planning_context.recheck_where
 
         if invoked_stmt._is_aggregate:
             schema = SchemaInfo.from_table(
@@ -531,19 +557,76 @@ class Planner:
 
         if not invoked_stmt._joins:
             # SELECT statement without JOIN
+            execution_names: list[str] = list(ctx.compiled.fetch_columns())
+            scan_params = dict(ctx.parameters)
+
+            if recheck_where is not None:
+                # A predicate reads a SET of columns, not one: a compound WHERE
+                # folds into a BooleanClauseList and every leaf contributes its
+                # own. Widen PER COLUMN -- asking whether ANY predicate column
+                # is already fetched answers the wrong question and leaves a
+                # partially-overlapping predicate short of the one it misses,
+                # which costs UNKNOWN on every row and returns nothing.
+                #
+                # sorted() because _get_expression_columns returns a set, whose
+                # iteration order varies per process; without it the Scan's
+                # schema and filter_properties are a different permutation on
+                # every run.
+                where_cols = sorted(
+                    {c.name for c in _get_expression_columns(recheck_where)}
+                )
+                missing = [n for n in where_cols if n not in execution_names]
+
+                if missing:
+                    # append behind fetch_columns(), which stays authoritative
+                    # for the columns the statement already asked for
+                    execution_names.extend(missing)
+
+                    # widen filter_properties to match, or Notion never returns
+                    # the cells the recheck has to read.
+                    #
+                    # Gated on `missing`, and that gate is load-bearing: the
+                    # compiler emits query_params only `if query_params`, so a
+                    # statement needing no widening may carry no key at all.
+                    # Writing one regardless would send filter_properties for
+                    # shapes the compiler deliberately left unnarrowed.
+                    # remember: the key may not exist (delete case)
+                    scan_params["query_params"] = dict(scan_params.get("query_params") or {})
+
+                    # specials must never ride into filter_properties (ADR-0006)
+                    scan_params["query_params"]["filter_properties"] = [
+                        name
+                        for name in execution_names
+                        if name not in SpecialColumns
+                    ]
+
             schema = SchemaInfo.from_table(
                 invoked_stmt.get_table(),
-                execution_names=ctx.compiled.fetch_columns(),
+                execution_names=execution_names,
                 projected_names=ctx.compiled.result_columns(),
             )
             scan = Scan(
                 ctx.operation, 
-                ctx.parameters, 
+                scan_params,
                 schema=schema, 
                 # the operator above this Scan can consume batch-by-batch
                 yield_per=ctx.execution_options.get("yield_per")    
             )
-            return Project(scan, [c.name for c in schema.columns])
+            plan = scan
+
+            if recheck_where is not None:
+                # The recheck (ADR-0022): a pushed conjunct is a HINT, never the answer.
+                # Notion's filter is a lossy probe -- `does_not_equal` keeping a valueless
+                # cell (#384) is the one divergence measured today, not the reason this is
+                # unconditional. Re-apply every held conjunct over raw cells; the recheck
+                # decides.
+                plan = Filter(
+                    source=scan,
+                    schema=schema,
+                    filter=recheck_where,
+                    table=invoked_stmt.get_table()
+                )
+            return Project(plan, ctx.compiled.planning_context.pre_widening_fetch_columns)
         
         # build the plan for JOIN
         join: Join = invoked_stmt._joins[0]
@@ -568,7 +651,6 @@ class Planner:
         )
     
         # add a filter on top of the plan, if there is a WHERE-clause on the right table
-        recheck_where = ctx.compiled.planning_context.recheck_where
         if recheck_where is not None:
             if not isinstance(recheck_where, BinaryExpression):
                 raise InvalidRequestError(
@@ -581,11 +663,20 @@ class Planner:
                 join.right,
                 *invoked_stmt._projection,
             )
+
+            # get the parent table of the predicate column:
+            # TODO: Extend Filter to handle compound AND/OR WHERE clauses with predicate
+            # columns from the joined tables (left and right)
+            # For now, _get_expression_parent_tables() always returns a set with one element only.
+            # This is load-bearing because the WHERE clause accepts binary expressions only
+            # (see guard above): a BinaryExpression is `column OP bindparam`, so it reads exactly
+            # one column and therefore exactly one table.
+            tables = list(_get_expression_parent_tables(right_filter))
             updated = Filter(
                 source=plan,
                 schema=merged_schema,
                 filter=right_filter,
-                table=join.right
+                table=tables[0]
             )
 
             plan = updated
@@ -599,4 +690,3 @@ class Planner:
         
         return plan
  
-        

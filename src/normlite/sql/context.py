@@ -18,7 +18,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -29,4 +29,5 @@ if TYPE_CHECKING:
 class PlanningContext:
     recheck_where: Optional[ColumnElement] = None
     residual_sorts: Optional[OrderByClause] = None
+    pre_widening_fetch_columns: list[str] = field(default_factory=list)
 

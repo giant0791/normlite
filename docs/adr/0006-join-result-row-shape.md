@@ -39,8 +39,15 @@ qualified — but only the colliding ones.**
   named columns. The narrowing is also pushed to the phase-1 `databases.query` via
   `filter_properties`, so the wire payload carries only the projected left-side **properties**
   — with two non-negotiable carve-outs:
-  - `object_id` is **not** a property and must never go in `filter_properties` (the
-    in-memory client rejects it as `NotionError`); it rides in `execution_names` instead.
+  - `object_id` is **not** a property and must never go in `filter_properties`; it rides in
+    `execution_names` instead. **Nothing in normlite enforces this.** An earlier revision of this
+    ADR claimed the in-memory client "rejects it as `NotionError`"; that was **measured false**
+    (#384 / C2 step 4) — `notion_sdk/client.py:262-271` intersects property names and silently
+    drops any it does not recognise, so the violation returns the right rows and raises nothing.
+    The carve-out is a contract every caller must keep unaided: `Planner.plan` strips
+    `SpecialColumns` when it widens `filter_properties` for the recheck (ADR-0022), and the real
+    API is the only thing that would object. Do not use the in-memory client to check payload
+    legality.
   - the join **onclause** column (the relation FK) is an *execution requirement* and must
     survive **inside** `filter_properties` even when the user did not project it, because
     phase-2 needs it to resolve the right side. These two pull in opposite directions and

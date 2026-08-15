@@ -67,6 +67,16 @@ answer. Pushing is a transfer optimisation that never decides.**
   has no `projected` flag, so a widened `fetch_columns` reaches the user's `Row`. The plan becomes
   `Scan(superset) → Filter(recheck) → Project(projection)`, with `Project` owning the result schema.
 
+  **The widening itself lives in `Planner.plan`, not in the compiler** — worth stating, because the
+  reasoning above is about `_merge_names` and `ResultColumn`, which are compile-time concerns, and a
+  reader will look for it there. `Planner.plan` appends the predicate's unfetched columns to
+  `execution_names` and widens the `Scan`'s `filter_properties` to match (stripping
+  `SpecialColumns`, ADR-0006), while `Project` trims back to the **pre-widening** `fetch_columns`,
+  carried on `PlanningContext.pre_widening_fetch_columns`. `Project` must **not** trim to
+  `result_columns()`: that drops the special columns (`object_id`, `is_archived`, …) the row still
+  needs. The cost of this placement is that the planner rewrites already-compiled DBAPI parameters,
+  which inverts the layering; it is confined to the widening case and left as known debt.
+
 - **The `all(None)` phantom guard is deleted, and ADR-0005's outcome is derived.** An outer join
   fills right-owned columns with literal `None`; `eval3` returns UNKNOWN for a `None` cell; the
   WHERE policy drops UNKNOWN. This finally makes ADR-0019's Decision bullet true. It is also
@@ -118,9 +128,19 @@ buys no safety and leaves `Filter` with a join-only branch as it generalises to 
 - **⊇ acquires a referent.** `test_pushdown_soundness.py` keeps measuring it over predicates; the
   execution now honours it. The two are no longer the same claim.
 - **A silent failure mode becomes possible and must be tested**: if a predicate column is not added
-  to `fetch_columns`, `eval3` sees an absent cell → UNKNOWN → **every row dropped**. In practice
-  `resultset.py` raises `AttributeError` on the absent property first (the #388 shape), so it fails
-  loudly — but that is an accident of the decode path, not a guarantee, and deserves a test.
+  to `fetch_columns`, `eval3` sees an absent cell → UNKNOWN → **every row dropped**.
+
+  **Corrected 2026-08-15, C2 step 4.** This bullet originally predicted the mode would fail
+  *loudly* — `resultset.py` raising `AttributeError` on the absent property first (the #388 shape)
+  — hedged as "an accident of the decode path, not a guarantee". **Measured, and the prediction is
+  wrong: it fails SILENTLY, returning zero rows.** On `select(t.c.object_id).where(t.c.is_active.is_(True))`:
+  `fetch_columns == ['object_id']`, the conjunct held, `rows == []`, no exception. The loss happens
+  one stage **earlier** than this reasoned — `filter_properties` is not even sent for that shape, so
+  Notion returns the complete page and the cell is lost in the **schema**, which is built from
+  `fetch_columns` and never contained `is_active`. The decode path never gets the chance to raise.
+  "Deserves a test" is answered by `tests/unit/engine/test_select_pipeline.py`, which is also the
+  **only** observer of the widening anywhere in the suite: the widening lives in `Planner.plan`, so
+  no compile-level test in `tests/unit/sql/` can see it.
 - **Right-side pushdown is unblocked but deliberately out of scope.** The right `Scan` is currently
   given `path_params` only — no payload — so a right-table WHERE is not pushed even though
   `join.right.get_data_source_id()` makes it perfectly expressible. That is a separate slice, and it

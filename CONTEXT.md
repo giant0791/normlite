@@ -1046,10 +1046,10 @@ everything after it residual. Those keys are **never pushed and never re-applied
 genuine leftover, applied once client-side. `residual_sorts` / `compile_residual_sorts` therefore
 keep their names; only the WHERE channel became a recheck.
 
-> **Status: decided, being built (#384 / C2).** Today only the *join* path evaluates a WHERE
-> client-side, and a left-side conjunct is pushed with **no** recheck — so the push decides alone
-> and #384's row survives. The section above states the target, which is what the ⊇ invariant below
-> already presupposes. Do not read it as a description of current code.
+> **Status: decided, mostly built (#384 / C2 step 4).** The section above is now a description of
+> current code **except on one branch**, named at the end of this note. A plain `SELECT`'s WHERE is
+> pushed **and** re-applied client-side, and so is a join's single conjunct whichever side it reads
+> — the recheck decides in both. #384's row no longer survives.
 >
 > **Step 2b is DONE, and it was a prerequisite, not the feature.** Every `SELECT` now routes to
 > `ExecutionStyle.EXECUTEQUERYPLAN` (`context.py`, `if stmt.is_select`), so the scan path — `Scan`,
@@ -1062,8 +1062,22 @@ keep their names; only the WHERE channel became a recheck.
 > `compile_residual_sorts` were left alone, deliberately — see "Sorts keep the word `residual`".
 > Still outstanding from step 3 is the **vocabulary pass** over the bare word `residual` in comments
 > and docstrings, where each occurrence has to be classified as a recheck or a genuine residual.
-> **The recheck itself is still not built** (step 4): a left-side conjunct is still pushed and not
-> re-applied, so the paragraph above remains the target and not a description of current code.
+>
+> **Step 4 — the recheck — is BUILT on the scan path and on the join's single-conjunct path.** The
+> compiler holds every conjunct it pushes; `Planner.plan` widens `execution_names` and
+> `filter_properties` with the predicate columns the projection left out, builds
+> `Scan → Filter → Project`, and derives the `Filter`'s table from the **predicate** rather than
+> assuming the join's right side. `Project` trims back to the pre-widening `fetch_columns`, so the
+> widened columns never reach the user's `Row`.
+>
+> **The one branch still unconverted is a compound `AND` spanning both join sides.** It pushes its
+> left conjuncts and holds only the right ones, so on *that* shape the push still decides alone for
+> the left conjunct. Making it uniform needs the two owed pieces together: the compiler holding the
+> whole compound, and `eval3` resolving a leaf by **provenance** (a two-table predicate reaching one
+> `eval3` call makes `students.title` / `courses.title` ambiguous under its bare-name lookup). Until
+> both land, `Planner`'s single-binary guard keeps a compound join residual failing **loudly** rather
+> than silently. **ADR-0022 therefore stays `Proposed`** — it flips to `Accepted` when that branch
+> is converted, not before.
 
 ### Pushdown soundness (the invariant)
 **The push may over-keep; it must never under-keep.**
