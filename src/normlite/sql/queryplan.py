@@ -27,7 +27,7 @@ from normlite.exceptions import InvalidRequestError
 from normlite.notiondbapi.dbapi2 import Connection
 from normlite.sql.compiler import _get_expression_parent_tables, compile_residual_sorts, _get_expression_columns
 from normlite.sql.dml import AggregateExecution, Join
-from normlite.sql.elements import ColumnElement, BinaryExpression
+from normlite.sql.elements import ColumnElement
 from normlite.sql.functions import FunctionElement
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
 from normlite.sql.schema import Column, Table
@@ -276,18 +276,20 @@ class Filter(VolcanoOperator):
         source: VolcanoOperator,
         schema: SchemaInfo,
         filter: ColumnElement,
-        table: Table,
+        tables: list[Table],
     ) -> None:
         self._source = source
         self._merged_schema = schema
         self._filter = filter
-        self._table = table
+        self._predicate_tables: list[Table] = tables
 
         # The WHERE is answered client-side over the slice of the row owned by
-        # `table` -- the table the PREDICATE reads. That is NOT always the
+        # `tables` -- the tables the PREDICATE reads. That is NOT always the
         # join's right side any more (ADR-0022): on the scan path it is the
-        # statement's only table, and on the join path it is whichever side the
-        # conjunct belongs to, derived from the predicate in `Planner.plan`.
+        # statement's only table, and on the join path it is whichever side(s)
+        # the conjunct READS -- one for a single-sided conjunct, BOTH for a
+        # compound spanning the join -- derived from the predicate in
+        # `Planner.plan`.
         # A conjunct reading the LEFT table was evaluated against the RIGHT
         # slice while this argument was hardcoded, which found no cell, answered
         # UNKNOWN for every row, and returned nothing -- silently (#384 / C2).
@@ -301,13 +303,17 @@ class Filter(VolcanoOperator):
         # IMPORTANT:
         # identity-by-table is collision-proof but **not self-join-proof**
         #
-        # NOTE: the `_right_*` names below predate the generalisation and now
-        # read narrower than the code is; renaming them belongs to step 3's
-        # vocabulary pass, not here.
-        self._right_cols = [c for c in self._merged_schema.columns if c.table is self._table]
-        self._right_getters = [
+        # `is`, not `in`: `in` compares with __eq__, and Table defines none, so a
+        # list test is identity only BY ACCIDENT. Say it literally, so that adding
+        # the obvious `Table.__eq__` (by name) cannot silently broaden this slice
+        # under a self-join -- no exception, just wrong rows.
+        self._predicate_cols = [
+            c for c in self._merged_schema.columns
+            if any(c.table is t for t in self._predicate_tables)
+        ]
+        self._predicate_getters = [
             self._merged_schema.column_getter(c.name) 
-            for c in self._right_cols
+            for c in self._predicate_cols
         ]
 
     @property
@@ -324,7 +330,7 @@ class Filter(VolcanoOperator):
         
         merged_rows = [
             r for r in merged_rows
-            if self._right_side_passes(r, self._right_getters, self._right_cols)
+            if self._predicate_passes(r, self._predicate_getters, self._predicate_cols)
         ]
 
         return merged_rows
@@ -332,15 +338,15 @@ class Filter(VolcanoOperator):
     def close(self) -> None:
         self._source.close()
 
-    def _right_side_passes(
+    def _predicate_passes(
         self,
         merged_row: tuple[Any, ...],
         row_getters: list[Callable[[Sequence[Any]], Any]],
-        right_cols: Sequence[ResultColumn],
+        predicate_cols: Sequence[ResultColumn],
     ) -> bool:
-        """Answer the WHERE over the slice of a row owned by the predicate's table.
+        """Answer the WHERE over the slice of a row owned by the predicate's tables.
 
-        On the join path that slice may be either side; on the scan path it is
+        On the join path that slice may be either side or both; on the scan path it is
         the whole row. The WHERE reaching here is usually a **recheck** -- a
         conjunct that was also pushed, re-applied because a Notion filter is a
         lossy probe and never decides (ADR-0022) -- and sometimes a genuine
@@ -364,29 +370,25 @@ class Filter(VolcanoOperator):
         This is the sole implementation: the former strangler-duplicate on
         ``JoinExecution`` (``sql/dml.py``) was deleted with that class once the
         merge folded into ``HashJoin`` (#378 / ADR-0021).
+
+        .. note::
+            The page map is keyed by :attr:`normlite.sql.resultschema.ResultColumn.table` by identity, 
+            so a self-join collapses both pages onto one key.
         """
 
         from normlite.sql.eval3 import eval3, TRUE
 
-        right_slice = tuple(getter(merged_row) for getter in row_getters)
+        predicate_slice = tuple(getter(merged_row) for getter in row_getters)
 
-        # Key by the BARE name: eval3 looks a leaf's cell up under
-        # predicate.column.name, which on a held AST column is the unqualified
-        # name. The slice is SINGLE-TABLE -- its columns were picked by table
-        # IDENTITY, not by name -- so bare names stay unambiguous here even when
-        # the merged schema had to qualify one. See ADR-0009.
-        #
-        # That is what a two-table predicate would break, and it is why the
-        # compound join residual is still refused by Planner's single-binary
-        # guard: a flat bare-name dict cannot hold both `students.title` and
-        # `courses.title`. Lifting the guard needs eval3 to resolve a leaf by
-        # provenance first (#384 / C2).
-        properties = {
-            col.bare_name: cell
-            for col, cell in zip(right_cols, right_slice)
-        }
+        # One properties object PER TABLE. Each inner dict is a genuine single-page
+        # properties object keyed by bare_name -- the property name Notion itself uses
+        # (ADR-0009, d37baae). A predicate spanning both join sides has no single page
+        # to evaluate against, so it gets both, addressed by provenance.
+        pages: dict[Table, dict] = {}
+        for col, cell in zip(predicate_cols, predicate_slice):
+            pages.setdefault(col.table, {})[col.bare_name] = cell
 
-        return eval3(self._filter, properties, schema=None) is TRUE
+        return eval3(self._filter, pages, schema=None) is TRUE
     
 class Sort(VolcanoOperator):
     def __init__(        
@@ -624,7 +626,7 @@ class Planner:
                     source=scan,
                     schema=schema,
                     filter=recheck_where,
-                    table=invoked_stmt.get_table()
+                    tables=[invoked_stmt.get_table()]
                 )
             return Project(plan, ctx.compiled.planning_context.pre_widening_fetch_columns)
         
@@ -650,33 +652,29 @@ class Planner:
             projection
         )
     
-        # add a filter on top of the plan, if there is a WHERE-clause on the right table
+        # add a filter on top of the plan, if the WHERE clause has an expression
         if recheck_where is not None:
-            if not isinstance(recheck_where, BinaryExpression):
-                raise InvalidRequestError(
-                    f"Only single-binary expressions supported, "
-                    f"received a '{type(recheck_where).__name__}' expression."
-                )
-            right_filter = recheck_where
             merged_schema = SchemaInfo.from_join(
                 join.left,
                 join.right,
                 *invoked_stmt._projection,
             )
 
-            # get the parent table of the predicate column:
-            # TODO: Extend Filter to handle compound AND/OR WHERE clauses with predicate
-            # columns from the joined tables (left and right)
-            # For now, _get_expression_parent_tables() always returns a set with one element only.
-            # This is load-bearing because the WHERE clause accepts binary expressions only
-            # (see guard above): a BinaryExpression is `column OP bindparam`, so it reads exactly
-            # one column and therefore exactly one table.
-            tables = list(_get_expression_parent_tables(right_filter))
+            # The tables the predicate READS: one per leaf, so one for a single-sided
+            # conjunct and BOTH for a compound spanning the join.
+            #
+            # The ORDER OF THIS LIST IS ARBITRARY and nothing may depend on it: it comes
+            # from a set, and `Table` defines no `__hash__`, so the iteration order is
+            # id-based. That is why it is only ever tested for MEMBERSHIP, never indexed.
+            # The `tables[0]` that stood here picked a side by memory-address coin flip;
+            # `Filter` no longer needs a choice at all, because each leaf resolves its
+            # own page from `column.parent` (ADR-0022).
+            predicate_tables = list(_get_expression_parent_tables(recheck_where))
             updated = Filter(
                 source=plan,
                 schema=merged_schema,
-                filter=right_filter,
-                table=tables[0]
+                filter=recheck_where,
+                tables=predicate_tables
             )
 
             plan = updated

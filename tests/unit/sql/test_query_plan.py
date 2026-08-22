@@ -764,23 +764,28 @@ def test_planner_hands_the_residual_over_with_its_literal_unprocessed(engine):
     assert plan._filter.value.effective_value == date(2026, 1, 1)
 
 
-def test_planner_rejects_a_compound_residual_loudly_instead_of_crashing(engine):
-    # A compound OR spanning both join sides is held back WHOLE as the residual
-    # (see test_compound_or_spanning_both_sides in test_join_compilation): the
-    # residual is a BooleanClauseList (.operator / .clauses), not a single
-    # BinaryExpression. The guard was written when the Planner still rendered
-    # the residual to Notion JSON: the renderer reached for
-    # residual_where.column / .operator / .value -- attributes a
-    # BooleanClauseList does not have -- and died with a bare, opaque
-    # AttributeError deep inside _compile_type_filter.
+def test_planner_plans_a_cross_side_compound_into_one_two_table_filter(engine):
+    # SUCCESSOR to test_planner_rejects_a_compound_residual_loudly_instead_of_crashing,
+    # which pinned the single-binary guard. That test's own comment sanctioned this
+    # replacement: "lifting it is a behaviour change that opens compound residuals to
+    # users, and it needs its own slice with its own tests." C2 step 4 is that slice
+    # (#384 / ADR-0022), and these are those tests -- here at plan level, and at row
+    # level in tests/unit/engine/test_join_pipeline.py.
     #
-    # That renderer is gone, and eval3 handles AND/OR/NOT natively, so nothing
-    # would CRASH on a compound residual any more. The guard stays anyway, and
-    # deliberately: lifting it is a behaviour change that opens compound
-    # residuals to users, and it needs its own slice with its own tests. What
-    # this test now pins is that the limit is still declared out loud rather
-    # than quietly lapsing -- the failure mode it was written against would now
-    # be silent acceptance, not an AttributeError.
+    # The guard had to go regardless of the OR: making the compound-AND branch hold
+    # the WHOLE compound (the recheck) makes recheck_where a BooleanClauseList on the
+    # join path too, which the guard refused. Removing it admits the cross-side OR by
+    # the same edit, so shipping the OR was a deliberate decision, not a side effect.
+    #
+    # WHY THIS TEST EXISTS AT PLAN LEVEL: it is the only observer of the Filter's
+    # table set having TWO elements. That set replaced `tables[0]` -- indexing a set
+    # of Tables, which, since Table defines no __hash__ and falls back to identity,
+    # picked a side by MEMORY ADDRESS once the predicate spanned two tables. Measured
+    # across six fresh processes: five times `students`, once `courses`. A row-level
+    # test cannot see the set; it would just be intermittently, silently empty.
+    #
+    # Nothing is pushed for a cross-side OR -- correctly, since a row may qualify
+    # through the right disjunct alone -- so the Filter is the whole answer here.
     metadata = MetaData()
     courses = Table(
         "courses",
@@ -812,10 +817,18 @@ def test_planner_rejects_a_compound_residual_loudly_instead_of_crashing(engine):
     )
     ctx.pre_exec()
 
-    # Act + Assert: planning fails loudly with a single-binary breadcrumb, not a
-    # bare AttributeError.
-    with pytest.raises(InvalidRequestError, match="single-binary"):
-        Planner(ctx).plan()
+    # Act: planning now succeeds where it used to raise.
+    plan = Planner(ctx).plan()
+
+    # Assert: the whole disjunction reaches ONE Filter, uncompiled, as the AST.
+    assert isinstance(plan, Filter)
+    assert plan._filter is ctx.compiled.planning_context.recheck_where
+    assert plan._filter.operator == "or"
+
+    # Assert: and the Filter is told about BOTH tables, not one picked out of a set.
+    # Order is deliberately not asserted -- the set is unordered and nothing may
+    # depend on its order, which is the whole point of never indexing it.
+    assert set(map(id, plan._predicate_tables)) == {id(students), id(courses)}
 
 
 class _WideSource:

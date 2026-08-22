@@ -1,8 +1,14 @@
 # ADR-0022: Notion's filter is a lossy probe — every pushed conjunct is re-checked
 
-**Status:** Proposed — extends [ADR-0019](./0019-sql-null-semantics-pushdown-soundness.md), builds on
+**Status:** **Accepted** 2026-08-22 — extends
+[ADR-0019](./0019-sql-null-semantics-pushdown-soundness.md), builds on
 [ADR-0018](./0018-query-plan-operator-tree.md) and [ADR-0021](./0021-scan-both-hash-join.md)
 **Date:** 2026-07-31
+
+> Held at `Proposed` deliberately until the last branch was converted. ADR-0019 was marked Accepted
+> while its `all(None)` bullet described code that was never written, and that drift cost a session
+> to discover. This one flipped on the commit that made every pushed conjunct re-applied on **every**
+> branch — the compound `AND` spanning both join sides included.
 
 ## Context
 
@@ -77,6 +83,40 @@ answer. Pushing is a transfer optimisation that never decides.**
   needs. The cost of this placement is that the planner rewrites already-compiled DBAPI parameters,
   which inverts the layering; it is confined to the widening case and left as known debt.
 
+- **A cross-table recheck evaluates against a PAGE MAP, not a qualified-key dict.** A compound WHERE
+  spanning both join sides reaches **one** `eval3` call, and `eval3`'s second argument **is a Notion
+  page's `properties` object**: it does `prop.get(name)` and then `prop_val.get(type_)` against the
+  col_spec. So a properties dict models **one page**, one page belongs to **one data source**, and
+  the only correct key inside it is the property name **Notion itself uses**. That is exactly why
+  `bare_name` exists and why it is split from `ResultColumn.name` — qualification is a *result-set*
+  concern (ADR-0009, `d37baae`, whose body states the invariant: the filter *"keys the synthetic page
+  by `bare_name`, matching the bare property the compiled Notion filter references"*).
+
+  **The flat alternative was therefore rejected**: key the dict `"courses.title"` and have `eval3` try
+  the qualified name and fall back to the bare one. `"courses.title"` is not a Notion property name.
+  That design produces something *shaped* like a page which no longer **is** one, and pushes
+  join-awareness down into an evaluator that has none.
+
+  What ships instead: `Filter._predicate_passes` groups the predicate slice by `col.table` into one
+  genuine single-page properties object **per table**, and each leaf resolves its own page from
+  `predicate.column.parent`. **`eval3`'s signature is unchanged**; what changed is that its second
+  argument is now a **tagged union** — `PageProperties` (`dict[str, dict]`) *or* `PageMap`
+  (`dict[Table, PageProperties]`) — discriminated by **key type**, which is disjoint and total. The
+  whole mechanism is one line, `page_or_pagemap.get(predicate.column.parent, page_or_pagemap)`: given
+  a page map it returns that column's page; given a single page the `Table` key is absent and it
+  returns the caller's page unchanged. All **31** direct `eval3` call sites pass bare dicts and take
+  the default arm **by construction**, not by lookup miss — they needed **zero edits**, and **no
+  compatibility fallback exists or is needed**.
+
+  Sound because a `BinaryExpression` is always `column OP bindparam` — the RHS is a `BindParameter`,
+  **never** another `Column` — so every leaf reads exactly one column, hence exactly one table. This
+  also moves the "which table?" question from a **plan-time guess** to a **leaf-time fact**:
+  `Planner` passes the whole set, `Filter` groups by provenance, each leaf picks its own page, and
+  nothing indexes a set of `Table`s any more. The `PageMap` is keyed by `Table` **identity** (`Table`
+  defines neither `__eq__` nor `__hash__`), so a **self-join** — the same `Table` object on both
+  sides — collapses both pages onto one key. Still untested and out of scope, but now visible in the
+  data rather than only in a comment.
+
 - **The `all(None)` phantom guard is deleted, and ADR-0005's outcome is derived.** An outer join
   fills right-owned columns with literal `None`; `eval3` returns UNKNOWN for a `None` cell; the
   WHERE policy drops UNKNOWN. This finally makes ADR-0019's Decision bullet true. It is also
@@ -120,13 +160,27 @@ buys no safety and leaves `Filter` with a join-only branch as it generalises to 
 - **Transfer cost is unchanged.** Pushing continues exactly as today; the recheck runs over rows
   already in hand. The only new fetching is predicate columns not in the projection, which
   `filter_properties` would otherwise have excluded.
-- **`Filter` becomes uniform.** One code path for scan and join, no left/right asymmetry, no
-  structural guard above the predicate. Its `table=` argument and right-slice selection generalise
-  to "the columns this predicate reads".
-- **The `[unreachable empty-title]` boundary closes** — a real all-empty right row is no longer
+- **`Filter` is uniform — and this is now literally true, not a direction of travel.** One code path
+  for scan and join, no left/right asymmetry, and no structural guard above the predicate: the
+  `all(None)` phantom guard and `Planner`'s single-binary guard are **both gone**, and the two
+  `Filter` construction sites are structurally identical. Its `table=` argument became `tables=`, a
+  list; its `_right_*` identifiers became `_predicate_*` (that rename rode with this change rather
+  than with step 3's vocabulary pass, because the commit that makes the slice two-sided is the commit
+  that makes those names wrong); and the slice selection generalised to exactly "the columns this
+  predicate reads", selected by **provenance**, never by name.
+- **The `[unreachable empty-title]` boundary closed** — a real all-empty right row is no longer
   mislabelled a phantom.
-- **⊇ acquires a referent.** `test_pushdown_soundness.py` keeps measuring it over predicates; the
-  execution now honours it. The two are no longer the same claim.
+- **A cross-side `OR` in the WHERE now ships, and it is pure client-side evaluation.** **Nothing is
+  pushed for it, and that is correct**: a row may qualify through the right disjunct alone, so pushing
+  either disjunct would *under-keep* and violate ⊇. It became reachable as a consequence rather than
+  as a feature — `Planner`'s single-binary guard, which refused any recheck that was not a
+  `BinaryExpression`, is the **same guard** that had to go for the compound `AND` branch to hold its
+  whole compound. Shipping it was therefore taken as a **decision**, not allowed through as a side
+  effect.
+- **⊇ acquired a referent.** `test_pushdown_soundness.py` keeps measuring it over predicates; the
+  execution now honours it, on **every** branch — every conjunct the compiler pushes is re-applied
+  client-side, so "re-applied" finally presupposes the same conjunct evaluated twice. The two are no
+  longer the same claim.
 - **A silent failure mode becomes possible and must be tested**: if a predicate column is not added
   to `fetch_columns`, `eval3` sees an absent cell → UNKNOWN → **every row dropped**.
 
@@ -193,6 +247,3 @@ buys no safety and leaves `Filter` with a join-only branch as it generalises to 
   non-streaming plan path would report `rowcount == -1`, because `post_exec` memoizes
   `self.cursor.rowcount` immediately after execution.
 
-- **This ADR is Proposed, not Accepted.** ADR-0019 was marked Accepted while its `all(None)` bullet
-  described code that was never written; that drift cost a session to discover. This one flips to
-  Accepted when the code lands.

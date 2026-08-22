@@ -21,11 +21,14 @@
 from __future__ import annotations
 import operator
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any, Union
 
 from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
 from normlite.sql.elements import BinaryExpression, BooleanClauseList, ColumnElement, UnaryExpression
+
+if TYPE_CHECKING:
+    from normlite.sql.schema import Table
 
 class Ternary:
     def __call__(self, *args, **kwds):
@@ -127,9 +130,18 @@ _COMPARISONS = {
 def _has_no_value(val: dict) -> bool:
     return val is None
 
-def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
+# A Notion page's `properties` object: property name (bare) -> raw cell.
+PageProperties = dict[str, dict]
+# The pages a cross-table predicate spans, addressed by provenance.
+PageMap = dict["Table", PageProperties]
+
+def eval3(
+    predicate: ColumnElement, 
+    page_or_pagemap: Union[PageProperties, PageMap], 
+    schema: dict = None
+) -> Ternary:
     if isinstance(predicate, UnaryExpression):
-        value = eval3(predicate.element, prop, schema=schema)
+        value = eval3(predicate.element, page_or_pagemap, schema=schema)
         if value is UNKNOWN:
             return UNKNOWN
 
@@ -142,7 +154,8 @@ def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
     if isinstance(predicate, BinaryExpression):
         effective_val = predicate.value.effective_value
         op = predicate.column.type_.supported_ops.get(predicate.operator)
-        prop_val = prop.get(predicate.column.name)
+        page = page_or_pagemap.get(predicate.column.parent, page_or_pagemap)
+        prop_val = page.get(predicate.column.name)
         if prop_val is None and op not in _ABSENT_AWARE:
             # guard against cells shape: {"a": None}
             # Indistinguishable from absent key {"b": ...} 
@@ -162,7 +175,7 @@ def eval3(predicate: ColumnElement, prop: dict, schema: dict = None) -> Ternary:
 
     if isinstance(predicate, BooleanClauseList):
         clauses = [
-            eval3(c, prop, schema=schema)
+            eval3(c, page_or_pagemap, schema=schema)
             for c in predicate.clauses
         ]
 

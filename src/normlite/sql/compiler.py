@@ -679,19 +679,8 @@ class NotionCompiler(SQLCompiler):
                                 else {"and": left_conjuncts}
                             )
 
-                        # Hold the right-side conjuncts as raw AST for client-side
-                        # evaluation after the merge; do NOT dispatch them (that would
-                        # register unconsumed binds — see #363).
-                        right_clauses = [
-                            clause
-                            for clause in expression.clauses
-                            if _get_expression_parent_tables(clause) != {select._table}
-                        ]
-                        if right_clauses:
-                            self.planning_context.recheck_where = (
-                                right_clauses[0] if len(right_clauses) == 1
-                                else BooleanClauseList("and", right_clauses)
-                            )
+                        self.planning_context.recheck_where = expression
+
                     else:
                         if parent_tables == {select._table}:
                             # for the left table, add "filter" to the payload for the databases.query

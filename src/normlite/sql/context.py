@@ -27,7 +27,23 @@ if TYPE_CHECKING:
 
 @dataclass
 class PlanningContext:
+    """Carry what the compiler held back for the query plan to answer client-side.
+
+    A Notion filter is a lossy probe, so pushing never decides the answer: what
+    is pushed is re-applied over raw cells by the plan (ADR-0022).
+
+    .. versionadded:: 0.13.0
+    """
     recheck_where: Optional[ColumnElement] = None
+    """The held WHERE as AST, decided client-side by :class:`~normlite.sql.queryplan.Filter`."""
+
     residual_sorts: Optional[OrderByClause] = None
+    """The ORDER BY keys with no pushed form, applied once by :class:`~normlite.sql.queryplan.Sort`."""
+
     pre_widening_fetch_columns: list[str] = field(default_factory=list)
+    """The ``fetch_columns`` before the recheck widened them, specials included.
+
+    :class:`~normlite.sql.queryplan.Project` trims back to these, never to
+    ``result_columns()``, which drops the specials the row still needs.
+    """
 

@@ -1046,10 +1046,11 @@ everything after it residual. Those keys are **never pushed and never re-applied
 genuine leftover, applied once client-side. `residual_sorts` / `compile_residual_sorts` therefore
 keep their names; only the WHERE channel became a recheck.
 
-> **Status: decided, mostly built (#384 / C2 step 4).** The section above is now a description of
-> current code **except on one branch**, named at the end of this note. A plain `SELECT`'s WHERE is
-> pushed **and** re-applied client-side, and so is a join's single conjunct whichever side it reads
-> — the recheck decides in both. #384's row no longer survives.
+> **Status: BUILT (#384 / C2 step 4).** The section above is a description of current code on
+> **every** branch — there is no longer an exception. A plain `SELECT`'s WHERE is pushed **and**
+> re-applied client-side; so is a join's single conjunct, whichever side it reads; and so is a
+> compound `AND` spanning **both** join sides. The recheck decides in all three. #384's row no longer
+> survives.
 >
 > **Step 2b is DONE, and it was a prerequisite, not the feature.** Every `SELECT` now routes to
 > `ExecutionStyle.EXECUTEQUERYPLAN` (`context.py`, `if stmt.is_select`), so the scan path — `Scan`,
@@ -1063,21 +1064,31 @@ keep their names; only the WHERE channel became a recheck.
 > Still outstanding from step 3 is the **vocabulary pass** over the bare word `residual` in comments
 > and docstrings, where each occurrence has to be classified as a recheck or a genuine residual.
 >
-> **Step 4 — the recheck — is BUILT on the scan path and on the join's single-conjunct path.** The
-> compiler holds every conjunct it pushes; `Planner.plan` widens `execution_names` and
-> `filter_properties` with the predicate columns the projection left out, builds
-> `Scan → Filter → Project`, and derives the `Filter`'s table from the **predicate** rather than
-> assuming the join's right side. `Project` trims back to the pre-widening `fetch_columns`, so the
-> widened columns never reach the user's `Row`.
+> **Step 4 — the recheck — is BUILT, on every branch.** The compiler holds every conjunct it pushes;
+> `Planner.plan` widens `execution_names` and `filter_properties` with the predicate columns the
+> projection left out, builds `Scan → Filter → Project`, and derives the `Filter`'s **tables** from
+> the **predicate** rather than assuming the join's right side. `Project` trims back to the
+> pre-widening `fetch_columns`, so the widened columns never reach the user's `Row`.
 >
-> **The one branch still unconverted is a compound `AND` spanning both join sides.** It pushes its
-> left conjuncts and holds only the right ones, so on *that* shape the push still decides alone for
-> the left conjunct. Making it uniform needs the two owed pieces together: the compiler holding the
-> whole compound, and `eval3` resolving a leaf by **provenance** (a two-table predicate reaching one
-> `eval3` call makes `students.title` / `courses.title` ambiguous under its bare-name lookup). Until
-> both land, `Planner`'s single-binary guard keeps a compound join residual failing **loudly** rather
-> than silently. **ADR-0022 therefore stays `Proposed`** — it flips to `Accepted` when that branch
-> is converted, not before.
+> **The last branch — a compound `AND` spanning both join sides — is now converted.** It used to push
+> its left conjuncts and hold only the right ones, so on *that* shape the push still decided alone for
+> the left conjunct. The two owed pieces landed together, because neither works without the other: the
+> compiler now holds the **whole** compound (the push of the left conjuncts is unchanged — pushing is
+> still only a transfer optimisation), and `eval3` resolves each leaf by **provenance**. That second
+> piece is a **page map**, and its shape matters: a two-table predicate has no single page to evaluate
+> against, so `Filter` builds one genuine single-page properties object **per table**, each still keyed
+> by `bare_name`, and each leaf picks its own page from `column.parent`. A flat dict keyed
+> `"courses.title"` was rejected — that is not a Notion property name, and `bare_name` exists precisely
+> so a properties dict is keyed the way **Notion** keys a page (ADR-0009). See ADR-0022's Decision.
+>
+> **`Planner`'s single-binary guard is gone**, and with it the refusal of a **cross-side `OR`**, which
+> now ships as pure client-side evaluation — nothing is pushed for it, correctly, since a row may
+> qualify through the right disjunct alone. Removing the guard was not separable from holding the whole
+> compound, so shipping the `OR` was taken as a decision rather than allowed through as a side effect.
+> **ADR-0022 is therefore now `Accepted`.**
+>
+> Still outstanding for step 3 is the vocabulary pass named two paragraphs up; it is independent of
+> this.
 
 ### Pushdown soundness (the invariant)
 **The push may over-keep; it must never under-keep.**

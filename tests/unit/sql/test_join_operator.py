@@ -368,7 +368,7 @@ def test_filter_operator_keeps_passing_rows_and_drops_failures_and_phantoms():
         source,
         filter=right_filter,
         schema=merged_schema,
-        table=courses,
+        tables=[courses],
     )
     filter_op.open(None)
     first = filter_op.next()
@@ -455,7 +455,7 @@ def test_filter_operator_evaluates_a_residual_ast_predicate():
         source,
         filter=right_filter,
         schema=merged_schema,
-        table=courses,
+        tables=[courses],
     )
     filter_op.open(None)
     first = filter_op.next()

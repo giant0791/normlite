@@ -7,8 +7,9 @@ from normlite import Relation, ForeignKey
 from normlite.engine.base import Engine
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import insert, select
+from normlite.sql.elements import or_
 from normlite.sql.schema import Column, MetaData, Table
-from normlite.sql.type_api import String
+from normlite.sql.type_api import Integer, String
 
 
 def test_inner_join_pairs_left_and_right_rows(engine: Engine):
@@ -1272,3 +1273,295 @@ def test_join_with_a_left_only_where_keeps_the_matching_pair(engine: Engine):
     # Assert: and the conjunct actually discriminates -- Kepler is joinable and
     # is excluded. Without this, returning every row would pass.
     assert len(rows) == 1
+
+
+def test_a_compound_where_spanning_both_join_sides_rechecks_every_conjunct(
+    engine: Engine,
+):
+    # RED 3 for C2 step 4 (#384 / ADR-0022): the recheck, on the LAST unconverted
+    # branch -- a compound `AND` whose conjuncts read BOTH join sides
+    # (compiler.py, the `left_conjuncts` / `right_clauses` split).
+    #
+    # Every other branch now holds what it pushes. This one still splits: it
+    # compiles the LEFT conjuncts into `payload['filter']` and holds only the
+    # RIGHT ones as AST. So on this one statement shape the push still DECIDES
+    # for the left conjunct, and #384 is live through a join exactly as it was
+    # live on the scan path before RED 1 -- `effort != 5` becomes Notion's
+    # `does_not_equal`, which is the boolean complement of `equals` (measured
+    # against the live API) and therefore KEEPS a `{"number": null}` cell, while
+    # SQL's `<>` against NULL is UNKNOWN and the WHERE policy drops it.
+    #
+    # This test is deliberately NOT a claim about pushdown. Per ADR-0022 pushing
+    # is a transfer optimisation that never decides, so a row-level assertion
+    # cannot see WHERE a conjunct was evaluated -- only that it was evaluated,
+    # once, correctly. Where it goes is pinned at compile level, by
+    # test_compound_and_where_pushes_only_left_conjunct_into_phase_one.
+    #
+    # THE TRAP THIS TEST IS BUILT AROUND (RED 2b's assertion-1 trap): the left
+    # conjunct is ALSO pushed, so it narrows phase 1 too. A naive one-row
+    # observer stays green for the wrong reason -- the push already excluded the
+    # row and the recheck never ran. The four students below are picked so that
+    # each conjunct has a row only IT can exclude, and so that the left
+    # conjunct's discriminating row is one the PUSH CANNOT exclude:
+    #
+    #   Galileo  effort=3, Astronomy -- passes both. The positive control: an
+    #            over-eager recheck that dropped everything cannot pass.
+    #   Nullius  effort=NULL, Astronomy -- #384 itself. The push KEEPS him
+    #            (Notion's does_not_equal over a valueless cell), the right
+    #            conjunct KEEPS him (he is enrolled in Astronomy). ONLY the
+    #            re-application of the LEFT conjunct can drop him. He is what
+    #            makes this a red today, and he cannot be explained away by the
+    #            push.
+    #   Kepler   effort=7, Chemistry -- passes the left conjunct, fails the
+    #            right. Drop the RIGHT conjunct from the held compound and he
+    #            comes back: the second mutation direction, and a different red
+    #            from Nullius'.
+    #   Halley   effort=5, Astronomy -- the ordinary VALUED negative. Push and
+    #            recheck agree on him, so he discriminates neither; he is here so
+    #            "everything enrolled in Astronomy" is not accidentally the right
+    #            answer.
+    #
+    # A statement is single-shot -- compiling assigns bind roles -- so this test
+    # executes exactly one freshly-built statement and asserts on rows only.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("effort", Integer()),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses).values(title="Astronomy").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        chemistry_oid = (
+            connection.execute(
+                insert(courses).values(title="Chemistry").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+
+        connection.execute(
+            insert(students).values(
+                name="Galileo Galilei", effort=3, enrolled_in=[astronomy_oid]
+            )
+        )
+        connection.execute(
+            insert(students).values(
+                name="Nullius", effort=None, enrolled_in=[astronomy_oid]
+            )
+        )
+        connection.execute(
+            insert(students).values(
+                name="Johannes Kepler", effort=7, enrolled_in=[chemistry_oid]
+            )
+        )
+        connection.execute(
+            insert(students).values(
+                name="Edmond Halley", effort=5, enrolled_in=[astronomy_oid]
+            )
+        )
+
+        rows = connection.execute(
+            select(students, courses)
+            .join(students.c.enrolled_in)
+            .where(students.c.effort != 5)              # LEFT  — pushed, and owed a recheck
+            .where(courses.c.title == "Astronomy")      # RIGHT — held back today
+        ).fetchall()
+
+    # Assert: four joinable students in, exactly one out. Nullius is the whole
+    # point -- he survives the push and the right conjunct, and only the LEFT
+    # conjunct re-applied over his raw `{"number": null}` cell removes him.
+    assert {(row.name, row.title) for row in rows} == {("Galileo Galilei", "Astronomy")}
+
+
+def test_a_two_table_predicate_resolves_each_leaf_by_provenance(engine: Engine):
+    # RED 3's second observer (#384 / C2 step 4, item 8) -- and the ONLY one it
+    # has anywhere in the suite.
+    #
+    # GREEN ON ARRIVAL, deliberately, and that is the point. Today the compiler
+    # splits a cross-side compound and holds only the RIGHT conjunct, so exactly
+    # one table's cells ever reach one `eval3` call and its bare-name leaf lookup
+    # (`prop.get(predicate.column.name)`) is unambiguous. This test cannot fail
+    # today. It becomes an observer the moment item 4 lands: with the WHOLE
+    # compound held, both tables' cells go into one flat dict, and `students.title`
+    # and `courses.title` are indistinguishable there. Measured symptom: the
+    # dict collapses, every leaf reads the wrong cell, and the query returns [].
+    #
+    # `eval3` has 34 call sites and exactly ONE of them is production. The other
+    # 33 pass plain BARE-name dicts, which is why the provenance lookup must fall
+    # back to the bare name -- and why "item 8 costs 0 reds" is WEAK evidence
+    # rather than reassurance. This test is what makes the fallback's sibling
+    # (the qualified key) observable at all.
+    #
+    # The structural fact that makes provenance resolution exact: a
+    # BinaryExpression is always `column OP bindparam` -- the RHS is a
+    # BindParameter, never another Column -- so every leaf reads exactly one
+    # column and therefore exactly one table. The ambiguity is an artifact of
+    # building the dict flat for the whole predicate, not a property of any
+    # predicate.
+    #
+    # Arrange: BOTH tables declare `title` (the collision), and the predicate
+    # reads both. Kepler is the discriminator -- a second fully joinable pair
+    # that the predicate must exclude, so "kept everything" cannot pass either.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses).values(title="Astronomy").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        chemistry_oid = (
+            connection.execute(
+                insert(courses).values(title="Chemistry").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+
+        connection.execute(
+            insert(students).values(
+                title="Galileo Galilei", enrolled_in=[astronomy_oid]
+            )
+        )
+        connection.execute(
+            insert(students).values(
+                title="Johannes Kepler", enrolled_in=[chemistry_oid]
+            )
+        )
+
+        rows = connection.execute(
+            select(students, courses)
+            .join(students.c.enrolled_in)
+            .where(students.c.title == "Galileo Galilei")   # LEFT  `title`
+            .where(courses.c.title == "Astronomy")          # RIGHT `title`
+        ).fetchall()
+
+    # Assert: the genuine pair survives with BOTH colliding titles reachable
+    # under their qualified keys. A dict that collapses the two `title` cells
+    # makes one of the two leaves read the other table's value, which is FALSE
+    # for every row whichever cell wins -- so the collapse shows up as [].
+    assert len(rows) == 1
+    m = rows[0].mapping()
+    assert m["students.title"] == "Galileo Galilei"
+    assert m["courses.title"] == "Astronomy"
+
+
+def test_a_cross_side_or_where_is_answered_client_side(engine: Engine):
+    # RED 3's third observer: the construct that ships BECAUSE the guard goes.
+    #
+    # An `or_()` spanning both join sides is not soundly pushable -- a row can
+    # satisfy the disjunction through its RIGHT branch alone, so any Notion-side
+    # pre-filter on the left conjunct would drop rows the answer keeps. The
+    # compiler already declines it correctly: the compound-AND branch requires
+    # `operator == "and"`, so a cross-side OR falls to the `else` branch, pushes
+    # NOTHING, and holds the whole expression. It is therefore pure client-side
+    # evaluation, with no pushdown to over-keep.
+    #
+    # What refuses it today is not the compiler but `Planner`'s single-binary
+    # guard, which raises InvalidRequestError for any held expression that is not
+    # a BinaryExpression. Item 4 makes the compound-AND branch hold a
+    # BooleanClauseList too, so that guard must go -- and its removal admits this
+    # construct by the same edit. Shipping it was the user's call (option (a)).
+    #
+    # NOTE ON THIS RED: today it fails by EXCEPTION, not by assertion, and that
+    # is honest here rather than the usual warning sign -- the exception IS the
+    # behaviour being changed. Its assertion is mutation-proved separately, by
+    # the row set below: Galileo qualifies only through the LEFT branch and
+    # Kepler only through the RIGHT, so dropping either branch reds it, and each
+    # reds differently. Newton qualifies through neither and must not appear.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses).values(title="Astronomy").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        chemistry_oid = (
+            connection.execute(
+                insert(courses).values(title="Chemistry").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+
+        # Galileo: LEFT branch only  (name matches; Astronomy != Chemistry).
+        connection.execute(
+            insert(students).values(
+                name="Galileo Galilei", enrolled_in=[astronomy_oid]
+            )
+        )
+        # Kepler: RIGHT branch only  (name does not match; enrolled in Chemistry).
+        connection.execute(
+            insert(students).values(
+                name="Johannes Kepler", enrolled_in=[chemistry_oid]
+            )
+        )
+        # Newton: NEITHER branch -- the row that makes this a predicate and not
+        # a row count.
+        connection.execute(
+            insert(students).values(
+                name="Isaac Newton", enrolled_in=[astronomy_oid]
+            )
+        )
+
+        rows = connection.execute(
+            select(students, courses)
+            .join(students.c.enrolled_in)
+            .where(
+                or_(
+                    students.c.name == "Galileo Galilei",
+                    courses.c.title == "Chemistry",
+                )
+            )
+        ).fetchall()
+
+    # Assert: each branch contributes its own row and neither contributes
+    # Newton's. Nothing was pushed, so this is the client-side evaluation alone.
+    assert {(row.name, row.title) for row in rows} == {
+        ("Galileo Galilei", "Astronomy"),
+        ("Johannes Kepler", "Chemistry"),
+    }
