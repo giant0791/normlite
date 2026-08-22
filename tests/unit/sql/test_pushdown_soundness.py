@@ -101,7 +101,7 @@ def _pushed_keeps(page: dict, filt: dict) -> bool:
     return _Filter(page, {"filter": filt}).eval()
 
 
-def _residual_keeps(page: dict, filt: dict) -> bool:
+def _recheck_keeps(page: dict, filt: dict) -> bool:
     """Answer whether the residual re-check would keep ``page``.
 
     ``is TRUE`` is the WHERE policy — UNKNOWN drops the row along with FALSE —
@@ -111,7 +111,7 @@ def _residual_keeps(page: dict, filt: dict) -> bool:
     return eval3(filter_to_ast(filt), page["properties"]) is TRUE
 
 
-def test_a_pushed_leaf_never_drops_a_row_its_residual_would_keep():
+def test_a_pushed_leaf_never_drops_a_row_its_recheck_would_keep():
     """⊇ holds leaf by leaf, so a violation names one operator.
 
     Leaves only (``gen_condition``), for the same reason the ``eval3``
@@ -143,18 +143,18 @@ def test_a_pushed_leaf_never_drops_a_row_its_residual_would_keep():
             exercised.add(_leaf_key(filt))
 
             for page in pages:
-                residual = _residual_keeps(page, filt)
+                recheck = _recheck_keeps(page, filt)
                 pushed = _pushed_keeps(page, filt)
 
-                outcomes["residual_kept"] += residual
-                outcomes["slack"] += pushed and not residual
+                outcomes["recheck_kept"] += recheck
+                outcomes["slack"] += pushed and not recheck
                 outcomes["total"] += 1
 
-                if residual and not pushed:
+                if recheck and not pushed:
                     violations.append(
                         f"{_leaf_key(filt)}: filter={filt} "
                         f"cell={page['properties'][filt['property']]} "
-                        f"pushed=DROPS residual=KEEPS"
+                        f"pushed=DROPS recheck=KEEPS"
                     )
 
     assert not violations, (
@@ -166,13 +166,13 @@ def test_a_pushed_leaf_never_drops_a_row_its_residual_would_keep():
         f"missed={sorted(GENERATABLE_PAIRS - exercised)} "
         f"unexpected={sorted(exercised - GENERATABLE_PAIRS)}"
     )
-    assert outcomes["residual_kept"] > 0.05 * outcomes["total"], (
+    assert outcomes["recheck_kept"] > 0.05 * outcomes["total"], (
         "the residual has stopped keeping rows, so ⊇ holds vacuously: "
-        f"{outcomes['residual_kept']} of {outcomes['total']} rows kept"
+        f"{outcomes['recheck_kept']} of {outcomes['total']} rows kept"
     )
 
 
-def test_a_pushed_compound_never_drops_a_row_its_residual_would_keep():
+def test_a_pushed_compound_never_drops_a_row_its_recheck_would_keep():
     """⊇ survives composition, including over Kleene ``NOT``.
 
     The leaf test cannot answer this one. ``eval3`` composes leaves with Kleene
@@ -202,26 +202,26 @@ def test_a_pushed_compound_never_drops_a_row_its_residual_would_keep():
             filt = generator.gen_filter(schema, depth=3, max_depth=6)
 
             for page in pages:
-                residual = _residual_keeps(page, filt)
+                recheck = _recheck_keeps(page, filt)
                 pushed = _pushed_keeps(page, filt)
 
-                outcomes["residual_kept"] += residual
-                outcomes["slack"] += pushed and not residual
+                outcomes["recheck_kept"] += recheck
+                outcomes["slack"] += pushed and not recheck
                 outcomes["total"] += 1
 
-                if residual and not pushed:
+                if recheck and not pushed:
                     violations.append(
                         f"filter={filt} cells={page['properties']} "
-                        f"pushed=DROPS residual=KEEPS"
+                        f"pushed=DROPS recheck=KEEPS"
                     )
 
     assert not violations, (
         f"{len(violations)} rows would be lost to the push, first 2:\n  "
         + "\n  ".join(violations[:2])
     )
-    assert outcomes["residual_kept"] > 0.05 * outcomes["total"], (
+    assert outcomes["recheck_kept"] > 0.05 * outcomes["total"], (
         "the residual has stopped keeping rows, so ⊇ holds vacuously: "
-        f"{outcomes['residual_kept']} of {outcomes['total']} rows kept"
+        f"{outcomes['recheck_kept']} of {outcomes['total']} rows kept"
     )
     assert outcomes["slack"] > 0, (
         "no compound over-matched, so the ⊇ tolerance went unexercised and "
