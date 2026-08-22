@@ -1181,6 +1181,14 @@ reproduce `is_empty`, and pushdown parity would break.
 > both — `is_empty` tests the cell's **content**, not its array length. The conclusion survives on
 > the type-tag argument above. See ADR-0019 Correction (2026-07-27).
 
+> **Sharpened 2026-08-22 (#390).** The two spellings above are not two cells Notion can hand you.
+> Notion stores only `{"rich_text": []}`, normalising every accepted spelling of blankness to it
+> (measured on `title` via `POST /v1/pages`, `264ec8e`); `{"rich_text": [{"text": {"content": ""}}]}`
+> is a shape it accepts on write and never returns. It stays worth reasoning about because
+> **normlite constructs it** — `String.bind_processor` renders `values(col='')` as exactly that, and
+> the fake client stores it verbatim rather than normalising. So it is a state of the *simulated*
+> store, not of the wire, and the two must not be conflated again.
+
 ### Recheck and Residual predicates are AST, evaluated over raw cells
 Both stay an **AST** (`ColumnElement`) — never round-tripped through Notion's filter language — and
 are evaluated over **raw Notion cells**, which is what the rows carry through the plan (decoding to

@@ -294,7 +294,7 @@ class ReferenceGenerator:
         raise ValueError(f"Unsupported property type: {typ}")
 
     def _gen_text_items(self) -> list[dict]:
-        """Emit one of the three text cell shapes Notion actually stores.
+        """Emit one of the three text cell shapes the simulated stack can hold.
 
         A text cell carrying one item of non-empty content is the only shape
         this generator used to produce, which quietly capped what the
@@ -304,16 +304,36 @@ class ReferenceGenerator:
         differential ever saw the ``is_empty`` defect the live API had to be
         probed to expose.
 
-        The other two shapes are the ones that carry an opinion:
+        The other two shapes are the ones that carry an opinion -- and they are
+        opinions about **different surfaces**, which is what the earlier
+        wording here got wrong (#390):
 
-        * ``[]`` -- no text value at all.
-        * ``[{"text": {"content": ""}}]`` -- a value whose content is blank.
-          ``is_empty`` is TRUE here, and it is *only* true because the operator
-          reads the cell's content rather than its array length. This shape is
-          the regression net for that reading.
+        * ``[]`` -- the only blank text cell Notion stores. Measured on
+          ``title`` via ``POST /v1/pages``, each page read back with a separate
+          ``GET`` (``264ec8e``, 2026-07-30): ``[]``,
+          ``[{"text": {"content": ""}}]`` and an omitted property all return
+          200 and all read back as ``[]``, while ``{"title": null}`` is
+          rejected with a 400. That 400 is the control -- it shows the endpoint
+          validates text value shapes, so the three 200s are evidence rather
+          than indifference. Notion normalises every accepted spelling of
+          blankness to this one.
 
-        The two are kept distinct rather than collapsed: they are different
-        cells, and the oracle decodes them differently on purpose.
+        * ``[{"text": {"content": ""}}]`` -- **not** a shape Notion ever
+          returns. It is the shape *normlite* constructs:
+          ``String.bind_processor`` renders ``values(col='')`` as exactly this,
+          and the fake client stores it verbatim, because
+          ``_finalize_page_under_data_source`` copies ``page_prop[schema_type]``
+          through without normalising. So an ``INSERT`` of an empty string
+          leaves this cell sitting in the simulated store, and every evaluator
+          built against that store meets it.
+
+        It is emitted, therefore, as a **robustness** shape and not as a wire
+        shape: it pins that the evaluators agree about a cell normlite can put
+        in front of them -- not that Notion can hand them one. Real Notion
+        would have collapsed it to ``[]`` on the way in, and that the fake
+        client does not is a divergence of the #382 family, left to that issue.
+        Normalising it here would pre-empt #382's open ``[]``-versus-``''``
+        decode question.
         """
         roll = self.rng.random()
 

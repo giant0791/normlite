@@ -411,20 +411,38 @@ def test_filter_and_with_not_combines_title_scalar_and_relation_predicate():
     assert not _Filter(bob_in_X, filter_dict).eval()     # Bob, not in Y → AND fails on name
 
 @pytest.mark.parametrize('prop_type', ['rich_text', 'title'])
-def test_is_empty_on_a_blank_text_cell_is_true(prop_type):
-    """A text cell holding one item of blank content is empty, and not non-empty.
+@pytest.mark.parametrize(
+    'items',
+    [
+        [],
+        [{'text': {'content': ''}}],
+    ],
+    ids=['empty-array', 'blank-content'],
+)
+def test_is_empty_on_a_contentless_text_cell_is_true(prop_type, items):
+    """A text cell with no content is empty, and not non-empty -- either spelling.
 
     ``_Filter`` decodes a text cell to ``texts[0]["text"]["content"]`` and falls
     back to the ``EMPTY_TEXT`` sentinel only when the item list itself is empty,
     so ``[{"text": {"content": ""}}]`` arrives as ``""`` and both presence tests
-    answer by identity against a sentinel that is not there. ``is_empty`` says
-    False and ``is_not_empty`` says True -- of a cell with no content in it.
+    once answered by identity against a sentinel that is not there. ``is_empty``
+    said False and ``is_not_empty`` said True -- of a cell with no content in it.
 
-    That reads the *array length* where Notion reads the *content*. Measured
+    That read the *array length* where Notion reads the *content*. Measured
     against the real API (ADR-0019 Correction 2026-07-27): ``is_empty`` matches
     a blank cell. ``eval3`` was corrected to match in ``d9fc94e``; this is the
-    same defect one evaluator over, and it is what the widened reference
-    generator now walks into.
+    same defect one evaluator over.
+
+    **The two spellings are not two wire shapes** (#390). Notion stores only
+    ``[]``: ``[{"text": {"content": ""}}]`` is accepted by ``POST /v1/pages``
+    and read back as ``[]`` (``264ec8e``, 2026-07-30). The blank-content case is
+    covered here anyway because it is the shape *normlite itself* produces --
+    ``String.bind_processor`` renders ``values(col='')`` as exactly this, and
+    the fake client stores it verbatim -- so it is a cell the simulated stack
+    really holds, and both arms of the ``is_empty`` rule
+    (``a is EMPTY_TEXT or a == ""``) have to answer for one of them.
+    Parametrizing rather than picking one is what keeps either arm from going
+    quietly dead.
 
     Both operators are pinned in one test on purpose. Repairing ``is_empty``
     alone is what left ``eval3`` briefly answering True to *both* on a blank
@@ -433,7 +451,7 @@ def test_is_empty_on_a_blank_text_cell_is_true(prop_type):
     """
     blank = {
         'properties': {
-            'note': {'type': prop_type, prop_type: [{'text': {'content': ''}}]},
+            'note': {'type': prop_type, prop_type: items},
         }
     }
 

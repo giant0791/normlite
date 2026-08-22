@@ -173,6 +173,13 @@ def reference_eval(page: dict, filt: dict) -> bool:
         return page_val is not None and page_val >= val
     if op == "less_than_or_equal_to":
         return page_val is not None and page_val <= val
+    # Three members, and each answers for a different state (#390). ``None`` is
+    # an absent property; ``[]`` is the only blank text cell Notion stores, which
+    # it normalises every accepted spelling to (``264ec8e``, 2026-07-30); ``""``
+    # is the decoded blank-content cell -- a shape Notion never returns but
+    # ``String.bind_processor`` emits for ``values(col='')`` and the fake client
+    # stores verbatim. The last is therefore a real state of the simulated store,
+    # not a leftover agreeing with the generator.
     if op == "is_empty":
         return page_val in ("", None, [])
     # Term for term the negation of the branch above, and written that way on

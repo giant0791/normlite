@@ -1629,7 +1629,21 @@ class _Condition(_Expression):
             and a["start"] < b["start"]
         ),
 
-        # rich_text
+        # rich_text / title
+        #
+        # Both presence tests carry TWO arms, and both are load-bearing (#390).
+        # `a is EMPTY_TEXT` answers for `[]`, which is the only blank text cell
+        # Notion stores -- it normalises every accepted spelling to it
+        # (measured `264ec8e`, 2026-07-30). `a == ""` answers for
+        # `[{"text": {"content": ""}}]`, which Notion never RETURNS but normlite
+        # itself CONSTRUCTS: String.bind_processor renders values(col='') as
+        # exactly that, and this client stores it verbatim (the store copies
+        # page_prop[schema_type] through without normalising). So the second arm
+        # is not dead code kept in agreement with a generator fiction -- it is
+        # what answers about a cell an INSERT can really leave here.
+        #
+        # Both arms are pinned by test_is_empty_on_a_contentless_text_cell_is_true,
+        # parametrized over the two spellings so neither can go quietly dead.
         "rich_text.equals":             lambda a, b: a == b if a is not EMPTY_TEXT else False,
         "rich_text.does_not_equal":     lambda a, b: True if a is EMPTY_TEXT else a != b,
         "rich_text.is_empty":           lambda a, _: a is EMPTY_TEXT or a == "",
@@ -1639,7 +1653,6 @@ class _Condition(_Expression):
         "rich_text.starts_with":        lambda a, b: False if a is EMPTY_TEXT else a.startswith(b),
         "rich_text.ends_with":          lambda a, b: False if a is EMPTY_TEXT else a.endswith(b),
 
-        # title
         "title.equals":                 lambda a, b: a == b if a is not EMPTY_TEXT else False,
         "title.does_not_equal":         lambda a, b: True if a is EMPTY_TEXT else a != b,
         "title.is_empty":               lambda a, _: a is EMPTY_TEXT or a == "",
