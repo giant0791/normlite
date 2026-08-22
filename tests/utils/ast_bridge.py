@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Rebuild a Notion filter JSON as a residual predicate AST — **test-only**.
+"""Rebuild a Notion filter JSON as a predicate AST — **test-only**.
 
 :func:`eval3` and :func:`reference_eval` take different shapes on both sides,
 so neither can be handed a generated predicate without a translation:
@@ -24,7 +24,7 @@ so neither can be handed a generated predicate without a translation:
 ===================  ===========================  =========================  ==========
 evaluator            predicate                    row                        returns
 ===================  ===========================  =========================  ==========
-``eval3``            residual AST                 ``{name: raw_cell}``       ``Ternary``
+``eval3``            predicate AST                ``{name: raw_cell}``       ``Ternary``
 ``reference_eval``   Notion filter JSON           ``{"properties": {...}}``  ``bool``
 ===================  ===========================  =========================  ==========
 
@@ -39,7 +39,7 @@ its ``_gen_type`` has no relation-capable type, so relation would lose coverage
 entirely, and it would still need a raw-cell page generator to produce rows.
 Generating from the JSON side also serves the pushdown-soundness fuzz, where the
 same generated filter has to be pushed into a ``Scan`` payload as JSON *and*
-evaluated residually as an AST.
+re-checked as an AST.
 
 Resurrecting a renderer here is legitimate precisely because it is a test
 fixture: ``3681c2d`` deleted the equivalent from ``sql/``, and #365's acceptance
@@ -75,7 +75,7 @@ the operator can be: ``get_col_spec()`` selects the per-type rule family and
 
 
 def filter_to_ast(filt: dict) -> ColumnElement:
-    """Rebuild ``filt`` — a Notion filter JSON — as a residual predicate AST.
+    """Rebuild ``filt`` — a Notion filter JSON — as a predicate AST.
 
     Boolean nodes become the AST's own compound elements, so a generated
     ``and``/``or``/``not`` exercises ``eval3``'s Kleene logic rather than being

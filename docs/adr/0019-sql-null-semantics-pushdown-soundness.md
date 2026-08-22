@@ -44,6 +44,101 @@
 > Filter Operator still evaluates raw cells, `is_empty()` stays Notion-semantic and pushable, and
 > `is_null()` stays SQL-semantic and never pushed.
 
+> **Correction (2026-07-29) — `{"<col_spec>": {}}` is not a cell. The decision stands.**
+>
+> **(6) A valueless cell is `{"<col_spec>": null}`, and that is the only shape it takes.** The
+> evaluator additionally counted `{}` as valueless (`_has_no_value(val) = val is None or val == {}`).
+> That arm was never grounded in Notion. It was added so the evaluator would agree with a **page
+> generator** that emitted `{"date": {}}` as its unset-date shape — and the generator had, in turn,
+> modelled a cell on a **property definition**.
+>
+> **(7) The two positions are different objects that share a shape.** In a *data source's*
+> `properties`, `{"date": {}}` is a **column declaration** — "this column is a date, with empty
+> configuration" — and is canonical, real and load-bearing (`TypeEngine.get_notion_spec()`, the DDL
+> compiler, the system catalog). In a *page's* `properties` it is a **cell**, and there it is
+> **unproducible**. Both halves measured 2026-07-29: the API **rejects** `{"date": {}}` on
+> `POST /v1/pages` with a 400, and clearing a date through the Notion **UI** — the more permissive
+> path — stores and emits `"date": null`, read back from a live data source
+> (`src/tools/notion_probe.py`). Nothing can produce the shape.
+>
+> **(8) So the `== {}` arm is removed, together with the fiction that motivated it.** This is a
+> deletion that is **semantics-preserving over the reachable domain** — every cell that can actually
+> arrive gets the identical verdict — and it is *not* a reopening of the Decision below. The
+> generator is changed to emit `null`, and the evaluator tests that pinned `{}` are rewritten onto
+> `null` rather than deleted: the behaviour they protect (a valueless date is UNKNOWN, so
+> `does_not_equal` does not match it) is the heart of **#384**. *(Decision recorded ahead of the
+> code; both land on `bug/issue-384/notion-does-not-equal`.)*
+>
+> **(9) The rule this cost us, stated once: never model a cell on a schema object.** An empty
+> *config* is not an empty *value*. The two are distinguished by **position**, never by shape, so a
+> shape copied out of a `CREATE TABLE` payload carries no evidence about what a query returns. This
+> is the same failure as Correction (1) and (5) — a **model** read as **evidence** — and it is now
+> the third instance in this ADR's area.
+>
+> **(10) Corollary, and it is the invariant to hold onto:** a raw cell decodes to Python `None`
+> **iff** the evaluator calls it valueless. `None` in a decoded `Row` *is* how a user observes SQL
+> NULL, so a disagreement between the decode layer and the evaluator is user-visible — `WHERE col =
+> x` dropping a row as UNKNOWN while `SELECT col` yields a value from that same cell. The two stay
+> separate functions (`TypeEngine._is_valueless_cell` takes the whole cell, `eval3._has_no_value`
+> takes the inner value); this is their contract, not an argument to merge them.
+
+> **Correction (2026-07-30) — the pushdown-soundness invariant is `⊇`, not equality. The decision
+> stands; the last Consequences bullet does not.**
+>
+> **(11) "If a predicate's Notion-side and client-side evaluations can disagree, it must not be
+> pushable" is too strong, and taken literally it forbids something correct.** Written when the
+> residual was `_Filter` — Notion-semantic on both sides, so equality was free. This ADR itself
+> replaced the residual with `eval3`, which is **SQL** three-valued. The two sides are now
+> deliberately different semantics, so they *will* disagree, and the rule as stated would make
+> `number.does_not_equal` unpushable — a real narrowing, for no gain.
+>
+> **(12) The invariant that actually holds is directional**, because the residual is **always
+> re-applied** and therefore decides the answer:
+> `{rows the pushed filter keeps} ⊇ {rows the residual keeps}`. A row the push keeps and the
+> residual drops is **slack** — safe, paid for in transfer. A row the push *drops* that the residual
+> would have kept is unrecoverable. Only the second is a violation. The revised rule: **a pushable
+> predicate's pushed form must never be *narrower* than its residual form.** Disagreement in the
+> other direction is permitted and expected.
+>
+> **(13) This is now measured, not argued.** With the generator widened to all 36 declared pairs
+> (#381), across 24 000 leaf evaluations: **exactly one** pair diverges — `number.does_not_equal`
+> over `{"number": null}` — in **exactly one** direction (Notion keeps, `eval3` drops), on **exactly
+> one** cell shape, and within that pair divergence holds **iff** the cell is valueless (396 valued
+> cells agree, 104 valueless cells diverge, no exceptions either way). Zero ⊇ violations at leaf or
+> compound level. That is #384, and under the corrected invariant it is slack rather than a defect.
+>
+> **(14) Text does not join it, and the reason is load-bearing.** `title`/`rich_text`
+> `does_not_equal` agree exactly, because `[]` is a **present** value (`4abe0d1`) rather than a
+> valueless cell, so `eval3` reaches its rule and answers TRUE just as Notion does. Correction (9)'s
+> ruling and the complement law arrive at the same place independently.
+
+> **Correction (2026-07-31) — two bullets in Decision/Consequences describe code that was never
+> written. See [ADR-0022](./0022-lossy-pushdown-and-the-recheck.md).**
+>
+> **(15) "The `all(None)` structural guard is deleted" is false.** The guard is live in
+> `Filter._right_side_passes` (`sql/queryplan.py`), comment and all, and slice 2 never removed it.
+> This ADR has been **Accepted** while asserting the opposite, which cost a session to discover.
+> The claim is *achievable* — measured 2026-07-31, deleting it leaves the suite unchanged at 872
+> passed, on a path that **is** covered (an outer join with a dangling FK plus a right-side
+> `is_empty()`), because a phantom's cells are literally `None`, `eval3` returns UNKNOWN, and the
+> WHERE policy drops UNKNOWN. ADR-0022 does the deletion.
+>
+> > **Closed 2026-07-31.** The guard is gone — ADR-0022 step 1 deleted it from
+> > `Filter._right_side_passes`, suite unmoved at 908 (872 plus the 36-pair safety net written
+> > first). This ADR's Decision bullet is now true of the code. Correction (15) is kept as the
+> > record that it was asserted for two weeks before it was.
+>
+> **(16) "The residual is always re-applied" was never true either, and it is what makes ⊇
+> meaningful.** A conjunct is pushed **xor** evaluated client-side today, so the two sides of ⊇
+> ranged over *different predicates*: it is a property of a **predicate** (what the fuzz measures)
+> and not of an **execution**. ADR-0022 adds the client-side re-application — the **Recheck** — that
+> the wording already assumed, and renames `residual_where` → `recheck_where` accordingly.
+> `residual_sorts` keeps its name: a held-back sort key is never pushed and never re-applied.
+>
+> **(17) The lesson is the one this ADR keeps re-learning.** Corrections (1), (5) and (9) record a
+> *model* read as *evidence*. This is the neighbouring failure: a **document** read as *code*. An
+> ADR marked Accepted is evidence about a decision, never about an implementation.
+
 ---
 
 ## Context
@@ -189,5 +284,8 @@ wrapped verbatim, so the existing suite stays a true oracle; this ADR is slice 2
   column. That is an `Insert`-side constraint concern — a sibling of the deferred NOT-NULL
   constraint under ADR-0012 — not a query-planning one. Partial enforcement already exists at the
   fake-client level (`dml.py:1252`).
-- **Pushdown soundness is now a named invariant** any future pushable operator must satisfy: if a
-  predicate's Notion-side and client-side evaluations can disagree, it **must not be pushable**.
+- **Pushdown soundness is now a named invariant** any future pushable operator must satisfy: a
+  pushable predicate's **pushed form must never be narrower than its residual form**
+  (`pushed ⊇ residual`). Disagreement in the other direction — the push keeping rows the residual
+  then drops — is **slack**, and is permitted. *(Superseded wording: this bullet originally said
+  any disagreement made a predicate unpushable. See Correction (2026-07-30), items (11)–(12).)*

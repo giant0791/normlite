@@ -16,10 +16,24 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Reference evaluator for the Notion-like query engine.
+"""Reference evaluator: an independent model of **Notion's** filter engine.
 
-This is a very simple and dump implementation of the query engine used by :class:`normlite.notionsdk.InMemory` class.
-It represents the ground-truth for differential testing.
+This models the thing normlite pushes filters *to* -- Notion's row-selection
+semantics as measured on the wire -- and deliberately not the fake client, and
+deliberately not SQL. It exists to be a second opinion, written in a plain
+top-to-bottom style so that it fails differently from the code under test.
+
+An earlier docstring called it "the query engine used by
+``normlite.notionsdk.InMemory``". That was the wrong target on both counts. A
+model of the fake client would make this a model of a model, and
+``test_pushdown_soundness.py`` already compares ``eval3`` against ``_Filter``
+directly; a model of SQL would make it a second implementation of ``eval3``,
+and a differential against a copy of yourself proves nothing.
+
+Being Notion-shaped, it does **not** agree with ``eval3`` everywhere, and that
+is the point rather than a defect: ``eval3`` is SQL three-valued. Where they
+part is #384, and it is pinned in ``test_eval3_differential.py`` rather than
+smoothed over here.
 """
 
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
@@ -113,6 +127,20 @@ def reference_eval(page: dict, filt: dict) -> bool:
     # --- OTHER TYPES ---
     if op == "equals":
         return page_val == val
+    # Written as the literal complement of the branch above, not as an
+    # independent ``!=``, because that is exactly what it is: Notion's negative
+    # operators are the set complement of their positive twins, measured for
+    # number and text alike (2026-07-30). A cell with no value falls on the
+    # negative side *because it failed the positive test* -- there is no third
+    # truth value here, and the API has no ``not`` to compose one with (#383).
+    # Spelling it structurally is the same defence ``is_not_empty`` uses below:
+    # a complement written independently is a complement free to drift.
+    #
+    # This is where the oracle stops agreeing with ``eval3``, which answers
+    # UNKNOWN on a valueless cell under SQL three-valued logic. The divergence
+    # is real, permanent, and pinned in test_eval3_differential.py.
+    if op == "does_not_equal":
+        return not (page_val == val)
     if op == "contains":
         return val in page_val
     if op == "does_not_contain":
@@ -125,17 +153,33 @@ def reference_eval(page: dict, filt: dict) -> bool:
         return isinstance(page_val, str) and page_val.startswith(val)
     if op == "ends_with":
         return isinstance(page_val, str) and page_val.endswith(val)
+    # A valueless number cell -- ``{"number": null}``, the only shape one takes
+    # on the wire -- has no end to order against, so nothing sits above or
+    # below it. This is the date arm's early return (line 78) applied to the
+    # other ordered type rather than a second rule, and it is spelled inline
+    # for the same reason ``starts_with`` is: these are the only branches that
+    # reach for an operation the absent value cannot answer. ``equals`` needs
+    # no guard -- ``None == val`` is already False, and False is the answer.
     if op == "greater_than":
-        return page_val > val
+        return page_val is not None and page_val > val
     if op == "less_than":
-        return page_val < val
+        return page_val is not None and page_val < val
+    # The inclusive pair carries the same guard for the same reason, and the
+    # boundary is the only thing that separates them from the strict pair.
+    # Both were probed live against a ``{"number": 0}`` row and a null one:
+    # ``>=(0)`` and ``<=(0)`` each match the zero, and neither matches the
+    # valueless cell. Inclusive of the boundary, exclusive of the absent value.
+    if op == "greater_than_or_equal_to":
+        return page_val is not None and page_val >= val
+    if op == "less_than_or_equal_to":
+        return page_val is not None and page_val <= val
     if op == "is_empty":
-        return page_val in ("", None, [], {})
+        return page_val in ("", None, [])
     # Term for term the negation of the branch above, and written that way on
     # purpose: the pair must not be able to drift apart when either side is
     # extended. Spelling this one independently is exactly what once let eval3
     # answer True to both on a blank text cell (32e53a3).
     if op == "is_not_empty":
-        return page_val not in ("", None, [], {})
+        return page_val not in ("", None, [])
 
     raise ValueError(f"Unsupported operator: {op}")

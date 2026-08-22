@@ -135,8 +135,6 @@ def test_join_operator_merges_child_rows_into_joined_tuples_as_one_batch():
         right_source,
         join,
         projection,
-        right_filter=None,
-        right_sorts=None,
     )
     join_op.open(None)
     first = join_op.next()
@@ -306,18 +304,21 @@ def test_filter_operator_keeps_passing_rows_and_drops_failures_and_phantoms():
     # column carries. Three rows exercise the three outcomes:
     #   - Astronomy (rank 150) passes and is kept,
     #   - Botany (rank 50) fails the predicate and is dropped,
-    #   - an outer-join phantom (right slice all None) is dropped BEFORE the
-    #     predicate even runs, by the all-None guard (a NULL right side fails
-    #     every right-side predicate; see ADR-0005).
+    #   - an outer-join phantom (right slice all None) is dropped as well --
+    #     ADR-0005's outcome, though no longer by the structural all-None guard
+    #     that produced it when this test was written (see below).
     # The row cells are the raw phase shapes production actually merges (title as
     # the retrieve list-of-text shape, number as {"number": n}) so the operator
     # sees real input.
     #
-    # The phantom is the case to watch as #365 lands. ADR-0019 will DERIVE its
+    # The phantom was the case to watch as #365 landed, and it HAS since moved:
+    # ADR-0022 step 1 deleted the structural guard, and `eval3` now DERIVES the
     # drop -- a None cell makes every comparison UNKNOWN, and WHERE drops
-    # UNKNOWN -- and delete the structural guard. That is #366's behaviour
-    # change, not this slice's: the guard stays verbatim here, and this test
-    # holds it to that. If it ever goes red, the semantics moved.
+    # UNKNOWN. This test stayed GREEN across that change, which is the useful
+    # thing to know about it: it asserts the phantom's OUTCOME, not the
+    # mechanism, so it never was the tripwire this note used to claim it was.
+    # What holds the derivation is test_eval3.py's every-leaf-over-None-is-
+    # UNKNOWN net.
     from normlite.sql.queryplan import Filter
 
     metadata = MetaData()
@@ -368,7 +369,7 @@ def test_filter_operator_keeps_passing_rows_and_drops_failures_and_phantoms():
         source,
         filter=right_filter,
         schema=merged_schema,
-        table=courses,
+        tables=[courses],
     )
     filter_op.open(None)
     first = filter_op.next()
@@ -455,7 +456,7 @@ def test_filter_operator_evaluates_a_residual_ast_predicate():
         source,
         filter=right_filter,
         schema=merged_schema,
-        table=courses,
+        tables=[courses],
     )
     filter_op.open(None)
     first = filter_op.next()

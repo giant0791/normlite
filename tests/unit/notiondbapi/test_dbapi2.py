@@ -14,6 +14,7 @@ from normlite.notiondbapi.dbapi2 import (
     OperationalError,
     ProgrammingError,
 )
+from normlite.notiondbapi.resultset import ResultSet
 
 @pytest.fixture
 def client() -> InMemoryNotionClient:
@@ -623,6 +624,85 @@ def test_streaming_pulls_next_page_on_demand(
     third = cursor.fetchone()
     assert third is not None
     assert counting.query_calls == 2
+
+
+def test_the_cursor_learns_exhaustion_from_its_batch_source_returning_none(
+    client: InMemoryNotionClient,
+    row_description: tuple[tuple, ...],
+):
+    # #384 / ADR-0022 step 2b, part 4. The refill seam, from the Cursor's side.
+    #
+    # A Cursor refills from a BATCH SOURCE: anything answering
+    # `next() -> Optional[list[tuple]]`. Two things satisfy it:
+    #   - a JSON-page adapter over PageIterator (decodes Notion pages to tuples
+    #     and turns StopIteration into None) -- it needs an adapter because
+    #     PageIterator yields DICTS and signals the end by raising;
+    #   - a query plan root, UNWRAPPED. `Project.next()` already has this exact
+    #     shape, which is why the plan side needs no adapter at all.
+    # The shared verb is `next()`, the plan's vocabulary, so the adapter conforms
+    # downward. The DBAPI layer never imports VolcanoOperator: sql -> dbapi, no
+    # inversion.
+    #
+    # THE CLAIM: exhaustion is the CURSOR's state, and the flag is set AS SOON AS
+    # IT IS KNOWN -- which is a different moment for each kind of source:
+    #   - the JSON side knows EARLY. `PageIterator` reads `has_more` off the page
+    #     it just fetched, so `execute()` seeds the flag at construction time and
+    #     a single-page streamed result reports its rowcount without a further
+    #     pull, exactly as it did before the seam existed.
+    #   - a plan knows LATE. It cannot be asked "are you done?"; `next()`
+    #     returning None is the sole signal, and it arrives ONE CALL AFTER the
+    #     last real batch.
+    # This test drives the LATE case, which is the one with no lookahead to lean
+    # on: the fake source below has no `has_more` to seed from, so the flag can
+    # only come from the None.
+    #
+    # Both ways of getting it wrong fail silently, not loudly:
+    #   - flag set too early -> `rowcount` reports a total while rows are still
+    #     coming, which is the #326 failure mode (leaking the buffered length);
+    #   - flag never set -> `rowcount` answers -1 forever on a drained result and
+    #     `_drain_pages` spins.
+    #
+    # Driven with a fake source on purpose: the claim is about the Cursor's state
+    # machine. A real source would make the call count depend on page arithmetic
+    # and hide the contract.
+    class _FakeBatchSource:
+        """Hands out canned batches, then None forever. The plan's shape."""
+        def __init__(self, batches):
+            self._batches = list(batches)
+            self.calls = 0
+
+        def next(self):
+            self.calls += 1
+            return self._batches.pop(0) if self._batches else None
+
+    cursor = Cursor(Connection(client))
+    cursor._inject_description(row_description)
+
+    # Seed one batch into the result set and attach the source, exactly as the
+    # engine's lazy plan path does (mint cursor, seed first batch, attach).
+    source = _FakeBatchSource([[("b1r1",), ("b1r2",)], [("b2r1",)]])
+    cursor._result_sets.append(ResultSet(row_description, "page", [("b0r1",)]))
+    cursor._batch_source = source
+
+    # Mid-stream the total is UNKNOWN. Answering 1 here -- the seeded length --
+    # is the #326 leak, now reachable through a second kind of source.
+    assert cursor.rowcount == -1
+
+    # Drain one row at a time; fetchone drives the lazy refill.
+    drained = []
+    while (row := cursor.fetchone()) is not None:
+        drained.append(row)
+
+    # Every batch surfaced, in order, seeded rows first.
+    assert drained == [("b0r1",), ("b1r1",), ("b1r2",), ("b2r1",)]
+
+    # Only now, having pulled the None, is the total knowable.
+    assert cursor.rowcount == 4
+
+    # Exactly one next() per batch plus one for the None: the Cursor neither
+    # looks ahead (which would consume a batch it cannot hand back) nor re-drives
+    # a spent source.
+    assert source.calls == 3
 
 
 def test_streaming_rowcount_is_unknown_until_fully_drained(

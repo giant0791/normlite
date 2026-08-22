@@ -75,6 +75,7 @@ class ReferenceGenerator:
     OPERATORS = {
         "title": {
             "equals",
+            "does_not_equal",
             "contains",
             "does_not_contain",
             "starts_with",
@@ -84,6 +85,7 @@ class ReferenceGenerator:
         },
         "rich_text": {
             "equals",
+            "does_not_equal",
             "contains",
             "does_not_contain",
             "starts_with",
@@ -93,8 +95,13 @@ class ReferenceGenerator:
         },
         "number": {
             "equals",
+            "does_not_equal",
             "greater_than",
             "less_than",
+            "greater_than_or_equal_to",
+            "less_than_or_equal_to",
+            "is_empty",
+            "is_not_empty",
         },
         "number_with_commas": {
             "equals",
@@ -116,6 +123,7 @@ class ReferenceGenerator:
         },
         "checkbox": {
             "equals",
+            "does_not_equal",
         },
         "relation": {
             "contains",
@@ -124,6 +132,23 @@ class ReferenceGenerator:
             "is_not_empty"
         },
     }
+    """Which operators the generator may emit for each property type.
+
+    For the six entries in :attr:`TYPES` this now mirrors
+    ``_Condition._allowed_ops`` exactly, which is what #381 asked for: the cap
+    was never a statement about Notion, only about what the fake client could
+    answer, and it had drifted into hiding eight of ``eval3``'s declared rules
+    from the differential and the fuzz. Both derive their pair set from here, so
+    they widened from 28 to 36 pairs with no edit of their own.
+
+    ``number_with_commas`` and ``dollar`` are deliberately left at three
+    operators. They are alternate number ``col_spec``s that :attr:`TYPES` does
+    not contain, so nothing generates them and widening them would change no
+    measurement -- but see ``_choose_operator``, which draws from
+    ``typ.supported_ops`` instead of this table. Two operator sources that can
+    disagree is a real trap; it is documented rather than fixed here because
+    reconciling them is not #381's slice.
+    """
 
     def __init__(self, seed: int | None = None):
         self.rng = random.Random(seed)
@@ -167,7 +192,51 @@ class ReferenceGenerator:
             "properties": properties
         }
 
+    _VALUELESS_KEY = {
+        "number": "number",
+        "number_with_commas": "number",
+        "dollar": "number",
+        "date": "date",
+    }
+    """The wire key of every type that can carry a *valueless* cell.
+
+    Text and relation are absent on purpose. Their empty shape is ``[]``, a
+    **present** value -- the empty set -- not the absence of one, and reading
+    it as NULL inverts the very bug this generator feeds (``4abe0d1``).
+    Checkbox is absent because Notion always stores one of the two booleans.
+    """
+
     def _gen_property_value(self, typ: str) -> dict:
+        """Emit one raw cell for ``typ``.
+
+        A valueless cell is always ``{"<col_spec>": null}`` -- that is the only
+        shape it takes on the wire. Both halves were measured 2026-07-29: the
+        API **rejects** ``{"date": {}}`` on ``POST /v1/pages`` with a 400, and
+        clearing a cell through the Notion UI -- the more permissive path --
+        stores and emits ``null``.
+
+        This generator is where the fiction came from. It used to model an
+        unset date as ``{"date": {}}``, which is the shape of a *column
+        declaration*, not of a cell; ``eval3._has_no_value`` then grew an
+        ``== {}`` arm so it would agree with this file. A model was read as
+        evidence. **Never model a cell on a schema object** -- an empty
+        *config* is not an empty *value*. See ADR-0019 Correction (6)-(10).
+
+        ``number`` had no unset arm at all until now, which is why nothing ever
+        exercised the real shape and why the pushdown fuzz measured zero leaf
+        slack: every UNKNOWN leaf needs a valueless cell, and none was
+        constructible. Note the asymmetry in the evidence -- ``{"date": null}``
+        was read back live from the probe data source, while ``{"number":
+        null}`` is inferred from it, since the probe still has no empty-number
+        control.
+        """
+        if typ in self._VALUELESS_KEY and self.rng.random() < 0.2:
+            key = self._VALUELESS_KEY[typ]
+            return {
+                "type": key,
+                key: None,
+            }
+
         if typ in ("title", "rich_text"):
             return {
                 "type": typ,
@@ -204,12 +273,6 @@ class ReferenceGenerator:
             }
 
         if typ == "date":
-            if self.rng.random() < 0.2:
-                return {
-                    "type": "date",
-                    "date": {}
-                }
-
             return {
                 "type": "date",
                 "date": {

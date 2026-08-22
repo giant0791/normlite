@@ -44,39 +44,54 @@ def compile_residual_sorts(residual_sorts: OrderByClause) -> list[dict]:
         for c in residual_sorts.clauses
     ]
 
-def _get_expression_parent_tables(expression: ClauseElement) -> Set[Table]:
-    """Helper to recursively collect all parent tables corresponding to 
-    the columns involved in the expression.
-    
+def _get_expression_columns(expression: ClauseElement) -> Set[Column]:
+    """Helper to recursively collect all columns involved in the expression.
+
+    Returns an unordered set. A caller that needs a stable column order must
+    impose one itself -- ``Planner.plan`` sorts by name when it widens
+    ``execution_names``, because a set's iteration order varies per process
+    and would otherwise make the ``Scan``'s schema vary run to run.
+
     .. note::
-        Unrecognized nodes contribute no tables; the top-level guard in visit_select catches 
-        only a fully-unattributable expression. 
+        Unrecognized nodes contribute no columns; the top-level guard in visit_select catches
+        only a fully-unattributable expression.
         A new WHERE node type must extend this fold or it routes silently.
     """
-
-    parents = set()
+    columns = set()
 
     if isinstance(expression, Column):
-        parents.add(expression.parent)
-    
+        columns.add(expression)
+
     elif isinstance(expression, BinaryExpression):
-        parents |= _get_expression_parent_tables(expression.column)
-    
+        columns |= _get_expression_columns(expression.column)
+
     elif isinstance(expression, UnaryExpression):
-        parents |= _get_expression_parent_tables(expression.element)
+        columns |= _get_expression_columns(expression.element)
 
     elif isinstance(expression, BooleanClauseList):
         for clause in expression.clauses:
-            parents |= _get_expression_parent_tables(clause)
-    
+            columns |= _get_expression_columns(clause)
+
     elif isinstance(expression, OrderByClause):
         for clause in expression.clauses:
-            parents |= _get_expression_parent_tables(clause)
+            columns |= _get_expression_columns(clause)
 
     elif isinstance(expression, OrderByExpression):
-        parents |= _get_expression_parent_tables(expression.column)
-    
-    return parents
+        columns |= _get_expression_columns(expression.column)
+
+    return columns
+
+def _get_expression_parent_tables(expression: ClauseElement) -> Set[Table]:
+    """Helper to recursively collect all parent tables corresponding to
+    the columns involved in the expression.
+
+    .. note::
+        Unrecognized nodes contribute no tables; the top-level guard in visit_select catches
+        only a fully-unattributable expression.
+        A new WHERE node type must extend this fold or it routes silently.
+    """
+
+    return {c.parent for c in _get_expression_columns(expression)}
 
 class NotionCompiler(SQLCompiler):
     """Notion compiler for SQL statements.
@@ -650,9 +665,10 @@ class NotionCompiler(SQLCompiler):
                     ):
                         # Compound AND spanning both join sides: split per-clause.
                         # Left-only conjuncts narrow phase-1 to a SUPERSET of the
-                        # answer, so push them into payload['filter']; the remaining
-                        # conjuncts are held back as the residual AST for client-side
-                        # evaluation after the merge. (See #311, #363.)
+                        # answer, so push them into payload['filter']; the WHOLE
+                        # compound is then held as AST for client-side evaluation
+                        # after the merge -- the pushed conjuncts INCLUDED, because a
+                        # push never decides (ADR-0022). (See #311, #363.)
                         left_conjuncts = [
                             clause._compiler_dispatch(self)
                             for clause in expression.clauses
@@ -664,28 +680,31 @@ class NotionCompiler(SQLCompiler):
                                 else {"and": left_conjuncts}
                             )
 
-                        # Hold the right-side conjuncts as raw AST for client-side
-                        # evaluation after the merge; do NOT dispatch them (that would
-                        # register unconsumed binds — see #363).
-                        right_clauses = [
-                            clause
-                            for clause in expression.clauses
-                            if _get_expression_parent_tables(clause) != {select._table}
-                        ]
-                        if right_clauses:
-                            self.planning_context.residual_where = (
-                                right_clauses[0] if len(right_clauses) == 1
-                                else BooleanClauseList("and", right_clauses)
-                            )
+                        self.planning_context.recheck_where = expression
+
                     else:
                         if parent_tables == {select._table}:
                             # for the left table, add "filter" to the payload for the databases.query
                             payload['filter'] = expression._compiler_dispatch(self)
-                        else:
-                            # for the right table, hold the residual as raw AST for
-                            # client-side evaluation after the merge; do NOT dispatch it
-                            # (that would register an unconsumed bind — see #363).
-                            self.planning_context.residual_where = expression
+
+                        # Hold the whole expression as raw AST for client-side evaluation,
+                        # UNCONDITIONALLY -- whichever table it reads, and whether or not it
+                        # was just pushed above. A pushed conjunct is a HINT that never
+                        # decides (ADR-0022), so holding it is what makes the client-side
+                        # evaluation the answer; #384 is exactly the case where the push
+                        # over-keeps and only the re-application drops the row.
+                        #
+                        # In the settled vocabulary this channel now carries both kinds: a
+                        # LEFT conjunct is a RECHECK (it was pushed on the line above and is
+                        # re-applied), while a RIGHT conjunct is a genuine RESIDUAL (nothing
+                        # pushes it today). `Planner.plan` derives which table to evaluate it
+                        # against from the predicate itself -- do not assume the right side.
+                        #
+                        # Do NOT dispatch it here: that would register an unconsumed bind
+                        # (see #363). Holding an ALREADY-dispatched conjunct is safe and
+                        # measured -- _add_bindparam ran once inside the dispatch, and the
+                        # literal survives unprocessed.
+                        self.planning_context.recheck_where = expression
         
         projection = self._compiler_state.stmt._projection
 
@@ -728,6 +747,9 @@ class NotionCompiler(SQLCompiler):
                     # if any user column was projected and the projected user colums are 
                     # a subset of all user columns
                     query_params['filter_properties'] = self._compiler_state.result_columns
+
+        # create the snapshot:
+        self.planning_context.pre_widening_fetch_columns = list(self._compiler_state.fetch_columns)
 
         if select._order_by.has_expression():
             order_by_clause = select._order_by

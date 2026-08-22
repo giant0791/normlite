@@ -129,6 +129,13 @@ they are re-exposed as `context.join_right_filter` / `context.join_right_sorts` 
 **retired** by the agreed design below — they move onto the **PlanningContext**, which is the
 supported channel for exactly this (compile-time decision → run time).
 
+> **Superseded 2026-08-22 (vocabulary only).** Both keys are gone, and the paragraph above keeps the
+> word **Residual** as it was used when they existed. Under the settled three-term glossary
+> (§Pushdown / Recheck / Residual) they split: `join_right_filter` became the **recheck** channel
+> `PlanningContext.recheck_where`, which now carries *every* WHERE conjunct — pushed ones included —
+> while `join_right_sorts` became `residual_sorts` and is still a genuine **Residual**, never pushed
+> and never re-applied.
+
 `compiled_dict` is **pure JSON-like data** — no AST objects (`visit_join` emits only names and a
 bool). This is a real invariant: anything that must reach run time as an AST rides the
 **PlanningContext** on the `Compiled`, never `compiled_dict`.
@@ -831,10 +838,15 @@ Structure first, semantics second, so each slice has **one reason to fail**:
    internally, with the hooks driving I/O exactly as today. The tree is stood up *around* the
    existing choreography — ADR-0008's own delegate-then-fold discipline (#314–#317).
    Behaviour-preserving. Slice-1 `Scan` I/O is a **provisional shim, not the target contract**:
-   `next()` reads a page via `fetchmany(NOTION_MAX_PAGE_SIZE)` — a row-count stand-in that
-   re-splits the whole pages `PageIterator` already produced and lifts the page-size constant into
-   the SQL layer — and `open()` sets `stream_results=True`, an eager-vs-lazy *policy* that belongs
-   to ENGINE (and rides a non-PEP-249 `execute()` extension). The honest contract is a
+   `next()` reads a page via `fetchmany(...)` — a row-count stand-in that re-splits the whole pages
+   `PageIterator` already produced and keeps a page-size constant in the SQL layer — and `open()`
+   sets `stream_results=True`, an eager-vs-lazy *policy* that belongs to ENGINE (and rides a
+   non-PEP-249 `execute()` extension). **Narrowed by #384 step 2b, not removed**: the size is now
+   the *effective* page size (`yield_per` capped at `NOTION_MAX_PAGE_SIZE`, which remains the
+   default), cascaded from `ctx.execution_options` by the `Planner` into the plain-`SELECT` `Scan`
+   only — the aggregate and join `Scan`s keep the default, because `Aggregate.next()` and
+   `HashJoin.next()` drain their children on the first call, so a smaller page there multiplies
+   requests and buys no laziness. The honest contract is still a
    page-granular pull on the DBAPI `Cursor` (a `fetchnextpage()`-style primitive surfacing the
    `PageIterator`'s grain) reached through the **`QueryIO` port** in slice 2, where the page size
    returns to the `Cursor` and the policy moves to ENGINE. See
@@ -915,9 +927,17 @@ This bridge is **deliberate and throwaway**: [[adr-0019-sql-null-semantics-pushd
 three-valued evaluator reads the AST directly, deleting both the bridge and `_Filter`'s reuse (the
 "layering inversion" noted under §is_null). It is not the target contract.
 
+> **Superseded 2026-08-22.** The bridge is **gone**, exactly as this section predicted: `eval3` reads
+> the AST directly and `_Filter` no longer evaluates anything on this path. This whole §Planner prose
+> is kept verbatim as the design record of a deliberate throwaway, so its **Residual** is the word as
+> it stood under the retired two-term split — read it as "whatever the compiler held back", which
+> since #384 / ADR-0022 is *every* WHERE conjunct and is named `recheck_where`.
+> See §Pushdown / Recheck / Residual.
+
 ### PlanningContext
-The **messenger carrying compile-time decisions to run time** — the `Residual` WHERE and sorts (as
-**AST**), the join structure, and the projection. Authored by the compiler during `visit_select`,
+The **messenger carrying compile-time decisions to run time** — the **recheck** WHERE
+(`recheck_where`) and the **residual** sorts (`residual_sorts`), both as **AST**, plus the join
+structure and the projection. Authored by the compiler during `visit_select`,
 harvested onto the `Compiled` object, read by the **Planner** at `_setup_execution`.
 
 This is not a new mechanism; it **names and generalises one that already exists**.
@@ -1011,28 +1031,124 @@ already stated as "joins and aggregates force drain-all" under §Pagination and
 changing it. **Scan** is the only non-blocking Operator; it is what keeps `stream_results` /
 `yield_per` working on a plain select.
 
-### Pushdown / Residual
-Every WHERE conjunct and ORDER BY key is **either** pushed **or** residual — the split is the
-Planner's central output.
+### Pushdown / Recheck / Residual
+Three terms, and they answer **different questions**. The old two-term split ("every conjunct is
+*either* pushed *or* residual") conflated them and is retired — see the note at the end.
 
 - **Pushdown** — the predicate/sort/projection is translated to Notion JSON and evaluated
   **Notion-side**, inside a **Scan**'s `data_sources.query` payload (`filter`, `sorts`,
-  `filter_properties`).
-- **Residual** — it cannot be pushed, so it is evaluated **client-side** by normlite. A residual
-  stays an **AST** (`ColumnElement`) all the way to its **Filter** Operator; it is *never*
-  compiled to Notion filter JSON.
+  `filter_properties`). It is a **transfer optimisation and nothing else**. A pushed filter is a
+  *hint*: it may keep rows the answer excludes, and it **never decides the answer**.
+- **Recheck** — the client-side re-application of a WHERE conjunct that **was** pushed, evaluated
+  over **raw cells** by `eval3` in the **Filter** Operator. Always present, and it is the recheck
+  that **decides**. Carried as an **AST** (`ColumnElement`) on `PlanningContext.recheck_where`;
+  never compiled to Notion filter JSON.
+- **Residual** — a conjunct or sort key that **has no pushed form at all**, so it is evaluated
+  client-side **once**, not re-applied. Two populations: `is_null()` (Notion cannot express "this
+  row had no join partner") and the constructs the API rejects outright (#383). Sorts are residual
+  in this original sense — see below.
 
-Sort pushability is **positional**: only the *leading run* of left-table ORDER BY keys is
-pushable; the first non-left key makes it and everything after it residual.
+**Why "Recheck", and why it is not a normlite invention.** Notion's filter is a **lossy** probe: it
+over-matches relative to SQL semantics (`does_not_equal` keeps a valueless cell — #384, measured).
+This is the same shape as a lossy bitmap index scan in Postgres, whose plans carry a `Recheck Cond`
+re-applying the predicate on the heap tuple. The index narrows; the recheck decides. In database
+literature a *residual predicate* is exactly this re-applied part, which is why the word is
+redefined here rather than replaced — and why `recheck_where` names the WHERE channel specifically.
+
+**Sorts keep the word `residual`, deliberately.** Sort pushability is **positional**: only the
+*leading run* of left-table ORDER BY keys is pushable; the first non-left key makes it and
+everything after it residual. Those keys are **never pushed and never re-applied** — they are the
+genuine leftover, applied once client-side. `residual_sorts` / `compile_residual_sorts` therefore
+keep their names; only the WHERE channel became a recheck.
+
+> **Status: BUILT (#384 / C2 step 4).** The section above is a description of current code on
+> **every** branch — there is no longer an exception. A plain `SELECT`'s WHERE is pushed **and**
+> re-applied client-side; so is a join's single conjunct, whichever side it reads; and so is a
+> compound `AND` spanning **both** join sides. The recheck decides in all three. #384's row no longer
+> survives.
+>
+> **Step 2b is DONE, and it was a prerequisite, not the feature.** Every `SELECT` now routes to
+> `ExecutionStyle.EXECUTEQUERYPLAN` (`context.py`, `if stmt.is_select`), so the scan path — `Scan`,
+> `Filter`, `Project` — is finally reachable in production for #384's own statement shape. Before
+> the flip, a plain `SELECT` never constructed a `Planner` at all, so building the recheck first
+> would have rechecked nothing for the statement #384 reports.
+>
+> **Step 3's identifier rename is DONE**: `PlanningContext.recheck_where` is the field's real name
+> in code, so the glossary above now names something that exists. `residual_sorts` and
+> `compile_residual_sorts` were left alone, deliberately — see "Sorts keep the word `residual`".
+> **The vocabulary pass over the bare word `residual` is DONE too**, so step 3 is complete. Every
+> occurrence in comments and docstrings was classified. The word **stays** wherever the conjunct or
+> sort key has **no pushed form**: the sort channel, a right-side WHERE (nothing pushes one today,
+> #391), `is_null()` (#366), and the constructs the API rejects (#383). It becomes **recheck**
+> wherever the *same* predicate is pushed **and** re-applied — the whole of
+> `test_pushdown_soundness.py`, and §Pushdown soundness below. The **ADRs keep every occurrence**:
+> a decision record is dated, its Context deliberately describes the world *before* the decision,
+> and ADR-0019's Correction (16) already records the rename.
+>
+> **Step 4 — the recheck — is BUILT, on every branch.** The compiler holds every conjunct it pushes;
+> `Planner.plan` widens `execution_names` and `filter_properties` with the predicate columns the
+> projection left out, builds `Scan → Filter → Project`, and derives the `Filter`'s **tables** from
+> the **predicate** rather than assuming the join's right side. `Project` trims back to the
+> pre-widening `fetch_columns`, so the widened columns never reach the user's `Row`.
+>
+> **The last branch — a compound `AND` spanning both join sides — is now converted.** It used to push
+> its left conjuncts and hold only the right ones, so on *that* shape the push still decided alone for
+> the left conjunct. The two owed pieces landed together, because neither works without the other: the
+> compiler now holds the **whole** compound (the push of the left conjuncts is unchanged — pushing is
+> still only a transfer optimisation), and `eval3` resolves each leaf by **provenance**. That second
+> piece is a **page map**, and its shape matters: a two-table predicate has no single page to evaluate
+> against, so `Filter` builds one genuine single-page properties object **per table**, each still keyed
+> by `bare_name`, and each leaf picks its own page from `column.parent`. A flat dict keyed
+> `"courses.title"` was rejected — that is not a Notion property name, and `bare_name` exists precisely
+> so a properties dict is keyed the way **Notion** keys a page (ADR-0009). See ADR-0022's Decision.
+>
+> **`Planner`'s single-binary guard is gone**, and with it the refusal of a **cross-side `OR`**, which
+> now ships as pure client-side evaluation — nothing is pushed for it, correctly, since a row may
+> qualify through the right disjunct alone. Removing the guard was not separable from holding the whole
+> compound, so shipping the `OR` was taken as a decision rather than allowed through as a side effect.
+> **ADR-0022 is therefore now `Accepted`.**
+>
+> Step 3's vocabulary pass, named two paragraphs up, is done as well.
 
 ### Pushdown soundness (the invariant)
-**Pushing a predicate must never change its answer.** A predicate evaluated Notion-side (pushed)
-and the same predicate evaluated client-side (residual) must agree — otherwise the result depends
-on a Planner decision the user cannot see, which is the worst failure mode in this design.
+**The push may over-keep; it must never under-keep.**
 
-This invariant holds **today**, and not by accident: the pushed filter is Notion-semantic, and the
-residual is evaluated by `_Filter` over **raw Notion cells**, which is *also* Notion-semantic. It
-is load-bearing, and it is the reason the two operators below must stay distinct.
+```
+{rows the pushed filter keeps}  ⊇  {rows the recheck keeps}
+```
+
+The conjunct is **always re-applied** client-side, so it is the recheck that decides the answer.
+That is what makes the invariant one-directional:
+
+- A row the push **keeps** and the recheck then **drops** is **slack** — safe, and paid for only
+  in transfer. The recheck removes it.
+- A row the push **drops** that the recheck would have kept is **gone for good**. Nothing
+  downstream can recover it, and the query silently returns too few rows.
+
+That asymmetry is the whole content of ⊇, and it is why the result must never depend on a Planner
+decision the user cannot see.
+
+**⊇ presupposes the Recheck, and is meaningless without it.** "Re-applied" only means something if
+the *same* conjunct was applied twice — pushed, then re-checked. Under the retired two-term split a
+conjunct was pushed **xor** evaluated client-side, so the two sides of ⊇ ranged over **different
+predicates** and the invariant had no referent in any query normlite actually ran. It was a property
+of a *predicate* — which is exactly what the fuzz measures, by handing one filter to both evaluators
+(`test_pushdown_soundness.py`) — and not yet a property of an *execution*. **C2 closed that gap**:
+every pushed conjunct is re-applied on **every** branch, so ⊇ now ranges over one predicate in an
+execution normlite actually runs.
+
+**An earlier version of this section claimed the two sides must *agree*, and justified it by saying
+the residual is evaluated by `_Filter` over raw cells, which is "also Notion-semantic". Both halves
+are now wrong.** ADR-0019 replaced `_Filter` with `eval3`, which is **SQL** three-valued over raw
+cells, while the pushed filter stays **Notion**-semantic. They are deliberately not the same
+semantics, so equality was never going to survive: **#384 is exactly where they part.** Notion's
+`does_not_equal` **matches** a valueless cell (measured — its negative operators are the set
+complement of their positive twins), where SQL's `<>` against NULL is UNKNOWN and drops the row.
+Under equality those rows are violations; under ⊇ they are slack, which is what they are.
+
+Slack is the unit both differential instruments report in, and it is no longer hypothetical:
+`number.does_not_equal` over `{"number": null}` is the **first and, as measured, only** leaf-level
+source of it.
 
 ### `is_empty()` vs `is_null()` — the overloaded-emptiness split
 **Flagged ambiguity — "empty" meant two different things.** They are now separate operators and
@@ -1065,17 +1181,48 @@ reproduce `is_empty`, and pushdown parity would break.
 > both — `is_empty` tests the cell's **content**, not its array length. The conclusion survives on
 > the type-tag argument above. See ADR-0019 Correction (2026-07-27).
 
-### Residual predicates are AST, evaluated over raw cells
-A **Residual** stays an **AST** (`ColumnElement`) — never round-tripped through Notion's filter
-language — and is evaluated over **raw Notion cells**, which is what the rows carry through the
-plan (decoding to Python happens later, at the `Row`/`CursorResult` level).
+### Recheck and Residual predicates are AST, evaluated over raw cells
+Both stay an **AST** (`ColumnElement`) — never round-tripped through Notion's filter language — and
+are evaluated over **raw Notion cells**, which is what the rows carry through the plan (decoding to
+Python happens later, at the `Row`/`CursorResult` level). Raw cells are required because the decode
+erases the **type tag**; see §`is_empty()` vs `is_null()`.
 
-`JoinExecution._right_side_passes` (`dml.py:1379`) re-wraps raw cells into a synthetic page. That
-re-wrapping is **not gratuitous** — it preserves the raw fidelity `is_empty` needs. What *is* wrong
-is the import: `_Filter` comes from `normlite.notion_sdk.client`, the **fake client's** internals,
-and exists *only* to simulate Notion-side filtering — a real Notion integration would delete the
-join's evaluator out from under it. The fix is to own a raw-cell evaluator, not to abandon raw
-cells.
+> **Superseded.** This section used to describe `JoinExecution._right_side_passes` (`dml.py:1379`)
+> re-wrapping raw cells into a synthetic page for the fake client's `_Filter`. `JoinExecution` was
+> deleted with the merge into `HashJoin` (#378 / [[adr-0021-scan-both-hash-join]]), and `_Filter` no
+> longer evaluates anything client-side — `eval3` does, called from `Filter` (`sql/queryplan.py`).
+> The layering complaint it recorded ("a real Notion integration would delete the join's evaluator
+> out from under it") is **resolved**: normlite owns its raw-cell evaluator.
+
+**Existence vs passage — which operator answers what.** A `Filter` removes rows; it cannot create
+them. That single fact decides where join semantics live:
+
+| concern | question | owner |
+|---|---|---|
+| outer-join NULL-fill | which rows **exist** | `HashJoin` — only it knows, per left row, whether that row matched (`_merge_rows`) |
+| predicate verdict | which rows **pass** | `Filter` / `eval3`, from the raw cells |
+
+**A phantom's verdict is derived, not hard-coded.** [[adr-0005-outer-join-phantom-null-semantics]]
+dropped phantoms with a structural row-level guard (`if all(c is None for c in right_slice)`) placed
+*above* the predicate. **That guard was deleted 2026-07-31** (ADR-0022 step 1); `Filter` now has no
+structural branch at all. An outer join fills right-owned columns with literal Python `None`,
+`eval3` returns UNKNOWN for a `None` cell, and the WHERE policy drops UNKNOWN — the outcome falls
+out of the semantics. It is also **strictly more correct**: `all(None)` was a *row-level guess* at
+something `eval3` knows *per cell*, and the guess is what mislabelled a real all-empty right row as
+a phantom (ADR-0005's own admitted crack).
+
+The deletion moved no test result — **908 passed / 3 skipped / 1 xfailed, before and after** — and
+that green is **not vacuous**, because the guard's exact path is covered by an outer join with a
+dangling FK plus a right-side `is_empty()` (`tests/unit/engine/test_join_pipeline.py`), which now
+passes for the derived reason rather than the structural one.
+
+What carries the drop instead is a *universally quantified* fact, pinned before the deletion so the
+code never depended on an unasserted property: **every one of the 36 declared
+`<col_spec>.<operator>` pairs answers UNKNOWN on a `None` cell**
+(`test_every_declared_operator_on_a_none_cell_is_unknown`, derived from `type_mapper` so a newly
+registered operator is protected on arrival). The mechanism is the guard at `eval3.py`'s binary arm,
+whose only escape hatch is `_ABSENT_AWARE` — **empty until `is_null()` joins it in #366**. Adding an
+operator to that set removes its phantom protection, and the pin reds if that happens.
 
 ### Three value shapes (do not conflate)
 The single most important distinction for anything evaluating a predicate client-side:
@@ -1091,6 +1238,44 @@ pre-bind values *before* a write; the plan's **Filter** works on raw cells *afte
 share the backend-agnostic `Operator` enum and three-valued logic, not an implementation. An
 earlier draft of this design claimed one evaluator could serve both — that was wrong: the shapes
 and the times differ.
+
+### Property definition vs property value (the `{"<col_spec>": {}}` trap)
+**Flagged ambiguity — one shape, two unrelated objects.** `{"date": {}}` is legal Notion in *both*
+positions and means something different in each. Never let one stand in for the other:
+
+- **Property definition** — a **column declaration**, living in a *data source's* `properties`.
+  `{"date": {}}` says "this column is a date, with empty configuration". Real, canonical and
+  load-bearing: it is what `TypeEngine.get_notion_spec()` returns, what the DDL compiler emits for
+  `CREATE TABLE`, and what the system catalog is built from.
+- **Property value** — a **cell**, living in a *page's* `properties`. Here `{"date": {}}` is
+  **unproducible**: the API rejects it on write with a 400, and clearing the cell through the Notion
+  UI stores and emits `null`. Both measured, 2026-07-29.
+
+**A valueless cell is always `{"<col_spec>": null}`** — that is the only shape "this cell holds no
+value" ever takes on the wire. **Never model an unset cell on a schema object**: an empty *config*
+is not an empty *value*, and the two are told apart by position alone, never by shape.
+
+> **Resolved 2026-07-29.** A page generator modelled an unset date as `{"date": {}}` — the shape of
+> a date *column declaration* — and the raw-cell evaluator then grew a rule (`val == {}` counts as
+> valueless) so it would agree with the generator. Neither was grounded in Notion, so the rule and
+> the fiction are removed together (code landing on `bug/issue-384/notion-does-not-equal`). This is
+> the **third** time a **model** was mistaken for **evidence** in this area; see
+> [[adr-0019-sql-null-semantics-pushdown-soundness]] Corrections.
+
+### Raw cell ⟺ decoded NULL (the decode invariant)
+**A raw cell decodes to Python `None` if and only if the raw-cell evaluator calls it valueless.**
+The two layers stay separate functions — `TypeEngine._is_valueless_cell` takes the *whole cell*,
+`eval3._has_no_value` takes the *inner value* — and this is the contract between them, not a reason
+to merge them.
+
+It is load-bearing because it is **user-observable**: `None` in a decoded `Row` *is* how a user sees
+SQL NULL, and there is no second channel. If the layers disagreed, `WHERE col = x` could drop a row
+as UNKNOWN while `SELECT col` handed the user a value out of that same cell — the same failure class
+as a pushdown-soundness violation, one layer down.
+
+The `is_empty` / `is_null` split above is an *instance* of this invariant, not an exception to it:
+`{"rich_text": []}` and `{"relation": []}` are **present** values (the empty set) on both sides, so
+they decode to `""` and `[]`, not `None`.
 
 ### Three-valued logic — UNKNOWN policy is the caller's
 The evaluator returns **TRUE / FALSE / UNKNOWN**; it must **not** return `bool`, because its two

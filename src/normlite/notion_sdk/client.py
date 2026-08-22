@@ -1604,9 +1604,9 @@ EMPTY_CHECKBOX = _EmptyType()
 
 class _Condition(_Expression):
     _allowed_ops = {
-        "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
-        "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals"},
-        "number":    {"equals", "greater_than", "less_than"},
+        "title":     {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals", "does_not_equal"},
+        "rich_text": {"contains", "does_not_contain", "starts_with", "ends_with", "is_empty", "is_not_empty", "equals", "does_not_equal"},
+        "number":    {"equals", "does_not_equal", "greater_than", "less_than", "is_empty", "is_not_empty", "greater_than_or_equal_to", "less_than_or_equal_to"},
         "date":      {"after", "before", "equals", "does_not_equal", "is_empty", "is_not_empty"},
         "checkbox":  {"equals", "does_not_equal"},
         "relation":  {"contains", "does_not_contain", "is_empty", "is_not_empty"},
@@ -1631,6 +1631,7 @@ class _Condition(_Expression):
 
         # rich_text
         "rich_text.equals":             lambda a, b: a == b if a is not EMPTY_TEXT else False,
+        "rich_text.does_not_equal":     lambda a, b: True if a is EMPTY_TEXT else a != b,
         "rich_text.is_empty":           lambda a, _: a is EMPTY_TEXT or a == "",
         "rich_text.is_not_empty":       lambda a, _: a is not EMPTY_TEXT and a != "",
         "rich_text.contains":           lambda a, b: False if a is EMPTY_TEXT else b in a,
@@ -1640,6 +1641,7 @@ class _Condition(_Expression):
 
         # title
         "title.equals":                 lambda a, b: a == b if a is not EMPTY_TEXT else False,
+        "title.does_not_equal":         lambda a, b: True if a is EMPTY_TEXT else a != b,
         "title.is_empty":               lambda a, _: a is EMPTY_TEXT or a == "",
         "title.is_not_empty":           lambda a, _: a is not EMPTY_TEXT and a != "", 
         "title.contains":               lambda a, b: False if a is EMPTY_TEXT else b in a,
@@ -1651,6 +1653,11 @@ class _Condition(_Expression):
         "number.equals":                lambda a, b: a == b,
         "number.greater_than":          lambda a, b: a > b,
         "number.less_than":             lambda a, b: a < b,
+        "number.does_not_equal":        lambda a, b: a != b,
+        "number.is_empty":              lambda a, _: a is None,
+        "number.is_not_empty":          lambda a, _: a is not None,
+        "number.greater_than_or_equal_to": lambda a, b: a >= b,
+        "number.less_than_or_equal_to": lambda a, b: a <= b,  
 
         # checkbox
         "checkbox.equals":              lambda a, b: a is b,
@@ -1743,6 +1750,51 @@ class _Condition(_Expression):
             self.value = normalize_filter_date(self.value)
 
             if operand is None or self.value is None:
+                return False
+
+        elif self.type_name == "number":
+            operand = self.property_obj["number"]
+
+            # unary operators
+            if self.op in ("is_empty", "is_not_empty"):
+                return func(operand, None)
+
+            # A valueless cell -- {"number": null}, the only shape one takes on
+            # the wire -- is answered twice below, and which answer applies
+            # depends on the operator rather than on the value.
+            #
+            # does_not_equal MATCHES it. Live Notion treats that operator as the
+            # boolean complement of equals rather than as a three-valued
+            # negation. Measured, not inferred: #384 probed the live API against
+            # a data source holding a {"number": null} row, a {"number": 0} row
+            # and four valued rows, and equals / does_not_equal partition all
+            # seven -- disjoint and exhaustive, no row falling outside both, so
+            # there is no room for a third truth value. SQL's <> against NULL is
+            # UNKNOWN and drops the row, putting it in neither set. That gap is
+            # #384. eval3 keeps the SQL answer and is not changed to match; the
+            # two evaluators disagreeing here is deliberate.
+            #
+            # Stated above the return below rather than as a lambda in _op_map,
+            # because that return fires before _op_map is ever consulted.
+            if self.op == "does_not_equal" and operand is None:
+                return True
+
+            # Every other operator allowed on a number EXCLUDES the valueless
+            # cell: equals, greater_than and less_than are positive tests with
+            # nothing to compare against, and the same probe measured all three
+            # excluding it, which is what 3VL wants and what this returns. This
+            # mirrors the date arm's early return above rather than introducing
+            # a second rule.
+            #
+            # Guarded here rather than inside the lambdas so that an operator
+            # added later cannot opt out of it -- the mistake Float made in
+            # type_api.py by overriding past a shared guard. Opting out is a
+            # decision each operator has to state for itself, and two above
+            # already do: does_not_equal names itself, and the presence tests
+            # are dispatched before this point entirely, because is_empty and
+            # is_not_empty *do* have an answer for a valueless cell and
+            # inheriting this return would invert the first of them.
+            if operand is None:
                 return False
 
         else:

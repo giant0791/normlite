@@ -8,7 +8,7 @@ from normlite import Relation, ForeignKey
 from normlite.exceptions import ArgumentError, CompileError
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Join, select
-from normlite.sql.elements import ColumnElement, OrderByExpression, or_
+from normlite.sql.elements import BooleanClauseList, ColumnElement, OrderByExpression, or_
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import String
 
@@ -325,12 +325,26 @@ def test_compound_and_where_pushes_only_left_conjunct_into_phase_one(
       # ... but NOT the right (courses.title) condition.
       assert '"property": "title"' not in phase_one_filter
 
-      # The right (courses.title) conjunct is held back for client-side evaluation —
-      # it must be held back, not dropped, or the join would answer a broader question
-      # than it was asked. It now travels as AST on the PlanningContext ...
-      residual = compiled.planning_context.residual_where
-      assert residual.column is courses.c.title
-      assert residual.value.value == "Astronomy"
+      # The WHOLE compound is held back for client-side evaluation, the LEFT conjunct
+      # INCLUDED even though the assertions above just watched it be pushed. That is
+      # ADR-0022: a pushed conjunct is a HINT that never decides, so it is re-applied
+      # over raw cells and the recheck answers. Holding only the right conjunct is
+      # what left #384 live through a join -- `effort != 5` was pushed, Notion's
+      # does_not_equal kept the valueless cell, and nothing re-checked it
+      # (tests/unit/engine/test_join_pipeline.py, RED 3).
+      #
+      # This is the compile-level observer of WHERE each conjunct went; the row-level
+      # tests deliberately cannot see that, since the answer is the same either way.
+      recheck = compiled.planning_context.recheck_where
+      assert isinstance(recheck, BooleanClauseList)
+      assert recheck.operator == "and"
+
+      # `is`, not `==`: Column overloads __eq__ to BUILD a predicate, so an equality
+      # assertion here would compare a truthy BinaryExpression and pass on anything.
+      assert recheck.clauses[0].column is students.c.name
+      assert recheck.clauses[0].value.value == "Galileo"
+      assert recheck.clauses[1].column is courses.c.title
+      assert recheck.clauses[1].value.value == "Astronomy"
 
       # ... and no longer as Notion JSON on the compiled dict, which stays pure data.
       assert "join_right_filter" not in asdict
@@ -358,7 +372,7 @@ def test_compound_or_spanning_both_sides_pushes_nothing_into_phase_one(
 
     # ... and the whole OR is held back for client-side eval, with BOTH disjuncts
     # still present and joined by "or" — i.e. the connective was never split.
-    residual = compiled.planning_context.residual_where
+    residual = compiled.planning_context.recheck_where
     assert residual.operator == "or"
     assert {clause.column for clause in residual.clauses} == {
         students.c.name,

@@ -269,6 +269,61 @@ def test_streaming_select_all_materializes_by_draining_every_page(
     assert counting.query_calls == 3
 
 
+def test_streaming_survives_a_where_clause(
+    engine: Engine,
+    students: Table,
+):
+    """A streamed ``Select`` **with a WHERE** pulls only the pages it needs.
+
+    This is a **safety net**, green today, written to make one thing measurable
+    that no other test can see: every streaming test above selects *everything*
+    (``select(students)``), so the whole suite is blind to the intersection
+    **streaming x pushed predicate**.
+
+    That intersection is precisely where #384 / C2 lands. The recheck needs a
+    plain ``SELECT`` to reach the query planner (step 2b), and the planner path
+    (``Connection._execute_query_plan``) drains its plan into a list without
+    reading ``context.execution_options``. Any routing rule that sends
+    *predicated* ``SELECT``s to the planner therefore trades ADR-0010's laziness
+    for the recheck — and with only ``select(students)`` under test, it would
+    make that trade **silently, with a green suite**.
+
+    Invariant tested
+        - The ADR-0010 guarantee is a property of ``SELECT``, not of
+          *unfiltered* ``SELECT``: ``yield_per`` still sizes the backend page and
+          ``fetchmany`` still stops pulling once satisfied, WHERE or no WHERE.
+
+    Same arithmetic as ``…fetchmany_pulls_only_the_pages_it_needs``, so the two
+    differ in exactly one variable: 6 rows all matching ``is_active IS true``,
+    ``yield_per=2`` -> pages of 2, 2, 2; ``fetchmany(3)`` reaches into page 2 and
+    must leave page 3 alone.
+
+    Failure mode fenced off:
+        - The statement is routed somewhere that materializes eagerly: all three
+          pages are pulled up front (``query_calls == 3``) even though the caller
+          asked for 3 rows.
+    """
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=6, is_active=True)
+
+    counting = _CallCountingClient(engine._client)
+    engine._dbapi_connection = DBAPIConnection(counting)
+
+    with engine.connect() as conn:
+        conn = conn.execution_options(stream_results=True, yield_per=2)
+        result = conn.execute(
+            select(students).where(students.c.is_active.is_(True))
+        )
+
+        first_three = result.fetchmany(3)
+
+    # The predicate keeps all 6 rows, so the 3rd still lives on page 2.
+    assert len(first_three) == 3
+    # Exactly two pages pulled (1 + 2); page 3 stays unfetched.
+    assert counting.query_calls == 2
+
+
 def test_do_execute_ignores_streaming_unless_caller_declares_streamable(
     engine: Engine,
     students: Table,

@@ -461,8 +461,54 @@ def test_resultset_fetchall(prefilled_client: InMemoryNotionClient, data_source_
 
     assert ["Galileo Galilei", "Isaac Newton", "Ada Lovelace"] == all
 
+def test_extend_rows_appends_decoded_rows_without_rewinding_the_cursor(
+    prefilled_client: InMemoryNotionClient,
+    data_source_id: str,
+    row_description: tuple[tuple, ...],
+):
+    # #384 / ADR-0022 step 2b, part 4, piece 1. The refill seam.
+    #
+    # A Cursor can only grow a result set through `extend_from_json` today -- a
+    # JSON-shaped API. A query plan yields DECODED TUPLES, so the plan cannot
+    # feed a Cursor at all. `extend_rows` is the tuple-shaped half of that seam;
+    # `extend_from_json` becomes "decode, then extend_rows".
+    #
+    # The claim under test is NOT that appending appends. It is that appending
+    # leaves the ITERATION CURSOR alone. `Cursor._try_fetch_next` (dbapi2.py:474)
+    # extends a PARTIALLY CONSUMED result set and then immediately calls
+    # `next(rs)` expecting the row that just arrived. `ResultSet.__next__` reads
+    # `self._rows[self._index]`, so an `extend_rows` that reset `_index` -- or
+    # that rebuilt `_rows` -- would re-yield rows the caller already has.
+    #
+    # That failure mode is invisible to every other test: nothing in the suite
+    # calls `extend_from_json` directly, and end-to-end a duplicate row looks
+    # like a plausible row. It surfaces here as a wrong `tail`.
+    results = prefilled_client.data_sources_query(path_params={"data_source_id": data_source_id})
+    resultset = ResultSet.from_json(row_description, results)
+    row_getters = _RowGetter(row_description)
+    get_col_name = row_getters.getter("name")
+
+    # Consume two of the three buffered rows, mid-stream.
+    next(resultset)
+    next(resultset)
+
+    # A later batch arrives already decoded -- the shape a plan hands over.
+    # Arity is irrelevant to the contract: __next__ indexes, it does not inspect.
+    later_batch = [("batch-2-row-1",), ("batch-2-row-2",)]
+    resultset.extend_rows(later_batch)
+
+    assert len(resultset) == 5
+
+    # Iteration resumes where it left off: the third real row, then the new
+    # batch. Re-yielding Galileo/Newton here is the rewind bug.
+    tail = list(resultset)
+    assert len(tail) == 3
+    assert rich_text_to_plain_text(get_col_name(tail[0])["title"]) == "Ada Lovelace"
+    assert tail[1:] == later_batch
+
+
 def test_resultset_database_from_json(
-    prefilled_client: InMemoryNotionClient, 
+    prefilled_client: InMemoryNotionClient,
     row_description: tuple[tuple, ...],
     database_id: str,
 ):

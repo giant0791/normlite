@@ -243,6 +243,52 @@ def test_aggregate_select_is_driven_through_the_query_plan(engine):
 
     assert ctx.execution_style == ExecutionStyle.EXECUTEQUERYPLAN
 
+@pytest.mark.parametrize("with_where", [False, True], ids=["bare", "where"])
+def test_a_plain_select_is_driven_through_the_query_plan(engine, students, students_db, with_where):
+    # #384 / ADR-0022 step 2b. The sibling of the #362 routing fact above, for the
+    # statement shape #384 actually reports.
+    #
+    # `context.py` routes to EXECUTEQUERYPLAN only `if stmt.is_select and
+    # (stmt._joins or stmt._is_aggregate)`. Everything else takes EXECUTE ->
+    # _execute_single and never constructs a Planner. So the whole scan path of
+    # the operator tree -- Scan, Filter, and the Project added in 27fdef2 -- is
+    # unreachable in production, exercised only by direct Planner(ctx).plan()
+    # calls in tests/unit/sql/test_query_plan.py.
+    #
+    # That is why the recheck cannot land first: ADR-0022 makes every pushed
+    # WHERE conjunct decide client-side, and `SELECT ... WHERE id != 5` -- the
+    # `where` parametrization here, #384's own repro shape -- would be rechecked
+    # on a branch the engine never executes for it.
+    #
+    # Red until the routing flips. Note the four streaming tests and
+    # test_select_rowcount cannot pin this: they are green BEFORE the flip and
+    # must be green AFTER it, so nothing in them distinguishes the two routings.
+    # This test is the only thing standing between step 2b and a silent revert.
+    #
+    # Both shapes are pinned because the recheck is not conditional on a WHERE
+    # being present: a routing rule that inspects the WHERE clause would give one
+    # statement kind two execution paths, which is the shape of thing that
+    # produced #384. See the R3 option in ADR-0022's Consequences.
+    stmt = select(students)
+    if with_where:
+        stmt = stmt.where(students.c.id != 5)
+
+    compiled = stmt.compile(engine._sql_compiler)
+    cursor = engine.raw_connection().cursor()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=cursor,
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+
+    ctx.pre_exec()
+
+    assert ctx.execution_style == ExecutionStyle.EXECUTEQUERYPLAN
+
+
 def test_insert_missing_values_raises(engine, students, students_db):
     stmt = insert(students)
 
@@ -339,6 +385,42 @@ def test_select_rowcount(engine, populated_students, students, preserve_rowcount
         execution_options={"preserve_rowcount": preserve_rowcount},
     )
 
+    assert result.rowcount == expected
+
+
+@pytest.mark.parametrize("preserve_rowcount,expected", [
+    (True, 1),
+    (False, -1)
+])
+def test_aggregate_select_rowcount(engine, populated_students, students, preserve_rowcount, expected):
+    # #392. The sibling of test_select_rowcount for the QUERY-PLAN path.
+    #
+    # There are two cursors on the plan path, and post_exec used to read the one
+    # that never executed. _execute_query_plan drains the plan and parks the rows
+    # on a NEW cursor, `context._result_cursor` (base.py), leaving `_cursor`
+    # untouched -- so `_cursor.rowcount` answered with its -1 sentinel and
+    # post_exec memoized that. `ExecutionContext.cursor` resolves
+    # `_result_cursor or _cursor`, which is why the ROWS were right while the
+    # COUNT was not, and reading through that property is the fix.
+    #
+    # An aggregate select is the cheapest statement that reaches the plan path
+    # (joins reach it too, and were equally affected). One row out, so the
+    # expected count is 1, not the 2 rows the table holds.
+    #
+    # This was never a #384 regression -- it reproduced on main with no routing
+    # change at all. It is pinned here because ADR-0022 step 2b routes plain
+    # SELECTs through the planner, at which point the bug would have swallowed
+    # test_select_rowcount[True-2] above and step 2b could not have been green.
+    # The False case is here so a fix cannot simply stop consulting the sentinel.
+    stmt = select(func.count()).select_from(students)
+
+    result = run_execute(
+        engine,
+        stmt,
+        execution_options={"preserve_rowcount": preserve_rowcount},
+    )
+
+    assert len(result.all()) == 1
     assert result.rowcount == expected
 
 

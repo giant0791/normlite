@@ -8,6 +8,12 @@
 > ADR-0019 adopts three-valued logic and a real `is_null()`, deriving this ADR's outcome instead of
 > hard-coding it — and closing the two boundaries this ADR spawned (anti-join inexpressible;
 > unreachable empty-title).
+>
+> **The guard itself was deleted 2026-07-31**, as step 1 of
+> [ADR-0022](./0022-lossy-pushdown-and-the-recheck.md). The code quoted below is **history, not the
+> current implementation**; `Filter._right_side_passes` now hands every cell to `eval3` and a
+> phantom is dropped because each `None` cell is UNKNOWN. The *outcome* this ADR decided is
+> unchanged — only the mechanism is.
 
 ---
 

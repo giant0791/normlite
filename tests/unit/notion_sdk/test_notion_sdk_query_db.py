@@ -448,3 +448,232 @@ def test_is_empty_on_a_blank_text_cell_is_true(prop_type):
 
     assert empty_check.eval()
     assert not not_empty_check.eval()
+
+
+@pytest.mark.parametrize(
+    'cell, equals_matches, does_not_equal_matches',
+    [
+        (None, False, True),
+        (0,    True,  False),
+        (42,   False, True),
+    ],
+    ids=['valueless', 'zero', 'value'],
+)
+def test_number_does_not_equal_is_the_exact_complement_of_equals(
+    cell, equals_matches, does_not_equal_matches
+):
+    """Notion's ``number.does_not_equal`` is the boolean complement of ``equals``.
+
+    Measured against the real API (#384, 2026-07-30) over a data source holding
+    a ``{"number": null}`` row, a ``{"number": 0}`` row and valued rows, with
+    the literal ``0``: ``equals`` and ``does_not_equal`` **partition** every
+    row -- disjoint and exhaustive, with no row falling outside both. That is
+    the sharpest statement of the divergence #384 is about: Notion's negation
+    leaves no room for a third truth value, where SQL's ``<>`` against NULL is
+    UNKNOWN and puts the valueless row in *neither* set.
+
+    The valueless case is the one that carries the claim, and the other two are
+    here so it cannot be satisfied by an arm that simply always answers True.
+    The pair is pinned in one test rather than two for the reason
+    ``reference_eval`` spells its ``is_not_empty`` branch term-for-term against
+    ``is_empty`` (``evaluator.py:141``): a complement asserted separately is a
+    complement free to drift.
+
+    ``does_not_equal`` is absent from ``_allowed_ops["number"]`` today (#381),
+    so this first fails by ``ValueError`` rather than by a wrong answer. Once
+    allowed, the valueless row is what forces the new rule to sit **above** the
+    ``operand is None`` early return in ``_Condition.eval`` -- the guard added
+    in ``0280fde`` is correct for ``equals``, ``greater_than`` and
+    ``less_than``, all of which the API measured as *excluding* the valueless
+    cell, and inheriting it here would answer False where Notion answers True.
+    That comment at ``client.py:1769`` was written for this test.
+
+    This is what makes #384's leaf divergence reachable by a local instrument
+    at all: date can never be the vehicle, because the API rejects
+    ``date.does_not_equal`` outright with a 400 (#383).
+    """
+    page = {
+        'properties': {
+            'effort': {'type': 'number', 'number': cell},
+        }
+    }
+
+    equals_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'equals': 0}},
+    )
+    does_not_equal_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'does_not_equal': 0}},
+    )
+
+    assert equals_check.eval() is equals_matches
+    assert does_not_equal_check.eval() is does_not_equal_matches
+
+
+@pytest.mark.parametrize(
+    'cell, is_empty_matches',
+    [
+        (None, True),
+        (0,    False),
+        (42,   False),
+    ],
+    ids=['valueless', 'zero', 'value'],
+)
+def test_number_is_empty_tests_presence_not_falsiness(cell, is_empty_matches):
+    """``is_empty`` on a number asks whether the cell holds a value, not whether
+    that value is falsy.
+
+    ``{"number": 0}`` is the case that separates the two readings, and it is
+    measured rather than argued: probing the live API against a data source
+    holding one, ``is_empty`` does **not** match it and ``is_not_empty`` does
+    (#384, and ``125aadd`` before it). Zero is a value. Spelling the check as
+    falsiness -- ``not a`` -- would answer True there and quietly turn every
+    zero in the table into a NULL.
+
+    That mistake has been made in this codebase before, which is why the zero
+    row is in the parametrization rather than left to the valueless row to
+    imply. ``is_not_empty`` is asserted alongside as the exact complement, for
+    the same reason ``reference_eval`` spells its own branch term-for-term
+    (``evaluator.py:141``).
+
+    Both operators are absent from ``_allowed_ops["number"]`` today (#381), so
+    this first fails by ``ValueError``. When allowed, they need an arm **above**
+    the ``operand is None`` early return in ``_Condition.eval``, exactly as
+    ``date`` already has one: a presence test *does* have an answer for a
+    valueless cell, so inheriting that return would make ``is_empty`` say False
+    of the one cell that is empty -- inverting the operator ADR-0019 builds the
+    pushdown-soundness invariant around, and the operator #381 was filed for.
+    """
+    page = {
+        'properties': {
+            'effort': {'type': 'number', 'number': cell},
+        }
+    }
+
+    empty_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'is_empty': True}},
+    )
+    not_empty_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'is_not_empty': True}},
+    )
+
+    assert empty_check.eval() is is_empty_matches
+    assert not_empty_check.eval() is not is_empty_matches
+
+
+@pytest.mark.parametrize(
+    'cell, ge_matches, le_matches',
+    [
+        (None, False, False),
+        (0,    True,  True),
+        (42,   True,  False),
+    ],
+    ids=['valueless', 'boundary', 'value'],
+)
+def test_number_inclusive_ordering_includes_the_boundary_and_excludes_a_valueless_cell(
+    cell, ge_matches, le_matches
+):
+    """The inclusive ordering operators match at the literal, and match nothing
+    when there is no value to order.
+
+    The boundary cell carries the first half. ``{"number": 0}`` against the
+    literal ``0`` is where ``greater_than_or_equal_to`` parts company with
+    ``greater_than`` and ``less_than_or_equal_to`` with ``less_than`` -- it is
+    the only cell that distinguishes an inclusive rule from the strict one
+    already registered beside it, so a lambda copied from its strict neighbour
+    fails here and nowhere else.
+
+    The valueless cell carries the second. Measured against the live API
+    (#384, 2026-07-30): both operators are accepted -- they had been assumed
+    unsupported -- and both **exclude** the ``{"number": null}`` row, as
+    ``equals``, ``greater_than`` and ``less_than`` do. Nothing sits above or
+    below a value that is not there, and 3VL wants exactly that.
+
+    So unlike ``does_not_equal`` and the presence tests, these two want the
+    ``operand is None`` early return in ``_Condition.eval`` and should simply
+    inherit it. That is the claim being pinned: the valueless row asserts the
+    two new operators did **not** state an exception, which is only meaningful
+    now that two operators above them do.
+    """
+    page = {
+        'properties': {
+            'effort': {'type': 'number', 'number': cell},
+        }
+    }
+
+    ge_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'greater_than_or_equal_to': 0}},
+    )
+    le_check = _Condition(
+        page,
+        {'property': 'effort', 'number': {'less_than_or_equal_to': 0}},
+    )
+
+    assert ge_check.eval() is ge_matches
+    assert le_check.eval() is le_matches
+
+
+@pytest.mark.parametrize('prop_type', ['title', 'rich_text'])
+@pytest.mark.parametrize(
+    'cell, equals_matches',
+    [
+        ([],                                        False),
+        ([{'text': {'content': 'Alice'}}],          True),
+        ([{'text': {'content': 'Bob'}}],            False),
+    ],
+    ids=['blank', 'match', 'other'],
+)
+def test_text_does_not_equal_is_the_exact_complement_of_equals(
+    prop_type, cell, equals_matches
+):
+    """Text negation is the set complement of ``equals``, blank cells included.
+
+    Measured 2026-07-30 against a data source given a blank-title row for the
+    occasion -- it had never had one, which is why every negative text operator
+    had gone unmeasured over an absent value. Against the literal of a row that
+    exists, on the blank cell: ``equals`` does not match, ``does_not_equal``
+    **does**, ``contains`` does not, ``does_not_contain`` **does**, and
+    ``starts_with`` / ``ends_with`` do not.
+
+    So the rule already measured for number holds for text: each negative
+    operator is the complement of its positive twin, and a cell with no value
+    falls on the negative side because it failed the positive test. Notion has
+    no third truth value and no ``not`` operator to compose one with -- the API
+    rejects ``{"not": ...}`` outright (#383).
+
+    The same run confirmed ``does_not_contain`` returning True on ``EMPTY_TEXT``
+    (``client.py:1637``), which had been inference since it was written. This
+    test is the one that would have caught it, one operator over.
+
+    The blank cell is spelled ``[]`` and not ``[{"text": {"content": ""}}]``
+    deliberately. The second is **not storable**: POSTing it stores ``[]``, read
+    back with a separate GET, with the ``{"title": null}`` control rejected 400
+    so the endpoint is known to be validating. ``[]`` is the only blank text
+    cell that exists on the wire, and a test asserting a truth value for an
+    unproducible cell is the mistake ``17ddd0d`` was written to stop repeating.
+
+    Both operators are pinned together, over both text types, for the reason
+    the rest of this file does it: a complement asserted separately is a
+    complement free to drift.
+    """
+    page = {
+        'properties': {
+            'note': {'type': prop_type, prop_type: cell},
+        }
+    }
+
+    equals_check = _Condition(
+        page,
+        {'property': 'note', prop_type: {'equals': 'Alice'}},
+    )
+    does_not_equal_check = _Condition(
+        page,
+        {'property': 'note', prop_type: {'does_not_equal': 'Alice'}},
+    )
+
+    assert equals_check.eval() is equals_matches
+    assert does_not_equal_check.eval() is not equals_matches
