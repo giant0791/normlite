@@ -502,10 +502,11 @@ def test_is_empty_on_blank_rich_text_is_true():
     answering TRUE for the empty array of its neighbour above, whose plain text
     is also the empty string.
 
-    This is a pushdown-soundness bug, the class ADR-0019 exists to prevent.
-    Notion keeps this row for a pushed ``is_empty``; a residual FALSE drops it,
-    so the same predicate selects different rows depending on which side of the
-    boundary it lands on. It also falsifies the neighbour's docstring, which
+    This is an evaluator-correctness bug, and before the recheck it was a
+    pushdown-soundness one: Notion keeps this row for a pushed ``is_empty``
+    while a length rule answers FALSE. Under ADR-0022 the client-side answer
+    decides on every branch, so the two no longer select *different* rows — a
+    wrong rule is simply wrong, everywhere. It also falsifies the neighbour's docstring, which
     reasons that these two cells *differ* under ``is_empty`` — they do not, and
     the raw-cell requirement needs its argument from elsewhere.
     """
@@ -710,16 +711,17 @@ def test_every_declared_operator_on_a_none_cell_is_unknown(pair, type_, op):
     load-bearing is universal quantification, not one case.
 
     **Why it is worth pinning now.** An outer join fills right-owned columns
-    with literal Python ``None`` (``HashJoin._project_join_row``), and today a
-    phantom row is dropped by a structural guard *above* the predicate —
-    ``Filter._right_side_passes`` returns ``False`` when the whole right slice
-    is ``None``. That guard is deleted in ADR-0022 step 1, after which nothing
-    is left between a phantom and the answer except this fact: every leaf over
+    with literal Python ``None`` (``HashJoin._project_join_row``), and a phantom
+    row *used to* be dropped by a structural guard *above* the predicate — the
+    then-``Filter._right_side_passes`` returned ``False`` when the whole right
+    slice was ``None``. ADR-0022 step 1 **deleted** that guard (the method is now
+    ``Filter._predicate_passes``), and nothing is left between a phantom and the
+    answer except this fact: every leaf over
     a ``None`` cell is UNKNOWN, the WHERE policy drops UNKNOWN, so the row goes.
     ADR-0005's outcome stops being hard-coded and starts being *derived*.
 
-    So the fact is incidental before the deletion and load-bearing after it,
-    and it should be asserted before the code begins to depend on it. The
+    So the fact was incidental before the deletion and is **load-bearing** now,
+    which is why it was asserted before the code began to depend on it. The
     deletion itself is measured to change no test result (872 → 872), which is
     exactly why there is no failing test to write for it and why this safety net
     is written instead of a manufactured red.
@@ -784,8 +786,8 @@ def test_date_after_earlier_cell_is_true():
     Normalising only the cell is not enough either — that yields ``datetime``
     while the literal stays ``date``, and Python refuses to order the two. Both
     sides have to reach the same domain, and reaching it the way the pushed
-    filter does is what keeps a residual date predicate agreeing with a pushed
-    one.
+    filter does is what keeps a rechecked date predicate agreeing with its
+    pushed form.
     """
     d = Column("d", Date())
     predicate = d.after(date(2024, 1, 1))
@@ -877,7 +879,7 @@ def test_date_does_not_equal_on_unset_date_is_unknown():
     as present-but-valueless by ``test_date_is_empty_on_valueless_cell_is_true``;
     this test says a *comparison* against that same cell has no truth value.
 
-    This is #384's core claim on the residual side, so it must not be deleted:
+    This is #384's core claim as ``eval3`` answers it, so it must not be deleted:
     the live API **matches** a valueless cell on ``does_not_equal`` where SQL
     drops it. (For *date* Notion rejects that operator outright with a 400,
     #383 — so the divergence is only reachable through

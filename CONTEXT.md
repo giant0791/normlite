@@ -129,6 +129,13 @@ they are re-exposed as `context.join_right_filter` / `context.join_right_sorts` 
 **retired** by the agreed design below — they move onto the **PlanningContext**, which is the
 supported channel for exactly this (compile-time decision → run time).
 
+> **Superseded 2026-08-22 (vocabulary only).** Both keys are gone, and the paragraph above keeps the
+> word **Residual** as it was used when they existed. Under the settled three-term glossary
+> (§Pushdown / Recheck / Residual) they split: `join_right_filter` became the **recheck** channel
+> `PlanningContext.recheck_where`, which now carries *every* WHERE conjunct — pushed ones included —
+> while `join_right_sorts` became `residual_sorts` and is still a genuine **Residual**, never pushed
+> and never re-applied.
+
 `compiled_dict` is **pure JSON-like data** — no AST objects (`visit_join` emits only names and a
 bool). This is a real invariant: anything that must reach run time as an AST rides the
 **PlanningContext** on the `Compiled`, never `compiled_dict`.
@@ -920,9 +927,17 @@ This bridge is **deliberate and throwaway**: [[adr-0019-sql-null-semantics-pushd
 three-valued evaluator reads the AST directly, deleting both the bridge and `_Filter`'s reuse (the
 "layering inversion" noted under §is_null). It is not the target contract.
 
+> **Superseded 2026-08-22.** The bridge is **gone**, exactly as this section predicted: `eval3` reads
+> the AST directly and `_Filter` no longer evaluates anything on this path. This whole §Planner prose
+> is kept verbatim as the design record of a deliberate throwaway, so its **Residual** is the word as
+> it stood under the retired two-term split — read it as "whatever the compiler held back", which
+> since #384 / ADR-0022 is *every* WHERE conjunct and is named `recheck_where`.
+> See §Pushdown / Recheck / Residual.
+
 ### PlanningContext
-The **messenger carrying compile-time decisions to run time** — the `Residual` WHERE and sorts (as
-**AST**), the join structure, and the projection. Authored by the compiler during `visit_select`,
+The **messenger carrying compile-time decisions to run time** — the **recheck** WHERE
+(`recheck_where`) and the **residual** sorts (`residual_sorts`), both as **AST**, plus the join
+structure and the projection. Authored by the compiler during `visit_select`,
 harvested onto the `Compiled` object, read by the **Planner** at `_setup_execution`.
 
 This is not a new mechanism; it **names and generalises one that already exists**.
@@ -1061,8 +1076,14 @@ keep their names; only the WHERE channel became a recheck.
 > **Step 3's identifier rename is DONE**: `PlanningContext.recheck_where` is the field's real name
 > in code, so the glossary above now names something that exists. `residual_sorts` and
 > `compile_residual_sorts` were left alone, deliberately — see "Sorts keep the word `residual`".
-> Still outstanding from step 3 is the **vocabulary pass** over the bare word `residual` in comments
-> and docstrings, where each occurrence has to be classified as a recheck or a genuine residual.
+> **The vocabulary pass over the bare word `residual` is DONE too**, so step 3 is complete. Every
+> occurrence in comments and docstrings was classified. The word **stays** wherever the conjunct or
+> sort key has **no pushed form**: the sort channel, a right-side WHERE (nothing pushes one today,
+> #391), `is_null()` (#366), and the constructs the API rejects (#383). It becomes **recheck**
+> wherever the *same* predicate is pushed **and** re-applied — the whole of
+> `test_pushdown_soundness.py`, and §Pushdown soundness below. The **ADRs keep every occurrence**:
+> a decision record is dated, its Context deliberately describes the world *before* the decision,
+> and ADR-0019's Correction (16) already records the rename.
 >
 > **Step 4 — the recheck — is BUILT, on every branch.** The compiler holds every conjunct it pushes;
 > `Planner.plan` widens `execution_names` and `filter_properties` with the predicate columns the
@@ -1087,22 +1108,21 @@ keep their names; only the WHERE channel became a recheck.
 > compound, so shipping the `OR` was taken as a decision rather than allowed through as a side effect.
 > **ADR-0022 is therefore now `Accepted`.**
 >
-> Still outstanding for step 3 is the vocabulary pass named two paragraphs up; it is independent of
-> this.
+> Step 3's vocabulary pass, named two paragraphs up, is done as well.
 
 ### Pushdown soundness (the invariant)
 **The push may over-keep; it must never under-keep.**
 
 ```
-{rows the pushed filter keeps}  ⊇  {rows the residual keeps}
+{rows the pushed filter keeps}  ⊇  {rows the recheck keeps}
 ```
 
-The residual is **always re-applied** client-side, so it is the residual that decides the answer.
+The conjunct is **always re-applied** client-side, so it is the recheck that decides the answer.
 That is what makes the invariant one-directional:
 
-- A row the push **keeps** and the residual then **drops** is **slack** — safe, and paid for only
-  in transfer. The re-check removes it.
-- A row the push **drops** that the residual would have kept is **gone for good**. Nothing
+- A row the push **keeps** and the recheck then **drops** is **slack** — safe, and paid for only
+  in transfer. The recheck removes it.
+- A row the push **drops** that the recheck would have kept is **gone for good**. Nothing
   downstream can recover it, and the query silently returns too few rows.
 
 That asymmetry is the whole content of ⊇, and it is why the result must never depend on a Planner
@@ -1113,8 +1133,9 @@ the *same* conjunct was applied twice — pushed, then re-checked. Under the ret
 conjunct was pushed **xor** evaluated client-side, so the two sides of ⊇ ranged over **different
 predicates** and the invariant had no referent in any query normlite actually ran. It was a property
 of a *predicate* — which is exactly what the fuzz measures, by handing one filter to both evaluators
-(`test_pushdown_soundness.py`) — and not yet a property of an *execution*. C2 is what closes that
-gap. Until it lands, ⊇ is asserted on the left side and enforced nowhere.
+(`test_pushdown_soundness.py`) — and not yet a property of an *execution*. **C2 closed that gap**:
+every pushed conjunct is re-applied on **every** branch, so ⊇ now ranges over one predicate in an
+execution normlite actually runs.
 
 **An earlier version of this section claimed the two sides must *agree*, and justified it by saying
 the residual is evaluated by `_Filter` over raw cells, which is "also Notion-semantic". Both halves

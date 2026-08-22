@@ -246,7 +246,8 @@ def cmd_schema() -> None:
 
 # ---------------------------------------------------------------------------
 # Shape classification. These are DIFFERENT cells that a decode to a plain
-# Python value collapses -- which is the whole reason residuals read raw cells.
+# Python value collapses -- which is the whole reason client-side evaluation
+# reads raw cells.
 # ---------------------------------------------------------------------------
 
 def _classify_text(props: dict, prop: str, typ: str = "rich_text") -> str:

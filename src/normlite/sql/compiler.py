@@ -665,9 +665,10 @@ class NotionCompiler(SQLCompiler):
                     ):
                         # Compound AND spanning both join sides: split per-clause.
                         # Left-only conjuncts narrow phase-1 to a SUPERSET of the
-                        # answer, so push them into payload['filter']; the remaining
-                        # conjuncts are held back as the residual AST for client-side
-                        # evaluation after the merge. (See #311, #363.)
+                        # answer, so push them into payload['filter']; the WHOLE
+                        # compound is then held as AST for client-side evaluation
+                        # after the merge -- the pushed conjuncts INCLUDED, because a
+                        # push never decides (ADR-0022). (See #311, #363.)
                         left_conjuncts = [
                             clause._compiler_dispatch(self)
                             for clause in expression.clauses

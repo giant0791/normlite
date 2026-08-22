@@ -43,8 +43,8 @@ def _date_cmp(
     The raw cell carries Notion's ISO strings while the predicate's literal is
     a Python ``date``/``datetime``, so neither side is comparable as it stands.
     The literal is routed through the same normalisation the pushed filter
-    applies, which is what keeps a residual date predicate agreeing with a
-    pushed one.
+    applies, which is what keeps a rechecked date predicate agreeing with its
+    pushed form.
 
     ``on_incomparable`` is the verdict when either side has no start instant.
     Negative operators pass ``True`` so they stay proper negations of their

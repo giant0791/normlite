@@ -544,7 +544,7 @@ def test_plain_select_harvests_a_planning_context_that_holds_nothing_back(
 ):
     # A plain select has no join and no WHERE, so there is nothing to answer
     # client-side: the compiler still hands its planning decisions to run time,
-    # and they say "no residual".
+    # and they say "nothing held back".
     compiled = select_stmt.compile(NotionCompiler())
 
     assert compiled.planning_context is not None

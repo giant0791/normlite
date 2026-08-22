@@ -16,27 +16,28 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Pushdown soundness: the pushed filter must never drop a row the residual keeps.
+"""Pushdown soundness: the pushed filter must never drop a row the recheck keeps.
 
-ADR-0019 states the invariant as ``{pushed} == {residual}``, and that form is
-**known false**. Notion's ``does_not_equal`` *matches* a valueless cell while
+ADR-0019 *originally* stated the invariant as ``{pushed} == {residual}``, and that
+form is **known false** — its 2026-07-30 Correction (12) already replaced it with
+the ⊇ below. Notion's ``does_not_equal`` *matches* a valueless cell while
 SQL's ``<>`` against NULL is UNKNOWN and drops it (#384, measured against the
 live API), so the same predicate selects different rows depending on a planner
 choice the user never sees. No amount of tuning either evaluator removes that:
 Notion's negation is boolean, ``eval3``'s is Kleene.
 
 The resolution being adopted is the standard pushdown discipline: **the pushed
-filter is a hint, never the final word.** It may over-match, and the residual is
-always re-applied client-side, so what the user gets is whatever the residual
+filter is a hint, never the final word.** It may over-match, and the conjunct is
+always re-applied client-side, so what the user gets is whatever the recheck
 says. That makes the pushed filter's obligation one-directional:
 
-    ``{rows the pushed filter keeps}`` **⊇** ``{rows the residual keeps}``
+    ``{rows the pushed filter keeps}`` **⊇** ``{rows the recheck keeps}``
 
 and this module fuzzes exactly that.
 
-**Only one direction can hurt.** A row the push keeps and the residual drops is
+**Only one direction can hurt.** A row the push keeps and the recheck drops is
 *slack* — the re-check removes it, at the cost of having transferred it. A row
-the push **drops** while the residual would have kept it is **unrecoverable**:
+the push **drops** while the recheck would have kept it is **unrecoverable**:
 it never reaches the client, so no re-check can resurrect it, and the query
 silently returns too few rows. That asymmetry is the whole content of ⊇, and it
 is why this is not merely the existing differential with a weaker assertion.
@@ -102,10 +103,10 @@ def _pushed_keeps(page: dict, filt: dict) -> bool:
 
 
 def _recheck_keeps(page: dict, filt: dict) -> bool:
-    """Answer whether the residual re-check would keep ``page``.
+    """Answer whether the recheck would keep ``page``.
 
     ``is TRUE`` is the WHERE policy — UNKNOWN drops the row along with FALSE —
-    the same narrowing ``Filter._right_side_passes`` applies at its ``-> bool``
+    the same narrowing ``Filter._predicate_passes`` applies at its ``-> bool``
     boundary.
     """
     return eval3(filter_to_ast(filt), page["properties"]) is TRUE
@@ -117,16 +118,16 @@ def test_a_pushed_leaf_never_drops_a_row_its_recheck_would_keep():
     Leaves only (``gen_condition``), for the same reason the ``eval3``
     differential splits this way: a compound violation implicates a tree, a leaf
     violation implicates a rule. This is the run that would catch an operator
-    whose pushed form is *narrower* than its residual form — the one shape of
+    whose pushed form is *narrower* than its recheck form — the one shape of
     disagreement that the re-check cannot repair.
 
     The slack count is reported rather than asserted. It is the re-check's
-    workload — rows the push hands over that the residual then discards — and
+    workload — rows the push hands over that the recheck then discards — and
     zero slack is not a failure, it just means the two agreed exactly here.
 
     The vacuity guard is the assertion that keeps the invariant honest: an
     ``eval3`` regressed to dropping everything satisfies ⊇ trivially, because
-    the empty set is a subset of anything. Pinning that the residual keeps a
+    the empty set is a subset of anything. Pinning that the recheck keeps a
     substantial share of rows is what stops a green run meaning nothing.
     """
     generator = ReferenceGenerator(SEED)
@@ -167,7 +168,7 @@ def test_a_pushed_leaf_never_drops_a_row_its_recheck_would_keep():
         f"unexpected={sorted(exercised - GENERATABLE_PAIRS)}"
     )
     assert outcomes["recheck_kept"] > 0.05 * outcomes["total"], (
-        "the residual has stopped keeping rows, so ⊇ holds vacuously: "
+        "the recheck has stopped keeping rows, so ⊇ holds vacuously: "
         f"{outcomes['recheck_kept']} of {outcomes['total']} rows kept"
     )
 
@@ -181,7 +182,7 @@ def test_a_pushed_compound_never_drops_a_row_its_recheck_would_keep():
     unset date, ``NOT (d == x)`` is UNKNOWN for ``eval3`` and True for the push.
     Under ``==`` that is a divergence nobody can act on — the open question of
     whether Kleene-vs-boolean ``NOT`` makes ``NOT``-compounds unpushable.
-    Under ⊇ it resolves: the push keeps a row the residual then discards, which
+    Under ⊇ it resolves: the push keeps a row the recheck then discards, which
     is exactly the slack the re-check exists to absorb.
 
     So this test both defends the invariant and *measures* the disagreement it
@@ -220,7 +221,7 @@ def test_a_pushed_compound_never_drops_a_row_its_recheck_would_keep():
         + "\n  ".join(violations[:2])
     )
     assert outcomes["recheck_kept"] > 0.05 * outcomes["total"], (
-        "the residual has stopped keeping rows, so ⊇ holds vacuously: "
+        "the recheck has stopped keeping rows, so ⊇ holds vacuously: "
         f"{outcomes['recheck_kept']} of {outcomes['total']} rows kept"
     )
     assert outcomes["slack"] > 0, (

@@ -332,7 +332,8 @@ def test_scan_open_mints_its_own_cursor_from_the_connection_and_shapes_it_with_i
 
 
 def test_planner_turns_a_plain_select_into_a_project_over_a_single_scan(engine, students):
-    # A plain select has no join and no residual, so its plan is a two-node stem:
+    # A plain select with no WHERE has no join and nothing to re-check, so its
+    # plan is a two-node stem:
     # one Scan over the store, with a Project above it owning the result schema
     # (ADR-0022 step 2). The Planner reads everything the leaf needs off the
     # execution context (the compiled operation and the run-time parameters), and
@@ -482,9 +483,10 @@ def test_planner_turns_a_join_select_into_a_hashjoin_over_two_scans(engine):
     # point at. The Planner must turn that shape into a BINARY plan -- a
     # HashJoin whose two children are the two leaf Scans (left = the phase-1
     # query, right = the phase-2 retrieve) -- NOT the lone Scan a plain select
-    # gets, and NOT the None the join branch falls through to today. With no
-    # right-side WHERE there is no residual, so the HashJoin is the WHOLE tree:
-    # nothing is layered on top of it.
+    # gets, and NOT the None the join branch falls through to today. This join
+    # has no WHERE at all, so nothing is answered client-side and the HashJoin is
+    # the WHOLE tree: nothing is layered on top of it. A LEFT-side WHERE would
+    # layer a Filter here too -- the recheck runs on every branch (ADR-0022).
     metadata = MetaData()
     courses = Table(
         "courses",
@@ -518,7 +520,7 @@ def test_planner_turns_a_join_select_into_a_hashjoin_over_two_scans(engine):
     # Act: the Planner compiles the join statement into a plan.
     plan = Planner(ctx).plan()
 
-    # Assert: the top of the plan is a HashJoin -- no residual, so no operator is
+    # Assert: the top of the plan is a HashJoin -- no WHERE, so no operator is
     # layered above it -- and its two children are leaf Scans. The left leaf is
     # the phase-1 data_sources.query over the store.
     #
@@ -563,7 +565,7 @@ def test_planner_builds_the_right_leaf_as_a_full_query_scan_of_the_right_data_so
     )
     metadata.create_all(engine)
 
-    # A residual-free join, built into a real ExecutionContext the phase-1 way; the
+    # A WHERE-free join, built into a real ExecutionContext the phase-1 way; the
     # Planner reads the plan off the context, it does not run it.
     stmt = select(students, courses).join(students.c.enrolled_in)
     compiled = stmt.compile(engine._sql_compiler)
@@ -714,7 +716,7 @@ def test_planner_hands_the_residual_over_with_its_literal_unprocessed(engine):
     # That is safe, but NOT trivially so, and it is the one thing worth pinning
     # here: eval3's date rules normalise the literal themselves, routing it
     # through the same b.isoformat() the pushed filter would have used. So a
-    # residual date predicate and a pushed one still agree -- which is the
+    # client-side date predicate and a pushed one still agree -- which is the
     # pushdown-soundness invariant ADR-0019 names, at the one type where the
     # two sides speak different languages (ISO strings on the wire, date
     # objects in the AST).

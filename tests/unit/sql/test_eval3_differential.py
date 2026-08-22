@@ -65,7 +65,7 @@ Not a bug and not a temporary state: Notion's negative operators are the set
 **complement** of their positive twins (measured, both number and text), so a
 valueless cell **matches** ``does_not_equal`` because it failed ``equals``.
 SQL's ``<>`` against NULL is UNKNOWN and drops the row. ADR-0019 chose SQL, and
-#384's option C keeps the residual authoritative, so this gap is permanent by
+#384's option C keeps the recheck authoritative, so this gap is permanent by
 design. It is pinned here rather than excused because a divergence that is
 merely *tolerated* stops being visible the moment it changes.
 
