@@ -135,8 +135,6 @@ def test_join_operator_merges_child_rows_into_joined_tuples_as_one_batch():
         right_source,
         join,
         projection,
-        right_filter=None,
-        right_sorts=None,
     )
     join_op.open(None)
     first = join_op.next()

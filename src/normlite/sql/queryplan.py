@@ -146,8 +146,6 @@ class HashJoin(VolcanoOperator):
         right_child: VolcanoOperator,
         join: Join,
         projection: list[Column],
-        right_filter: Optional[dict] = None,
-        right_sorts: Optional[dict] = None
     ) -> None:
         """Construct a join over two already built child operators.
 
@@ -158,10 +156,6 @@ class HashJoin(VolcanoOperator):
             projection (list[Column]): The columns to emit, in projection order.
                 ``None`` emits every user column of both sides, left then right,
                 skipping ``object_id``.
-            right_filter (Optional[dict]): Accepted and ignored. A right-side WHERE
-                is not pushed today (#391); it reaches :class:`Filter` as AST.
-            right_sorts (Optional[dict]): Accepted and ignored. A right-side ORDER BY
-                is applied by :class:`Sort`.
         """
         self._left_child = left_child
         self._right_child = right_child
