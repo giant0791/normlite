@@ -18,7 +18,7 @@ from normlite.engine.row import Row
 from normlite.sql.base import _CompileState, Compiled, CompilerState
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import insert, select
-from normlite.sql.elements import _BindRole, _NoArg, BinaryExpression, BindParameter
+from normlite.sql.elements import _BindRole, _NoArg, BinaryExpression, BindParameter, Operator
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, Money, Numeric, String
 from tests.utils.db_helpers import attach_table_oid
@@ -93,8 +93,38 @@ def test_compile_binexp_title_neq():
     with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
         as_dict = exp._compiler_dispatch(nc)
 
-    assert as_dict['property'] == 'name'
-    assert as_dict['title'] == {'does_not_equal': ':param_0'}
+    # A text ``!=`` leaf is NOT repaired (#383). Text has no valueless cell:
+    # Notion stores every blank as ``[]``, a present value that decodes to "".
+    # So the bare ``does_not_equal`` is already exact, and a conjoined
+    # ``is_not_empty`` would drop the blank rows SQL keeps (measured on the
+    # live API, 2026-10-04). The number twin below pins the repair itself.
+    assert as_dict == {'property': 'name', 'title': {'does_not_equal': ':param_0'}}
+
+
+def test_compile_binexp_number_neq_is_repaired():
+    metadata = MetaData()
+    students = Table(
+        'students', metadata, Column('name', String(is_title=True)), Column('id', Integer())
+    )
+    exp: BinaryExpression = students.c.id != 1
+    nc = NotionCompiler()
+    nc._compiler_state = CompilerState()
+    with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
+        as_dict = exp._compiler_dispatch(nc)
+
+    # Since #383 a number ``!=`` leaf compiles to "does_not_equal" AND
+    # "is_not_empty", so the push means exactly what SQL means instead of also
+    # matching a valueless ``{"number": null}`` cell (#384). Conjunct order
+    # matches the emission order in ``visit_binary_expression``.
+    does_not_equal, is_not_empty = as_dict["and"]
+    assert does_not_equal['property'] == 'id'
+    assert does_not_equal['number'] == {'does_not_equal': ':param_0'}
+    # The property is asserted on BOTH conjuncts: a repair that emitted the
+    # emptiness check against a different column would still be a well-formed
+    # two-clause "and", and would silently widen the filter.
+    assert is_not_empty['property'] == 'id'
+    assert is_not_empty["number"] == {"is_not_empty": True}
+
 
 def test_compile_binexp_title_in():
     metadata = MetaData()
@@ -279,7 +309,12 @@ def test_compile_select_concat_wheres():
     attach_table_oid(students, database_id)    
     stmt = (
         select(students)
-        .where(students.c.name != 'Galileo Galilei')
+        # ``==`` deliberately, not ``!=``: the subject here is CONCATENATION.
+        # A ``!=`` leaf is repaired into ``{"and": [...]}`` (#383) and the fold
+        # then splices it into this parent, so the clause count would stop
+        # observing the concatenation and start observing the repair. That
+        # mechanism is pinned on its own, below.
+        .where(students.c.name == 'Galileo Galilei')
         .where(students.c.start_date.before(date.today))
     )
     sql_compiler = NotionCompiler()
@@ -290,6 +325,135 @@ def test_compile_select_concat_wheres():
     assert len(and_clauselist) == 2
     assert and_clauselist[0]['property'] == 'name'
     assert and_clauselist[1]['property'] == 'start_date'
+
+@pytest.mark.parametrize(
+    "parent_op, expected",
+    [
+        (
+            "and",
+            {
+                "and": [
+                    {"property": "effort", "number": {"does_not_equal": ":param_0"}},
+                    {"property": "effort", "number": {"is_not_empty": True}},
+                    {"property": "done", "checkbox": {"equals": ":param_1"}},
+                ]
+            },
+        ),
+        (
+            "or",
+            {
+                "or": [
+                    {
+                        "and": [
+                            {"property": "effort", "number": {"does_not_equal": ":param_0"}},
+                            {"property": "effort", "number": {"is_not_empty": True}},
+                        ]
+                    },
+                    {"property": "done", "checkbox": {"equals": ":param_1"}},
+                ]
+            },
+        ),
+    ],
+    ids=["and_parent_splices", "or_parent_does_not_splice"],
+)
+def test_compile_repaired_ne_leaf_splices_only_under_a_matching_parent(parent_op, expected):
+    """The repaired ``!=`` leaf merges into an ``and`` parent and NOT into an ``or`` (#383).
+
+    ``effort != 3`` no longer emits one clause: it emits
+    ``{"and": [does_not_equal, is_not_empty]}`` so the push means exactly what
+    SQL means. That turns a leaf into a level-1 compound, and Notion caps
+    nesting at 2 -- so whether the fold's SPLICE absorbs it decides whether the
+    surrounding filter fits.
+
+    Both parents are exercised because a splice keyed on the literal ``"and"``
+    instead of on the parent's own operator is INVISIBLE to a test that only
+    ever uses ``and``: there, ``op in clause`` and ``"and" in clause`` are the
+    same expression. Under ``or`` they diverge, and the wrong one is a
+    data-loss bug -- it would emit ``(x != 'name' OR non-empty OR done)`` in
+    place of ``((x != 'name' AND non-empty) OR done)``, a filter that matches
+    every row with a name.
+
+    * ``and`` parent: the repair's two children flatten UP into the parent, so
+      the emitted filter is three clauses deep-1 rather than a rejected deep-2
+      nest.
+    * ``or`` parent: the repair stays wrapped, and the result is legal at
+      exactly depth 2. This is the arrangement the splice must leave alone.
+
+    .. seealso:: Issue #383; ``_normalize_filter`` in ``normlite.sql.compiler``.
+    """
+    metadata = MetaData()
+    projects = Table(
+        'projects',
+        metadata,
+        Column('name', String(is_title=True)),
+        Column('effort', Integer()),
+        Column('done', Boolean()),
+    )
+    # monkey patch the id to simulate reflection
+    attach_table_oid(projects, str(uuid.uuid4()))
+
+    # A number column, because only a type that can hold a valueless cell is
+    # repaired. A text ``!=`` stays one clause (``test_compile_binexp_title_neq``).
+    ne_leaf = projects.c.effort != 3
+    done = projects.c.done == True
+    expr = (ne_leaf & done) if parent_op == "and" else (ne_leaf | done)
+
+    compiled = select(projects).where(expr).compile(NotionCompiler())
+
+    assert compiled.as_dict()['payload']['filter'] == expected
+
+
+def test_compile_binexp_checkbox_neq_is_not_repaired():
+    """A ``checkbox != x`` leaf emits ONE clause -- the repair must not fire (#383).
+
+    The ``!=`` repair conjoins ``is_not_empty`` because Notion's negative
+    operators are the boolean complement over a domain that INCLUDES the empty
+    cell, so ``does_not_equal`` matches "not x OR empty" where SQL's ``<>``
+    against NULL is UNKNOWN. That mismatch exists only for types that can hold
+    a VALUELESS cell.
+
+    A Notion checkbox does not. It is a total two-valued domain -- always
+    concretely ``true``/``false``, defaulting to ``false`` (ADR-0005) -- so
+    ``checkbox.does_not_equal`` is ALREADY exact and conjoining anything onto it
+    would narrow a correct filter. ``visit_binary_expression`` reads that off
+    ``TypeEngine.supports_valueless_cells``, a CLASSIFICATION each type declares
+    from measurement. It used to read ``Operator.IS_NOT_EMPTY in supported_ops``,
+    which confused an EMPTY state with a VALUELESS one and repaired text, whose
+    blank ``[]`` is a present value (#383).
+
+    Both halves are asserted, and they fail with different meanings:
+
+    * the emitted filter -- the repair fired on a type that needs no repair;
+    * the declaration -- someone set ``Boolean.supports_valueless_cells``, which
+      is the only way the first can happen. That coupling is otherwise silent and
+      load-bearing: Notion has no ``checkbox.is_not_empty`` operator, so a
+      repaired checkbox leaf is an HTTP 400 -- the exact failure #383 is about.
+      ``{"checkbox": null}`` has never been probed against the real API
+      (``notion_probe.py`` classifies title/rich_text/number/date/relation only,
+      and ADR-0019 records checkbox as unprobed), so this invariant rests on
+      ``supported_ops`` being a truthful map of Notion and nothing else.
+
+    .. seealso:: Issue #383; ADR-0005 (a checkbox is never empty); ADR-0019.
+    """
+    metadata = MetaData()
+    projects = Table(
+        'projects',
+        metadata,
+        Column('name', String(is_title=True)),
+        Column('done', Boolean()),
+    )
+    # monkey patch the id to simulate reflection
+    attach_table_oid(projects, str(uuid.uuid4()))
+
+    compiled = select(projects).where(projects.c.done != True).compile(NotionCompiler())
+
+    assert compiled.as_dict()['payload']['filter'] == {
+        "property": "done",
+        "checkbox": {"does_not_equal": ":param_0"},
+    }
+
+    # The reason the above holds, pinned separately so a regression names itself.
+    assert Boolean().supports_valueless_cells is False
 
 def test_compile_nested_boolean_clause_list():
     metadata = MetaData()

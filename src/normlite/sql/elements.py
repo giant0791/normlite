@@ -99,7 +99,7 @@ class BinaryExpression(ColumnElement):
 
 class BooleanClauseList(ColumnElement):
     __visit_name__ = 'boolean_clause_list'
-    def __init__(self, operator, clauses: list[ColumnElement]) -> None:
+    def __init__(self, operator: str, clauses: list[ColumnElement]) -> None:
         if operator not in ['and', 'or', 'not']:
             raise TypeError(f"Invalid boolean clause list operator: {operator}")
 

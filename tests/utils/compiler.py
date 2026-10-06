@@ -5,6 +5,8 @@ import difflib
 import pdb
 from typing import Callable, NoReturn
 
+from normlite.exceptions import UnsupportedCompilationError
+from normlite.sql.compiler import _is_pushable
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement, Operator, UnaryExpression
 from normlite.sql.schema import Column
 
@@ -58,6 +60,13 @@ class ReferenceCompiler:
 
     Simple ground-truth compiler to be used in differential testing to validate the
     production compiler implemented in the :class:`normlite.sql.compiler.NotionCompiler` class.
+
+    It models the production EMITTER (``NotionCompiler.process``), not a whole
+    SELECT site: it drops unpushable terms, repairs ``!=``, and folds. It does NOT
+    model ``_prune`` (depth). The emitter expects a root that the gate admits, so
+    a caller must ask :meth:`is_pushable` first (see :func:`assert_gated_compile_equal`).
+
+    Every rule here is written independently of the production code, on purpose.
     """
     OPS = {
         Operator.EQ: "equals",
@@ -86,9 +95,40 @@ class ReferenceCompiler:
             self._bind_map[bindparam] = key
         return self._bind_map[bindparam]
 
+    def is_pushable(self, expr: ColumnElement) -> bool:
+        """The SELECT (lax) pushability rule.
+
+        * leaf: pushable, unless it compares a ``None`` literal under ``==`` or ``!=``
+          (Notion answers HTTP 400). ``is_empty()``/``is_not_empty()`` also carry a
+          ``None`` operand, but it is a placeholder, so they stay pushable.
+        * not: never pushable.
+        * and: pushable if at least one child is.
+        * or: pushable only if every child is.
+        """
+        if isinstance(expr, BinaryExpression):
+            if expr.operator in (Operator.EQ, Operator.NE):
+                bindparam = expr.value
+                return not (bindparam.callable_ is None and bindparam.value is None)
+            return True
+
+        if isinstance(expr, UnaryExpression):
+            return False
+
+        if isinstance(expr, BooleanClauseList):
+            pushable = [self.is_pushable(c) for c in expr.clauses]
+            return any(pushable) if expr.operator == "and" else all(pushable)
+
+        raise NotImplementedError(type(expr).__name__)
+
     def process(self, expr: ColumnElement) -> dict:
         method = getattr(self, f"_compile_{expr.__visit_name__}")
         return method(expr)
+
+    def _leaf(self, column: Column, operator: str, value: str) -> dict:
+        return {
+            "property": column.name,
+            column.type_.get_col_spec(): {operator: value},
+        }
 
     def _compile_binary_expression(self, expr: BinaryExpression) -> dict:
         column = expr.column
@@ -97,35 +137,71 @@ class ReferenceCompiler:
         try:
             operator = self.OPS[expr.operator]
         except KeyError:
-            raise TypeError(f'Unsupported operator: {operator} for Notion type: "{notion_type}"')
+            raise TypeError(f'Unsupported operator: {expr.operator} for Notion type: "{notion_type}"')
 
-        bindparam = expr.value
+        key = self._add_bindparam(expr.value)
+        leaf = self._leaf(column, operator, f":{key}")
 
-        key = self._add_bindparam(bindparam)
+        # Notion's does_not_equal also matches a valueless cell; SQL's <> does not.
+        # A type that can hold a valueless cell needs is_not_empty to exclude it.
+        if expr.operator is Operator.NE and column.type_.supports_valueless_cells:
+            return {"and": [leaf, self._leaf(column, "is_not_empty", True)]}
 
-        return {
-            "property": column.name,
-            notion_type: {
-                operator: f":{key}"
-            }
-        }
+        return leaf
 
     def _compile_unary_expression(self, expr: UnaryExpression) -> dict:
-        inner = self.process(expr.element)
-
-        if expr.operator == "not":
-            return {"not": inner}
-
-        raise NotImplementedError(expr.operator)
+        # A Notion filter has no "not".
+        raise UnsupportedCompilationError(f"Reference compiler refuses unary '{expr.operator}'")
 
     def _compile_boolean_clause_list(self, expr: BooleanClauseList) -> dict:
-        return {
-            expr.operator: [self.process(c) for c in expr.clauses]
-        }
+        op = expr.operator
+        clauses = [self.process(c) for c in expr.clauses if self.is_pushable(c)]
+
+        # fold: drop an empty child, splice a child with the same operator,
+        # unwrap a single survivor, and give {} when nothing survives
+        folded = []
+        for clause in clauses:
+            if not clause:
+                continue
+            if op in clause:
+                folded.extend(clause[op])
+            else:
+                folded.append(clause)
+
+        if not folded:
+            return {}
+        if len(folded) == 1:
+            return folded[0]
+        return {op: folded}
 
 def reference_compile(expr: ColumnElement) -> dict:
     compiler = ReferenceCompiler()
     return compiler.process(expr)
+
+def assert_gated_compile_equal(
+        ast: ColumnElement,
+        reference_compiler: ReferenceCompiler,
+        production_compiler: Callable[[ColumnElement], dict],
+) -> bool:
+    """Assert that both gates agree on ``ast``, then compare a pushable root.
+
+    The production emitter expects a root that ``_is_pushable`` admits. A random
+    root may not be one. The two gates must give the same answer. Only a pushable
+    root goes to :func:`assert_compile_equal`.
+
+    Returns:
+        ``True`` if the root is pushable and the outputs were compared.
+    """
+    reference_pushable = reference_compiler.is_pushable(ast)
+    production_pushable = _is_pushable(ast)
+    assert reference_pushable == production_pushable, (
+        f"Gates differ: reference={reference_pushable}, production={production_pushable}"
+    )
+
+    if reference_pushable:
+        assert_compile_equal(ast, reference_compiler.process, production_compiler)
+
+    return reference_pushable
 
 class PythonExpressionCompiler:
     """AST to Python code compiler.

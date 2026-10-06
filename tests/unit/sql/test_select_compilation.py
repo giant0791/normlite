@@ -1,5 +1,6 @@
 from datetime import date, datetime
 import itertools
+from operator import or_
 import pdb
 import uuid
 from zoneinfo import ZoneInfo
@@ -8,7 +9,7 @@ import pytest
 from normlite.sql.base import _CompileState, CompilerState
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Select, select
-from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList
+from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, and_, not_
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, DateTimeRange, Integer, String
 
@@ -549,3 +550,42 @@ def test_plain_select_harvests_a_planning_context_that_holds_nothing_back(
 
     assert compiled.planning_context is not None
     assert compiled.planning_context.recheck_where is None
+
+# Behavior under test:
+# A SELECT whose WHERE is a negation sends no filter to Notion, 
+# and the whole negation is held for client-side evaluation instead.
+def test_negated_where_is_not_sent_to_notion(students: Table):
+    # Arrange
+    predicate = not_(students.c.grade == 'A')
+    stmt = select(students.c.name).where(predicate)
+
+    # Act
+    compiled = stmt.compile(NotionCompiler())
+
+    # Assert
+    assert 'filter' not in compiled.as_dict()['payload']
+    assert compiled.planning_context.recheck_where is predicate
+
+# Behavior under test:
+# A negated conjunct is dropped from the pushed filter 
+# while its pushable siblings still go to Notion.
+def test_negated_conjunct_is_dropped_and_its_siblings_still_push(students: Table):
+    # Arrange
+    predicate = (
+        (students.c.name == 'Galileo')
+        & (students.c.id > 5)
+        & not_(students.c.grade == 'A')
+    )
+    stmt = select(students.c.name).where(predicate)
+
+    # Act
+    compiled = stmt.compile(NotionCompiler())
+
+    # Assert
+    assert compiled.as_dict()['payload']['filter'] == {
+        'and': [
+            {'property': 'name', 'title': {'equals': ':param_0'}},
+            {'property': 'id', 'number': {'greater_than': ':param_1'}},
+        ]
+    }
+    assert compiled.planning_context.recheck_where is predicate

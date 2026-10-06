@@ -18,6 +18,7 @@ from normlite import (
 )
 
 from normlite.exceptions import ArgumentError, InvalidRequestError
+from normlite.sql.elements import Operator
 from normlite.sql.type_api import (
     ArchivalFlag,
     DateTimeRange,
@@ -443,3 +444,52 @@ def test_every_type_decodes_a_valueless_cell_as_none(type_obj: TypeEngine):
 
     assert result(None) is None                 # absent cell
     assert result(valueless) is None            # present, holds no value
+
+@pytest.mark.parametrize('name, namespace', [
+    (
+        'NoFlagType',
+        {},
+    ),
+    (
+        'RepairWithoutIsNotEmptyType',
+        {
+            'supported_ops': {
+                Operator.EQ: 'equals',
+                Operator.NE: 'does_not_equal',
+                Operator.IS_EMPTY: 'is_empty',
+            },
+            'supports_valueless_cells': True,
+        },
+    ),
+    (
+        'RepairWithoutOperatorsType',
+        {'supports_valueless_cells': True},
+    ),
+], ids=['missing-flag', 'flag-without-is-not-empty', 'flag-without-operators'])
+def test_a_type_with_an_unsound_valueless_declaration_is_rejected_at_definition(
+    name: str, namespace: dict
+):
+    """A ``TypeEngine`` subclass with an unsound valueless-cell declaration
+    cannot be defined.
+
+    The ``!=`` repair (#383) reads ``supports_valueless_cells`` and then
+    ``supported_ops[Operator.IS_NOT_EMPTY]``. Two declarations break it:
+
+    * **missing-flag**: the type declares no ``supports_valueless_cells``. The
+      flag has no default on purpose: a default picks a value nobody measured.
+      Today the defect surfaces only at the first ``!=`` compile, possibly
+      deep inside a DML statement.
+    * **flag-without-is-not-empty**: the type claims it can hold a valueless
+      cell but cannot emit ``is_not_empty``. The repair then has no term to
+      add. The type declares ``IS_EMPTY`` on purpose: the repair needs the
+      positive test, and a check on the wrong operator must not pass.
+    * **flag-without-operators**: the same claim on a type that declares no
+      ``supported_ops`` at all (``UUID`` is such a type today, with the flag
+      ``False``).
+
+    Both must fail where the defect is written: at class definition, with the
+    class name in the message. ``type(...)`` is a ``class`` statement in
+    expression form; it runs the same class-creation path.
+    """
+    with pytest.raises(TypeError, match=name):
+        type(name, (TypeEngine,), namespace)

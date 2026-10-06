@@ -23,7 +23,7 @@ from normlite.sql.schema import Column, Table
 from tests.utils.ast_equal import ast_equal
 from tests.utils.exec_utils import exec_expression
 from tests.utils.generators import ASTGenerator, ExpressionGenerator, ReferenceGenerator, EntityRandomGenerator
-from tests.utils.compiler import PythonExpressionCompiler, ReferenceCompiler, assert_compile_equal
+from tests.utils.compiler import PythonExpressionCompiler, ReferenceCompiler, assert_compile_equal, assert_gated_compile_equal
 
 
 @pytest.fixture
@@ -135,23 +135,32 @@ def test_gen_table():
     assert all([col_name.startswith('col_') for col_name in list(table.uc.keys())])
 
 def test_compile_differential_random_dryrun(astgen, ref_compiler, prod_compiler):
-    expr = astgen.generate(4)
+    # the first root may be unpushable; compare JSON for at least one root
+    for _ in range(20):
+        expr = astgen.generate(4)
+        if assert_gated_compile_equal(expr, ref_compiler, prod_compiler.process):
+            return
 
-    assert_compile_equal(expr, ref_compiler.process, prod_compiler.process)
+    pytest.fail("no pushable root in 20 trees")
 
 def test_compile_differential_random_massive(astgen, ref_compiler, prod_compiler):
     MAX_COLS = 16
     MAX_DEPTH = 32
     MAX_TREES = 10_000
     depths = []
+    compared = 0
 
     print()         # <--- CRITICAL: Force a newline so tqdm doesn't overwrite the test name
     for _ in tqdm(range(MAX_TREES), desc="Comparing ref vs prod compilers", unit="tree"):
         depth = astgen._impl.rng.randint(1, MAX_DEPTH)
         expr = astgen.generate(max_cols=MAX_COLS, max_depth=depth)
         depths.append(depth)
-        assert_compile_equal(expr, ref_compiler.process, prod_compiler.process)
+        compared += assert_gated_compile_equal(expr, ref_compiler, prod_compiler.process)
 
     print('\n')
     print(f'Expression depth stats: min = {min(depths)}, max = {max(depths)}, mean = {statistics.mean(depths)}')
+    print(f'Pushable roots compared: {compared} of {MAX_TREES}')
+
+    # the gate must not turn the comparison into a no-op
+    assert compared >= MAX_TREES // 4
 

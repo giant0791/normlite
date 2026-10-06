@@ -91,6 +91,10 @@ DEFAULT_DATE_FORMAT = "%Y-%m-%d"
 class TypeEngine(Protocol):
     """Base class for all Notion/SQL datatypes.
 
+    .. versionchanged:: 0.13.0
+        A subclass with an unsound ``supports_valueless_cells`` declaration
+        raises ``TypeError`` at class definition.
+
     .. versionchanged:: 0.11.0
         The class is runtime checkable.
     
@@ -104,6 +108,62 @@ class TypeEngine(Protocol):
 
     comparator_factory: Comparator
     supported_ops: dict[Operator, str]
+
+    supports_valueless_cells: bool
+    """Whether Notion can return a valueless cell (``{"<col_spec>": null}``) for this type.
+
+    In Notion, not all types can hold a valueless cell. The compiler reads this flag
+    to decide whether a ``!=`` leaf gets the ``is_not_empty`` repair
+    (:meth:`~normlite.sql.compiler.NotionCompiler.visit_binary_expression`).
+
+    Each type declares the value from measurement against the live API, never by
+    analogy with another type:
+
+    * ``Number`` and ``Date``: ``True``. Notion returns ``{"number": null}`` (#384)
+      and a null date.
+    * ``String``: ``False``. Notion stores every blank title or rich text as ``[]``,
+      a present value that decodes to ``""`` (#390).
+    * ``Relation``: ``False``. An empty relation is ``[]``, a present value.
+    * ``Boolean``: ``False``. A checkbox is always ``true`` or ``false`` (ADR-0005).
+
+    Every concrete type must set it. There is no default, so a missing declaration
+    raises ``TypeError`` instead of picking a value nobody measured.
+
+    .. versionadded:: 0.13.0
+    """
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        """Enforce structural invariants for the class attributes.
+
+        This method enforces two invariants:
+
+            1. Each subclass of :class:`TypeEngine` **must** assign a value ``.supports_valueless_cells`` 
+            
+            2. Each subclass intended to support valueless cells (``.supports_valueless_cells = True``) **must** 
+            support the operator ``IS_NOT_EMPTY``. This is required by the ``!=`` repair (#383)
+
+        Raises:
+            TypeError: If ``.supports_valueless_cells`` is not defined or 
+                if ``.supports_valueless_cells = True``, but ``IS_NOT_EMPTY`` is not in ``.supported_ops``.
+
+        .. versionadded:: 0.13.0
+        """
+        super().__init_subclass__(**kwargs)
+        supports = getattr(cls, "supports_valueless_cells", None)
+
+        if supports is None:
+            raise TypeError(
+                f"Class {cls.__name__} is a TypeEngine and must therefore "
+                f"assign a value to the structural attribute supports_valueless_cells."
+            )
+        ops = getattr(cls, "supported_ops", None)
+
+        if supports and (ops is None or Operator.IS_NOT_EMPTY not in ops):
+            raise TypeError(
+                f"Class {cls.__name__} declares to support valueless cells "
+                f"but it does not support the IS_NOT_EMPTY operator. "
+                f"Each type engine supporting valueless cells must support the IS_NOT_EMPTY operator."
+            )
 
     def bind_processor(self) -> Optional[Callable[[Any], Any]]:
         """Python → SQL/Notion (prepare before sending)."""
@@ -119,7 +179,7 @@ class TypeEngine(Protocol):
         .. versionchanged:: 0.11.0
             From this version on, the new contract provided by the DBAPI layer is implemented.
 
-        .. selalso::
+        .. seealso::
             :meth:`normlite.notiondbapi.resultset.ResultSet._process_page`
 
         """
@@ -230,6 +290,8 @@ class Number(TypeEngine):
         Operator.IS_EMPTY: "is_empty",
         Operator.IS_NOT_EMPTY: "is_not_empty"
     })
+
+    supports_valueless_cells = True
 
     def __init__(self, format: str):
         """
@@ -391,6 +453,8 @@ class String(TypeEngine):
         Operator.IS_EMPTY: "is_empty",
         Operator.IS_NOT_EMPTY: "is_not_empty"
     })
+
+    supports_valueless_cells = False
  
     def __init__(self, is_title: bool = False):
         self.is_title = is_title
@@ -445,6 +509,8 @@ class Boolean(TypeEngine):
         Operator.EQ: "equals",
         Operator.NE: "does_not_equal",
     })
+
+    supports_valueless_cells = False
 
     def get_col_spec(self):
         return "checkbox"
@@ -790,6 +856,8 @@ class Date(TypeEngine):
         Operator.IS_NOT_EMPTY: "is_not_empty"
     })
 
+    supports_valueless_cells = True
+
     def bind_processor(self):
         def process(value: Union[str, date, datetime, DateTimeRange, None]):
             if value is None:
@@ -901,6 +969,9 @@ class Relation(TypeEngine):
         Operator.IS_EMPTY: "is_empty",
         Operator.IS_NOT_EMPTY: "is_not_empty",
     })
+
+    supports_valueless_cells = False
+
     def get_col_spec(self) -> str:
         return "relation"
     
@@ -945,6 +1016,9 @@ class UUID(TypeEngine):
     
     .. versionadded:: 0.7.0
     """
+
+    supports_valueless_cells = False    # not measured yet
+
     def bind_processor(self):
         raise InvalidRequestError(
             "Cannot bind values to system-managed 'object_id' columns."
@@ -972,6 +1046,8 @@ class PropertyId(TypeEngine):
         See issue `#136 <https://github.com/giant0791/normlite/issues/136>`.
 
     """
+    supports_valueless_cells = False    # not a Notion type; used internally only
+
     def bind_processor(self):
         raise InvalidRequestError(
             "Cannot bind values to system-managed preperty 'id' columns."
@@ -996,6 +1072,8 @@ class ObjectId(UUID):
     .. versionadded:: 0.7.0
     """
     comparator_factory = ObjectIdComparator
+
+    supports_valueless_cells = False    # not a Notion type; used internally only
 
     def get_col_spec(self):
         raise NotImplementedError('Column spec is not supported for this type engine subclass.')
@@ -1038,6 +1116,8 @@ class TimeStampStringISO8601(TypeEngine):
     """
 
     comparator_factory = TimeStampStringISO8601Comparator
+
+    supports_valueless_cells = False    # not a Notion type; used internally only
 
     def get_col_spec(self):
         raise NotImplementedError('Column spec is not supported for this type engine subclass.')

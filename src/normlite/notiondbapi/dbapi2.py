@@ -296,10 +296,10 @@ class Cursor:
            the last :meth:`.execute` / :meth:`executemany` produced.
 
         .. important::
-            This version supports non paginated results. Thus, the :attr:`rowcount` is _always_
+            This version supports non paginated results. Thus, the :attr:`rowcount` is *always*
             equal to the rows contained in the current result set.
             It supports result streaming (paginated results): the :attr:`rowcount` remains -1 
-            _until all pages have been retrieved_. Once this condition is fulfilled, :attr:`rowcount`
+            *until all pages have been retrieved*. Once this condition is fulfilled, :attr:`rowcount`
             will provide the sum of all retrieved pages.
             For example, let's assume the query being executed returns 100 rows. Notion returns batches
             of 10 pages only. So, the :attr:`rowcount` will stay equal to -1 until all 10 batches have

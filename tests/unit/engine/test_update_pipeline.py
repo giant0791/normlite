@@ -1,7 +1,14 @@
+import re
+
 import pytest
 
-from normlite.exceptions import ArgumentError
+from normlite.exceptions import ArgumentError, CompileError
+from normlite.sql.compiler import (
+    _FILTER_MAX_DEPTH_EXCEEDED,
+    _UNPUSHABLE_FILTER_TERM,
+)
 from normlite.sql.dml import update, select
+from normlite.sql.elements import not_
 
 from tests.utils.execution import run_execute
 from tests.utils.db_helpers import (
@@ -173,3 +180,88 @@ def test_update_parameters_raises_argument_error(engine, prepared_students):
     with pytest.raises((ArgumentError, Exception)):
         with engine.connect() as conn:
             conn.execute(stmt, {"grade": "X"})
+
+
+# ── 10. A WHERE with no exact Notion filter is refused (#383) ────────────────
+
+def test_update_with_a_negated_conjunct_is_refused_and_writes_nothing(
+    engine, prepared_students
+):
+    """An UPDATE WHERE that cannot be pushed EXACTLY must raise, never prune (#383).
+
+    The UPDATE twin of
+    ``test_delete_pipeline.test_delete_with_a_negated_conjunct_is_refused_and_deletes_nothing``.
+    Every populated row has ``grade == "A"``, so ``id == 1 AND NOT grade == "A"``
+    is false for all ten rows, and SQL updates nothing.
+
+    ``not`` has no Notion filter form. UPDATE has no recheck (#397), so the
+    pushed filter IS the decision. A filter that drops the negated conjunct
+    reads ``id == 1`` and writes ``grade = 'Z'`` into ``name_1``.
+
+    The refusal can have one reason only: the unpushable term. The WHERE has
+    two leaves under one ``and``, so its filter cannot exceed the nesting cap.
+
+    The grade assertion is not redundant with the raise. It fails a gate that
+    raises after the ``pages.update`` writes are staged.
+    """
+    stmt = (
+        update(prepared_students)
+        .values(grade="Z")
+        .where(
+            (prepared_students.c.id == 1)
+            & not_(prepared_students.c.grade == "A")
+        )
+    )
+
+    with pytest.raises(CompileError, match=re.escape(_UNPUSHABLE_FILTER_TERM)):
+        run_execute(engine, stmt)
+
+    rows = select_all(engine, prepared_students)
+    assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
+
+
+def test_update_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap(
+    engine, prepared_students
+):
+    """An UPDATE WHERE nested ``and -> or -> and`` must raise, never prune (#383).
+
+    The UPDATE twin of
+    ``test_delete_pipeline.test_delete_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap``.
+    No leaf is a ``!=``, so the depth does not depend on the ``!=`` repair::
+
+        WHERE name='name_0' AND (id=1 OR (grade='A' AND is_active IS TRUE))
+
+    Every term has a Notion filter form, so the refusal can have one reason
+    only: the depth. The operators alternate, so the fold has nothing to
+    splice. The emitted filter is ``{and: [leaf, {or: [leaf, {and: [leaf,
+    leaf]}]}]}``: depth 3. The Notion API caps nesting at 2, so production
+    answers HTTP 400. The in-memory client has no cap and would write
+    ``grade = 'Z'`` into ``name_0``, the one row SQL selects.
+
+    UPDATE has no recheck (#397), so it may not prune the filter to fit the
+    cap. A pruned filter is a superset and would write rows this WHERE
+    excludes.
+
+    The grade assertion is not redundant with the raise. It fails a gate that
+    raises after the ``pages.update`` writes are staged.
+    """
+    stmt = (
+        update(prepared_students)
+        .values(grade="Z")
+        .where(
+            (prepared_students.c.name == "name_0")
+            & (
+                (prepared_students.c.id == 1)
+                | (
+                    (prepared_students.c.grade == "A")
+                    & prepared_students.c.is_active.is_(True)
+                )
+            )
+        )
+    )
+
+    with pytest.raises(CompileError, match=re.escape(_FILTER_MAX_DEPTH_EXCEEDED)):
+        run_execute(engine, stmt)
+
+    rows = select_all(engine, prepared_students)
+    assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
