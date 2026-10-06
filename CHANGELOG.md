@@ -1,3 +1,67 @@
+## 0.13.0 (2026-10-06)
+
+### Feat
+
+- **engine**: route every SELECT through the query plan and make that path lazy
+- **sql**: add the Project operator so the recheck can read what it must not return
+- **sql**: wire Filter to eval3, drop the _Filter dependency
+- **sql**: complete the eval3 operator table for every declared type
+- **sql**: dispatch eval3 leaves per Notion type, add is_empty
+- **sql**: add LT comparison and absent-cell UNKNOWN to eval3
+- **sql**: add GT leaf comparison to eval3, hoist the 3VL NULL guard
+- **sql**: add NE leaf comparison to eval3
+- **sql**: complete Kleene NOT/AND/OR tables in eval3
+- **sql**: introduce three-valued eval3 evaluator (axiom slice)
+- **sql**: drive aggregate selects through the query plan
+- **sql**: Planner builds Aggregate over a Scan for aggregate selects
+- **sql**: blocking Aggregate operator wrapping AggregateExecution
+- **sql**: scan-both hash join — right leaf is a full data-source scan
+- **engine**: drive select-join execution through the query planner, dropping EXECUTEMANY
+- **sql**: HashJoin.next() drains the whole left side before the single-shot right retrieve
+- **sql**: unbound EXECUTEMANY Scan raises loudly instead of leaking the DBAPI's generic message
+- **sql**: each operator leaf mints and shapes its own cursor from the connection
+- **sql**: extract SchemaInfo.from_join_sides as single leaf-schema home
+- **sql**: route join residual sorts through PlanningContext AST, off the compiled_dict
+- **sql**: route join residual through shared compile_residual_filter, off the compiled_dict
+- **sql**: open both join children and tag Scan with ExecutionStyle
+- **sql**: plan joins as a Volcano HashJoin/Filter operator tree
+- **sql**: author query-plan residual on a harvested PlanningContext (#363)
+- **sql**: add inert Scan operator for the Query plan (slice 1, #361)
+
+### Fix
+
+- **sql**: keep emitted filters inside what the Notion API accepts (#383)
+- **sql**: drop HashJoin's dead right_filter and right_sorts parameters
+- **sql**: recheck every conjunct on every branch, via a page map
+- **sql**: re-check every pushed WHERE conjunct over raw cells
+- **engine**: read rowcount from the cursor that actually ran the statement
+- **sql**: drop the phantom row by semantics, not by a structural guard
+- **notion_sdk**: accept does_not_equal on title and rich_text
+- **notion_sdk**: accept the inclusive number ordering operators
+- **notion_sdk**: accept is_empty and is_not_empty on a number cell
+- **notion_sdk**: match a valueless number cell on does_not_equal
+- **sql**: stop eval3 calling an empty-config cell valueless
+- **notion_sdk**: exclude a valueless number cell from every number operator
+- **sql**: write a valueless cell instead of a bare None
+- **sql**: route Float's decode through the shared valueless-cell guard
+- **sql**: decode a valueless date cell as None instead of crashing
+- **sql**: decode a valueless number cell as None instead of crashing
+- **notion_sdk**: read text is_empty as content, not array length
+- **sql**: make is_not_empty on text the true negation of is_empty
+- **sql**: read is_empty on text as a content test, not a length test
+- **sql**: read a valueless date cell as NULL, not as comparable
+
+### Refactor
+
+- **sql**: rename residual_where to recheck_where
+- **sql**: drop String's now-dead missing-key default
+- **sql**: factor the valueless-cell check into TypeEngine
+- **sql**: delete the residual filter renderer, now callerless
+- **sql**: delete the dead Retrieve operator, closing the scan-both fold
+- **sql**: delete the dead JoinExecution seam
+- **sql**: fold the join merge into HashJoin, dropping the JoinExecution seam
+- **sql**: name the operator open() parameter connection, not cursor
+
 ## 0.12.0 (2026-07-15)
 
 ### Feat
