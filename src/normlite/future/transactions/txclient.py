@@ -1,6 +1,6 @@
 """
 .. caution::
-    
+    This feature is experimental.
 
 .. versionadded:: 0.9.0
 """

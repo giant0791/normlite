@@ -22,6 +22,8 @@ from typing import Optional, TypedDict
 
 
 class NormalizedDate(TypedDict):
+    """A Notion date value with its ``start`` and ``end`` parsed to :class:`datetime`."""
+
     start: Optional[datetime]
     end: Optional[datetime]
 

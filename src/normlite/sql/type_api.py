@@ -179,7 +179,7 @@ class TypeEngine(Protocol):
         .. versionchanged:: 0.11.0
             From this version on, the new contract provided by the DBAPI layer is implemented.
 
-        .. selalso::
+        .. seealso::
             :meth:`normlite.notiondbapi.resultset.ResultSet._process_page`
 
         """
