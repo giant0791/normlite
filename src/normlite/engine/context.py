@@ -530,14 +530,28 @@ class ExecutionContext:
     
         self._cursor._inject_description(schema.as_sequence())
 
-    def _assert_all_params_consumed(self, resolved_params: list[dict]):
+    def _assert_all_params_consumed(self, resolved_params: list[dict[str, BindParameter]]):
         if self.invoked_stmt.is_update:
             return
+
+        from normlite.sql.elements import _BindRole
+
+        # A pruned filter (#383) leaves the binds of the leaves it removed unpopped.
+        # They are not unused: `recheck_where` holds the whole predicate and `eval3`
+        # reads each value off the AST's own BindParameter, so the RECHECK consumes
+        # them -- a second consumer, exactly as UPDATE's SET clause is.
+        rechecked = self.compiled.planning_context.recheck_where is not None
+
         for i, param_set in enumerate(resolved_params):
-            if param_set:
+            orphans = [
+                key
+                for key, bp in param_set.items()
+                if not (rechecked and bp.role is _BindRole.COLUMN_FILTER)
+            ]
+            if orphans:
                 raise ArgumentError(
                     f"Unused bind parameters in parameter set {i}: "
-                    f"{', '.join(param_set.keys())}"
+                    f"{', '.join(orphans)}"
                 )
                 
     def post_exec(self) -> None:

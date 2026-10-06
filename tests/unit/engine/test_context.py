@@ -1,6 +1,8 @@
 from normlite import CursorResult
 from datetime import date
 import pdb
+from contextlib import nullcontext
+from types import SimpleNamespace
 import uuid
 import pytest
 
@@ -12,6 +14,7 @@ from normlite.sql.reflection import ReflectedTableInfo
 from normlite.notion_sdk.getters import get_object_id
 from normlite.sql.ddl import CreateTable, DropTable
 from normlite.sql.dml import insert, select, delete
+from normlite.sql.elements import BindParameter, _BindRole
 from normlite.sql.functions import func
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, String
@@ -197,6 +200,38 @@ def test_unused_bind_params_raises(engine, students):
 
     with pytest.raises(CompileError):
         run_context(engine, stmt, params={"unknown": 123})
+
+
+@pytest.mark.parametrize(
+    "role, rechecked, raises",
+    [
+        # an INSERT value nobody writes is data loss, recheck or not
+        (_BindRole.COLUMN_VALUE, True, True),
+        # a pruned leaf's bind with no recheck reaches no evaluator
+        (_BindRole.COLUMN_FILTER, False, True),
+        # a pruned leaf's bind reaches eval3 through the recheck (#383)
+        (_BindRole.COLUMN_FILTER, True, False),
+    ],
+    ids=["value-with-recheck", "filter-without-recheck", "filter-with-recheck"],
+)
+def test_a_leftover_bind_raises_unless_the_recheck_consumes_it(role, rechecked, raises):
+    # The pipeline cannot leave an unknown key behind: construct_params
+    # refuses it first (see test_unused_bind_params_raises). So the guard
+    # is driven directly, with a stand-in carrying only what it reads.
+    leftover = BindParameter("param_0", "orphan")
+    leftover.role = role
+    ctx = SimpleNamespace(
+        invoked_stmt=SimpleNamespace(is_update=False),
+        compiled=SimpleNamespace(
+            planning_context=SimpleNamespace(
+                recheck_where=object() if rechecked else None
+            )
+        ),
+    )
+
+    expectation = pytest.raises(ArgumentError, match="param_0") if raises else nullcontext()
+    with expectation:
+        ExecutionContext._assert_all_params_consumed(ctx, [{"param_0": leftover}])
 
 
 def test_execution_style_delete(engine, populated_students, students):

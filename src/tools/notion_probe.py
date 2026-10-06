@@ -418,6 +418,8 @@ def text_filters(literal: str) -> list:
         ("does_not_contain", literal),
         ("starts_with", literal),
         ("ends_with", literal),
+        ("equals", None),
+        ("does_not_equal", None),
     ]
 
 NUMBER_FILTERS = [
@@ -429,6 +431,8 @@ NUMBER_FILTERS = [
     ("less_than", 0),
     ("greater_than_or_equal_to", 0),
     ("less_than_or_equal_to", 0),
+    ("equals", None),
+    ("does_not_equal", None),
 ]
 
 DATE_FILTERS = [

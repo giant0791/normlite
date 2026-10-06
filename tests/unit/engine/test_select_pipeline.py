@@ -1,7 +1,9 @@
 import pytest
 
 from normlite.engine.base import Engine
+from normlite.sql.compiler import _depth
 from normlite.sql.dml import insert, select
+from normlite.sql.elements import not_
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Integer, String
 
@@ -52,6 +54,45 @@ def test_a_valueless_cell_is_dropped_by_a_not_equal_where(engine: Engine):
     # valued cells split -- which is what makes this an observation of the
     # predicate rather than of the row count.
     assert {row.name for row in rows} == {"Isaac Newton"}
+
+
+def test_a_blank_text_cell_is_kept_by_a_not_equal_where(engine: Engine):
+    # The text twin of the test above, with the opposite expected result (#383).
+    #
+    # A blank text cell is a PRESENT value, not NULL: it decodes to "" (CONTEXT.md,
+    # "Raw cell <=> decoded NULL"). Notion stores no valueless text cell. So SQL
+    # evaluates `'' <> 'A'` to TRUE, eval3 agrees, and the row belongs in the answer.
+    #
+    # Measured against the live API (2026-10-04, `notion_probe.py query`):
+    # `title.does_not_equal(lit)` matches the blank `[]` cells, and
+    # `title.is_not_empty` excludes them. A pushed `!=` that conjoins
+    # `is_not_empty` therefore removes a row SQL keeps. The recheck cannot add it
+    # back: a row the push never returned is a row the recheck never sees.
+    #
+    # The in-memory client stores `values(grade="")` verbatim, which the live API
+    # normalises to `[]`. Both are present blank text, and both decode to "".
+    metadata = MetaData()
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("grade", String()),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        # Galileo is the discriminator: a valued cell the predicate must exclude.
+        connection.execute(insert(students).values(name="Galileo Galilei", grade="A"))
+        # Newton is the valued control the predicate must keep.
+        connection.execute(insert(students).values(name="Isaac Newton", grade="B"))
+        # Blanca is the defect: a blank cell the predicate must keep.
+        connection.execute(insert(students).values(name="Blanca", grade=""))
+
+        rows = connection.execute(
+            select(students).where(students.c.grade != "A")
+        ).fetchall()
+
+    assert {row.name for row in rows} == {"Isaac Newton", "Blanca"}
 
 
 def test_a_narrow_projection_rechecks_a_column_it_does_not_return(engine: Engine):
@@ -272,3 +313,277 @@ def test_a_predicate_sharing_a_column_with_the_projection_still_widens_the_other
     # projection: `id` must reach the Scan and must not reach the Row, while
     # `name` -- fetched for BOTH reasons -- must survive the trim exactly once.
     assert [list(row.keys()) for row in rows] == [["name"]]
+
+
+def test_a_disjunction_with_a_negated_arm_pushes_nothing_and_still_answers(
+    engine: Engine,
+):
+    # RED for #383, the bind leak: `WHERE name = 'Galileo' OR NOT (grade = 'A')`.
+    #
+    # The `or` is unpushable WHOLE -- one of its arms is a `not`, and dropping a
+    # disjunct NARROWS the result, which is the one direction ADR-0022 forbids
+    # (a push may only over-keep; the recheck can drop rows, never resurrect
+    # them). So nothing at all may reach `payload['filter']` and the whole
+    # predicate is answered client-side by eval3.
+    #
+    # `visit_boolean_clause_list` dispatches every child BEFORE it decides
+    # whether the node is pushable, and dispatch registers a bind as a side
+    # effect. When the `or` branch then discards its JSON, the binds stay
+    # registered and unreferenced, and `_assert_all_params_consumed`
+    # (engine/context.py) raises at EXECUTION -- which is why this is an
+    # execution test and not a compile test. `visit_unary_expression` already
+    # obeys the opposite discipline: it returns None WITHOUT dispatching its
+    # inner element, which is exactly why the `and` path is clean today.
+    #
+    # Three rows, each excluded or kept by a different mechanism:
+    metadata = MetaData()
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("grade", String()),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        #   Galileo  TRUE  or FALSE -> TRUE   (only the LEFT arm keeps him)
+        connection.execute(insert(students).values(name="Galileo", grade="A"))
+        #   Kepler   FALSE or TRUE  -> TRUE   (only the NEGATED arm keeps him:
+        #                                      the row a "drop the unpushable
+        #                                      disjunct" fix silently loses,
+        #                                      because Notion would then return
+        #                                      Galileo alone and the recheck
+        #                                      cannot resurrect Kepler)
+        connection.execute(insert(students).values(name="Kepler", grade="B"))
+        #   Newton   FALSE or FALSE -> FALSE  (the discriminator against
+        #                                      "pushed nothing, so keep
+        #                                      everything")
+        connection.execute(insert(students).values(name="Newton", grade="A"))
+
+        rows = connection.execute(
+            select(students.c.name).where(
+                (students.c.name == "Galileo") | not_(students.c.grade == "A")
+            )
+        ).fetchall()
+
+    assert {row.name for row in rows} == {"Galileo", "Kepler"}
+
+
+def test_a_pruned_select_executes_and_the_recheck_narrows_the_superset(
+    engine: Engine, monkeypatch
+):
+    # The EXECUTION-level red for #383's SELECT half. Its siblings
+    # `test_compiler_axioms.test_repaired_ne_under_an_or_is_pruned_to_a_legal_depth`
+    # and `..test_user_written_and_or_and_is_pruned_to_a_legal_depth` pin the
+    # emitted dict, and both are compile-level by necessity: only the real API
+    # observes the nesting cap. But a compile-level green says nothing about
+    # whether a pruned query can RUN, and measured on `e26d7af` with the scan
+    # site temporarily wired, it cannot:
+    #
+    #   ArgumentError: Unused bind parameters in parameter set 0: param_3
+    #
+    # The prune removes a leaf AFTER emission registered its bind (decision L,
+    # emit-then-measure), so the placeholder never reaches the payload template,
+    # `_bind_params` never pops the key, and `_assert_all_params_consumed`
+    # (engine/context.py) reads the hole as a compiler bug. It is not one. The
+    # bind is consumed by the RECHECK: `eval3` reads the value off the AST's own
+    # BindParameter (`predicate.value.effective_value`), never off
+    # `execution_binds`. A SELECT holding a `recheck_where` is a second consumer,
+    # exactly as UPDATE is, which is why UPDATE is the one statement the assert
+    # already exempts.
+    #
+    # Three states, and the test reads differently in each:
+    #   prune unwired          -> RED at the depth assertion (a depth-3 filter
+    #                             reaches the client; the answer is right, the
+    #                             payload is illegal)
+    #   prune wired, no C      -> RED at `connection.execute`, ArgumentError
+    #   prune wired, C landed  -> GREEN, and the rows prove the recheck decides
+    #
+    # The predicate, no `!=` anywhere so the leaf repair is not involved:
+    #
+    #   WHERE id < 1000 AND (grade = 'Z' OR (id > 5 AND is_active))
+    #
+    # Depth 3. The over-deep node sits under an `or`, so the prune replaces it
+    # with its first child and `is_active` is the leaf that goes -- taking
+    # `:param_N` with it. That is the bind hole, and it is the whole point of
+    # running the query rather than reading its dict.
+    #
+    # This test does NOT pin which prune shipped -- reds 1 and 2 own that. It
+    # pins three weaker things the dicts cannot see: a legal filter reaches the
+    # client, the statement executes, and the answer is SQL's. The third is not
+    # free: it still catches the UNSOUND prune. Dropping a DISJUNCT of the `or`
+    # leaves `id < 1000 AND grade = 'Z'`, which measures 2 and passes the depth
+    # assertion, and no recheck can add back a row the push never fetched -- so
+    # `name_6..name_9` go missing and the row assertion fails.
+    metadata = MetaData()
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+        Column("is_active", Boolean()),
+        Column("grade", String()),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        # Six rows the predicate excludes (id <= 5) and four it keeps (id 6..9),
+        # all active and all grade 'A'. Without the keepers a prune that pushed
+        # nothing would be indistinguishable from one that worked.
+        for i in range(10):
+            connection.execute(insert(students).values(
+                name=f"name_{i}", id=i, is_active=True, grade="A",
+            ))
+        # Xavier is the DISCRIMINATOR, and he is the reason the cast is not just
+        # a row count: the pruned push ADMITS him (id > 5) and the predicate
+        # EXCLUDES him (not active). He comes back from Notion and the recheck
+        # must drop him. A wiring that pruned and then trusted the push keeps
+        # him.
+        connection.execute(insert(students).values(
+            name="Xavier", id=7, is_active=False, grade="Y",
+        ))
+        # Zeta is the control on the surviving disjunct: the predicate keeps her
+        # through `grade = 'Z'` alone, so a prune that dropped that disjunct --
+        # or an over-eager recheck that dropped everything -- fails here.
+        connection.execute(insert(students).values(
+            name="Zeta", id=0, is_active=False, grade="Z",
+        ))
+
+        pushed_filters = []
+        query = engine._client.data_sources_query
+
+        def spy(path_params=None, query_params=None, payload=None):
+            pushed_filters.append(payload.get("filter"))
+            return query(
+                path_params=path_params,
+                query_params=query_params,
+                payload=payload,
+            )
+
+        # The payload that actually reached the client, not a twin compiled
+        # beside it: what the compiler emits and what the scan sends are the
+        # same object only as long as nothing between them edits it, and this
+        # slice edits filters.
+        monkeypatch.setattr(engine._client, "data_sources_query", spy)
+
+        rows = connection.execute(
+            select(students.c.name).where(
+                (students.c.id < 1000)
+                & (
+                    (students.c.grade == "Z")
+                    | ((students.c.id > 5) & (students.c.is_active == True))
+                )
+            )
+        ).fetchall()
+
+    # Depth first, on every page fetched: it fails as one number instead of a
+    # wall-of-dict diff, and a pruned SELECT that reached the client with a
+    # depth-3 filter is an HTTP 400 against the real API whatever rows the
+    # in-memory client returned.
+    assert [_depth(f) for f in pushed_filters] == [2], (
+        f"filters pushed to the client exceed Notion's 2-level cap: {pushed_filters}"
+    )
+
+    assert {row.name for row in rows} == {
+        "name_6", "name_7", "name_8", "name_9", "Zeta",
+    }, (
+        "the pruned push is a SUPERSET and the recheck decides (ADR-0022): "
+        "Xavier is fetched and must be dropped, Zeta is kept by the disjunct "
+        f"the prune must not touch -- got {sorted(row.name for row in rows)}"
+    )
+
+
+def test_a_none_literal_under_not_equal_is_not_pushed(engine: Engine, monkeypatch):
+    # RED for #383, option 1: a `None` literal under `!=` is unpushable.
+    #
+    # The compiler emits `grade != None` as a bare `rich_text.does_not_equal`
+    # leaf, and the bind value `None` puts `null` on the wire. Measured against
+    # the live API (2026-10-05, `notion_probe.py query`): a `null` literal under
+    # `equals` or `does_not_equal` is an HTTP 400 `validation_error`, for
+    # `title` and for `number` ("... should be a string, instead was `null`").
+    # Notion does NOT ignore it, as it ignores `""` (#382). The request fails.
+    #
+    # The in-memory client accepts `null`, so the rows cannot show the defect.
+    # Only the payload that reached the client shows it. This test pins the
+    # payload and NOT the rows: what the recheck answers for `grade != None`
+    # is eval3's decision (ADR-0022), not this fix.
+    #
+    # A lone leaf that is unpushable leaves nothing to fold. The fold returns
+    # `{}`, and the scan site does not assign it. So the expected payload has
+    # no "filter" key at all.
+    metadata = MetaData()
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("grade", String()),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        connection.execute(insert(students).values(name="Galileo Galilei", grade="A"))
+
+        payloads = []
+        query = engine._client.data_sources_query
+
+        def spy(path_params=None, query_params=None, payload=None):
+            payloads.append(payload)
+            return query(
+                path_params=path_params,
+                query_params=query_params,
+                payload=payload,
+            )
+
+        monkeypatch.setattr(engine._client, "data_sources_query", spy)
+
+        connection.execute(
+            select(students).where(students.c.grade != None)  # noqa: E711
+        ).fetchall()
+
+    assert [p.get("filter") for p in payloads] == [None], (
+        "a `null` literal under `does_not_equal` is an HTTP 400 against the "
+        f"live API; no filter may reach the client -- got {payloads}"
+    )
+
+
+def test_a_none_literal_under_equal_is_not_pushed(engine: Engine, monkeypatch):
+    # The `==` twin of `test_a_none_literal_under_not_equal_is_not_pushed` (#383).
+    #
+    # `grade == None` compiles to a bare `rich_text.equals` leaf with `null` on
+    # the wire. The live API answers HTTP 400 for `equals` exactly as for
+    # `does_not_equal` (measured 2026-10-05, title and number). The sibling test
+    # pins only `!=`, so a rule that checked `Operator.NE` alone passed the full
+    # suite. Same cast, same spy, same expected payload: no "filter" key.
+    metadata = MetaData()
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("grade", String()),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        connection.execute(insert(students).values(name="Galileo Galilei", grade="A"))
+
+        payloads = []
+        query = engine._client.data_sources_query
+
+        def spy(path_params=None, query_params=None, payload=None):
+            payloads.append(payload)
+            return query(
+                path_params=path_params,
+                query_params=query_params,
+                payload=payload,
+            )
+
+        monkeypatch.setattr(engine._client, "data_sources_query", spy)
+
+        connection.execute(
+            select(students).where(students.c.grade == None)  # noqa: E711
+        ).fetchall()
+
+    assert [p.get("filter") for p in payloads] == [None], (
+        "a `null` literal under `equals` is an HTTP 400 against the live API; "
+        f"no filter may reach the client -- got {payloads}"
+    )

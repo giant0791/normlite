@@ -17,10 +17,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Optional, Set
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, Optional, Set
 
 from normlite._constants import SpecialColumns
-from normlite.exceptions import CompileError, StatementError
+from normlite.exceptions import CompileError, StatementError, UnsupportedCompilationError
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
 from normlite.sql.base import _CompileState, ClauseElement, SQLCompiler
@@ -36,6 +36,79 @@ if TYPE_CHECKING:
     from normlite.sql.dml import Insert, Select, Join
     from normlite.sql.elements import UnaryExpression, BindParameter
     from normlite.sql.schema import Table
+
+_NOTION_MAX_FILTER_DEPTH = 2
+
+# Private refusal reasons for the aggregate SELECT, DELETE and UPDATE.
+# The two refusal helpers below use these strings, and the tests match on them.
+# They are REMOVED, not relaxed: DELETE and UPDATE with #397, the aggregate with #399.
+_FILTER_MAX_DEPTH_EXCEEDED = "It exceeds Notion filter max depth"
+_UNPUSHABLE_FILTER_TERM = "Notion filter syntax does not support negated terms or null comparison values"
+
+# Refusal helpers.
+# The compiler calls them to refuse a WHERE clause that Notion cannot evaluate exactly
+# AND that no client-side recheck corrects.
+# They are REMOVED with the last refusing statement: #397 for DML, #399 for the aggregate.
+# The helpers add the periods and select the consequence by the _RefusingStmt key.
+_RefusingStmt = Literal["An aggregate SELECT", "UPDATE", "DELETE"]
+
+_NO_RECHECK_CONSEQUENCE: dict[_RefusingStmt, str] = {
+    "DELETE": "DELETE bypasses the query plan, so its WHERE has no recheck (#397)",
+    "UPDATE": "UPDATE bypasses the query plan, so its WHERE has no recheck (#397)",
+    "An aggregate SELECT": "The aggregate would reduce rows this WHERE excludes (#399)",
+}
+
+
+def _raise_if_filter_max_depth_exceeded(
+    stmt: _RefusingStmt,
+    filter_obj: dict[str, Any],
+    remedy: str,
+) -> None:
+    """Refuse ``filter_obj`` if it nests deeper than Notion accepts.
+
+    Only a path with no recheck calls this. A plain ``SELECT`` prunes instead
+    (:func:`_prune`), because its recheck restores the rows the prune admits.
+
+    Args:
+        stmt: The refusing statement. It selects the consequence in the message.
+        filter_obj: The emitted filter object, before any prune.
+        remedy: What the user can do instead. The caller supplies it.
+
+    Raises:
+        CompileError: If ``_depth(filter_obj)`` exceeds
+            ``_NOTION_MAX_FILTER_DEPTH``. The message holds
+            ``_FILTER_MAX_DEPTH_EXCEEDED``.
+
+    .. versionadded:: 0.13.0
+    """
+    if _depth(filter_obj) > _NOTION_MAX_FILTER_DEPTH:
+        raise CompileError(
+            f"{stmt} cannot compile this WHERE clause: {_FILTER_MAX_DEPTH_EXCEEDED}. {_NO_RECHECK_CONSEQUENCE[stmt]}. {remedy}."
+        )
+
+
+def _raise_if_filter_term_unpushable(
+    stmt: _RefusingStmt,
+    where_expression: ColumnElement,
+    remedy: str,
+) -> None:
+    """Refuse ``where_expression`` if the emitted filter would drop a term.
+
+    Args:
+        stmt: The refusing statement. It selects the consequence in the message.
+        where_expression: The WHERE expression, before emission.
+        remedy: What the user can do instead. The caller supplies it.
+
+    Raises:
+        CompileError: If :func:`_all_terms_pushable` returns ``False``. The
+            message holds ``_UNPUSHABLE_FILTER_TERM``.
+
+    .. versionadded:: 0.13.0
+    """
+    if not _all_terms_pushable(where_expression):
+        raise CompileError(
+            f"{stmt} refuses this WHERE clause: {_UNPUSHABLE_FILTER_TERM}. {_NO_RECHECK_CONSEQUENCE[stmt]}. {remedy}."
+        )
 
 def compile_residual_sorts(residual_sorts: OrderByClause) -> list[dict]:
     """Interim solution until issue #365 — compile held-back right ORDER BY keys."""
@@ -92,6 +165,342 @@ def _get_expression_parent_tables(expression: ClauseElement) -> Set[Table]:
     """
 
     return {c.parent for c in _get_expression_columns(expression)}
+
+def _is_pushable(node: ColumnElement, strict: bool = False) -> bool:
+    """``True`` if the node is pushable into the Notion API filter.
+
+    Helper that implements the following rule:
+        - **leaf** - pushable, unless it compares a ``None`` literal under ``==`` or ``!=``.
+        - **not** - never pushable.
+        - **and** - lax: drop unpushable children, push the survivors.
+          strict: any unpushable child makes the whole **and** unpushable.
+        - **or** - if any child is unpushable, the whole or is unpushable. Push nothing for it.
+
+    Args:
+        node: The WHERE subtree to judge.
+        strict: Selects which question is asked of the WHOLE subtree, not just of
+            ``node``, and is therefore carried down every recursive call. ``False``
+            (the default, used by ``SELECT``) asks *"can anything be pushed?"*;
+            ``True`` (used by the DML gate) asks *"can EVERYTHING be pushed?"*.
+
+    Returns:
+        ``True`` if the node is pushable under the requested mode.
+
+    Raises:
+        NotImplementedError: If the node is not a recognized WHERE node type. Falling
+            off the end loudly is deliberate: a node silently judged pushable would
+            be dispatched and emitted as a filter.
+
+    .. note::
+        **Why two modes exist.** The two operators are asymmetric only under **and**,
+        and the asymmetry is not stylistic. Dropping a conjunct WEAKENS the filter, so
+        the backend returns a SUPERSET of the answer. On the ``SELECT`` path that is
+        sound, because the push never decides -- the client-side recheck does
+        (ADR-0022) -- so lax is correct there. ``DELETE``/``UPDATE`` have no recheck
+        (#397): the pushed filter IS the decision, and a dropped conjunct is a row
+        mutated that the WHERE excludes. Hence strict.
+
+        **or** applies ``all()`` in both modes, but ``strict`` still has to reach it:
+        the mode selects the question put to the CHILDREN, and an **and** nested under
+        an **or** must be judged in the caller's mode. A recursive call that omits
+        ``strict`` silently reverts the whole subtree below it to lax.
+
+    .. seealso::
+
+        Issue `normlite pushes filter constructs the Notion API rejects with HTTP 400 <https://github.com/giant0791/normlite/issues/383>`_.
+
+    .. versionchanged:: 0.13.0
+        Added ``strict`` for the DML gate.
+    """
+
+    if isinstance(node, BinaryExpression):
+        if node.operator in (Operator.EQ, Operator.NE):
+            # a None literal under == or != is unpushable because Notion rejects it with HTTP 400
+            return node.value.effective_value is not None
+        return True
+
+    if isinstance(node, UnaryExpression):
+        # not - never pushable
+        return False
+
+    if isinstance(node, BooleanClauseList):
+        if node.operator == "and":
+            if strict:
+                return all(_is_pushable(c, strict=strict) for c in node.clauses)
+
+            return any(_is_pushable(c, strict=strict) for c in node.clauses)
+
+        if node.operator == "or":
+            return all(_is_pushable(c, strict=strict) for c in node.clauses)
+
+    raise NotImplementedError(f"Unknown or unsupported expression node: '{type(node).__name__}'")
+
+def _all_terms_pushable(node: ColumnElement) -> bool:
+    """``True`` only if EVERY term in ``node`` is pushable.
+
+    The gate condition for a ``DELETE``/``UPDATE`` WHERE clause. Where
+    :func:`_is_pushable` in its default (lax) mode admits an **and** with a single
+    pushable child -- because ``SELECT`` may drop the rest and let the recheck decide
+    (ADR-0022) -- this admits it only if no child would be dropped at all. On the DML
+    path a dropped conjunct is not a weakened hint, it is a deleted or overwritten row.
+
+    .. warning::
+        ``True`` does NOT mean the pushed filter is EXACTLY equivalent to the WHERE.
+        It means no term is *discarded*. A term may still be pushed as a Notion filter
+        that over-matches, because Notion's negative operators are the boolean
+        complement over a domain that INCLUDES the empty cell, while SQL's evaluate to
+        UNKNOWN against NULL and the WHERE policy drops them.
+
+        The ``!=`` instance of that is **closed**: ``id != 1`` used to emit a bare
+        ``number.does_not_equal``, which also matched a valueless ``id``, so
+        ``DELETE WHERE id != 1`` passed this gate and still removed a row SQL keeps
+        (#384, ADR-0022). :meth:`NotionCompiler.visit_binary_expression` now conjoins
+        ``is_not_empty`` onto that leaf and the push is exact (#383).
+
+        ``NOT IN`` is **exact**, measured against the live API (2026-10-04,
+        ``src/tools/notion_probe.py``). It emits ``does_not_contain``, and Notion
+        matches every ``[]`` cell, for both ``title`` and ``relation``. SQL and
+        eval3 also say TRUE there: ``[]`` is a PRESENT value, not a valueless
+        cell (CONTEXT.md, "Raw cell <-> decoded NULL"), and Notion stores no
+        valueless text or relation cell. So no repair applies. Measure every new
+        negative operator the same way: reasoning by analogy across Notion's
+        types has been wrong here before (ADR-0019).
+
+    Args:
+        node: The WHERE expression of the DML statement.
+
+    Returns:
+        ``True`` if no term of ``node`` would be dropped when the filter is emitted.
+
+    .. seealso::
+
+        Issue `normlite pushes filter constructs the Notion API rejects with HTTP 400 <https://github.com/giant0791/normlite/issues/383>`_.
+
+        Issue `DELETE/UPDATE bypass the query plan, so their WHERE has no recheck <https://github.com/giant0791/normlite/issues/397>`_,
+        which retires this gate by giving DML a recheck -- at which point the refusal
+        is REMOVED, not relaxed.
+
+    .. versionadded:: 0.13.0
+    """
+
+    return _is_pushable(node, strict=True)
+
+def _depth(node: Any) -> int:
+    """Count nested compound objects, the root compound being level 1.
+
+    Notion accepts at most 2 (confirmed), so a filter measuring 3 is an
+    HTTP 400 (#383).
+
+    Args:
+        node: A filter object, or any part of one.
+
+    Returns:
+        The number of compound levels on the deepest path. A leaf, or a value
+        that is not a ``dict``, measures 0.
+
+    .. versionadded:: 0.13.0
+    """
+    if not isinstance(node, dict):
+        return 0
+
+    for op in ("and", "or"):
+        if op in node:
+            return 1 + max((_depth(child) for child in node[op]), default=0)
+
+    return 0
+
+def _prune(node: Any, parent_op: Optional[str] = None, level: int = 1) -> Any:
+    """Weaken ``node`` until no compound sits below level 2.
+
+    The Notion API accepts at most 2 levels of compound nesting. The only
+    compound operators are ``and`` and ``or``; Notion has no ``not``. A
+    compound at level 3 or deeper (the violator) has one of two parents:
+
+    * **or**: the violator is replaced by its first child, pruned again at
+      the violator's level minus 1.
+    * **and**: the violator is dropped.
+
+    Both rules make the filter WEAKER, so the pushed filter returns a
+    superset of the answer. Only a path with a recheck may call this
+    (ADR-0022). DML and the aggregate refuse instead.
+
+    Preconditions (the caller must guarantee both; ``_prune`` does not check them):
+
+    * **Operators alternate.** No ``or`` sits directly under an ``or``, and no
+      ``and`` under an ``and``. The replace rule depends on it: under an ``or``
+      parent, the violator is an ``and``, and an ``and``'s first child is WEAKER
+      than the ``and`` -- a superset, which the recheck re-narrows. If the
+      violator were an ``or``, its first child would be STRONGER, and the prune
+      would lose rows that no recheck can restore. :func:`_normalize_filter`
+      splices same-operator nesting at emission, which is what makes this hold.
+      This is also why the join site folds BEFORE it prunes. The depth bound
+      rests on this precondition too.
+    * **Every compound has at least 2 children.** This makes ``children[0]``
+      safe. :func:`_normalize_filter` unwraps a one-child compound, so a
+      well-formed input never holds one.
+
+    Args:
+        node (Any): The node to prune.
+        parent_op (Optional[str]): The operator of the node's parent.
+            ``None`` for the root.
+        level (int): The node's level. The root compound is level 1.
+
+    Returns:
+        Any: ``node`` with every compound below level 2 pruned. A leaf comes
+            back unchanged. The result is ``{}`` (push nothing) if pruning
+            leaves nothing to push.
+
+            An ``or`` never absorbs a falsy child: if a survivor of an ``or``
+            is falsy, the whole ``or`` becomes ``{}``. The empty ``or`` then
+            propagates by the same rules: an ``and`` parent drops it, and an
+            ``or`` parent becomes ``{}`` too.
+
+    .. note::
+        An emptied ``or`` costs retrieval, not correctness. Its rows are no
+        longer narrowed by Notion, so the query fetches more pages, and the
+        recheck drops the extra ones.
+
+    .. seealso::
+
+        :func:`_normalize_filter`, which establishes both preconditions, and
+        :func:`_depth`, which the call sites use to decide whether to prune.
+
+    .. versionadded:: 0.13.0
+    """
+    if not isinstance(node, dict):
+        # a non dict node is a leaf, nothing to prune, return the node
+        return node
+    
+    for op in ("or", "and"):
+        if op in node:
+            # extract children from the compound operator
+            children = node[op]
+
+            # NOTE: this compares a node's LEVEL, while the call sites compare a
+            # measured DEPTH. The same constant serves both only because the root
+            # compound is level 1 (a node at level N implies a depth of at least N).
+            if level > _NOTION_MAX_FILTER_DEPTH:
+                # prune subtrees below the cap
+                if parent_op == "or":
+                    # replace with its first child
+                    return _prune(children[0], parent_op, level - 1)
+
+
+                else:
+                    # it's an "and", drop the whole compound 
+                    return {}
+                    
+            # traverse each child node in children and apply the pruning rule
+            survivors = []
+            for child in children:
+                survivor = _prune(child, op, level + 1)
+                survivors.append(survivor)
+
+            if op == "or" and any(not s for s in survivors):
+                # An `or` may never absorb a falsy child: 
+                # if any survivor of an `or` is falsy, the whole `or` is `{}`
+                return {}
+            
+            return _normalize_filter(op, survivors)            
+              
+
+    # op not in ("or", "and"): it's a leaf, return as is
+    return node
+
+def _normalize_filter(op: str, clauses: list[dict]) -> dict:
+    """Fold ``clauses`` into the smallest filter object meaning ``op`` over them.
+
+    The Notion API caps compound nesting at **2 levels** (the root compound being
+    level 1), so a filter measuring 3 is an HTTP 400 (#383). Every level this function
+    removes without changing which rows match is a level left in the budget for one
+    that carries meaning, which is why the folding here is load-bearing rather than
+    cosmetic.
+
+    Three rules, applied in order:
+
+    **Drop** falsy clauses, at every arity. Not defensive coding: the fold's output type
+    IS its input element type. :meth:`NotionCompiler.visit_boolean_clause_list` returns
+    this result, and that result becomes an element of the parent's clause list one
+    level up -- so the moment ``{}`` is a legal output it is automatically a legal
+    input. The drop is what keeps the function closed under composition.
+
+    **Splice** a clause that is itself a compound of ``op`` one level in, merging its
+    children in place. ONLY when the operators match: ``{"or": [{"and": [P, Q]}, R]}``
+    must be left alone, because ``P OR Q OR R`` matches rows that ``(P AND Q) OR R``
+    does not. One level of merging is always enough -- every element arrives either as
+    a leaf, as the leaf repair's flat two-child compound, or as this function's own
+    output, which is already spliced.
+
+    **Unwrap** a lone survivor: an ``and`` of one thing IS that thing, and wrapping it
+    spends half the depth budget to say nothing.
+
+    .. note::
+        The splice has **no reachable input today**. :class:`BooleanClauseList`'s
+        constructor already flattens the same-operator nesting a user *writes*, at AST
+        construction time, so no compound reaches this function holding a same-operator
+        child. The splice handles the nesting the compiler *manufactures* during
+        emission -- which begins with the leaf repair, when ``id != 1`` becomes
+        ``{"and": [does_not_equal, is_not_empty]}``. The repair is live (#383), so the
+        splice is live too: without it, ``(id != 1 AND name='x') OR grade='A'`` would
+        nest one level deeper and draw HTTP 400.
+
+    .. warning::
+        The empty result is ``{}`` -- a FALSY sentinel meaning *push nothing*, not an
+        error. An empty clause list is neither a compilation failure nor a snapped
+        invariant; it is a well-defined outcome, sound under ADR-0022 because the pushed
+        filter never decides and ``recheck_where`` holds the full predicate. Raising
+        here would turn a working query into a crash.
+
+        Both call sites therefore guard on this return value's TRUTHINESS and decline to
+        assign, because ``payload['filter']`` must be ABSENT rather than
+        present-and-empty. ``{op: []}`` would defeat that guard -- a non-empty dict is
+        truthy -- and an empty compound in the payload either draws an HTTP 400 or is
+        read as *no filter at all* (:mod:`normlite.notion_sdk.client` resolves it with
+        ``payload.get('filter', False)``), which on a ``DELETE`` means match-everything.
+
+    Idempotent over non-degenerate inputs: folding an already-folded result under the
+    same operator returns it unchanged.
+
+    Args:
+        op: The compound operator, ``"and"`` or ``"or"``.
+        clauses: The already-emitted filter objects to fold. Elements are opaque -- this
+            function never inspects a leaf's internals.
+
+    Returns:
+        The smallest filter object equivalent to ``op`` over ``clauses``: ``{}`` when
+        nothing survives, the lone survivor unwrapped, otherwise ``{op: [...]}``.
+
+    .. seealso::
+
+        Issue `normlite pushes filter constructs the Notion API rejects with HTTP 400 <https://github.com/giant0791/normlite/issues/383>`_.
+
+    .. versionadded:: 0.13.0
+    """
+    # remove empty clauses up-front
+    clauses = [clause for clause in clauses if clause]
+
+
+    # {'and', [{'and': [P, Q]}, R]} must be spliced into: {"and": [P, Q, R]} 
+    # {"and": [{"and": [P, Q]}, {"and": [R, S]}]} -> {"and": [P, Q, R, S]}
+    spliced: list[dict] = []
+    for clause in clauses:
+        if isinstance(clause, dict) and op in clause:
+            # flatten same-op nested expressions
+            spliced.extend(clause[op])
+            
+        else:
+            # leave different op nested or leaf nodes as is
+            spliced.append(clause)
+
+    if not spliced:
+        # {op: []} collapses into {}
+        return {}
+
+    if len(spliced) == 1:
+        # {op: [X] collapses into X}
+        return spliced[0]
+
+    return {op: spliced}
 
 class NotionCompiler(SQLCompiler):
     """Notion compiler for SQL statements.
@@ -638,7 +1047,6 @@ class NotionCompiler(SQLCompiler):
             )
             path_params['data_source_id'] = f':{db_id_key}'
             compiled_dict["path_params"] = path_params 
-
      
         if select._whereclause.has_expression():
             expression = select._whereclause.expression
@@ -663,6 +1071,23 @@ class NotionCompiler(SQLCompiler):
                         and expression.operator == "and"
                         and parent_tables == {select._table, select._right}
                     ):
+                        if select._is_aggregate:
+                            # this site raises unconditionally because it pushes
+                            # a strict subset. NOT a depth refusal: whatever this
+                            # WHERE measures, only the left-only conjuncts go over
+                            # the wire and the rest is handed to a recheck the
+                            # aggregate branch never runs (queryplan.py:786).
+                            raise CompileError(
+                                "An aggregate SELECT cannot compile a WHERE clause that "
+                                "spans both sides of a join: only the left-only terms have "
+                                "a Notion filter form, so the pushed filter is a SUPERSET "
+                                "of the rows this WHERE selects. A plain SELECT re-applies "
+                                "the whole WHERE client-side, but the aggregate reduces "
+                                "whatever the push returns, so it would count rows this "
+                                "WHERE excludes. Run a plain SELECT over the join and "
+                                "reduce client-side."
+                            )
+
                         # Compound AND spanning both join sides: split per-clause.
                         # Left-only conjuncts narrow phase-1 to a SUPERSET of the
                         # answer, so push them into payload['filter']; the WHOLE
@@ -672,20 +1097,56 @@ class NotionCompiler(SQLCompiler):
                         left_conjuncts = [
                             clause._compiler_dispatch(self)
                             for clause in expression.clauses
-                            if _get_expression_parent_tables(clause) == {select._table}
+                            if _get_expression_parent_tables(clause) == {select._table} and _is_pushable(clause)
                         ]
-                        if left_conjuncts:
-                            payload['filter'] = (
-                                left_conjuncts[0] if len(left_conjuncts) == 1
-                                else {"and": left_conjuncts}
-                            )
+
+                        filter_obj = _prune(_normalize_filter("and", left_conjuncts))
+                        if filter_obj:
+                            payload['filter'] = filter_obj
 
                         self.planning_context.recheck_where = expression
 
                     else:
-                        if parent_tables == {select._table}:
-                            # for the left table, add "filter" to the payload for the databases.query
-                            payload['filter'] = expression._compiler_dispatch(self)
+                        if parent_tables == {select._table} and _is_pushable(expression):
+                            # the WHERE expression involves columns belonging to the SELECT's table
+                            # here the whole predicate is pushed or nothing is:
+                            # expression depth can break this exactness
+                            emitted_json = expression._compiler_dispatch(self)
+
+                            if select._is_aggregate:
+                                # Scope of this gate. Read it before you change the gate.
+                                #
+                                # The gate refuses one case only: the whole WHERE is pushable,
+                                # and its filter nests deeper than Notion allows. A plain
+                                # SELECT prunes such a filter to a legal superset, and the
+                                # recheck removes the extra rows. The planner's aggregate
+                                # branch builds no Filter and drops the recheck (#399). So
+                                # nothing narrows the rows after the push. A pruned push would
+                                # make the aggregate reduce rows that the WHERE excludes. The
+                                # gate raises.
+                                #
+                                # An unpushable WHERE never reaches this gate:
+                                # `_is_pushable(expression)` in the branch above is false, and
+                                # the compiler pushes no filter. The aggregate then reduces
+                                # every row. That is the same defect, #399, and the fix goes in
+                                # the planner. Do NOT hoist this raise above the `_is_pushable`
+                                # branch to catch that case. The refusal would block every
+                                # aggregate with an unpushable WHERE, which #399 makes correct.
+                                #
+                                # When #399 is fixed, this gate can prune in place of raising.
+                                _raise_if_filter_max_depth_exceeded(
+                                    stmt="An aggregate SELECT",
+                                    filter_obj=emitted_json,
+                                    remedy="Simplify the WHERE, or run a plain SELECT and reduce client-side",
+                                )
+                                payload["filter"] = emitted_json
+                            else:
+                                # for the left table, add "filter" to the payload 
+                                # only if the expression is pushable (see #383) 
+                                # prune the emitted_json to ensure max depth <= 2
+                                pruned = _prune(emitted_json)
+                                if pruned:
+                                    payload['filter'] = pruned
 
                         # Hold the whole expression as raw AST for client-side evaluation,
                         # UNCONDITIONALLY -- whichever table it reads, and whether or not it
@@ -827,10 +1288,23 @@ class NotionCompiler(SQLCompiler):
             path_params['data_source_id'] = f':{db_id_key}'
 
         if delete._whereclause.has_expression():
+            where_expression = delete._whereclause.expression
+            _raise_if_filter_term_unpushable(
+                stmt="DELETE",
+                where_expression=where_expression,
+                remedy="Express the condition without NOT, replace \"== None\" / \"!= None\" with is_empty() / is_not_empty() (they also match empty cells), or SELECT the rows first and delete them by object_id",
+            )
+
             with self._compiling(new_state=_CompileState.COMPILING_WHERE):
                 # emit the JSON code for the filter object of the query
-                # in the right context
-                filter_obj = delete._whereclause.expression._compiler_dispatch(self)
+                # in the COMPILING_WHERE context
+                filter_obj = where_expression._compiler_dispatch(self)
+                _raise_if_filter_max_depth_exceeded(
+                    stmt="DELETE",
+                    filter_obj=filter_obj,
+                    remedy="SELECT the rows first and delete them by object_id",
+                )
+
                 payload['filter'] = filter_obj
 
         compiled_dict = {
@@ -874,8 +1348,19 @@ class NotionCompiler(SQLCompiler):
             path_params['data_source_id'] = f':{db_id_key}'
 
         if update._whereclause.has_expression():
+            where_expression = update._whereclause.expression
+            _raise_if_filter_term_unpushable(
+                stmt="UPDATE",
+                where_expression=where_expression,
+                remedy="Express the condition without NOT, replace \"== None\" / \"!= None\" with is_empty() / is_not_empty() (they also match empty cells), or SELECT the rows first and update them by object_id",
+            )
             with self._compiling(new_state=_CompileState.COMPILING_WHERE):
-                filter_obj = update._whereclause.expression._compiler_dispatch(self)
+                filter_obj = where_expression._compiler_dispatch(self)
+                _raise_if_filter_max_depth_exceeded(
+                    stmt="UPDATE",
+                    filter_obj=filter_obj,
+                    remedy="SELECT the rows first and update them by object_id",
+                )
                 payload['filter'] = filter_obj
 
         with self._compiling(new_state=_CompileState.COMPILING_VALUES):
@@ -896,6 +1381,83 @@ class NotionCompiler(SQLCompiler):
         return properties
 
     def visit_binary_expression(self, expression: BinaryExpression) -> dict:
+        """Emit a Notion API conform JSON object for a binary expression.
+
+        Args:
+            expression (BinaryExpression): The AST node representing the binary expression.
+
+        Returns:
+            dict: The Notion API conform JSON object.
+
+        .. note::
+            A ``!=`` leaf is emitted as an ``{"and": [does_not_equal, is_not_empty]}``
+            compound, so that the pushed filter means exactly what the SQL means.
+
+            Notion's negative operators are the boolean complement over a domain that
+            INCLUDES the valueless cell: ``does_not_equal`` matches "not x OR valueless",
+            whereas SQL's ``<>`` against NULL is UNKNOWN and the WHERE policy drops it.
+            Conjoining ``is_not_empty`` removes the valueless cell from the match set,
+            which makes this push EXACT rather than merely a sound superset. That
+            matters most on the DML path, where nothing rechecks the pushed filter
+            (ADR-0022) and an over-matching filter is a destroyed row.
+
+            The guard is a **classification, not a capability check**: it reads
+            :attr:`~normlite.sql.type_api.TypeEngine.supports_valueless_cells`, which
+            each type declares from measurement. A type that cannot hold a valueless
+            cell needs no repair, because its ``does_not_equal`` is already exact, and
+            repairing it would NARROW a correct filter:
+
+            * ``String`` -- Notion stores every blank title or rich text as ``[]``, a
+              PRESENT value that decodes to ``""``. SQL evaluates ``'' <> 'x'`` to TRUE,
+              and Notion's bare ``does_not_equal`` matches ``[]``. A conjoined
+              ``is_not_empty`` would drop those rows, and on the SELECT path the
+              recheck cannot add back a row the push never returned (measured on the
+              live API, 2026-10-04).
+            * :class:`~normlite.sql.type_api.Boolean` -- a Notion checkbox is a total
+              two-valued domain, always concretely ``true``/``false`` and defaulting to
+              ``false`` (ADR-0005). Repairing it would emit ``checkbox.is_not_empty``,
+              an operator Notion does not define, turning a correct filter into the
+              very HTTP 400 this issue is about.
+
+            An EMPTY state is not a VALUELESS one: ``String`` declares ``is_not_empty``
+            and still needs no repair. An earlier guard keyed on
+            ``Operator.IS_NOT_EMPTY in supported_ops`` confused the two and repaired text.
+
+        .. versionchanged:: 0.13.0
+            Added SQL-92 3VL semantics preservation.
+
+        .. seealso::
+
+            Issue `normlite pushes filter constructs the Notion API rejects with HTTP 400 <https://github.com/giant0791/normlite/issues/383>`_.
+        """
+        supported_ops = expression.column.type_.supported_ops
+        if (
+            expression.operator is Operator.NE and
+            expression.column.type_.supports_valueless_cells
+        ):
+            # emit {"and": {"does_not_equal": ..., "is_not_empty": ...}} to preserve SQL-92 3VL semantics
+            # The repair removes valueless cells that does_not_equal would leak.
+            # That leak is possible only when the type can hold a valueless cell.
+            lhs = {
+                "property": expression.column.name,
+                **self._compile_type_filter(
+                    expression.column,
+                    expression.operator,
+                    expression.value
+                )
+            }
+
+            # right hand side is always fixed:
+            # {"property": ..., <notion_type>: {"is_not_empty": true}}
+            rhs = {
+                "property": expression.column.name,
+                expression.column.type_.get_col_spec(): {
+                    supported_ops[Operator.IS_NOT_EMPTY]: True
+                }
+            }
+
+            return {"and": [lhs, rhs]}
+
         return {
             "property": expression.column.name,
             **self._compile_type_filter(
@@ -905,26 +1467,66 @@ class NotionCompiler(SQLCompiler):
             )
         }
     
-    def visit_unary_expression(self, expression: UnaryExpression) -> dict:
-        if expression.operator != "not":
-            raise NotImplementedError(
-                f"Unsupported unary operator: {expression.operator}"
-            )
+    def visit_unary_expression(self, expression: UnaryExpression) -> NoReturn:
+        """Refuse to emit a NOT expression: Notion filters have no ``not``.
 
-        inner = expression.element._compiler_dispatch(self)
+        Every dispatch site gates on :func:`_is_pushable`, which rejects a NOT.
+        A call here is therefore a compiler defect, not a user error.
 
-        return {
-            "not": inner
-        }
+        Raises:
+            UnsupportedCompilationError: Always. No filter object can hold a
+                ``not``.
+
+        .. seealso::
+
+            Issue `normlite pushes filter constructs the Notion API rejects with HTTP 400 <https://github.com/giant0791/normlite/issues/383>`_.
+        
+        .. versionchanged:: 0.13.0
+            Raises instead of emitting a ``{"not": ...}`` object, which Notion rejects.
+        """
+        raise UnsupportedCompilationError(
+            f"Notion API does not support unary operators in filters: '{expression.operator}'"
+        )
     
     def visit_boolean_clause_list(self, expression: BooleanClauseList) -> dict:
-        clauses = [
+        """Emit the JSON filter object for a compound expression, dropping unpushable conjuncts.
+
+        Only reached for a node :func:`_is_pushable` has already admitted -- every
+        dispatch site gates on it -- so this method emits, it never decides.
+
+        The per-clause filter below is the **and** rule alone, and it is the second
+        half of a rule whose first half lives in :func:`_is_pushable`. The two
+        operators are asymmetric:
+
+        * **and** is ``any()``, which is NOT downward-closed: an admitted ``and``
+          needs only one pushable clause, so the others are still here and must be
+          dropped. Dropping a conjunct WEAKENS the filter, which returns a superset
+          of the answer -- sound, because the recheck decides (ADR-0022).
+        * **or** is ``all()``, which IS downward-closed: an admitted ``or`` has every
+          clause pushable, so the filter matches everything and drops nothing. It is
+          vacuous here BY CONSTRUCTION, not by accident -- and that is what makes it
+          safe to write one comprehension for both operators. Were it ever to drop a
+          disjunct, the filter would NARROW, losing rows no recheck can recover.
+
+        Because "pushable" means ``any()`` for **and** and ``all()`` for **or**, an
+        empty clause list cannot be emitted in either case: a node with no surviving
+        clause is never admitted in the first place.
+
+        .. seealso::
+
+            Issue `normlite pushes filter constructs the Notion API rejects with HTTP 400 <https://github.com/giant0791/normlite/issues/383>`_.
+
+        .. versionchanged:: 0.13.0
+            Unpushable clauses are pruned instead of being emitted.
+        """
+
+        emitted_clauses = [
             clause._compiler_dispatch(self)
             for clause in expression.clauses
+            if _is_pushable(clause)
         ]
-        return {
-            expression.operator: clauses
-        }
+
+        return _normalize_filter(expression.operator, emitted_clauses)
 
     def _next_bind_key(self) -> str:
         key = f"param_{self._bind_counter}"
