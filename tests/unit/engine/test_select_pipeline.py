@@ -587,3 +587,176 @@ def test_a_none_literal_under_equal_is_not_pushed(engine: Engine, monkeypatch):
         "a `null` literal under `equals` is an HTTP 400 against the live API; "
         f"no filter may reach the client -- got {payloads}"
     )
+
+
+def test_an_empty_string_literal_under_equal_is_not_pushed(engine: Engine, monkeypatch):
+    # RED 1 for #382: an empty-string literal under a text operator is unpushable.
+    #
+    # Measured against the live API (`Notion-Version: 2026-03-11`): Notion
+    # IGNORES a `rich_text` or `title` condition whose value is `""`. It
+    # returns the data source without that filter. On a property where every
+    # row holds a non-empty value, `rich_text.equals ""` returns 6 of 6 rows.
+    #
+    # The in-memory client evaluates `equals ""` correctly, so the rows cannot
+    # show the defect. Only the payload that reached the client shows it. This
+    # test pins the payload and NOT the rows: the recheck decides the rows
+    # (ADR-0022).
+    #
+    # A lone leaf that is unpushable leaves nothing to fold, so the expected
+    # payload has no "filter" key at all.
+    metadata = MetaData()
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("grade", String()),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        connection.execute(insert(students).values(name="Galileo Galilei", grade="A"))
+
+        payloads = []
+        query = engine._client.data_sources_query
+
+        def spy(path_params=None, query_params=None, payload=None):
+            payloads.append(payload)
+            return query(
+                path_params=path_params,
+                query_params=query_params,
+                payload=payload,
+            )
+
+        monkeypatch.setattr(engine._client, "data_sources_query", spy)
+
+        connection.execute(
+            select(students).where(students.c.grade == "")
+        ).fetchall()
+
+    assert [p.get("filter") for p in payloads] == [None], (
+        "Notion ignores an empty-string literal under `equals` and returns "
+        f"every row; no filter may reach the client -- got {payloads}"
+    )
+
+
+@pytest.mark.parametrize("column_name", ["name", "grade"], ids=["title", "rich_text"])
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda c: c == "",
+        lambda c: c != "",
+        lambda c: c.in_(""),
+        lambda c: c.not_in(""),
+        lambda c: c.startswith(""),
+        lambda c: c.endswith(""),
+    ],
+    ids=["equals", "does_not_equal", "contains", "does_not_contain", "starts_with", "ends_with"],
+)
+def test_an_empty_string_literal_under_any_text_operator_is_not_pushed(
+    engine: Engine, monkeypatch, column_name, build
+):
+    # RED for #382: Notion ignores ALL six binary text operators with `""`.
+    #
+    # Measured against the live API (`Notion-Version: 2026-03-11`): on a
+    # property where every cell is empty, each predicate AND its negation
+    # return every row. That is possible only if Notion evaluated neither. The
+    # hole is the same on `title` and on `rich_text`.
+    #
+    # #383 shipped a `None` rule that covered `!=` but not `==`. This test
+    # names all six operators on both property types, so a rule that covers
+    # only part of them fails here.
+    #
+    # Same spy and same expected payload as the `==` test: no "filter" key.
+    metadata = MetaData()
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("grade", String()),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        connection.execute(insert(students).values(name="Galileo Galilei", grade="A"))
+
+        payloads = []
+        query = engine._client.data_sources_query
+
+        def spy(path_params=None, query_params=None, payload=None):
+            payloads.append(payload)
+            return query(
+                path_params=path_params,
+                query_params=query_params,
+                payload=payload,
+            )
+
+        monkeypatch.setattr(engine._client, "data_sources_query", spy)
+
+        connection.execute(
+            select(students).where(build(students.c[column_name]))
+        ).fetchall()
+
+    assert [p.get("filter") for p in payloads] == [None], (
+        f"Notion ignores `{column_name}` text operators with an empty-string "
+        f"literal; no filter may reach the client -- got {payloads}"
+    )
+
+
+@pytest.mark.parametrize(
+    "column_name, notion_type",
+    [("name", "title"), ("grade", "rich_text")],
+    ids=["title", "rich_text"],
+)
+@pytest.mark.parametrize(
+    "build, operator",
+    [
+        (lambda c: c.is_empty(), "is_empty"),
+        (lambda c: c.is_not_empty(), "is_not_empty"),
+    ],
+    ids=["is_empty", "is_not_empty"],
+)
+def test_is_empty_and_is_not_empty_on_text_are_still_pushed(
+    engine: Engine, monkeypatch, column_name, notion_type, build, operator
+):
+    # GUARD for #382 (criterion 4): this test passes BEFORE and AFTER the fix.
+    #
+    # `is_empty()` and `is_not_empty()` carry a placeholder operand, not the
+    # empty-string literal `""`. Notion evaluates them exactly on text. The
+    # empty-string rule must not catch them, so their filter still reaches
+    # the client.
+    metadata = MetaData()
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("grade", String()),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        connection.execute(insert(students).values(name="Galileo Galilei", grade="A"))
+
+        payloads = []
+        query = engine._client.data_sources_query
+
+        def spy(path_params=None, query_params=None, payload=None):
+            payloads.append(payload)
+            return query(
+                path_params=path_params,
+                query_params=query_params,
+                payload=payload,
+            )
+
+        monkeypatch.setattr(engine._client, "data_sources_query", spy)
+
+        connection.execute(
+            select(students).where(build(students.c[column_name]))
+        ).fetchall()
+
+    filters = [p.get("filter") for p in payloads]
+    assert len(filters) == 1 and filters[0] is not None, (
+        f"`{operator}` on `{notion_type}` is exact in Notion and must stay "
+        f"pushed -- got {payloads}"
+    )
+    assert filters[0]["property"] == column_name
+    assert operator in filters[0][notion_type]

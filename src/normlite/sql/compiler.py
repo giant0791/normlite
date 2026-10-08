@@ -30,6 +30,7 @@ from normlite.sql.elements import _NoArg
 from normlite.sql.elements import BooleanClauseList, UnaryExpression   
 from normlite.sql.elements import BindParameter
 from normlite.sql.schema import ReadOnlyColumnCollection, Column
+from normlite.sql.type_api import String
 
 if TYPE_CHECKING:
     from normlite.sql.ddl import CreateTable, DropTable, ReflectTable
@@ -43,7 +44,7 @@ _NOTION_MAX_FILTER_DEPTH = 2
 # The two refusal helpers below use these strings, and the tests match on them.
 # They are REMOVED, not relaxed: DELETE and UPDATE with #397, the aggregate with #399.
 _FILTER_MAX_DEPTH_EXCEEDED = "It exceeds Notion filter max depth"
-_UNPUSHABLE_FILTER_TERM = "Notion filter syntax does not support negated terms or null comparison values"
+_UNPUSHABLE_FILTER_TERM = "Notion filter syntax cannot express negated terms, null comparison values or empty-string text values"
 
 # Refusal helpers.
 # The compiler calls them to refuse a WHERE clause that Notion cannot evaluate exactly
@@ -170,7 +171,8 @@ def _is_pushable(node: ColumnElement, strict: bool = False) -> bool:
     """``True`` if the node is pushable into the Notion API filter.
 
     Helper that implements the following rule:
-        - **leaf** - pushable, unless it compares a ``None`` literal under ``==`` or ``!=``.
+        - **leaf** - pushable, unless it compares a ``None`` literal under ``==`` or ``!=``,
+          or a text (``title`` / ``rich_text``) column with the empty-string literal ``""``.
         - **not** - never pushable.
         - **and** - lax: drop unpushable children, push the survivors.
           strict: any unpushable child makes the whole **and** unpushable.
@@ -209,11 +211,18 @@ def _is_pushable(node: ColumnElement, strict: bool = False) -> bool:
 
         Issue `normlite pushes filter constructs the Notion API rejects with HTTP 400 <https://github.com/giant0791/normlite/issues/383>`_.
 
+    .. versionchanged:: 0.14.0
+        A leaf with a comparison against the empty-string text literal ``""`` is unpushable (#382).
+
     .. versionchanged:: 0.13.0
         Added ``strict`` for the DML gate.
     """
 
     if isinstance(node, BinaryExpression):
+        if isinstance(node.column.type_, String) and node.value.effective_value == "":
+            # a comparison against empty-string text literal is unpushable
+            return False
+
         if node.operator in (Operator.EQ, Operator.NE):
             # a None literal under == or != is unpushable because Notion rejects it with HTTP 400
             return node.value.effective_value is not None

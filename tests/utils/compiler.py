@@ -9,6 +9,7 @@ from normlite.exceptions import UnsupportedCompilationError
 from normlite.sql.compiler import _is_pushable
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, ColumnElement, Operator, UnaryExpression
 from normlite.sql.schema import Column
+from normlite.sql.type_api import String
 
 def normalize_json(obj: dict) -> str:
     """
@@ -99,16 +100,25 @@ class ReferenceCompiler:
         """The SELECT (lax) pushability rule.
 
         * leaf: pushable, unless it compares a ``None`` literal under ``==`` or ``!=``
-          (Notion answers HTTP 400). ``is_empty()``/``is_not_empty()`` also carry a
-          ``None`` operand, but it is a placeholder, so they stay pushable.
+          (Notion answers HTTP 400). A text (``title`` / ``rich_text``) comparison
+          with the empty-string literal ``""`` is not pushable either, under any
+          operator. Both rules judge the operand that Notion receives: if the bind
+          parameter has a ``callable_``, they judge the value that it returns.
+          ``is_empty()``/``is_not_empty()`` also carry a ``None`` operand, but it is
+          a placeholder, so they stay pushable.
         * not: never pushable.
         * and: pushable if at least one child is.
         * or: pushable only if every child is.
         """
         if isinstance(expr, BinaryExpression):
-            if expr.operator in (Operator.EQ, Operator.NE):
-                bindparam = expr.value
-                return not (bindparam.callable_ is None and bindparam.value is None)
+            bindparam = expr.value
+            operand = bindparam.callable_() if bindparam.callable_ else bindparam.value
+
+            if isinstance(expr.column.type_, String) and operand == "":
+                return False
+
+            if expr.operator in (Operator.EQ, Operator.NE) and operand is None:
+                return False
             return True
 
         if isinstance(expr, UnaryExpression):
