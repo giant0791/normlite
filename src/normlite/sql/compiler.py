@@ -24,7 +24,7 @@ from normlite.exceptions import CompileError, StatementError, UnsupportedCompila
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 from normlite.sql._sentinels import VALUE_PLACEHOLDER
 from normlite.sql.base import _CompileState, ClauseElement, SQLCompiler
-from normlite.sql.dml import Delete, Update, OrderByClause
+from normlite.sql.dml import Delete, Update, OrderByClause, WhereClause
 from normlite.sql.elements import _BindRole, Operator, OrderByExpression, ColumnElement, BinaryExpression
 from normlite.sql.elements import _NoArg
 from normlite.sql.elements import BooleanClauseList, UnaryExpression   
@@ -1265,6 +1265,65 @@ class NotionCompiler(SQLCompiler):
             compiled_dict['query_params'] = query_params
 
         return compiled_dict
+
+    def visit_where_clause(
+        self,
+        where_clause: WhereClause,
+        *,
+        stmt: str,
+        remedy: str
+    ) -> dict:
+        """Compile the WHERE clause of a DELETE/UPDATE statement.
+
+        This method returns the compiled where clause as filter object.
+
+        The caller must ensure the DML statement has a WHERE clause before calling
+        this method via :meth:`normlite.sql.dml.WhereClause.has_expression`.
+
+        .. attention::
+            Excess depth raises. This is DML policy. SELECT prunes instead and
+            must not dispatch through this method (#416).
+
+        .. attention::
+            This method sets the planning context's ``.recheck_where`` with the WHERE clause.
+            The pushed filter can be lossy, so the planner keeps the full predicate for the recheck (ADR-0022).
+            Only ``_prune`` creates orphan binds. An unpushable leaf is never dispatched, so it registers no bind.
+            Do **not** let DML prune before a recheck consumes ``recheck_where``: the early return
+            in ``_assert_all_params_consumed`` would then hide the orphans.
+
+        .. seealso::
+            :meth:`normlite.engine.context.ExecutionContext._assert_all_params_consumed`
+
+        Args:
+            where_clause (WhereClause): The object containing the DML's WHERE clause.
+            stmt (str): The DML statement the WHERE clause belongs to.
+                Either ``"DELETE"`` or ``"UPDATE"``.
+            remedy (str): A string explaining what to do if the expression depth is exceeded.
+
+        Raises:
+            CompileError: If ``_depth(filter_obj)`` exceeds
+                ``_NOTION_MAX_FILTER_DEPTH``. The message holds
+                ``_FILTER_MAX_DEPTH_EXCEEDED``.
+
+        Returns:
+            dict: The WHERE clause as Notion filter object.
+
+        .. versionadded:: 0.14.0
+        """
+        expression = where_clause.expression
+
+        with self._compiling(new_state=_CompileState.COMPILING_WHERE):
+            # emit the JSON code for the filter object of the query
+            # in the COMPILING_WHERE context
+            filter_obj = expression._compiler_dispatch(self)
+            _raise_if_filter_max_depth_exceeded(
+                stmt=stmt,
+                filter_obj=filter_obj,
+                remedy=remedy,
+            )
+            self.planning_context.recheck_where = expression
+
+        return filter_obj
     
     def visit_delete(self, delete: Delete):
         self._compiler_state.is_delete = delete.is_delete
@@ -1304,17 +1363,11 @@ class NotionCompiler(SQLCompiler):
                 remedy="Express the condition without NOT, replace \"== None\" / \"!= None\" with is_empty() / is_not_empty() (they also match empty cells), or SELECT the rows first and delete them by object_id",
             )
 
-            with self._compiling(new_state=_CompileState.COMPILING_WHERE):
-                # emit the JSON code for the filter object of the query
-                # in the COMPILING_WHERE context
-                filter_obj = where_expression._compiler_dispatch(self)
-                _raise_if_filter_max_depth_exceeded(
-                    stmt="DELETE",
-                    filter_obj=filter_obj,
-                    remedy="SELECT the rows first and delete them by object_id",
-                )
-
-                payload['filter'] = filter_obj
+            payload['filter'] = delete._whereclause._compiler_dispatch(
+                self,
+                stmt="DELETE",
+                remedy="SELECT the rows first and delete them by object_id"
+            )
 
         compiled_dict = {
             'operation': operation, 
@@ -1363,14 +1416,12 @@ class NotionCompiler(SQLCompiler):
                 where_expression=where_expression,
                 remedy="Express the condition without NOT, replace \"== None\" / \"!= None\" with is_empty() / is_not_empty() (they also match empty cells), or SELECT the rows first and update them by object_id",
             )
-            with self._compiling(new_state=_CompileState.COMPILING_WHERE):
-                filter_obj = where_expression._compiler_dispatch(self)
-                _raise_if_filter_max_depth_exceeded(
-                    stmt="UPDATE",
-                    filter_obj=filter_obj,
-                    remedy="SELECT the rows first and update them by object_id",
-                )
-                payload['filter'] = filter_obj
+
+            payload['filter'] = update._whereclause._compiler_dispatch(
+                self,
+                stmt="UPDATE",
+                remedy="SELECT the rows first and update them by object_id"
+            )
 
         with self._compiling(new_state=_CompileState.COMPILING_VALUES):
             update_payload = self._compile_update_values(update._values)

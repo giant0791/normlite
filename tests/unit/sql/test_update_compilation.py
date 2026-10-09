@@ -3,7 +3,7 @@ import pytest
 
 from normlite.exceptions import CompileError
 from normlite.sql.compiler import NotionCompiler
-from normlite.sql.dml import Update, update
+from normlite.sql.dml import Update, delete, select, update
 from normlite.sql.elements import BooleanClauseList
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, String
@@ -214,3 +214,62 @@ def test_update_public_exports():
     assert hasattr(normlite, 'Update')
     assert hasattr(normlite.sql, 'update')
     assert hasattr(normlite.sql, 'Update')
+
+
+# ── 13. where clause compilation refactor ────────────────────────────────────────────────────────
+
+def test_update_holds_its_where_for_recheck_as_select_does(students, db_id):
+    # Arrange
+    # Compiling a predicate assigns a role to its binds, so a predicate
+    # object belongs to one statement. Build one predicate per statement.
+    select_predicate = students.c.id != 1
+    update_predicate = students.c.id != 1
+
+    # Act
+    compiled_select = select(students).where(select_predicate).compile(NotionCompiler())
+    compiled_update = (
+        update(students)
+        .values(name='Newton')
+        .where(update_predicate)
+        .compile(NotionCompiler())
+    )
+
+    # Assert
+    assert compiled_select.planning_context.recheck_where is select_predicate
+    assert compiled_update.planning_context.recheck_where is update_predicate
+
+
+@pytest.mark.parametrize(
+    "build, stmt, remedy",
+    [
+        (
+            lambda t, w: delete(t).where(w),
+            "DELETE",
+            "SELECT the rows first and delete them by object_id.",
+        ),
+        (
+            lambda t, w: update(t).values(grade="Z").where(w),
+            "UPDATE",
+            "SELECT the rows first and update them by object_id.",
+        ),
+    ],
+    ids=["delete", "update"],
+)
+def test_a_too_deep_dml_where_names_its_own_statement_and_remedy(
+    students, db_id, build, stmt, remedy
+):
+    # Arrange
+    # and -> or -> and: depth 3, over the Notion cap of 2. DML raises, never prunes.
+    too_deep = (students.c.name == "name_0") & (
+        (students.c.id == 1)
+        | ((students.c.grade == "A") & students.c.is_active.is_(True))
+    )
+
+    # Act
+    with pytest.raises(CompileError) as exc_info:
+        build(students, too_deep).compile(NotionCompiler())
+
+    # Assert
+    message = str(exc_info.value)
+    assert message.startswith(f"{stmt} cannot compile this WHERE clause")
+    assert message.endswith(remedy)
