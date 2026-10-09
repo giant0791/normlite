@@ -522,3 +522,32 @@ def test_delete_by_a_none_comparison_is_refused_and_deletes_nothing(
         survivors = conn.execute(select(prepared_students.c.id)).all()
 
     assert sorted(row.id for row in survivors) == list(range(10))
+
+
+def test_delete_with_an_empty_string_under_not_equal_is_refused_and_deletes_nothing(
+    engine, prepared_students
+):
+    """A DELETE must refuse an empty-string literal under ``!=`` (#382).
+
+    Measured against the live API (``Notion-Version: 2026-03-11``): Notion
+    IGNORES ``rich_text.does_not_equal ""`` and returns every row of the data
+    source. DELETE has no recheck (#397), so the pushed filter IS the decision.
+    Against real Notion this WHERE deletes every row, blank cells included.
+
+    The in-memory client evaluates ``does_not_equal ""`` correctly. Today this
+    statement deletes all ten rows here, and that looks correct. The defect is
+    visible only against real Notion, so the test pins the refusal.
+
+    The survivor assertion fails a gate that fires *after*
+    :meth:`Delete._setup_execution` has already staged the ``pages.update``
+    archives.
+    """
+    stmt = delete(prepared_students).where(prepared_students.c.grade != "")
+
+    with pytest.raises(CompileError, match=re.escape(_UNPUSHABLE_FILTER_TERM)):
+        run_execute(engine, stmt)
+
+    with engine.connect() as conn:
+        survivors = conn.execute(select(prepared_students.c.id)).all()
+
+    assert sorted(row.id for row in survivors) == list(range(10))

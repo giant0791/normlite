@@ -406,12 +406,23 @@ def text_filters(literal: str) -> list:
     so ``equals`` is guaranteed a row to match and the ``equals`` /
     ``does_not_equal`` partition is observable, the way literal ``0`` made it
     observable for number.
+
+    The ``""`` half covers all six operators normlite can emit with a text
+    literal (#382 criterion 7), so the measurement behind the empty-string
+    pushability rule can be repeated. ``contains`` / ``does_not_contain`` are a
+    complement pair, so the CONDITION IGNORED guard decides them. ``starts_with``
+    and ``ends_with`` have no complement: ``""`` is a prefix and a suffix of every
+    string, so an all-rows answer is reported as ambiguous, not as evidence.
     """
     return [
         ("is_empty", True),
         ("is_not_empty", True),
         ("equals", ""),
         ("does_not_equal", ""),
+        ("contains", ""),
+        ("does_not_contain", ""),
+        ("starts_with", ""),
+        ("ends_with", ""),
         ("equals", literal),
         ("does_not_equal", literal),
         ("contains", literal),
