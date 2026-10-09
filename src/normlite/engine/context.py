@@ -540,6 +540,13 @@ class ExecutionContext:
         # They are not unused: `recheck_where` holds the whole predicate and `eval3`
         # reads each value off the AST's own BindParameter, so the RECHECK consumes
         # them -- a second consumer, exactly as UPDATE's SET clause is.
+        #
+        # This holds for SELECT only. A DELETE holds its WHERE too (#409), but
+        # nothing consumes it until DML executes through the plan (#412). The skip
+        # is still safe: DML never prunes (its depth gate raises), and an
+        # unpushable leaf is never dispatched, so it registers no bind. A DML
+        # filter therefore leaves no orphan. Do NOT let DML prune before a recheck
+        # consumes `recheck_where`: this skip would then hide the orphans.
         rechecked = self.compiled.planning_context.recheck_where is not None
 
         for i, param_set in enumerate(resolved_params):

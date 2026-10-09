@@ -6,7 +6,7 @@ import pytest
 from normlite.exceptions import ArgumentError
 from normlite.sql.base import _CompileState, CompilerState
 from normlite.sql.compiler import NotionCompiler
-from normlite.sql.dml import Delete, delete 
+from normlite.sql.dml import Delete, delete, select
 from normlite.sql.elements import BooleanClauseList
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, String
@@ -204,3 +204,21 @@ def test_accumulation_has_deduplication_and_warns(students: Table, delete_stmt: 
 
     assert len(stmt._returning) == 1
     assert stmt._returning == (students.c.name,)
+
+
+def test_delete_holds_the_same_where_for_recheck_as_select(students: Table):
+    # Arrange
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    students._sys_columns["data_source_id"]._value = str(uuid.uuid4())
+    # Compiling a predicate assigns a role to its binds, so a predicate
+    # object belongs to one statement. Build one predicate per statement.
+    select_predicate = students.c.id != 1
+    delete_predicate = students.c.id != 1
+
+    # Act
+    compiled_select = select(students).where(select_predicate).compile(NotionCompiler())
+    compiled_delete = delete(students).where(delete_predicate).compile(NotionCompiler())
+
+    # Assert
+    assert compiled_select.planning_context.recheck_where is select_predicate
+    assert compiled_delete.planning_context.recheck_where is delete_predicate
