@@ -117,11 +117,19 @@ class SchemaInfo:
 
         Args:
             table (Table): The table representive the authoritative source of the schema.
-            execution_names (Optional[Sequence[str]]): The ordered projection list of system columns (Notion key values) required for statement execution.
-            projected_names (Optional[Sequence[str]]): The ordered projection list of columns (Notion key values **and** properties) the user wants to have in the returned rows.
+            execution_names (Optional[Sequence[str]]): The ordered list of columns the statement must fetch
+                to execute: special columns (Notion key values) **and** properties. It is usually
+                ``compiled.fetch_columns()``, plus any column that the Planner adds when it widens the fetch.
+                It is not limited to special columns: ``select(students.c.name)`` fetches
+                ``['object_id', 'name']``.
+            projected_names (Optional[Sequence[str]]): The ordered list of columns the user gets back in the
+                returned rows. It is usually ``compiled.result_columns()``. For a SELECT, it holds properties
+                only. For an INSERT, UPDATE, or DELETE with RETURNING, it can also hold special columns,
+                for example ``returning(students.c.object_id)``.
 
         Raises:
-            NoSuchColumnError: If any of the column names in ``projection_names`` could not be found in the table.
+            NoSuchColumnError: If any of the column names in ``execution_names`` or ``projected_names``
+                could not be found in the table.
 
         Returns:
             SchemaInfo: A new schema information instance.
