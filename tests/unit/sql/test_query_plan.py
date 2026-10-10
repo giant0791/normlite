@@ -1,4 +1,5 @@
 from datetime import date
+import copy
 
 import pytest
 
@@ -7,7 +8,7 @@ from normlite.engine.base import _distill_params
 from normlite.exceptions import InvalidRequestError
 from normlite.engine.context import ExecutionContext
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
-from normlite.sql.dml import select
+from normlite.sql.dml import delete, select
 from normlite.sql.elements import or_
 from normlite.sql.functions import func
 from normlite.sql.queryplan import (
@@ -44,6 +45,27 @@ class _PageCountingClient:
     def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
         if endpoint == "data_sources" and request == "query":
             self.query_calls += 1
+        return self._wrapped(endpoint, request, path_params, query_params, payload)
+
+    def __getattr__(self, name):
+        return getattr(self._wrapped, name)
+
+
+class _QueryParamsRecordingClient:
+    """Transparent proxy that records the ``query_params`` of every
+    ``data_sources.query`` request.
+
+    The request that reaches Notion is the observable: the Planner copies
+    ``ctx.parameters`` and never changes them in place.
+    """
+
+    def __init__(self, wrapped):
+        self._wrapped = wrapped
+        self.query_params_seen = []
+
+    def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
+        if endpoint == "data_sources" and request == "query":
+            self.query_params_seen.append(query_params)
         return self._wrapped(endpoint, request, path_params, query_params, payload)
 
     def __getattr__(self, name):
@@ -989,3 +1011,301 @@ def test_project_maps_one_source_batch_to_one_batch_and_forwards_exhaustion(stud
     # drain loop. `[]` here is the non-terminating answer, so `is None` is the
     # assertion and `not third` would NOT do.
     assert third is None
+
+
+def test_planner_builds_a_plan_for_a_delete_that_yields_every_targeted_row(engine, students):
+    # Arrange: a store with three rows, and a DELETE with no WHERE. The
+    # statement targets every row. We do NOT call `_setup_execution`: for a
+    # DELETE it runs the query and stages the mutation. Planning must not
+    # depend on that.
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    compiled = delete(students).compile(engine._sql_compiler)
+    connection = engine.raw_connection()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=connection.cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    # Act: the Planner builds a plan for the DELETE, and we run it.
+    plan = Planner(ctx).plan()
+    plan.open(connection)
+    first = plan.next()
+    second = plan.next()
+    plan.close()
+
+    # Assert: the plan yields the whole store in one batch, then exhaustion.
+    assert first is not None
+    assert len(first) == 3
+    assert second is None
+
+
+def test_planner_fetches_the_column_a_delete_where_reads(engine, students):
+    # Arrange: three rows with ids 0, 1, 2. The DELETE names no column, but
+    # its WHERE reads `id`. A recheck can only decide a row if the row
+    # carries the `id` cell, so the plan must fetch it from Notion.
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    compiled = (
+        delete(students)
+        .where(students.c.id != 1)
+        .compile(engine._sql_compiler)
+    )
+    connection = engine.raw_connection()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=connection.cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    # Act: plan the DELETE, run it, and read the `id` cell of every row
+    # through the schema that the plan advertises.
+    plan = Planner(ctx).plan()
+    plan.open(connection)
+    rows = plan.next()
+    plan.close()
+
+    get_id = plan.result_schema.column_getter("id")
+    id_cells = [get_id(row) for row in rows]
+
+    # Assert: Notion's pushed filter keeps ids 0 and 2, and both rows carry
+    # an `id` cell. This test does not check the cell's form.
+    assert len(id_cells) == 2
+    assert all(cell is not None for cell in id_cells)
+
+
+def test_planner_asks_notion_only_for_the_properties_a_delete_where_reads(engine, students):
+    # Arrange: three rows, and a DELETE whose WHERE reads only `id`. A spy on
+    # the client records the query params of every request to Notion.
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    compiled = (
+        delete(students)
+        .where(students.c.id != 1)
+        .compile(engine._sql_compiler)
+    )
+    spy = _QueryParamsRecordingClient(engine._client)
+    connection = DBAPIConnection(spy)
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=connection.cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    # Act: plan the DELETE and run it to exhaustion.
+    plan = Planner(ctx).plan()
+    plan.open(connection)
+    while plan.next() is not None:
+        pass
+    plan.close()
+
+    # Assert: every request asks Notion for the `id` property only. The other
+    # columns of the table do not travel, and `object_id` never goes into
+    # filter_properties (ADR-0006).
+    assert spy.query_params_seen
+    for query_params in spy.query_params_seen:
+        assert query_params is not None
+        assert query_params.get("filter_properties") == ["id"]
+
+
+def test_planner_asks_notion_only_for_the_title_when_a_delete_has_no_where(engine, students):
+    # Arrange: three rows, and a DELETE with no WHERE. The DELETE reads no
+    # property, but Notion cannot return zero properties: an empty
+    # filter_properties means "all properties". The title is the one property
+    # that every Notion data source has. In `students`, the title column is
+    # `name`. A spy on the client records the query params of every request.
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    compiled = delete(students).compile(engine._sql_compiler)
+    spy = _QueryParamsRecordingClient(engine._client)
+    connection = DBAPIConnection(spy)
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=connection.cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    # Act: plan the DELETE and run it to exhaustion.
+    plan = Planner(ctx).plan()
+    plan.open(connection)
+    while plan.next() is not None:
+        pass
+    plan.close()
+
+    # Assert: every request asks Notion for the title property only, by its
+    # column name. `object_id` never goes into filter_properties (ADR-0006).
+    assert spy.query_params_seen
+    for query_params in spy.query_params_seen:
+        assert query_params is not None
+        assert query_params.get("filter_properties") == ["name"]
+
+
+@pytest.mark.parametrize(
+    "make_stmt",
+    [
+        # SELECT that the compiler narrows and the plan does not widen
+        lambda t: select(t.c.name, t.c.id).where(t.c.id != 1),
+        # SELECT that the plan widens: the WHERE reads `id`, the SELECT list does not
+        lambda t: select(t.c.name).where(t.c.id != 1),
+        # SELECT of all columns, no WHERE
+        lambda t: select(t),
+        # DELETE with a WHERE
+        lambda t: delete(t).where(t.c.id != 1),
+        # DELETE with no WHERE: the plan asks for the title only
+        lambda t: delete(t),
+    ],
+    ids=[
+        "select-narrowed-not-widened",
+        "select-widened",
+        "select-all",
+        "delete-where",
+        "delete-no-where",
+    ],
+)
+def test_planning_a_statement_does_not_change_the_execution_parameters(
+    engine, students, make_stmt
+):
+    # Arrange: a compiled statement and its execution context. We keep a deep
+    # copy of the parameters that `pre_exec()` prepared for Notion. The same
+    # compiled statement can execute many times, so its parameters must stay
+    # as the compiler made them.
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+
+    compiled = make_stmt(students).compile(engine._sql_compiler)
+    connection = engine.raw_connection()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=connection.cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+    parameters_before = copy.deepcopy(ctx.parameters)
+
+    # Act: the Planner builds a plan for the statement.
+    Planner(ctx).plan()
+
+    # Assert: the execution parameters are the same as before planning.
+    assert ctx.parameters == parameters_before
+
+
+@pytest.mark.parametrize(
+    "make_stmt, expected_ids",
+    [
+        # DELETE with a WHERE: the plan widens the fetch to `id`
+        (lambda t: delete(t).where(t.c.id != 1), {0, 2}),
+        # DELETE with no WHERE: the plan fetches the title only
+        (lambda t: delete(t), {0, 1, 2}),
+    ],
+    ids=["delete-where", "delete-no-where"],
+)
+def test_planner_keeps_the_object_id_of_every_row_a_delete_targets(
+    engine, students, make_stmt, expected_ids
+):
+    # Arrange: three rows with ids 0, 1, 2. A SELECT through the public API
+    # tells us the object_id of each row. The DELETE must remove exactly
+    # these pages, so the plan must yield the object_id of every row it keeps.
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    with engine.connect() as conn:
+        result = conn.execute(select(students.c.object_id, students.c.id))
+        object_id_by_id = {row.id: row.object_id for row in result}
+
+    compiled = make_stmt(students).compile(engine._sql_compiler)
+    connection = engine.raw_connection()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=connection.cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    # Act: plan the DELETE, run it to exhaustion, and read the object_id of
+    # every row through the schema that the plan advertises.
+    plan = Planner(ctx).plan()
+    plan.open(connection)
+    rows = []
+    while (batch := plan.next()) is not None:
+        rows.extend(batch)
+    plan.close()
+
+    get_object_id = plan.result_schema.column_getter("object_id")
+    yielded = sorted(get_object_id(row) for row in rows)
+
+    # Assert: the plan yields the object_id of every targeted row, and of
+    # no other row.
+    assert yielded == sorted(object_id_by_id[i] for i in expected_ids)
+
+
+def test_planner_yields_raw_cells_for_a_delete(engine, students):
+    # Arrange: three rows with ids 0, 1, 2, and a DELETE whose WHERE reads
+    # `id`. A raw cell keeps Notion's wire form, `{"number": 0}`. A projected
+    # value is the decoded Python value, `0`. The recheck evaluates raw cells
+    # (ADR-0019), so the DELETE plan must not decode them.
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    compiled = (
+        delete(students)
+        .where(students.c.id != 1)
+        .compile(engine._sql_compiler)
+    )
+    connection = engine.raw_connection()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=connection.cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    # Act: plan the DELETE, run it to exhaustion, and read the `id` cell of
+    # every row through the schema that the plan advertises.
+    plan = Planner(ctx).plan()
+    plan.open(connection)
+    rows = []
+    while (batch := plan.next()) is not None:
+        rows.extend(batch)
+    plan.close()
+
+    get_id = plan.result_schema.column_getter("id")
+    id_cells = sorted((get_id(row) for row in rows), key=lambda cell: cell["number"])
+
+    # Assert: every `id` cell is in Notion's raw form, not a decoded number.
+    assert id_cells == [{"number": 0}, {"number": 2}]

@@ -40,6 +40,7 @@ from normlite.sql.elements import ColumnElement
 from normlite.sql.functions import FunctionElement
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
 from normlite.sql.schema import Column, Table
+from normlite.sql.type_api import String
 
 #: Notion's maximum (and default) result page size. A ``Scan`` pulls the store
 #: one Notion page at a time, so this is the operator's batch granularity.
@@ -752,14 +753,17 @@ class Planner:
         self._exec_ctx = ctx
 
     def plan(self) -> VolcanoOperator:
-        """Build the operator tree for the invoked SELECT statement.
+        """Build the operator tree for the invoked SELECT/DELETE statement.
 
-        Three shapes are produced, and every SELECT takes one of them:
+        The following shapes are produced, and every SELECT/DELETE takes one of them:
 
         * aggregate -- ``Scan -> Aggregate``
-        * plain -- ``Scan -> [Filter] -> Project``, the ``Scan`` widened to fetch
+        * plain select -- ``Scan -> [Filter] -> Project``, the ``Scan`` widened to fetch
           whatever the recheck reads and ``Project`` trimming it back off
         * join -- ``(Scan, Scan) -> HashJoin -> [Filter] -> [Sort]``
+        * delete -- ``Scan -> [Filter]``, the ``Scan`` widened to fetch
+          whatever the recheck reads. A DELETE with no WHERE clause lowers the retrieval cost
+          by fetching the title column only.
 
         Only the first join of the statement is planned; chaining ``.join()``
         silently drops the rest.
@@ -768,34 +772,43 @@ class Planner:
             VolcanoOperator: The root of the plan, ready to be opened.
 
         Raises:
-            InvalidRequestError: If the invoked statement is not a SELECT.
+            InvalidRequestError: If the invoked statement is not a SELECT or a DELETE.
+
+        .. versionchanged:: 0.14.0
+            Plan DELETE statements.
 
         .. versionadded:: 0.13.0
         """
         invoked_stmt = self._exec_ctx.invoked_stmt
         ctx: ExecutionContext = self._exec_ctx
+        stmt_table = invoked_stmt.get_table()
 
-        if not invoked_stmt.is_select:
+        if not invoked_stmt.is_select and not invoked_stmt.is_delete:
             raise InvalidRequestError(
-                f"Query planner build plans for SELECT statements only. "
-                f"The invoked statement is not a SELECT ({type(invoked_stmt).__name__})"
+                f"Query planner builds plans for SELECT/DELETE statements only. "
+                f"The invoked statement is not a SELECT or DELETE ({type(invoked_stmt).__name__})"
             )
 
         recheck_where = ctx.compiled.planning_context.recheck_where
 
-        if invoked_stmt._is_aggregate:
+        if invoked_stmt.is_select and invoked_stmt._is_aggregate:
+            # SELECT aggregate: create a simple scan operator
             schema = SchemaInfo.from_table(
-                invoked_stmt.get_table(),
+                stmt_table,
                 execution_names=ctx.compiled.fetch_columns(),
                 projected_names=ctx.compiled.result_columns(),
             )
             scan = Scan(ctx.operation, ctx.parameters, schema=schema)
             return Aggregate(scan, invoked_stmt._raw_columns)
 
-        if not invoked_stmt._joins:
-            # SELECT statement without JOIN
+        if invoked_stmt.is_delete or (invoked_stmt.is_select and not invoked_stmt._joins):
+            # DELETE or plain SELECT statement (without JOIN)
             execution_names: list[str] = list(ctx.compiled.fetch_columns())
             scan_params = dict(ctx.parameters)
+
+            # True when the plan fetches a different set of properties than the
+            # compiler asked for, and so must send its own filter_properties.
+            narrows = False
 
             if recheck_where is not None:
                 # A predicate reads a SET of columns, not one: a compound WHERE
@@ -821,24 +834,41 @@ class Planner:
 
                     # widen filter_properties to match, or Notion never returns
                     # the cells the recheck has to read.
-                    #
-                    # Gated on `missing`, and that gate is load-bearing: the
-                    # compiler emits query_params only `if query_params`, so a
-                    # statement needing no widening may carry no key at all.
-                    # Writing one regardless would send filter_properties for
-                    # shapes the compiler deliberately left unnarrowed.
-                    # remember: the key may not exist (delete case)
-                    scan_params["query_params"] = dict(scan_params.get("query_params") or {})
+                    narrows = True
 
-                    # specials must never ride into filter_properties (ADR-0006)
-                    scan_params["query_params"]["filter_properties"] = [
-                        name
-                        for name in execution_names
-                        if name not in SpecialColumns
-                    ]
+            elif invoked_stmt.is_delete:
+                # DELETE with no WHERE clause reads no property, but an empty
+                # filter_properties means "all properties" to Notion. Fetch the
+                # title only: every Notion data source has one. A list, because
+                # a Table declared without a title gives [] (no narrowing).
+                title_cols = [
+                    c.name
+                    for c in stmt_table.uc
+                    if isinstance(c.type_, String) and c.type_.is_title
+                ]
+                execution_names.extend(title_cols)
+                narrows = True
+
+            if narrows:
+                # Gated on `narrows`, and that gate is load-bearing: the
+                # compiler emits query_params only `if query_params`, so a
+                # statement the plan does not narrow may carry no key at all.
+                # Writing one regardless would send filter_properties for
+                # shapes the compiler deliberately left unnarrowed.
+                #
+                # Copy before writing: scan_params is a shallow copy, so its
+                # query_params is still the compiled statement's dict.
+                scan_params["query_params"] = dict(scan_params.get("query_params") or {})
+
+                # specials must never ride into filter_properties (ADR-0006)
+                scan_params["query_params"]["filter_properties"] = [
+                    name
+                    for name in execution_names
+                    if name not in SpecialColumns
+                ]
 
             schema = SchemaInfo.from_table(
-                invoked_stmt.get_table(),
+                stmt_table,
                 execution_names=execution_names,
                 projected_names=ctx.compiled.result_columns(),
             )
@@ -861,11 +891,17 @@ class Planner:
                     source=scan,
                     schema=schema,
                     filter=recheck_where,
-                    tables=[invoked_stmt.get_table()]
+                    tables=[stmt_table]
                 )
+
+            if invoked_stmt.is_delete:
+                # DELETE: just return the plan without projection
+                return plan
+
+            # plain SELECT: put the projection at the top of the plan
             return Project(plan, ctx.compiled.planning_context.pre_widening_fetch_columns)
         
-        # build the plan for JOIN
+        # SELECT with JOIN
         join: Join = invoked_stmt._joins[0]
         projection = list(invoked_stmt._projection)
         left_schema, right_schema = SchemaInfo.from_join_sides(
