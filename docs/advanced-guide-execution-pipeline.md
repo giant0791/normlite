@@ -14,13 +14,21 @@ It explains how:
 
 - `Compiled`
 
+- the Query plan
+
 - DBAPI
 
 work together.
 
+Two terms stay separate in this guide:
+
+- The **Execution Pipeline** is the engine's hook sequence (Steps 1 to 9 below). It is linear.
+- The **Query plan** is a tree of Operators (`Scan`, `Filter`, `HashJoin`, `Aggregate`, ...).
+  It computes the rows of a statement. It is not a pipeline.
+
 ------------------------------------------------------------------------
 
-## 1. Core Architectureal Components
+## 1. Core Architectural Components
 
 ### Engine
 
@@ -32,7 +40,7 @@ Responsibilities:
 
 - Execution options (engine-level)
 
-- Delegating low-level execution (`do_execute()`)
+- Delegating low-level execution (`do_execute()`, `do_executemany()`)
 
 The engine is stateless regarding individual executions.
 
@@ -53,6 +61,9 @@ Key methods:
 Connection.execute()
 Connection._execute_context()
 Connection._execute_single()
+Connection._execute_many()
+Connection._execute_insert_many()
+Connection._execute_query_plan()
 ```
 
 ### ExecutionContext
@@ -72,6 +83,16 @@ It stores:
 - Final DBAPI parameters
 
 It acts as the state container for a single execution.
+
+### Query plan
+
+Built by the `Planner` (`sql/queryplan.py`) from the `ExecutionContext`.
+The plan is data: the SQL layer builds it, and the engine drives it
+([ADR-0020](adr/0020-execution-layering-sql-builds-engine-drives.md)).
+
+Each Operator has `open()`, `next()` and `close()`. `next()` returns one batch of rows,
+or `None` when the Operator has no more rows. A **Blocking operator** drains its child in
+`open()` before it gives its first batch. `Scan` is the only Operator that does not block.
 
 
 ### Executable
@@ -143,7 +164,7 @@ Purpose:
 
 - Merge execution options
 - Resolve bind parameters
-- Choose execution style (currently SINGLE)
+- Choose the execution style (`_determine_execution_style()`, see Step 6)
 - Prepare final DBAPI parameter dict
 
 No backend call happens here.
@@ -168,9 +189,48 @@ Statement-specific preparation.
 
 This stage may raise `ProgrammingError`.
 
+#### Plan-driven statements (Select, Delete)
+
+`_setup_execution()` is a no-op. The statement sends no request here.
+The engine drives the Query plan in Step 6.
+
+> **Delete — [ADR-0023](adr/0023-dml-executes-through-the-query-plan.md), built in #411.**
+> `Delete` executes through the Query plan (`ModifyTable -> [Filter] -> Scan`).
+> `Update` keeps **Two-Phase Execution** until #413.
+
 ------------------------------------------------------------------------
 
-### Step 6 — DBAPI Execution
+### Step 6 — Dispatch on the execution style
+
+`Connection._execute_context()` dispatches on `context.execution_style`:
+
+| Execution style    | Method                   | Statements                         | Notion requests                       |
+| ------------------ | ------------------------ | ---------------------------------- | ------------------------------------- |
+| `EXECUTEQUERYPLAN` | `_execute_query_plan()`  | Select, Delete (ADR-0023)          | Sent by the Operators of the plan     |
+| `EXECUTE`          | `_execute_single()`      | Single-row Insert, DDL             | `engine.do_execute()`, one request    |
+| `INSERTMANYVALUES` | `_execute_insert_many()` | Bulk Insert                        | `engine.do_executemany()`, N requests |
+| `EXECUTEMANY`      | `_execute_many()`        | Update (retiring, ADR-0023, #413)  | `engine.do_executemany()` with the `bulk_*` attributes |
+
+#### `EXECUTEQUERYPLAN`
+
+``` python
+plan = Planner(context).plan()
+plan.open(conn)
+rs = ResultSet(plan.result_schema.as_sequence(), "page", plan.next() or [])
+context._result_cursor._batch_source = plan
+```
+
+- The `Planner` builds the Query plan.
+- The engine opens the root Operator and reads the first batch.
+- The plan root becomes the batch source of the result cursor.
+- With `stream_results` or `yield_per`, the engine stops here. `CursorResult` pulls the next
+  batches.
+- Without streaming, the engine drains the plan through the cursor and closes the plan.
+
+A mutation never streams (ADR-0023, item 7). The engine streams only when `elem.is_select`.
+The DELETE and UPDATE `Scan` take the default page size, not `yield_per`.
+
+#### `EXECUTE`
 
 ``` python
 engine.do_execute(cursor, context.operation, context.parameters)
@@ -202,6 +262,10 @@ No semantic interpretation yet.
 ### Step 8 — `_finalize_execution()`
 
 Semantic reconstruction phase.
+
+For `Select` this hook is a no-op: the Operators already built the result rows.
+For `Delete` (ADR-0023) it only interprets the result: it soft-closes the cursor when
+there is no RETURNING, and it reads implicit returning from the `object_id` column.
 
 #### DML Example (Insert)
 
@@ -270,6 +334,34 @@ CursorResult
 
 ------------------------------------------------------------------------
 
+## Plan-driven Example Flow (Delete, ADR-0023)
+
+``` text
+Delete
+  ↓
+compile → filter payload + binds + write operation pages.update + payload template {"in_trash": True}
+  ↓
+ExecutionContext
+  ↓
+pre_exec()             ← execution style EXECUTEQUERYPLAN
+  ↓
+_setup_execution()     ← no-op
+  ↓
+Planner → ModifyTable → [Filter] → Scan
+  ↓
+plan.open()            ← drains the Scan, sends every pages.update
+  ↓
+post_exec()
+  ↓
+_finalize_execution()  ← result interpretation only
+  ↓
+CursorResult
+```
+
+See [advanced-guide-dml-pipeline-crud.md](advanced-guide-dml-pipeline-crud.md) for the details.
+
+------------------------------------------------------------------------
+
 ## DDL Example Flow (CreateTable)
 
 ``` text
@@ -300,6 +392,11 @@ CursorResult
 3. ExecutionContext owns runtime state.
 4. Engine performs transport.
 5. Finalization updates Python object graph.
+6. SQL builds, ENGINE drives, DBAPI performs I/O
+   ([ADR-0020](adr/0020-execution-layering-sql-builds-engine-drives.md)).
+   The dependency direction is ENGINE → SQL, ENGINE → DBAPI, SQL → DBAPI. Nobody calls upward.
+   The SQL layer gives the engine a Query plan (data). The engine drives it.
+   A hook that sends a Notion request (`Update._setup_execution()` today) violates this rule.
 
 ------------------------------------------------------------------------
 
@@ -308,10 +405,10 @@ CursorResult
 | Hook                    | Purpose                            |
 | ----------------------- | ---------------------------------- |
 | `pre_exec()`            | Normalize binds and options        |
-| `_setup_execution()`    | Prepare execution state            |
+| `_setup_execution()`    | Prepare execution state. No-op for plan-driven statements |
 | `_handle_dbapi_error()` | Translate backend errors           |
 | `post_exec()`           | Capture mechanical result metadata |
-| `_finalize_execution()` | Semantic reconstruction            |
+| `_finalize_execution()` | Semantic reconstruction. Result interpretation only for plan-driven statements |
 
 ------------------------------------------------------------------------
 
@@ -326,4 +423,4 @@ Therefore:
 - Structural correctness must be ensured before execution.
 - Lifecycle validation must occur before backend calls.
 - Semantic reconstruction occurs only after transport completes.
-- his separation makes the execution pipeline predictable, extensible, and testable.
+- This separation makes the execution pipeline predictable, extensible, and testable.

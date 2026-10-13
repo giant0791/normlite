@@ -148,6 +148,11 @@ is the mechanism that restores the DBAPI/SQL/ENGINE layering for `SELECT`.
 > that motivated this ADR is now **entirely gone**. Behaviour-preserving — the aggregate pipeline suite
 > (sum, avg, count, `sum_1`/`sum_2`, `Decimal`, `COUNT(*)` via `select_from`, `rowcount == 1` over zero
 > rows) stays green without edits.
+>
+> **(11)** A Query plan no longer computes only a `SELECT`'s rows. [ADR-0023](./0023-dml-executes-through-the-query-plan.md)
+> (Proposed) runs DELETE (#411) and UPDATE (#413) through the plan, with a **`ModifyTable`** Operator at
+> the root that completes its writes in `open()`. The "bulk channel is untouched" statements below hold
+> for `SELECT` only.
 
 ---
 
