@@ -265,3 +265,34 @@ def test_update_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap(
 
     rows = select_all(engine, prepared_students)
     assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
+
+
+def test_update_by_an_empty_string_comparison_is_refused_with_a_true_reason(
+    engine, prepared_students
+):
+    """An UPDATE refusal must name the reason it refuses (#382).
+
+    Measured against the live API (``Notion-Version: 2026-03-11``): Notion
+    IGNORES ``rich_text.equals ""`` and returns every row. UPDATE has no
+    recheck (#397), so against real Notion this WHERE writes ``grade = 'Z'``
+    into every row.
+
+    The refusal must name the empty-string literal. ``grade == ""`` is neither
+    a negated term nor a ``None`` comparison, so a reason that names only those
+    is false for this WHERE, and a user who reads a false reason cannot fix it.
+
+    The grade assertion fails a gate that raises after the ``pages.update``
+    writes are staged.
+    """
+    stmt = (
+        update(prepared_students)
+        .values(grade="Z")
+        .where(prepared_students.c.grade == "")
+    )
+
+    with pytest.raises(CompileError, match=r"(?i)empty[- ]string"):
+        run_execute(engine, stmt)
+
+    rows = select_all(engine, prepared_students)
+    assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
+

@@ -105,6 +105,33 @@ def test_compile_not(name_col, ref_compiler, prod_compiler):
     with pytest.raises(UnsupportedCompilationError):
         prod_compiler.process(expr)
 
+
+@pytest.mark.parametrize("column", ["name_col", "grade_col"], ids=["title", "rich_text"])
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda c: c == "",
+        lambda c: c != "",
+        lambda c: c.in_(""),
+        lambda c: c.not_in(""),
+        lambda c: c.startswith(""),
+        lambda c: c.endswith(""),
+    ],
+    ids=["equals", "does_not_equal", "contains", "does_not_contain", "starts_with", "ends_with"],
+)
+def test_gates_agree_on_an_empty_string_text_operand(request, ref_compiler, column, build):
+    """An empty-string literal under a text operator is unpushable (#382).
+
+    Notion ignores the condition and returns every row. The random generator
+    never puts "" under a text operator, so only this test covers the rule.
+    """
+    col = request.getfixturevalue(column)
+
+    assert ref_compiler.is_pushable(build(col)) is False
+    assert _is_pushable(build(col)) is False
+
+
+@pytest.mark.parametrize("column", ["id_col", "name_col", "grade_col"], ids=["number", "title", "rich_text"])
 @pytest.mark.parametrize(
     "build, pushable",
     [
@@ -115,15 +142,57 @@ def test_compile_not(name_col, ref_compiler, prod_compiler):
     ],
     ids=["eq-none", "ne-none", "is_empty", "is_not_empty"],
 )
-def test_gates_agree_on_a_none_operand(id_col, ref_compiler, build, pushable):
+def test_gates_agree_on_a_none_operand(request, ref_compiler, column, build, pushable):
     """A None literal under == or != is unpushable (Notion answers HTTP 400).
 
     is_empty() and is_not_empty() carry a None operand too, but it is a
     placeholder, so they stay pushable. The random generator never puts None
-    under == or !=, so only this test covers the rule.
+    under == or !=, so only this test covers the rule. The rule holds on every
+    column type, text included: a text rule placed before it must not hide it.
     """
-    assert ref_compiler.is_pushable(build(id_col)) is pushable
-    assert _is_pushable(build(id_col)) is pushable
+    col = request.getfixturevalue(column)
+
+    assert ref_compiler.is_pushable(build(col)) is pushable
+    assert _is_pushable(build(col)) is pushable
+
+
+@pytest.mark.parametrize("column", ["id_col", "name_col", "grade_col"], ids=["number", "title", "rich_text"])
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda c: c == (lambda: None),
+        lambda c: c != (lambda: None),
+    ],
+    ids=["eq-callable-none", "ne-callable-none"],
+)
+def test_gates_agree_on_a_callable_that_returns_none(request, ref_compiler, column, build):
+    """A callable operand that returns None under == or != is unpushable.
+
+    The callable is a deferred value. When it returns None, the comparison
+    sends a null comparison value, and Notion answers HTTP 400, as for a None
+    literal. The random generator never makes a callable operand, so only this
+    test covers the rule.
+    """
+    col = request.getfixturevalue(column)
+
+    assert ref_compiler.is_pushable(build(col)) is False
+    assert _is_pushable(build(col)) is False
+
+@pytest.mark.parametrize("column", ["name_col", "grade_col"], ids=["title", "rich_text"])
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda c: c == (lambda: ""),
+        lambda c: c != (lambda: ""),
+    ],
+    ids=["eq-callable-empty-string", "ne-callable-empty-string"],
+)
+def test_gates_agree_on_a_callable_that_returns_an_empty_string(request, ref_compiler, column, build):
+    col = request.getfixturevalue(column)
+
+    assert ref_compiler.is_pushable(build(col)) is False
+    assert _is_pushable(build(col)) is False
+
 
 #-------------------------------------------
 # Associativity invariants
