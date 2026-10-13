@@ -391,46 +391,31 @@ def test_do_execute_ignores_streaming_unless_caller_declares_streamable(
     assert len(cursor.fetchall()) == 6
 
 
-def test_two_phase_delete_ignores_streaming_and_reports_accurate_rowcount(
+def test_delete_ignores_streaming_and_reports_accurate_rowcount(
     engine: Engine,
     students: Table,
 ):
-    """A two-phase ``Delete`` on a ``stream_results=True`` connection still drains
-    its full phase-1 match set as one page and deletes every matched row.
+    """A ``Delete`` on a ``stream_results=True, yield_per=2`` connection does not
+    stream. It deletes every matched row and reports the full ``rowcount``.
 
-    This is the slice's headline user story — *streaming never corrupts a
-    mutation* — driven end-to-end through the real ``conn.execute`` pipeline (not
-    the synthetic ``do_execute`` call of the gate test above).
+    This is the headline user story -- *streaming never corrupts a mutation* --
+    driven end-to-end through the real ``conn.execute`` pipeline.
 
-    Invariant tested
-        - Streaming is **Select-only** (ADR-0010). A ``Delete`` is dispatched on
-          the EXECUTEMANY channel; its phase-1 read (``dml.py`` ~939) calls
-          ``do_execute`` *without* declaring streamability, so the connection's
-          inherited ``stream_results``/``yield_per`` must NOT reach it. Phase 1
-          must run as a single drain-all page (request ``page_size`` 100), never
-          fragmented by ``yield_per``.
-        - Correctness: every matched row reaches phase 2, so ``rowcount`` is the
-          full match count, not just one streamed page.
+    Invariant tested (ADR-0023 item 7)
+        - Mutations never stream. A ``Delete`` executes through the Query plan
+          (``ModifyTable -> [Filter] -> Scan``). The engine streams only when the
+          statement ``is_select``, so it drains the plan eagerly and ``rowcount``
+          is known when ``execute()`` returns.
+        - The DELETE Scan does not take ``yield_per``. It sends one request with
+          the default ``page_size`` (100), so the 6 rows arrive in one page.
 
-    Why ``query_calls`` is the discriminator, not ``rowcount`` alone
-        Phase 1 immediately ``fetchall()``s its rows (``dml.py:947``), and
-        ``fetchall`` drains the page iterator to exhaustion. So even a *broken*
-        gate that streamed phase 1 would recover all rows on that drain and still
-        report ``rowcount == 6`` — ``rowcount`` can't see the leak. The leak shows
-        up only in *how many backend pages* phase 1 pulled: an inherited
-        ``yield_per=2`` would fragment the request into ``page_size`` 2, so the
-        ``fetchall`` drain would pull pages 2 and 3 as well.
-
-    6 active rows, connection ``yield_per=2``:
-        - gate honored (today): phase-1 request ``page_size`` 100 -> all 6 rows in
-          one page -> ``query_calls == 1``.
-        - gate broken: phase-1 forwards ``yield_per=2`` -> ``page_size`` 2 ->
-          ``fetchall`` drains pages 1, 2, 3 -> ``query_calls == 3``.
-
-    Failure mode fenced off:
-        - Select-only gate bypassed for mutations: a future ``dml.py`` edit that
-          threads ``execution_options``/``streamable`` into the Delete phase-1
-          call fragments the mutation's read -> ``query_calls == 3``.
+    Two discriminators, one per half of item 7
+        - Engine half: a streamed DELETE result leaves the plan undrained, so
+          ``rowcount`` answers ``-1``, not ``6``.
+        - Planner half: a Scan that took ``yield_per=2`` would send ``page_size`` 2
+          and pull pages 1, 2, 3, so ``query_calls == 3``, not ``1``.
+          ``rowcount`` cannot see this leak: ``ModifyTable`` drains its child in
+          ``open()``, so every row is still deleted.
     """
     db_id = create_students_db(engine)
     attach_table_oid(students, db_id)
@@ -443,8 +428,8 @@ def test_two_phase_delete_ignores_streaming_and_reports_accurate_rowcount(
         conn = conn.execution_options(stream_results=True, yield_per=2)
         result = conn.execute(delete(students).where(students.c.is_active.is_(True)))
 
-    # Every matched row was deleted: phase 1 saw the whole match set, not a page.
+    # Every matched row was deleted, and the engine drained the plan eagerly.
     assert result.rowcount == 6
-    # Phase 1 drained as a single page (page_size 100): the connection's yield_per
+    # The Scan sent one request (page_size 100): the connection's yield_per
     # never reached the mutation's read. A leak would surface as 3 pulls.
     assert counting.query_calls == 1

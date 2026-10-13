@@ -200,6 +200,10 @@ Two execution styles exist for DML:
   (`pages.update`) on each result. Used by `Delete` and `Update`.
 
 ### Two-Phase Execution
+> **Retiring** ([[adr-0023-dml-executes-through-the-query-plan]], Proposed): DELETE leaves it in
+> #411 and UPDATE in #413, when `EXECUTEMANY` and `Connection._execute_many` are deleted. Both then
+> run through the Query plan with **ModifyTable** at the root, so the WHERE gets its recheck.
+
 The pattern used by `Delete` and `Update`:
 1. `_setup_execution` calls `databases.query` (with optional filter from `.where()`) to collect
    the Notion page IDs of affected rows.
@@ -886,6 +890,9 @@ Filed separately (orthogonal, no new pressure from the plan): `_compiler_state` 
 stack**, resolving the §Compiler entry points trap structurally.
 
 ### Query plan
+> **Extended by [[adr-0023-dml-executes-through-the-query-plan]] (Proposed):** a plan also executes
+> DELETE (#411) and UPDATE (#413), with **ModifyTable** at the root.
+
 A **tree of Operators** that computes a SELECT's rows. Built by the **Planner** from the
 `Select` AST; replaces the `if self._joins:` / `if self._is_aggregate:` branching in
 `Select`'s hooks with plan construction. The hook **builds** the plan; the **engine** drives it
@@ -974,8 +981,8 @@ Operator.close()    -> None
 The `open()` handle is the DBAPI `Connection` the engine hands down while driving (see §Query plan
 — I/O ownership); there is **no `QueryIO` port**.
 
-Node kinds: **Scan**, **Retrieve**, **Join**, **Filter**, **Aggregate** (and **GroupBy**, the
-first planned addition). `JoinExecution` and `AggregateExecution` become Operators; their
+Node kinds: **Scan**, **Retrieve**, **Join**, **Filter**, **Aggregate**, **ModifyTable** (and
+**GroupBy**, the first planned addition). `JoinExecution` and `AggregateExecution` become Operators; their
 config-to-constructor discipline ([[adr-0008-joinexecution-seam]],
 [[adr-0011-aggregate-execution-seam]]) carries over intact.
 
@@ -1030,6 +1037,22 @@ already stated as "joins and aggregates force drain-all" under §Pagination and
 [[adr-0010-streaming-result-token-pagination]] — the plan restates it structurally rather than
 changing it. **Scan** is the only non-blocking Operator; it is what keeps `stream_results` /
 `yield_per` working on a plain select.
+
+**ModifyTable** blocks further: it drains its child **and completes every write** in `open()`.
+A **ModifyTable**'s writes are complete when `open()` returns, so no consumer (streaming, early
+close) can leave a DELETE or UPDATE half done. Draining first is also what protects the scan from
+its own writes: a page trashed or changed mid-scan would shift Notion's pagination (Halloween
+problem — skipped rows on DELETE, skipped or repeated rows on UPDATE).
+
+### ModifyTable
+> **DECIDED, not yet built** (#411 for DELETE, #413 for UPDATE).
+
+The **Operator** that applies a DELETE or UPDATE to every row its child yields, and that blocks
+until its child is drained. One operator serves both statements: the statement supplies the
+per-row request (`{"in_trash": True}` for DELETE, property values for UPDATE), and the operator
+only sends it. It retires **Two-Phase Execution** statement by statement.
+_Avoid_: write operator, mutation operator, Delete/Update operator (collides with the `Delete` /
+`Update` DML constructs).
 
 ### Pushdown / Recheck / Residual
 Three terms, and they answer **different questions**. The old two-term split ("every conjunct is

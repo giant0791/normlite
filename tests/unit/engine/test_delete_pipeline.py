@@ -14,6 +14,7 @@ from normlite.sql.dml import delete, insert, select
 from normlite.sql.elements import not_
 
 from tests.utils.execution import run_execute
+from tests.utils.spies import QueryParamsRecordingClient
 from tests.utils.db_helpers import (
     create_students_db,
     attach_table_oid,
@@ -551,3 +552,114 @@ def test_delete_with_an_empty_string_under_not_equal_is_refused_and_deletes_noth
         survivors = conn.execute(select(prepared_students.c.id)).all()
 
     assert sorted(row.id for row in survivors) == list(range(10))
+
+
+def test_delete_asks_notion_only_for_the_properties_its_where_reads(
+    engine, prepared_students, monkeypatch
+):
+    # Arrange: ten rows with ids 0..9, and a DELETE whose WHERE reads only
+    # `id`. A spy at the Notion boundary records the query params of every
+    # `data_sources.query` request that the DELETE sends.
+    spy = QueryParamsRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    stmt = delete(prepared_students).where(prepared_students.c.id != 1)
+
+    # Act: run the DELETE through the public API.
+    result = run_execute(engine, stmt)
+
+    # Assert: the DELETE trashes the same nine rows as before, and every
+    # query to Notion asks for the `id` property only. `object_id` never
+    # goes into filter_properties (ADR-0006).
+    assert_rowcount(result, 9)
+    assert spy.query_params_seen
+    for query_params in spy.query_params_seen:
+        assert query_params is not None
+        assert query_params.get("filter_properties") == ["id"]
+
+
+def test_delete_returning_a_column_the_scan_does_not_fetch_reads_the_write_response(
+    engine, students, monkeypatch
+):
+    # Arrange: three rows with distinct grades. The DELETE WHERE reads only
+    # `id`, so the Scan fetches `id` and never `grade` (ADR-0023 item 3).
+    # Only the pages.update response carries `grade`.
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    ds_id = students.get_data_source_id()
+    for i, grade in enumerate(["A", "B", "C"]):
+        engine._client.pages_create(
+            payload={
+                "parent": {"type": "data_source_id", "data_source_id": ds_id},
+                "properties": {
+                    "name": {"title": [{"text": {"content": f"name_{i}"}}]},
+                    "id": {"number": i},
+                    "is_active": {"checkbox": True},
+                    "start_on": {"date": {"start": "1600-01-01"}},
+                    "grade": {"rich_text": [{"text": {"content": grade}}]},
+                },
+            }
+        )
+
+    spy = QueryParamsRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    stmt = delete(students).where(students.c.id != 1).returning(students.c.grade)
+
+    # Act
+    result = run_execute(engine, stmt)
+    rows = result.all()
+
+    # Assert: the query never asks Notion for `grade`, yet every RETURNING
+    # row has the grade of the page it trashed.
+    for query_params in spy.query_params_seen:
+        assert "grade" not in query_params.get("filter_properties", [])
+    assert sorted(row.grade for row in rows) == ["A", "C"]
+    assert_columns(rows[0], ["grade"])
+
+
+@pytest.mark.parametrize("implicit_returning", [True, False])
+def test_delete_returning_rows_hold_only_the_returning_columns_whatever_implicit_returning_says(
+    engine, prepared_students, implicit_returning
+):
+    # Arrange: RETURNING names one user column. ADR-0023 item 4: the rows hold
+    # exactly the RETURNING columns, as for INSERT ... RETURNING. The
+    # `implicit_returning` option must not change the RETURNING row shape.
+    stmt = (
+        delete(prepared_students)
+        .where(prepared_students.c.is_active.is_(True))
+        .returning(prepared_students.c.grade)
+    )
+
+    # Act
+    result = run_execute(
+        engine,
+        stmt,
+        execution_options={"implicit_returning": implicit_returning},
+    )
+    rows = result.all()
+
+    # Assert
+    assert len(rows) == 10
+    assert_columns(rows[0], ["grade"])
+
+
+def test_delete_across_several_scan_pages_leaves_no_matching_row(engine, students):
+    # Arrange: 250 matching rows span three Scan pages (page_size 100). The
+    # fake client paginates by offset and drops trashed pages, so a DELETE
+    # that trashes page 1 before it reads page 2 skips rows (the Halloween
+    # problem, ADR-0023). yield_per=2 must not change the outcome (item 7).
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=250)
+
+    stmt = delete(students).where(students.c.is_active.is_(True))
+
+    # Act
+    result = run_execute(engine, stmt, execution_options={"yield_per": 2})
+
+    # Assert: every matching row is gone, and rowcount counts all of them.
+    assert_rowcount(result, 250)
+    sel = select(students.c.object_id).where(students.c.is_active.is_(True))
+    with engine.connect() as conn:
+        assert conn.execute(sel).all() == []

@@ -1,8 +1,14 @@
-# DML Execution Pipeline: Insert and Update
+# DML Execution Pipeline: Insert, Update and Delete
 
-This document describes how `Insert` and `Update` specialise the common execution pipeline
+This document describes how `Insert`, `Update` and `Delete` specialise the common execution pipeline
 ([advanced-guide-execution-pipeline.md](advanced-guide-execution-pipeline.md)) and where their
 behaviour diverges.
+
+> **Transition — [ADR-0023](adr/0023-dml-executes-through-the-query-plan.md).**
+> DELETE and UPDATE move from **Two-Phase Execution** to the **Query plan**, with a
+> **ModifyTable** Operator at the root. DELETE moved in #411. UPDATE moves in #413.
+> The Update section below still describes Two-Phase Execution. The Delete section describes
+> the plan-driven design.
 
 ---
 
@@ -85,6 +91,10 @@ The RETURNING data is therefore a **post-fetch**: a separate `pages.retrieve` pe
 
 ## Update instantiation
 
+> **Retiring — [ADR-0023](adr/0023-dml-executes-through-the-query-plan.md).** This section is
+> true until #413. Then Update runs through the Query plan like Delete (see below), and
+> `ExecutionStyle.EXECUTEMANY` and `Connection._execute_many` are deleted.
+
 ### Compile (`visit_update`)
 
 Produces a `compiled_dict` with **two payload keys** — a filter payload for the query phase and a
@@ -138,7 +148,84 @@ No post-fetch is needed. When `.returning()` is declared, `_finalize_execution` 
 
 ---
 
+## Delete instantiation (Query plan)
+
+> **[ADR-0023](adr/0023-dml-executes-through-the-query-plan.md), built in #411.**
+
+### Why Delete uses the Query plan
+
+[ADR-0022](adr/0022-lossy-pushdown-and-the-recheck.md) re-checks every WHERE conjunct
+client-side. The recheck lives in the `Filter` Operator. Two-Phase Execution has no `Filter`, so
+`SELECT ... WHERE p` and `DELETE ... WHERE p` can select different rows (#397).
+A Delete therefore runs through a Query plan.
+
+### Compile (`visit_delete`)
+
+The compiler emits:
+
+- the `databases.query` filter payload for the `Scan`, from the shared WHERE visitor;
+- the write operation `pages.update` and the write payload template `{"in_trash": True}`.
+
+### `pre_exec` — execution style selection
+
+`_determine_execution_style` returns `EXECUTEQUERYPLAN` for every Delete.
+
+### `_setup_execution` — no-op
+
+The hook sends no request and fills no `bulk_parameters`.
+
+### Dispatch — the plan
+
+```
+ModifyTable  →  [Filter]  →  Scan
+```
+
+- **Scan** sends `databases.query`. It fetches only the properties that the WHERE reads, or only the
+  title when there is no WHERE (#410). It takes the default page size, not `yield_per`.
+- **Filter** re-checks the WHERE on the raw cells. It is present only when the statement has a
+  WHERE.
+- **ModifyTable** performs the writes. The Planner gives it the write operation and binds the
+  write payload template once.
+  `ModifyTable` adds only the path parameter `{"page_id": object_id}` for each row.
+  It holds no `ExecutionContext`.
+
+### `ModifyTable.open()` — all writes before the first batch
+
+`open()` drains its child **and** sends every `pages.update`. The writes are complete when
+`open()` returns. `next()` only gives back the kept responses.
+
+- **Drain first.** The fake client paginates by offset, and it drops trashed pages
+  (`notion_sdk/client.py`). A Delete that trashes one batch and then asks for the next offset skips
+  rows (Halloween problem).
+- **Write in `open()`.** No consumer can leave a Delete half done. An early close or a stream
+  cannot stop the writes. A mutation never streams.
+- **Not atomic.** A failed write raises at once through the default `errorhandler`.
+  The writes before it stay. Atomicity belongs to transaction support, not to an Operator.
+
+### Rows, RETURNING and rowcount
+
+`ModifyTable` yields one row for each written page. It builds the rows from the `pages.update`
+responses, in the RETURNING schema. It never yields the scan rows: the `Scan` does not fetch the
+RETURNING columns.
+
+- **No RETURNING:** each row is keyed by `object_id` at column 0. Implicit returning reads it there.
+- **RETURNING** reads the write response. Each row holds exactly the RETURNING columns, as for
+  INSERT. For Delete, it gives the last values of the page.
+- **rowcount** is the number of yielded rows, so it is the number of written pages.
+
+### `_finalize_execution` — result interpretation only
+
+- No RETURNING: the hook soft-closes the cursor. `rowcount` stays available.
+- Implicit returning: the hook reads the `object_id` column of the rows.
+  It does not read `Cursor._last_inserted_row_ids`. The plan path never fills it.
+
+`_staged_result_cursor` routing goes away for Delete.
+
+---
+
 ## Insert vs Update — summary
+
+The Update column describes Two-Phase Execution. It is retiring (ADR-0023, #413).
 
 | Aspect | Insert | Update |
 |--------|--------|--------|
@@ -153,3 +240,17 @@ No post-fetch is needed. When `.returning()` is declared, `_finalize_execution` 
 | **Partial `.values()`** | Not allowed — all user columns required | Allowed — unspecified columns are left unchanged |
 | **Missing `.values()`** | Deferred to `pre_exec` (can be supplied via `parameters=`) | Hard `CompileError` at compile time |
 | **Bulk support** | Yes — `INSERTMANYVALUES` via `.values([...])` or `parameters=[...]` | No — `parameters=` raises `ArgumentError` (v1) |
+
+---
+
+## Update (Two-Phase) vs Delete (Query plan) — summary
+
+| Aspect | Update (until #413) | Delete (ADR-0023, #411) |
+|--------|---------------------|-------------------------|
+| **Execution style** | `EXECUTEMANY` | `EXECUTEQUERYPLAN` |
+| **Who sends `databases.query`** | `_setup_execution` (SQL layer) | `Scan`, driven by the engine |
+| **WHERE recheck** | None | `Filter` |
+| **Who sends `pages.update`** | `_execute_many` | `ModifyTable.open()` |
+| **Write payload** | `update_payload`, bound in `_setup_execution` | Template from the compiler, bound once by the Planner |
+| **RETURNING data source** | `pages.update` responses, through `_staged_result_cursor` | `pages.update` responses, as rows of `ModifyTable` |
+| **Implicit returning** | `Cursor._last_inserted_row_ids` | `object_id` column of the rows |

@@ -836,59 +836,13 @@ class Delete(UpdateBase):
         # returning self is already encapsulated into the generative decorator
     
     def _setup_execution(self, context: ExecutionContext) -> None:
-        elem = context.invoked_stmt
+        # no-op: DELETE executes through the query plan (ADR-0023)
+        pass
 
-        # 1. prepare schema for compiled query
-        schema_for_query: SchemaInfo = SchemaInfo.from_table(
-            self._table,
-            execution_names=context.compiled.fetch_columns(),
-            projected_names=context.compiled.result_columns()    
-        )
-        context._cursor._inject_description(
-            schema_for_query.as_sequence()
-        )
-
-        # execute the compiled query
-        try:
-            context.engine.do_execute(
-                context._cursor,
-                context.operation,
-                context.parameters
-            )
-        except Error as exc:
-            elem._handle_dbapi_error(exc, context)
-
-        pages = context._cursor.fetchall()
-
-        # build parameters for pages.update
-        result_cursor = context.connection._engine.raw_connection().cursor()
-        schema_for_returning: SchemaInfo = SchemaInfo.from_table(
-            self._table,
-            execution_names=context.compiled.fetch_columns(),
-            projected_names=context.compiled.result_columns()    
-        )
-        result_cursor._inject_description(schema_for_returning.as_sequence())
-        bulk_params = []
-        get_object_id = schema_for_returning.column_getter("object_id")
-
-        for page in pages:
-            bulk_params.append({
-                "path_params": {"page_id": get_object_id(page)},
-                "payload": {"in_trash": True}
-            })
-
-        context._staged_result_cursor = result_cursor
-        context.bulk_operation = {
-            "endpoint": "pages",
-            "request": "update"
-        }
-
-        context.bulk_parameters = bulk_params
-    
     def _finalize_execution(self, context: ExecutionContext) -> None:
         if self._returning:
-            # finalize cursor routing
-            context._result_cursor = context._staged_result_cursor
+            # _execute_query_plan already set context._result_cursor
+            # from the ModifyTable rows (ADR-0023)
             return
 
         implicit_returning = context.execution_options.get("implicit_returning", False)

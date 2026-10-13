@@ -735,6 +735,123 @@ class Project(VolcanoOperator):
         """Close the source operator."""
         self._source.close()
 
+class ModifyTable(VolcanoOperator):
+    """Mutate rows in DELETE and UPDATE query plans.
+
+    This mutation operator reads rows all at once, so it structurally avoids the Halloween Problem 
+    (see [A well-intentioned query and the Halloween Problem](https://ieeexplore.ieee.org/document/1010071)).
+    The writes are complete when :meth:`ModifyTable.open` returns.
+
+    The planner puts the operator on top of a DELETE/UPDATE plan as follows: ModifyTable -> [Filter] -> Scan.
+
+    .. attention:: Not Atomic
+        A failed write raises at once, and the earlier writes stay. This is today's normlite behaviour.
+
+    .. note:: 
+         
+         - **Mutations never stream** - The DELETE Scan does not take ``yield_per``.
+         
+         - **Blocking operator** -  ``ModifyTable`` is a blocking operator that also
+           completes its side effects before its first batch.
+
+    .. versionadded:: 0.14.0
+        Decided in ADR-0023, see [comment to issue #411](https://github.com/giant0791/normlite/issues/411#issuecomment-6107559307)
+    """
+
+    def __init__(
+        self, 
+        source: VolcanoOperator,
+        operation: dict,
+        parameters: dict,
+        schema: SchemaInfo,
+    ) -> None:
+        """Construct the mutation operator.
+
+        Args:
+            source (VolcanoOperator): The child operator that yields the rows to write. Its
+                ``result_schema`` must hold the ``object_id`` column.
+            operation (dict): A dictionary specifying the mutating operation for the DBAPI driver.
+            parameters (dict): The bound write request. Its ``"payload"`` key holds the payload
+                that every ``pages.update`` sends.
+            schema (SchemaInfo): The shape of the rows this operator yields (RETURNING).
+        """
+        self._operation = operation
+        self._source = source
+        self._parameters = parameters
+        self._returning_schema = schema
+        self._cursor = None
+        self._modified_rows = None
+
+        # read the column getter from the source schema,
+        # schema is the shape for RETURNING rows
+        self._get_row_oid = source.result_schema.column_getter("object_id")
+
+    def open(self, connection: Connection) -> None:
+        """Drain the source, then send one ``pages.update`` per source row.
+
+        The writes are complete when this method returns. The responses are kept,
+        in the RETURNING schema, for :meth:`next`.
+
+        Args:
+            connection (Connection): The DBAPI connection that sends the writes.
+        """
+        self._source.open(connection)
+        self._cursor = connection.cursor()
+        self._cursor._inject_description(self._returning_schema.as_sequence())
+        
+        # drain the source and fetch all rows to be updated
+        fetched_rows = []        
+        while (batch := self._source.next()) is not None:
+            fetched_rows.extend(batch)
+
+        if not fetched_rows:
+            # the query did not find any matching rows
+            return
+
+        # build the parameter set for the bulk operation
+        payload = self._parameters["payload"]
+        bulk_params = [
+            {
+                "path_params": {"page_id": self._get_row_oid(row)},
+                "payload": payload
+            } for row in fetched_rows        
+        ]
+
+        # execute the bulk operation
+        self._cursor.executemany(
+            self._operation,
+            bulk_params
+        )
+
+        # buffer the modified rows for later use
+        self._modified_rows = list(self._cursor._iter_all())    
+
+    def next(self) -> Optional[list[tuple]]:
+        """Return the next batch of modified rows or ``None`` if no rows were modified.
+        
+        .. note::
+            This method returns all modified rows in **one** single batch.
+            After draining, subsequent calls return ``None`` as per operator's protocol.
+        """
+        if self._modified_rows is not None:
+            modified_rows = self._modified_rows
+            self._modified_rows = None
+            return modified_rows
+
+        return None
+    
+    def close(self) -> None:
+        """Close the source operator and the cursor opened by :meth:`open`."""
+        self._source.close()
+        self._cursor.close()
+
+    @property
+    def result_schema(self) -> SchemaInfo:
+        """Provide the RETURNING schema, which is the one the user sees.
+        """
+        return self._returning_schema
+
+
 class Planner:
     """Provide a query plan as a pipeline composed of Volcano operators.
 
@@ -800,6 +917,8 @@ class Planner:
             )
             scan = Scan(ctx.operation, ctx.parameters, schema=schema)
             return Aggregate(scan, invoked_stmt._raw_columns)
+
+        yield_per = ctx.execution_options.get("yield_per")
 
         if invoked_stmt.is_delete or (invoked_stmt.is_select and not invoked_stmt._joins):
             # DELETE or plain SELECT statement (without JOIN)
@@ -867,17 +986,23 @@ class Planner:
                     if name not in SpecialColumns
                 ]
 
+            # no projected_names: SELECT result_columns are a subset of fetch_columns,
+            # and DELETE RETURNING reads the write response, never the Scan (ADR-0023)
             schema = SchemaInfo.from_table(
                 stmt_table,
                 execution_names=execution_names,
-                projected_names=ctx.compiled.result_columns(),
             )
+
+            if not invoked_stmt.is_select:
+                # DELETE and (later) UPDATE shall never stream
+                yield_per = None
+
             scan = Scan(
                 ctx.operation, 
                 scan_params,
                 schema=schema, 
-                # the operator above this Scan can consume batch-by-batch
-                yield_per=ctx.execution_options.get("yield_per")    
+                # the operator above this Scan can consume batch-by-batch only if it's not DELETE
+                yield_per=yield_per   
             )
             plan = scan
 
@@ -895,8 +1020,26 @@ class Planner:
                 )
 
             if invoked_stmt.is_delete:
-                # DELETE: just return the plan without projection
-                return plan
+                # DELETE: add the ModifyTable operator and return the plan without projection
+
+                # ModifyTable needs the RETURNING schema because it mutates (pages.update)
+                # the rows
+                implicit_names = []
+                returning = ctx.compiled.result_columns()
+                if not returning:
+                    implicit_names = [SpecialColumns.NO_ID]
+
+                returning_schema = SchemaInfo.from_table(
+                    stmt_table,
+                    execution_names=implicit_names,
+                    projected_names=returning
+                )
+                return ModifyTable(
+                    plan,
+                    ctx.compiled_dict["delete_operation"],
+                    ctx.compiled_dict["delete_params"],
+                    schema=returning_schema
+                )
 
             # plain SELECT: put the projection at the top of the plan
             return Project(plan, ctx.compiled.planning_context.pre_widening_fetch_columns)

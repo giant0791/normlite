@@ -46,6 +46,9 @@ _NOTION_MAX_FILTER_DEPTH = 2
 _FILTER_MAX_DEPTH_EXCEEDED = "It exceeds Notion filter max depth"
 _UNPUSHABLE_FILTER_TERM = "Notion filter syntax cannot express negated terms, null comparison values or empty-string text values"
 
+#: The Notion operation that writes one page. ``ModifyTable`` sends it once per row.
+ROWS_UPDATE = {"endpoint": "pages", "request": "update"}
+
 # Refusal helpers.
 # The compiler calls them to refuse a WHERE clause that Notion cannot evaluate exactly
 # AND that no client-side recheck corrects.
@@ -1372,7 +1375,9 @@ class NotionCompiler(SQLCompiler):
         compiled_dict = {
             'operation': operation, 
             'path_params': path_params, 
-            'payload': payload
+            'payload': payload,
+            'delete_operation': ROWS_UPDATE,
+            'delete_params': {"payload": {"in_trash": True}}
         }
         return compiled_dict
 

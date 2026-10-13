@@ -127,4 +127,7 @@ layering work (CheckEnforcement's error boundary, the `_Filter` reuse) have a re
   pagination mechanics.
 - The mutation statements' `bulk_operation` / `bulk_parameters` channel is untouched throughout;
   DELETE / UPDATE / INSERT…RETURNING carry no risk from this work (see ADR-0018).
+  > **Superseded for DELETE / UPDATE** by [ADR-0023](./0023-dml-executes-through-the-query-plan.md)
+  > (Proposed): they move onto the Query plan through a `ModifyTable` Operator, and `EXECUTEMANY` goes
+  > in #413. INSERT…RETURNING keeps the bulk channel.
 - Move B is **not yet filed**. It should become its own PRD when Move A lands.

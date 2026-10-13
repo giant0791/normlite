@@ -307,7 +307,9 @@ class Connection:
         # determine if streaming is requested
         stream_results = context.execution_options.get("stream_results")
         yield_per = context.execution_options.get("yield_per")
-        is_streaming = stream_results or yield_per is not None
+
+        # set streaming only if it's a SELECT, remember DELETE must drain the source.
+        is_streaming = context.invoked_stmt.is_select and (stream_results or yield_per is not None)
 
         # build and execute the query plan
         conn = self._engine.raw_connection()
