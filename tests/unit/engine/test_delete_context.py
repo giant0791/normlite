@@ -32,50 +32,14 @@ def prepared_students(engine, students):
 # ExecutionContext tests (DELETE)
 # --------------------------------------
 
-def test_delete_execution_style_is_executemany(engine, prepared_students):
+def test_delete_executes_through_the_query_plan(engine, prepared_students):
     stmt = delete(prepared_students).where(
         prepared_students.c.is_active.is_(True)
     )
 
     _, ctx = run_context(engine, stmt)
 
-    assert ctx.execution_style == ExecutionStyle.EXECUTEMANY
-
-
-def test_delete_prefetches_rows_into_bulk_parameters(engine, prepared_students):
-    stmt = delete(prepared_students).where(
-        prepared_students.c.is_active.is_(True)
-    )
-
-    _, ctx = run_context(engine, stmt)
-
-    # number of operations equals number of rows to delete
-    assert len(ctx.bulk_parameters) == 5
-
-
-def test_delete_bulk_parameters_structure(engine, prepared_students):
-    stmt = delete(prepared_students).where(
-        prepared_students.c.is_active.is_(True)
-    )
-
-    # fetch expected ids BEFORE running delete
-    sel = select(prepared_students.c.object_id).where(
-        prepared_students.c.is_active.is_(True)
-    )
-    with engine.connect() as conn:
-        expected_ids = [row.object_id for row in conn.execute(sel).all()]
-
-    _, ctx = run_context(engine, stmt)
-
-    expected = [
-        {
-            "path_params": {"page_id": oid},
-            "payload": {"in_trash": True},
-        }
-        for oid in expected_ids
-    ]
-
-    assert ctx.bulk_parameters == expected
+    assert ctx.execution_style == ExecutionStyle.EXECUTEQUERYPLAN
 
 
 def test_delete_execution_removes_all_rows(engine, prepared_students):
@@ -115,7 +79,7 @@ def test_delete_returning_syscols_context(engine, prepared_students):
     rows = result.all()
 
     assert [r.object_id for r in rows] == expected_ids
-    assert ctx.execution_style == ExecutionStyle.EXECUTEMANY
+    assert ctx.execution_style == ExecutionStyle.EXECUTEQUERYPLAN
 
 
 def test_delete_implicit_returning_true_context(engine, prepared_students):

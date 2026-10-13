@@ -142,10 +142,11 @@ def populated_students(engine, students, students_db):
 def run_context(engine, stmt, params=None, execution_options=None) -> tuple[CursorResult, ExecutionContext]:
     compiled = stmt.compile(engine._sql_compiler)
     cursor = engine.raw_connection().cursor()
+    connection = engine.connect()
 
     ctx = ExecutionContext(
         engine,
-        engine.connect(),
+        connection,
         cursor=cursor,
         compiled=compiled,
         distilled_params=_distill_params(params),
@@ -155,7 +156,9 @@ def run_context(engine, stmt, params=None, execution_options=None) -> tuple[Curs
     ctx.pre_exec()
     ctx.invoked_stmt._setup_execution(ctx)
 
-    if ctx.execution_style == ExecutionStyle.EXECUTE:
+    if ctx.execution_style == ExecutionStyle.EXECUTEQUERYPLAN:
+        connection._execute_query_plan(ctx)
+    elif ctx.execution_style == ExecutionStyle.EXECUTE:
         engine.do_execute(cursor, ctx.operation, ctx.parameters)
     else:
         engine.do_executemany(cursor, ctx.bulk_operation, ctx.bulk_parameters)
@@ -238,7 +241,7 @@ def test_execution_style_delete(engine, populated_students, students):
     stmt = delete(students)
     _, ctx = run_context(engine, stmt)
 
-    assert ctx.execution_style == ExecutionStyle.EXECUTEMANY
+    assert ctx.execution_style == ExecutionStyle.EXECUTEQUERYPLAN
 
 def test_aggregate_select_is_driven_through_the_query_plan(engine):
     # #362 cut-over: an aggregate select (e.g. select(func.sum(col))) must be driven

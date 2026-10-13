@@ -393,13 +393,15 @@ class ExecutionContext:
         if stmt.is_insert and stmt._has_multi_parameters:
             return ExecutionStyle.INSERTMANYVALUES
 
-        # delete or update with single parameters
-        if stmt.is_delete or stmt.is_update:
+        # update with single parameters
+        if stmt.is_update:
             return ExecutionStyle.EXECUTEMANY
         
         # REFACTORED: SELECT statements are now always query plan driven
         # (see #384, routing is inside C2)
-        if stmt.is_select:
+        # REFACTORED: DELETE statements are also always query plan driven
+        # (see #411, ADR-0023)
+        if stmt.is_select or stmt.is_delete:
             return ExecutionStyle.EXECUTEQUERYPLAN
         
         # select or insert without returning
