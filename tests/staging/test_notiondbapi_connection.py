@@ -19,7 +19,7 @@ def insert_params() -> dict:
     return {
         'payload': {
             'properties': {
-                'id': {'number': ':id'},       
+                'id': {'number': ':id'},
                 'name': {'title': [{'text': {'content': ':name'}}]},
                 'grade': {'rich_text': [{'text': {'content': ':grade'}}]}
             },
@@ -42,7 +42,7 @@ def insert_params2() -> dict:
     return {
         'payload': {
         'properties': {
-            'id': {'number': ':id'},       
+            'id': {'number': ':id'},
             'name': {'title': [{'text': {'content': ':name'}}]},
             'grade': {'rich_text': [{'text': {'content': ':grade'}}]}
             },
@@ -65,7 +65,7 @@ def select_params() -> dict:
     return {
         'payload': {
             'database_id': 'd9824bdc-8445-4327-be8b-5b47500af6ce',
-            'filter': {}    
+            'filter': {}
         },
         'params': {}
     }
@@ -85,8 +85,8 @@ def test_dbapi_cursor_fetchall(dbapi_cursor: Cursor):
             '680dee41-b447-451d-9d36-c6eaff13fb46',
             True,
             True,
-            67890,  
-            'A', 
+            67890,
+            'A',
             'Galileo Galilei'
         ),
     ]
@@ -94,39 +94,39 @@ def test_dbapi_cursor_fetchall(dbapi_cursor: Cursor):
     assert expected_rows == rows
 
 def test_dbapi_cursor_no_parent(
-        dbapi_connection: Connection, 
+        dbapi_connection: Connection,
         insert_op: dict,
-        insert_params: dict        
+        insert_params: dict
     ):
     insert_params['payload'].pop('parent')
 
     # error occurs in the POST /transaction<id>/insert
     with pytest.raises(
-        DatabaseError, 
+        DatabaseError,
         match='Missing "parent"'):
         dbapi_connection.cursor().execute(insert_op, insert_params)
 
 def test_dbapi_cursor_no_properties(
-        dbapi_connection: Connection, 
+        dbapi_connection: Connection,
         insert_op: dict,
-        insert_params: dict        
+        insert_params: dict
     ):
     insert_params['payload'].pop('properties')
 
     # error occurs in the POST /transaction<id>/insert
     with pytest.raises(
-        InterfaceError, 
+        InterfaceError,
         match='Missing "properties"'):
         dbapi_connection.cursor().execute(insert_op, insert_params)
 
 def test_dbapi_cursor_concat_calls(
-        dbapi_connection: Connection, 
+        dbapi_connection: Connection,
         insert_op: dict,
-        insert_params: dict        
+        insert_params: dict
     ):
     with pytest.raises(InterfaceError, match='Cursor result set is empty.'):
         results = dbapi_connection.cursor().execute(
-            insert_op, 
+            insert_op,
             insert_params
         ).fetchall()
 
@@ -136,8 +136,8 @@ def test_cursor_exec_can_begin_new_implicit_txn(
         insert_params: dict
     ):
 
-    # 1. create new connection with the proxy.state.notion client 
-    # this is important because you can inspect the same Notion in-memory store, which 
+    # 1. create new connection with the proxy.state.notion client
+    # this is important because you can inspect the same Notion in-memory store, which
     # the proxy server is using
     conn = Connection(proxy_client, notion)
     cur = conn.cursor()
@@ -149,20 +149,20 @@ def test_cursor_exec_can_begin_new_implicit_txn(
     cur.execute(insert_op, insert_params)
 
     # now the connection shall be in transaction state
-    assert conn._in_transaction()    
+    assert conn._in_transaction()
 
 
 def test_dbapi_cursor_resultset_avail_on_commit(
-        dbapi_connection: Connection, 
+        dbapi_connection: Connection,
         insert_op: dict,
         insert_params: dict
     ):
     # monkey-patch the notion client from proxy/state.py
     dbapi_connection._client = notion
     conn = dbapi_connection
-    
-    # 1. create new connection with the proxy.state.notion client 
-    # this is important because you can inspect the same Notion in-memory store, which 
+
+    # 1. create new connection with the proxy.state.notion client
+    # this is important because you can inspect the same Notion in-memory store, which
     # the proxy server is using
 
     cur = conn.cursor()
@@ -182,11 +182,11 @@ def test_dbapi_cursor_resultset_avail_on_commit(
     assert properties['id']['number'] == 1
     assert properties['name']['title'][0]['text']['content'] == 'Galileo Galilei'
     assert properties['grade']['rich_text'][0]['text']['content'] == 'A'
-    
+
     # the execute() opens an implicit transaction
     assert len(transaction_manager.active_txs.keys()) == 1
     assert conn._in_transaction()
-    assert cur.rowcount == -1    
+    assert cur.rowcount == -1
 
     # 3. fetch all rows
     # prior and after the commit, the cursor result set is empty.
@@ -196,16 +196,16 @@ def test_dbapi_cursor_resultset_avail_on_commit(
     assert cur.rowcount == -1
 
 def test_cursorresult_avail_on_commit(
-        dbapi_connection: Connection, 
+        dbapi_connection: Connection,
         insert_op: dict,
         insert_params: dict
     ):
     # monkey-patch the notion client from proxy/state.py
     dbapi_connection._client = notion
     conn = dbapi_connection
-    
-    # 1. create new connection with the proxy.state.notion client 
-    # this is important because you can inspect the same Notion in-memory store, which 
+
+    # 1. create new connection with the proxy.state.notion client
+    # this is important because you can inspect the same Notion in-memory store, which
     # the proxy server is using
     cur = conn.cursor()
 
@@ -224,11 +224,11 @@ def test_cursorresult_avail_on_commit(
     assert properties['id']['number'] == 1
     assert properties['name']['title'][0]['text']['content'] == 'Galileo Galilei'
     assert properties['grade']['rich_text'][0]['text']['content'] == 'A'
-    
+
     # the execute() opens an implicit transaction
     assert len(transaction_manager.active_txs.keys()) == 1
     assert conn._in_transaction()
-    assert cur.rowcount == -1    
+    assert cur.rowcount == -1
 
     # 3. construct the cursor result and expect exactly one row
     # Data committed in the transaction are available in the composite cursor:
@@ -244,11 +244,11 @@ def test_cursorresult_avail_on_commit(
         keys = result._metadata.keys
 
 def test_connection_procure_composite_cursor(
-        dbapi_connection: Connection, 
+        dbapi_connection: Connection,
         insert_op: dict,
         insert_params: dict,
         insert_op2: dict,
-        insert_params2: dict,        
+        insert_params2: dict,
 ):
     # monkey-patch the notion client from proxy/state.py
     dbapi_connection._client = notion
@@ -285,7 +285,7 @@ def test_connection_procure_composite_cursor(
 
 @pytest.mark.skip('Deferred: This requires StagedSelect and new route.')
 def test_multi_cursor_results_in_tx(
-        dbapi_connection: Connection, 
+        dbapi_connection: Connection,
         insert_op: dict,
         insert_params: dict,
         insert_op2: dict,
@@ -296,9 +296,9 @@ def test_multi_cursor_results_in_tx(
     # monkey-patch the notion client from proxy/state.py
     dbapi_connection._client = notion
     conn = dbapi_connection
-    
-    # 1. create new connection with the proxy.state.notion client 
-    # this is important because you can inspect the same Notion in-memory store, which 
+
+    # 1. create new connection with the proxy.state.notion client
+    # this is important because you can inspect the same Notion in-memory store, which
     # the proxy server is using
     cur = conn.cursor()
 

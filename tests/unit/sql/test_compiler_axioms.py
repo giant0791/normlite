@@ -661,7 +661,7 @@ def test_nested_ands_are_spliced():
     assert _normalize_filter("and", [{"and": ["P", "Q"]}, {"and": ["R", "S"]}]) == {"and": ["P", "Q", "R", "S"]}
     assert _normalize_filter("and", [{"or": ["P", "Q"]}, {"and": ["R", "S"]}]) == {"and": [{"or": ["P", "Q"]}, "R", "S"]}
     assert _normalize_filter("and", [{"and": ["P", "Q"]}, {"or": ["R", "S"]}]) == {"and": ["P", "Q", {"or": ["R", "S"]}]}
-    assert _normalize_filter("or", [{"and": ["P", "Q"]}, "R"]) == {"or": [{"and": ["P", "Q"]}, "R"]}    
+    assert _normalize_filter("or", [{"and": ["P", "Q"]}, "R"]) == {"or": [{"and": ["P", "Q"]}, "R"]}
 
 def test_falsy_clauses_are_dropped_at_every_arity():
     """A falsy clause must never survive into the emitted compound (#383).
@@ -697,7 +697,7 @@ def test_falsy_clauses_are_dropped_at_every_arity():
     assert _normalize_filter("and", [{"p": 1}, {}, {"q": 2}]) == {"and": [{"p": 1}, {"q": 2}]}
 
 
-# scratchpad: this is a preliminary test for the _prune() 
+# scratchpad: this is a preliminary test for the _prune()
 
 def test_pruning_level_1_is_idempotent():
     f = {"and": [{"X": 1}, {"Y": 1}]}
@@ -708,12 +708,12 @@ def test_pruning_level_2_is_idempotent():
     f2 = {"and": [{"X": 1}, {"Y": 1}, {"or": [{"P": 1}, {"Q": 1}]},]}
     f3 = {"and": [{"or": [{"P": 1}, {"Q": 1}]}, {"or": [{"R": 1}, {"S": 1}]},]}
 
-    assert _prune(f1) == f1    
+    assert _prune(f1) == f1
     assert _prune(f2) == f2
     assert _prune(f3) == f3
 
 def test_pruning_level_3_and_drops_it():
-    # the fixtures need an additional term because 
+    # the fixtures need an additional term because
     f1 = {"and": [{"or": [{"and": [{"P": 1}, {"Q": 1}]}, {"X": 1}, {"Y": 1}]}, {"Z": 1}]}
     f2 = {"and": [{"or": [{"P": 1}, {"Q": 1}, {"and": [{"X": 1}, {"Y": 1}]}]}, {"Z": 1}]}
 

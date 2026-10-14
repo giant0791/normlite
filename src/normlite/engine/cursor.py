@@ -26,13 +26,13 @@ from normlite.engine.resultmetadata import _NO_CURSOR_RESULT_METADATA, CursorRes
 from normlite.engine.row import Row
 from normlite.notiondbapi.dbapi2 import Cursor, InterfaceError
 from normlite.sql.base import Compiled
- 
+
 class CursorResult:
     """Provide pythonic high level interface to result sets from SQL statements.
 
-    This class is an adapter to the DBAPI cursor (see :class:`normlite.notiondbapi.dbapi2.Cursor`) 
+    This class is an adapter to the DBAPI cursor (see :class:`normlite.notiondbapi.dbapi2.Cursor`)
     representing state from the DBAPI cursor. It provides a high level API to
-    access returned database rows as :class:`Row` objects. 
+    access returned database rows as :class:`Row` objects.
     CursorResult is a **consuming, read-only façade** over a DBAPI cursor.
     It does not mutate result data, but **does manage cursor exhaustion and closure**.
 
@@ -46,11 +46,11 @@ class CursorResult:
         result to process the result set data in a context-oriented way. This means, the cursor result object
         can now determine whether the rows returned are data or reflected metadata.
 
-    .. versionchanged:: 0.7.0   
-        This class now fully supports Notion property identifier as column ids. 
-        Additionally, the :meth:`close()` is now available to close the underlying DBAPI cursor. 
+    .. versionchanged:: 0.7.0
+        This class now fully supports Notion property identifier as column ids.
+        Additionally, the :meth:`close()` is now available to close the underlying DBAPI cursor.
         Therefore, all methods returning rows now check whether the cursor
-        is closed and raise the :exc:`ResourceClosedError`. 
+        is closed and raise the :exc:`ResourceClosedError`.
         The attribute :attr:`CursorResult.return_rows` of closed cursor result always returns ``False``.
 
     .. versionchanged:: 0.5.0
@@ -60,22 +60,22 @@ class CursorResult:
 
     context: ExecutionContext
     """The execution context this cursor result belongs to.
-    
+
     .. versionadded:: 0.8.0
     """
 
     def __init__(
-            self, 
+            self,
             context: ExecutionContext,
     ) -> None:
         self.context = context
-        
+
         self._cursor = context.cursor
         """The underlying DBAPI cursor."""
 
         self._compiled = context.compiled
         """The execution context that produced this cursor result.
-        
+
         .. versionadded: 0.8.0
         """
 
@@ -84,7 +84,7 @@ class CursorResult:
 
         if self._cursor.description:
             self._metadata = CursorResultMetaData(
-                self._cursor.description, 
+                self._cursor.description,
                 self._compiled.is_ddl,
             )
 
@@ -100,14 +100,14 @@ class CursorResult:
 
         This attribute signals whether it is legal to call the methods: :meth:`CursorResult.fetchone()`,
         :meth:`fetchall()`, and :meth:`fetchmany()`.
-        
+
         The truthness of this attribute is strictly in sync with whether the underlying DBAPI cursor
         had a :attr:`normlite.notiondbapi.dbapi2.Cursor.description`, which always indicates the presence
         of result columns.
 
         Note:
-            A cursor that returns zero rows (e.g. an empty sequence from :meth:`CursorResult.all()`) 
-            has still a :attr:`normlite.notiondbapi.dbapi2.Cursor.description`, if a row-returning 
+            A cursor that returns zero rows (e.g. an empty sequence from :meth:`CursorResult.all()`)
+            has still a :attr:`normlite.notiondbapi.dbapi2.Cursor.description`, if a row-returning
             statement was executed.
 
         .. versionadded:: 0.5.0
@@ -130,8 +130,8 @@ class CursorResult:
         This attribute is transferred from the ``cursor.rowcount`` attribute
         of the DBAPI before the cursor is closed. The Notion DBAPI supports row count.
         In order to retrieve ``cursor.rowcount`` for these statements, set the
-        :attr:`normlite.engine.interfaces.ExecutionOptions.preserve_rowcount` execution option to ``True``, 
-        which will cause the :attr:`normlite.notiondbapi.dbapi2.Cursor.rowcount` value to be unconditionally memoized before 
+        :attr:`normlite.engine.interfaces.ExecutionOptions.preserve_rowcount` execution option to ``True``,
+        which will cause the :attr:`normlite.notiondbapi.dbapi2.Cursor.rowcount` value to be unconditionally memoized before
         any results are returned or the cursor is closed, regardless of statement type.
 
         .. versionadded:: 0.9.0
@@ -139,26 +139,26 @@ class CursorResult:
         """
         rowcount = self.context.get_rowcount()
         return -1 if rowcount is None else rowcount
-    
+
     @property
     def returned_primary_keys_rows(self) -> Optional[list[tuple]]:
         """Return the value of :attr:`normlite.engine.context.ExecutionContext._returned_primary_keys_rows`
         as a list of tuples representing rows.
-        
+
         .. versionadded:: 0.9.0
         """
         return self.context._returned_primary_keys_rows
-    
-    
+
+
     def __iter__(self) -> Iterator[Row]:
         """Provide an iterator for this cursor result.
 
         .. versionchanged:: 0.9.0
             This version adds support for multiple result sets returned by the underlying DBAPI cursor.
 
-        .. versionchanged:: 0.7.0   
+        .. versionchanged:: 0.7.0
             Raise :exc:`ResourceClosedError` if it was previously closed.
-        
+
         .. versionadded:: 0.5.0
 
         Raises:
@@ -172,13 +172,13 @@ class CursorResult:
         for raw_row in self._cursor._iter_all():
             yield Row(self._metadata, raw_row)
 
-        self.close()    
+        self.close()
 
     def _soft_close(self) -> None:
         """Soft close the cursor result.
-        
-        Soft closing means the underlying result set is closed (:attr:`returns_row` is `` False``), 
-        but the cursor result itself it is not, that is no :exc:`normlite.exceptions.ResourceCloseError` 
+
+        Soft closing means the underlying result set is closed (:attr:`returns_row` is `` False``),
+        but the cursor result itself it is not, that is no :exc:`normlite.exceptions.ResourceCloseError`
         is raised.
         This method is private and it is used by user classes that are perform result interpretation.
 
@@ -194,17 +194,17 @@ class CursorResult:
 
         .. versionchanged:: 0.9.0
             Soft-closing logic added.
-            
-        .. versionchanged:: 0.7.0   
+
+        .. versionchanged:: 0.7.0
             Raise :exc:`normlite.exceptions.ResourceCloseError` if it was previously closed.
-        
+
         .. versionadded:: 0.5.0
 
         Raises:
             ResourceClosedError: If it was previously closed.
             NoResultFound: If no row was found when one was required.
             MultipleResultsFound: If multiple rows were found when exactly one was required.
-        
+
         Returns:
             Row: The one row required.
         """
@@ -222,7 +222,7 @@ class CursorResult:
 
         self._soft_close()
         return row
-    
+
     def all(self) -> Sequence[Row]:
         """Return all rows in a sequence.
 
@@ -230,19 +230,19 @@ class CursorResult:
 
         Note:
             This method soft-closes the result set.
-        
+
         .. versionchanged:: 0.9.0
             This version adds support for multiple result sets returned by the underlying DBAPI cursor,
             and soft-closing logic.
-            
-        .. versionchanged:: 0.7.0   
+
+        .. versionchanged:: 0.7.0
             Raise :exc:`ResourceCloseError` if it was previously closed.
 
         .. versionadded:: 0.5.0
-        
+
         Raises:
             ResourceClosedError: If it was previously closed.
-        
+
         Returns:
             Sequence[Row]: All rows in a sequence.
         """
@@ -254,8 +254,8 @@ class CursorResult:
         rows = [Row(self._metadata, raw) for raw in self._cursor._iter_all()]
 
         self._soft_close()
-        return rows    
-    
+        return rows
+
     def first(self) -> Optional[Row]:
         """Return the first row or ``None`` if no row is present.
 
@@ -263,9 +263,9 @@ class CursorResult:
             This method soft-closes the result set and discards remaining rows.
 
         .. versionchanged:: 0.9.0
-            After this method is 
+            After this method is
 
-        .. versionchanged:: 0.7.0  
+        .. versionchanged:: 0.7.0
             Raise :exc:`normlite.exceptions.ResourceClosedError` if it was previously closed.
 
         .. versionadded:: 0.5.0
@@ -273,7 +273,7 @@ class CursorResult:
 
         Raises:
             ResourceClosedError: If it was previously closed.
-        
+
         Returns:
             Optional[Row]: The first row in the result set or ``None`` if no row is present.
         """
@@ -285,7 +285,7 @@ class CursorResult:
         row = self.fetchone()
         self._soft_close()
         return row
-    
+
     def fetchone(self) -> Optional[Row]:
         """Fetch the next row.
 
@@ -297,8 +297,8 @@ class CursorResult:
         .. versionadded:: 0.5.0
 
         Raises:
-            ResourceClosedError: If it was previously closed.        
-        
+            ResourceClosedError: If it was previously closed.
+
         Returns:
             Optional[Row]: The row object in the result.
         """
@@ -315,7 +315,7 @@ class CursorResult:
             # move to next result set
             if not self._cursor.nextset():
                 return None
-            
+
     def fetchall(self) -> Sequence[Row]:
         """Synonim for :class:`CursorResult.all()` method.
 
@@ -327,7 +327,7 @@ class CursorResult:
             Sequence[Row]: The sequence of row objects. Empty sequence if the cursor result is closed.
         """
         return self.all()
-    
+
     def fetchmany(self, size: Optional[int] = None) -> Sequence[Row]:
         """Fetch many rows.
 
@@ -362,12 +362,12 @@ class CursorResult:
         # soft-closes if no more rows are in the result set
         if not result:
             self._soft_close()
-            
-        return result    
+
+        return result
 
     def close(self) -> None:
         """Close the cursor result.
-        
+
         After a cursor result is closed, the :attr:`returns_row` returns ``False``, and
         all public API methods raise :exc:`normlite.exceptions.ResourceClosedError`.
 
@@ -376,7 +376,7 @@ class CursorResult:
 
         .. versionadded:: 0.7.0
             This method closes the underlying DBAPI cursor and manages the internal state.
-    
+
         """
         self._soft_close()
         self._cursor.close()
@@ -384,7 +384,7 @@ class CursorResult:
 
     def _check_if_closed(self) -> None:
         """Raise ResourceClosedError if this cursor result is closed."""
-        
+
         if self._closed:
             raise ResourceClosedError(
                 'An operation was requested from a connection, cursor,'

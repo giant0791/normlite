@@ -40,7 +40,7 @@ All endpoints return JSON objects according to the following schema.
                                     // POST /transactions/<id>/commit
                                     // POST /transactions/<id>/rollback
   }
-    
+
 **Success (commit)**:
 
 .. code-block:: json
@@ -57,14 +57,14 @@ All endpoints return JSON objects according to the following schema.
 
   {
     "error": {
-      "code": "<error_code>",       // <error_code> = e.g. "invalid_payload"    
+      "code": "<error_code>",       // <error_code> = e.g. "invalid_payload"
       "message": "<error message"   // <error_message>" = e.g. "Missing parent in payload"
     },
     "transaction_id": "<tx_id>",    // optional, if error occurred in a transaction that was already started
     "state": "<tx_state>"           // optional, if error occurred in a transaction that was already started
   }
 
-    
+
 .. list-table:: Transaction Proxy Server REST API
    :header-rows: 1
    :widths: 15, 25, 60
@@ -88,7 +88,7 @@ All endpoints return JSON objects according to the following schema.
    * - ``POST``
      - ``/transactions/<id>/rollback``
      - Roll back an existing transaction (see :func:`normlite.proxy.routes.transactions.rollback_transaction()` for more details).
-    
+
 .. versionchanged:: 0.7.0
   ``GET /health`` added.
 

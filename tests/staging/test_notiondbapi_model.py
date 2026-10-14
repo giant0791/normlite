@@ -313,7 +313,7 @@ def dollar_number_def() -> Dict[str, Any]:
                 "format": "dollar"
             }
         }
-    }           
+    }
 
 @pytest.fixture
 def number_def() -> Dict[str, Any]:
@@ -330,7 +330,7 @@ def int_or_float_number_def() -> dict:
                 "format": "number"
             }
         }
-    }           
+    }
 
 @pytest.fixture
 def int_number_val() -> Dict[str, Any]:
@@ -341,7 +341,7 @@ def int_number_val() -> Dict[str, Any]:
             "type": "number",
             "number": 1870
         }
-    }           
+    }
 
 @pytest.fixture
 def float_number_val() -> Dict[str, Any]:
@@ -352,7 +352,7 @@ def float_number_val() -> Dict[str, Any]:
             "type": "number",
             "number": 18.70
         }
-    }           
+    }
 
 def test_parse_dollar_number_def_property(dollar_number_def: dict):
     """Test that the description visitor correctly parses the number definition"""
@@ -373,7 +373,7 @@ def test_parse_number_def_property(number_def: dict):
 
 def test_parse_int_or_float_number_def_property(int_or_float_number_def: dict):
     expected = (
-        'Price', DBAPITypeCode.NUMBER, None, None, None, None, None, 
+        'Price', DBAPITypeCode.NUMBER, None, None, None, None, None,
     )
 
     property: NotionProperty = parse_database_property('Price', int_or_float_number_def['Price'])
@@ -407,10 +407,10 @@ def test_parse_single_array_title(page_retrieved: dict):
     assert expected == property.value
 
 def test_unsupported_property_type(unsupported_prop_type: Dict[str, Any]):
-    
+
     with pytest.raises(TypeError, match="Unexpected or unsupported property type"):
         property: NotionProperty = parse_page_property(
-            'Store availability', 
+            'Store availability',
             unsupported_prop_type['Store availability']
         )
         desc = property.compile(DescriptionCompiler())
@@ -461,11 +461,11 @@ def test_compile_database_retrieved(database_retrieved: dict):
 def test_compile_page_created_or_updated(page_created_or_updated: dict):
     # created pages return the object and property ids as result
     expected = [
-        (SpecialColumns.NO_ID, '59833787-2cf9-4fdf-8782-e53db20768a5',), 
-        (SpecialColumns.NO_ARCHIVED, False,), 
-        (SpecialColumns.NO_IN_TRASH, None,), 
-        ('Price', 'BJXS',), 
-        ('Description', '_Tc_',), 
+        (SpecialColumns.NO_ID, '59833787-2cf9-4fdf-8782-e53db20768a5',),
+        (SpecialColumns.NO_ARCHIVED, False,),
+        (SpecialColumns.NO_IN_TRASH, None,),
+        ('Price', 'BJXS',),
+        ('Description', '_Tc_',),
         ('Name', 'title',)
     ]
     page_created: NotionPage = parse_page(page_created_or_updated)
@@ -478,11 +478,11 @@ def test_compile_page_retrieved(page_retrieved: Dict[str, Any]):
         (SpecialColumns.NO_ID, '59833787-2cf9-4fdf-8782-e53db20768a5',),
         (SpecialColumns.NO_ARCHIVED, False,),
         (SpecialColumns.NO_IN_TRASH, None,),
-        ('Price', {'number': 2.5},), 
-        ('Description', {'rich_text': [{'text': {'content': 'A dark ', 'link': None}}, {'text': {'content': 'green', 'link': None}}, {'text': {'content': ' leafy vegetable', 'link': None}}]},), 
+        ('Price', {'number': 2.5},),
+        ('Description', {'rich_text': [{'text': {'content': 'A dark ', 'link': None}}, {'text': {'content': 'green', 'link': None}}, {'text': {'content': ' leafy vegetable', 'link': None}}]},),
         ('Name', {'title': [{'text': {'content': 'Tuscan kale', 'link': None}}]},),
     ]
-    
+
     page_object: NotionPage = parse_page(page_retrieved)
     row = page_object.compile(RowCompiler())
     assert expected == row

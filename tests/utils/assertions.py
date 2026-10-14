@@ -48,23 +48,23 @@ def is_today(date_as_iso: str):
     try:
         # Parse the ISO 8601 string into a datetime object
         parsed_dt = datetime.fromisoformat(date_as_iso)
-        
+
         # Compare only the date parts (Year, Month, Day)
         return parsed_dt.date() == datetime.now().date()
     except ValueError:
         # Handle cases where the string isn't a valid ISO format
         return False
-    
+
 def assert_is_today(date_as_iso: str):
     assert is_today(date_as_iso)
-    
+
 def is_valid_uuid4(uuid_string):
     try:
         # If the string is not a valid UUIDv4, this will raise a ValueError
         val = uuid.UUID(uuid_string, version=4)
     except ValueError:
         return False
-    
+
     # Optional: Ensure the string is in the standard canonical form
     return str(val) == uuid_string
 

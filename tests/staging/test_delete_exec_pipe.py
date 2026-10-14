@@ -54,7 +54,7 @@ fake = Faker()
 Faker.seed(42)
 
 def generate_rows(
-    engine: Engine, 
+    engine: Engine,
     students: Table,
     n: int,
 ):
@@ -88,7 +88,7 @@ def setup_context(
     compiled = elem.compile(compiler)
 
     # 2. distill parameters
-    distilled_params = _distill_params(parameters)  
+    distilled_params = _distill_params(parameters)
 
     # 3. create the execution context
     ctx = ExecutionContext(
@@ -115,7 +115,7 @@ def test_rows_generation_works(
     stmt = select(students).where(students.c.is_active.is_(True))
     with engine.connect() as connection:
         result = connection.execute(stmt, execution_options={"preserve_rowcount": True})
-    
+
     rows = result.all()
     all_existing = [not row["is_deleted"] for row in rows]
 
@@ -151,7 +151,7 @@ def test_delete_exec_ctx_prefetches_pages_to_delete(
     elem = ctx.invoked_stmt
 
     # 5. statement prepares execution
-    elem._setup_execution(ctx)      
+    elem._setup_execution(ctx)
     assert len(ctx.bulk_parameters) == MAX_ROWS
 
 def test_delete_ctx_bulk_params_contain_all_rows(
@@ -168,12 +168,12 @@ def test_delete_ctx_bulk_params_contain_all_rows(
     elem = ctx.invoked_stmt
 
     # 5. statement prepares execution
-    elem._setup_execution(ctx)      
+    elem._setup_execution(ctx)
 
     stmt = select(students).where(students.c.is_active.is_(True))
     with engine.connect() as connection:
         result = connection.execute(stmt)
-    
+
     rows_to_delete = result.all()
     page_ids = [r["object_id"] for r in rows_to_delete]
     expected_bp = [
@@ -183,7 +183,7 @@ def test_delete_ctx_bulk_params_contain_all_rows(
 
     assert expected_bp == ctx.bulk_parameters
 
-def test_delete_ctx_execmany_deletes_all_rows(    
+def test_delete_ctx_execmany_deletes_all_rows(
     engine: Engine,
     students: Table,
 ):
@@ -197,18 +197,18 @@ def test_delete_ctx_execmany_deletes_all_rows(
     elem = ctx.invoked_stmt
 
     # 5. statement prepares execution
-    elem._setup_execution(ctx)      
+    elem._setup_execution(ctx)
     # 6. side effects happen (HTTP)
     engine.do_executemany(
-        ctx.cursor, 
-        ctx.bulk_operation, 
+        ctx.cursor,
+        ctx.bulk_operation,
         ctx.bulk_parameters
     )
 
     stmt = select(students).where(students.c.is_active.is_(True))
     with engine.connect() as connection:
         result = connection.execute(stmt)
-    
+
     rows = result.all()
 
     assert len(rows) == 0
@@ -259,7 +259,7 @@ def test_delete_exec_pipeline_returning_syscols_only(
     assert del_result.rowcount == MAX_ROWS
 
     assert orig_rows[0]["object_id"] == del_rows[0]["object_id"]
-    assert orig_rows[MAX_ROWS - 1]["object_id"] == del_rows[MAX_ROWS - 1]["object_id"]  
+    assert orig_rows[MAX_ROWS - 1]["object_id"] == del_rows[MAX_ROWS - 1]["object_id"]
     assert "name" not in orig_rows[0]
     assert "id" not in orig_rows[0]
     assert "is_active" not in orig_rows[0]

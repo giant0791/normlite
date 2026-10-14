@@ -39,23 +39,23 @@ class InProcessProxyClient(BaseProxyClient):
     def connect(self) -> requests.Response:
         flask_resp = self._client.get("/health")
         return self._flask_to_requests_response(flask_resp)
-    
+
     def begin(self) -> requests.Response:
         flask_resp = self._client.post("/transactions")
         return self._flask_to_requests_response(flask_resp)
-    
+
     def insert(self, tx_id: str, payload: dict) -> requests.Response:
         flask_resp = self._client.post(f"/transactions/{tx_id}/insert", json=payload)
         return self._flask_to_requests_response(flask_resp)
-    
+
     def commit(self, tx_id: str) -> requests.Response:
         flask_resp = self._client.post(f"/transactions/{tx_id}/commit")
         return self._flask_to_requests_response(flask_resp)
-    
+
     def rollback(self, tx_id: str) -> requests.Response:
         flask_resp = self._client.post(f"/transactions/{tx_id}/rollback")
         return self._flask_to_requests_response(flask_resp)
- 
+
     def _flask_to_requests_response(self, flask_resp: wrappers.Response) -> requests.Response:
         """Convert a Flask TestResponse into a requests.Response."""
         resp = requests.Response()
@@ -91,7 +91,7 @@ def create_proxy_client(**kwargs: Any) -> ProxyClient:
         base_url = kwargs.pop("base_url")
         timeout = kwargs.pop("timeout", 5)
         return ProxyClient(base_url=base_url, timeout=timeout)
-    
+
     if "flask_client" in kwargs:
         flask_client = kwargs.pop('flask_client')
         return InProcessProxyClient(flask_client=flask_client)

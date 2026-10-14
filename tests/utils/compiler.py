@@ -26,8 +26,8 @@ def normalize_json(obj: dict) -> str:
     )
 
 def assert_compile_equal(
-        ast: ColumnElement, 
-        reference_compiler: Callable[[ColumnElement], dict], 
+        ast: ColumnElement,
+        reference_compiler: Callable[[ColumnElement], dict],
         production_compiler: Callable[[ColumnElement], dict]
 ) -> NoReturn:
     """Assert compilation equality.
@@ -55,7 +55,7 @@ def assert_compile_equal(
             )
         )
         raise AssertionError(f"Compiler outputs differ:\n{diff}")
-    
+
 class ReferenceCompiler:
     """AST to JSON Reference compiler.
 
@@ -271,7 +271,7 @@ class PythonExpressionCompiler:
 
         value = bp.value
 
-        # IMPORTANT: 
+        # IMPORTANT:
         # None values (e.g. empty Notion date) must render to "None"
         if value is None:
             return "None"

@@ -137,12 +137,12 @@ def test_insert_commit_fails(test_client, store):
 
         def do_commit(self):
             raise Exception('Mocked: Connection error.')
-        
+
         def do_rollback(self):
             pass
 
         def get_result(self):
-            return {}               # nothing to return 
+            return {}               # nothing to return
 
     # 2. Start a new transaction
     response = test_client.begin()
@@ -183,7 +183,7 @@ def test_insert_commit_fails(test_client, store):
     # 6. Expect exactly 1 element with archived == True
     #pdb.set_trace()
     tx_data = response.json()['data']
-    assert len(tx_data) == 2                        # 1 for the successfull insert (archived = False) and 1 for the rollbacked insert (archived = True) 
+    assert len(tx_data) == 2                        # 1 for the successfull insert (archived = False) and 1 for the rollbacked insert (archived = True)
     object_id1 = tx_data[0]['id']
     object_id2 = tx_data[1]['id']
     assert object_id1 == object_id2                 # it's the same object but with different attribute archived

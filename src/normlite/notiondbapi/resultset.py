@@ -7,7 +7,7 @@ from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 
 _SYSTEM_COLUMNS_PAGE = {
     SpecialColumns.NO_ID: "id",                       # TODO: rename in "object_id"
-    SpecialColumns.NO_ARCHIVED: "archived",           # TODO: rename in "is_archived"   
+    SpecialColumns.NO_ARCHIVED: "archived",           # TODO: rename in "is_archived"
     SpecialColumns.NO_IN_TRASH: "in_trash",           # TODO: rename in "is_deleted"
     SpecialColumns.NO_CREATED_TIME: "created_time",   # TODO: rename in "created_at"
     #("updated_at", DBAPITypeCode.TIMESTAMP, "last_edited_time"),
@@ -21,18 +21,18 @@ class ResultSet:
     _SYSTEM_COLUMNS_DATABASE = (
         (SpecialColumns.NO_ID, DBAPITypeCode.ID, "id"),                              # TODO: rename in "object_id"
         (SpecialColumns.NO_DSID, DBAPITypeCode.ID, "data_sources"),
-        (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.ARCHIVAL_FLAG, "archived"),       # TODO: rename in "is_archived"   
+        (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.ARCHIVAL_FLAG, "archived"),       # TODO: rename in "is_archived"
         (SpecialColumns.NO_IN_TRASH, DBAPITypeCode.ARCHIVAL_FLAG, "in_trash"),       # TODO: rename in "is_deleted"
         (SpecialColumns.NO_CREATED_TIME, DBAPITypeCode.TIMESTAMP, "created_time"),   # TODO: rename in "created_at"
         (SpecialColumns.NO_TITLE, DBAPITypeCode.TITLE, "title"),                     # TODO: rename in "table_name"
 
         #("updated_at", DBAPITypeCode.TIMESTAMP, "last_edited_time"),
     )
- 
+
 
     _METADATA = ("column_name", "column_type", "column_id", "metadata", "is_system")
     _pg_oid_getter = itemgetter(0)
-    _db_oid_getter = itemgetter(3) 
+    _db_oid_getter = itemgetter(3)
 
     def __init__(
         self,
@@ -47,7 +47,7 @@ class ResultSet:
 
     @classmethod
     def from_json(
-        cls, 
+        cls,
         description: tuple[tuple, ...],
         notion_obj: dict
     ) -> ResultSet:
@@ -71,7 +71,7 @@ class ResultSet:
             elif obj_type == "database":
                 object_type = obj_type
                 rows.extend(cls._process_database(obj))
-            
+
             elif obj_type == "data_source":
                 object_type = obj_type
                 rows.extend(cls._process_data_source(obj))
@@ -93,7 +93,7 @@ class ResultSet:
 
     def __len__(self) -> int:
         return len(self._rows)
-    
+
     @property
     def description(self) -> Optional[list[tuple]]:
         if not self._rows:
@@ -102,8 +102,8 @@ class ResultSet:
 
         if self._description is not None:
             # description was previously injected, the result set contains pages
-            return self._description        
-        
+            return self._description
+
         # always construct the description for databases
         # DO NOT store, this signals the _rows contains column metadata
         desc = []
@@ -112,14 +112,14 @@ class ResultSet:
             desc.append((colname, None, None, None, None, None, None,))
 
         return desc
-    
+
     @property
     def last_inserted_rowids(self) -> Optional[list[tuple]]:
         if self._object_type == "database":
             # the result set contains columns metadata from a database:
             # the first row only provides the database id
             return None
-        
+
         if self._rows == []:
             # no rows modified
             return None
@@ -142,15 +142,15 @@ class ResultSet:
 
     def extend_rows(self, rows: list[tuple]) -> None:
         """Append already decoded tuples.
-        
+
         .. versionadded:: 0.13.0
         """
         self._rows.extend(rows)
-            
+
     @classmethod
     def _process_page(
-        cls, 
-        description: tuple[tuple, ...],        
+        cls,
+        description: tuple[tuple, ...],
         page: dict,
     ) -> tuple:
         """Normalize a page object."""
@@ -167,12 +167,12 @@ class ResultSet:
                 prop = properties.get(str(col))
                 typ = prop.get("type")
                 row.append(
-                    {typ: prop[typ]}       # new contract as per issue [#290](https://github.com/giant0791/normlite/issues/290) 
+                    {typ: prop[typ]}       # new contract as per issue [#290](https://github.com/giant0791/normlite/issues/290)
                     if typ else None
                 )
 
-        return tuple(row)    
-    
+        return tuple(row)
+
     @classmethod
     def _process_database(cls, database: dict) -> list[tuple]:
         """Normalize a database object."""
@@ -191,7 +191,7 @@ class ResultSet:
             else:
                 # the system column value is a top property in the Notion object
                 syscol_val = database[field]
-            
+
             rows.append(
                 (
                     colname,
@@ -221,7 +221,7 @@ class ResultSet:
                     False,              # is user defined
                 )
             )
-        
+
         return rows
 
     @classmethod

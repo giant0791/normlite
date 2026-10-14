@@ -112,7 +112,7 @@ def db_as_tuples(database_retrieved: dict) -> list[tuple]:
         (SpecialColumns.NO_ARCHIVED, DBAPITypeCode.ARCHIVAL_FLAG, None, database_retrieved["archived"], True),
         (SpecialColumns.NO_IN_TRASH, DBAPITypeCode.ARCHIVAL_FLAG, None, database_retrieved["in_trash"], True),
         (SpecialColumns.NO_CREATED_TIME, DBAPITypeCode.TIMESTAMP, None, database_retrieved["created_time"], True),
-        (SpecialColumns.NO_TITLE, DBAPITypeCode.TITLE, None, database_retrieved["title"], True), 
+        (SpecialColumns.NO_TITLE, DBAPITypeCode.TITLE, None, database_retrieved["title"], True),
     ]
     for key, value in database_retrieved["properties"].items():
         typ = value["type"]
@@ -129,7 +129,7 @@ def inspector(engine: Engine) -> Inspector:
 def test_reflect_table_info_from_dict(database_retrieved: dict):
     reflected_table_info = ReflectedTableInfo.from_dict(database_retrieved)
     usr_column_names = [c.name for c in reflected_table_info.get_user_columns()]
-    
+
     assert reflected_table_info.id == 'bc1211ca-e3f1-4939-ae34-5260b16f627c'
     assert reflected_table_info.name == 'Grocery List'
     assert len(reflected_table_info.get_columns()) == 9

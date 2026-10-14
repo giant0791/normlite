@@ -1,4 +1,4 @@
-# notion_sdk/client.py 
+# notion_sdk/client.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -43,14 +43,14 @@ from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
 
 class NotionError(Exception):
     """Exception raised for all errors related to the Notion REST API.
-    
+
     This class mimics the HTTP response object returned by the Notion API.
-    
+
     .. seealso::
 
         `Notion API status codes <https://developers.notion.com/reference/status-codes>`__
 
-        
+
     .. versionchanged:: 0.8.0
     """
     def __init__(
@@ -62,26 +62,26 @@ class NotionError(Exception):
     ) -> None:
         self.status_code = status_code
         """HTTP status code
-        
+
         .. seealso::
 
-            `Notion API error codes and messages <https://developers.notion.com/reference/status-codes#error-codes>`__ 
+            `Notion API error codes and messages <https://developers.notion.com/reference/status-codes#error-codes>`__
         """
 
         self.code = code
-        """Notion error code. 
-        
+        """Notion error code.
+
         .. seealso::
 
-            `Notion API error codes and messages <https://developers.notion.com/reference/status-codes#error-codes>`__ 
+            `Notion API error codes and messages <https://developers.notion.com/reference/status-codes#error-codes>`__
         """
 
         self.message = message
         """Notion error message.
-        
+
         .. seealso::
 
-            `Notion API error codes and messages <https://developers.notion.com/reference/status-codes#error-codes>__ 
+            `Notion API error codes and messages <https://developers.notion.com/reference/status-codes#error-codes>__
         """
 
         # Preserve normal Exception behavior
@@ -115,18 +115,18 @@ def encode_cursor(index: int) -> str:
     """Encodes an integer index into a valid, opaque UUID4 string."""
     # Step 1: Create a deterministic base UUID from the index to ensure uniqueness
     base_uuid = uuid.uuid5(NAMESPACE_UUID, f"cursor-{index}")
-    
+
     # Step 2: Extract the raw bytes
     uuid_bytes = bytearray(base_uuid.bytes)
-    
+
     # Step 3: Embed the integer into the last 4 bytes (supports up to 4.2 billion)
     # This keeps the integer safe inside the node payload of the UUID
     uuid_bytes[12:16] = index.to_bytes(4, byteorder='big')
-    
+
     # Step 4: Enforce RFC 4122 UUID Version 4 variant and version bits
     uuid_bytes[6] = (uuid_bytes[6] & 0x0f) | 0x40  # Set version to 4
     uuid_bytes[8] = (uuid_bytes[8] & 0x3f) | 0x80  # Set variant to RFC 4122
-    
+
     return str(uuid.UUID(bytes=bytes(uuid_bytes)))
 
 def decode_cursor(cursor_str: str) -> int:
@@ -135,16 +135,16 @@ def decode_cursor(cursor_str: str) -> int:
         # Convert string back to UUID object
         parsed_uuid = uuid.UUID(cursor_str)
         uuid_bytes = parsed_uuid.bytes
-        
+
         # Extract the integer from the last 4 bytes of the payload
         index = int.from_bytes(uuid_bytes[12:16], byteorder='big')
         return index
     except ValueError as e:
         raise ValueError(f"Invalid or corrupted cursor string: {cursor_str}") from e
-    
+
 class _ClientQueryEngine:
     def __init__(
-        self, 
+        self,
         store: dict[str, dict],
         path_params: Optional[dict] = None,
         query_params: Optional[dict] = None,
@@ -174,10 +174,10 @@ class _ClientQueryEngine:
         start_cursor = self._payload.get("start_cursor")
         offset = decode_cursor(start_cursor) if start_cursor is not None else 0
         end = offset + page_size
-        
+
         # slice the next page and encode the next cursor if necessary
         next_page = [
-            p 
+            p
             for p in self._query_results[offset:end]
         ]
         self._query_result_object["results"] = next_page
@@ -203,11 +203,11 @@ class _ClientQueryEngine:
                     return (is_empty, value)
 
                 self._query_results.sort(key=sort_key, reverse=reverse)
-        
+
     def _filter(self) -> None:
         data_source_id = (
-            self._path_params.get('data_source_id') 
-            if self._path_params 
+            self._path_params.get('data_source_id')
+            if self._path_params
             else None
         )
 
@@ -242,26 +242,26 @@ class _ClientQueryEngine:
             predicate = _Filter(obj, self._payload)
             if predicate.eval():
                 pages.append(obj)
-        
-        
-        self._query_results.extend(pages)    
+
+
+        self._query_results.extend(pages)
 
     def _project(self) -> None:
         if not self._filter_props:
             return
-        
+
         # project only if "filter_properties" has been provided
-        # IMPORTANT: projection must be a pure per-row column transform 
+        # IMPORTANT: projection must be a pure per-row column transform
         # on the paginated results, that's why it mutates the "result" value in-place.
         # This ensures the store stays untouched.
         self._query_result_object["results"] = [
             self._filter_properties(p, self._filter_props)
             for p in self._query_result_object["results"]
         ]
-    
+
     def _filter_properties(
-            self, 
-            original_obj: dict, 
+            self,
+            original_obj: dict,
             filter_list: Optional[list[str]] = []
         ) -> dict:
         props = original_obj.get('properties', {})
@@ -278,9 +278,9 @@ class _ClientQueryEngine:
     def execute(self) -> dict:
         if len(self._store) == 0:
             return self._query_result_object
-        
+
         self._filter()      # WHERE    - working set (may be live store refs)
-        self._sort()        # ORDER_BY - 
+        self._sort()        # ORDER_BY -
         self._paginate()    # LIMIT    - pure windowing + cursors
         self._project()     # SELECT   - narrow columns, detach into copies
         return self._query_result_object
@@ -297,20 +297,20 @@ class AbstractNotionClient(ABC):
     def __init__(self):
         self._ischema_page_id = None
         """The object id for ``information_schema`` page.
-        
+
         .. deprecated:: 0.7.0
             Do not use, it will be removed in a future version.
             Use the keyword arguments of the :class:`normlite.engine.base.Engine`.
-            
+
         """
 
         self._tables_db_id = None
         """The object id for ``tables`` database.
-        
+
         .. deprecated:: 0.7.0
             Do not use, it will be removed in a future version.
             Use the keyword arguments of the :class:`normlite.engine.base.Engine`.
-            
+
         """
 
         AbstractNotionClient.allowed_operations = {
@@ -319,17 +319,17 @@ class AbstractNotionClient(ABC):
         }
 
     def __call__(
-            self, 
-            endpoint: str, 
+            self,
+            endpoint: str,
             request: str,
             path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None, 
+            query_params: Optional[dict] = None,
             payload: Optional[dict] = None
     ) -> dict:
         """Enable function call style for REST Notion API client objects.
 
         Example::
-        
+
             # Add a new Notion page to the database with id = 680dee41-b447-451d-9d36-c6eaff13fb46
             operation = {"endpoint": "pages", "request": "create"}
             payload = {
@@ -352,14 +352,14 @@ class AbstractNotionClient(ABC):
                 raise NotionError(f"Missing required key in operation dict: {ke.args[0]}")
 
         Args:
-            endpoint (str): The REST API endpoint, example: ``databases``. 
+            endpoint (str): The REST API endpoint, example: ``databases``.
             request (str): The REST API request, example: ``create``.
             path_params (dict): Optional REST API path parameters, example: ``{"page_id": "b55c9c91-384d-452b-81db-d1ef79372b75"}
             query_params (dict): The REST API query parameters, example: ``{"filter_properties": ["title", "status"]}
             payload (dict): The JSON object as payload (also called body of the request).
 
         Raises:
-            NotionError: Unknown or unsupported operation. 
+            NotionError: Unknown or unsupported operation.
 
         Returns:
             dict: The JSON object returned by the NOTION API.
@@ -376,12 +376,12 @@ class AbstractNotionClient(ABC):
     @property
     def ischema_page_id(self) -> Optional[str]:
         """Return object id for ``information_schema`` page.
-        
+
         .. deprecated:: 0.7.0
             Do not use, it will be removed in a future version.
-            
+
         """
-        return self._ischema_page_id 
+        return self._ischema_page_id
 
     def close(self) -> None:
         """Release any resources held by this client.
@@ -394,9 +394,9 @@ class AbstractNotionClient(ABC):
 
     @abstractmethod
     def pages_create(
-            self, 
+            self,
             path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None, 
+            query_params: Optional[dict] = None,
             payload: Optional[dict] = None
     ) -> dict:
         """Create a page object.
@@ -414,9 +414,9 @@ class AbstractNotionClient(ABC):
 
     @abstractmethod
     def pages_retrieve(
-            self, 
+            self,
             path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None, 
+            query_params: Optional[dict] = None,
             payload: Optional[dict] = None
        ) -> dict:
         """Retrieve a page object.
@@ -443,23 +443,23 @@ class AbstractNotionClient(ABC):
             dict: The page object containing the page properties only, not page content.
         """
         raise NotImplementedError
-    
+
     @abstractmethod
     def pages_update(
-            self, 
+            self,
             path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None, 
+            query_params: Optional[dict] = None,
             payload: Optional[dict] = None
     ) -> dict:
         """Update a page object.
-        
+
         Use this API to modify attributes of a Notion page object, such as properties, title, etc.
         The payload follows the specific JSON required by Notion.
         The identifier of the Notion page to be udated (*path* parameter) shall be provided as key "page_id" in the payload.
         Here an example of a Python payload:
 
         .. code-block:: python
-            
+
             # payload to update page with id 59833787-2cf9-4fdf-8782-e53db20768a5
             # with a new value for the property "student_id"
             {
@@ -468,7 +468,7 @@ class AbstractNotionClient(ABC):
                     "student_id": {
                         "number": 654321
                     }
-                } 
+                }
             }
 
         This is how the returned object looks like:
@@ -478,7 +478,7 @@ class AbstractNotionClient(ABC):
             {
                 "object": "page",
                 "id": "59833787-2cf9-4fdf-8782-e53db20768a5",
-                
+
                 # other keys ommitted for brevity
 
                 "properties": {
@@ -497,12 +497,12 @@ class AbstractNotionClient(ABC):
             dict: The updated page object with the property identifiers as the only key for each property object.
         """
         raise NotImplementedError
-    
+
     @abstractmethod
     def databases_create(
-            self, 
+            self,
             path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None, 
+            query_params: Optional[dict] = None,
             payload: Optional[dict] = None
     ) -> dict:
         """Create a database as a subpage in the specified parent page, with the specified properties schema.
@@ -514,12 +514,12 @@ class AbstractNotionClient(ABC):
             dict: The created database object.
         """
         raise NotImplementedError
-    
+
     @abstractmethod
     def databases_retrieve(
-            self, 
+            self,
             path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None, 
+            query_params: Optional[dict] = None,
             payload: Optional[dict] = None
     ) -> dict:
         """Retrieve a database object for the provided ID
@@ -532,17 +532,17 @@ class AbstractNotionClient(ABC):
             databased object for the provided ID were found
         """
         raise NotImplementedError
-    
+
     @abstractmethod
     def databases_update(
-        self, 
+        self,
         path_params: Optional[dict] = None,
-        query_params: Optional[dict] = None, 
+        query_params: Optional[dict] = None,
         payload: Optional[dict] = None
     ) -> dict:
         """Update the given database.
 
-        This methods updates the database object — the properties, title, description, or whether it's in the trash — of a specified database.         
+        This methods updates the database object — the properties, title, description, or whether it's in the trash — of a specified database.
 
         .. versionadded:: 0.8.0
 
@@ -556,12 +556,12 @@ class AbstractNotionClient(ABC):
             dict: The updated database object.
         """
         raise NotImplementedError
-    
+
     @abstractmethod
     def data_sources_query(
-        self, 
+        self,
         path_params: Optional[dict] = None,
-        query_params: Optional[dict] = None, 
+        query_params: Optional[dict] = None,
         payload: Optional[dict] = None
     ) -> List[dict]:
         """Get a list of pages contained in the data source.
@@ -578,12 +578,12 @@ class AbstractNotionClient(ABC):
         .. versionadded:: 0.12.0
         """
         raise NotImplementedError
-    
+
     @abstractmethod
     def data_sources_retrieve(
         self,
         path_params: Optional[dict] = None,
-        query_params: Optional[dict] = None, 
+        query_params: Optional[dict] = None,
         payload: Optional[dict] = None
     ) -> dict:
         """Retrieve a data source object for the provided ID
@@ -596,19 +596,19 @@ class AbstractNotionClient(ABC):
             data source object for the provided ID were found
         """
         raise NotImplementedError
- 
+
     @abstractmethod
     def search(
         self,
         path_params: Optional[dict] = None,
-        query_params: Optional[dict] = None, 
+        query_params: Optional[dict] = None,
         payload: Optional[dict] = None
     ) -> dict:
         """Search all pages and databases by title
 
         Searches all parent or child pages and databases that have been shared with an integration.
-        Returns all pages or databases, excluding duplicated linked databases, that have 
-        titles that include the query param. If no query param is provided, then the response contains 
+        Returns all pages or databases, excluding duplicated linked databases, that have
+        titles that include the query param. If no query param is provided, then the response contains
         all pages or databases that have been shared with the integration.
 
         Args:
@@ -625,24 +625,24 @@ class AbstractNotionClient(ABC):
 
 class InMemoryNotionClient(AbstractNotionClient):
     """Provide a simple but complete in-memory Notion client.
-    
+
     :class:`InMemoryNotionClient` fully implements the Notion API and mimics the Notion's store behavior.
     This class is best suited for testing purposes as it avoids the HTTP communication.
     It has been designed to mimic as close as possible the behavior of Notion, including error messages.
 
     .. versionchanged:: 0.8.0
-        Major refactor to provide more robust Notion-like behavior to the API methods 
+        Major refactor to provide more robust Notion-like behavior to the API methods
         and adds object validation Notion objects.
         This version is prepared for the next step of refactor to support store persitence
         with the :class:`FileBasedNotionClient`.
-    
-    .. versionchanged:: 0.7.0 
+
+    .. versionchanged:: 0.7.0
         In this version, the :attr:`_store` is a Python :type:`dict` to provide random access.
         The object indentifier is used as key and the object itself is the value.
         Additionally, the store is always initialized with a root page as is the case for Notion internal integrations.
 
     .. deprecated:: 0.7.0
-        The :meth:`__init__` parameters **shall not** be used anymore, they will be removed in a future verison. 
+        The :meth:`__init__` parameters **shall not** be used anymore, they will be removed in a future verison.
         The datastructures info schema page and tables are created by the :class:`normlite.engine.base.Engine`.
         Clients do not have knowledge of these datastructures.
 
@@ -674,16 +674,16 @@ class InMemoryNotionClient(AbstractNotionClient):
 
     def _ensure_root(self) -> None:
         """Create the root page at init time.
-        
+
         .. versionchanged:: 0.8.0
             This method is no longer part of the client's initialization.
             Notion clients must enforce the invariant that the store is empty
             after creation.
             Users of this class have the responsibility to call this utility method,
-            if required (see :meth:`normlite.engine.base.Engine._bootstrap` for more 
+            if required (see :meth:`normlite.engine.base.Engine._bootstrap` for more
             details).
 
-            
+
         """
         if self._ROOT_PAGE_ID_ not in self._store:
             self._store[self._ROOT_PAGE_ID_] = self._new_object(
@@ -709,7 +709,7 @@ class InMemoryNotionClient(AbstractNotionClient):
     def _get_by_id(self, id: str) -> dict:
         """Simple accessor to the store by object id."""
         return self._store.get(id, {})
-    
+
     def _get_by_title(self, text: str, object_: str) -> dict:
         """Return all objects with "title" text in the store. """
 
@@ -725,7 +725,7 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         if self._store_len() == 0:
             return query_result_object
-        
+
         for obj in self._store.values():
             if get_object_type(obj) != object_:
                 continue
@@ -733,7 +733,7 @@ class InMemoryNotionClient(AbstractNotionClient):
             title = get_title(obj)
             if title and title == text:
                 query_results.append(obj)
-            
+
         return query_result_object
 
     # ------------------------------------------------------------------
@@ -774,7 +774,7 @@ class InMemoryNotionClient(AbstractNotionClient):
                 f'Body failed validation: body.parent.type should be "page_id" or '
                 f'"data_source_id", instead "{parent_type}" was defined.'
             )
-        
+
         if type_ == "database" and parent_type != "page_id":
             raise NotionError(
                 f'Body failed validation: body.parent.type should be "page_id", '
@@ -785,12 +785,12 @@ class InMemoryNotionClient(AbstractNotionClient):
             raise NotionError(
                 "Body failed validation: body.title should be defined for database object."
             )
-        
+
         if type_ == "database" and "initial_data_source" not in payload:
             raise NotionError(
                 "Body failed validation: body.initial_data_source should be defined, instead was undefined."
             )
-        
+
         if type_ == "database" and "properties" not in payload["initial_data_source"]:
             raise NotionError(
                 "Body failed validation: body.initial_data_source.properties should be defined, instead was undefined."
@@ -800,7 +800,7 @@ class InMemoryNotionClient(AbstractNotionClient):
             raise NotionError(
                 "Body failed validation: body.properties should be defined, instead was undefined."
             )
-        
+
     def _resolve_parent(self, payload: dict) -> tuple[str, dict]:
         parent = payload["parent"]
         if parent["type"] == "page_id":
@@ -822,7 +822,7 @@ class InMemoryNotionClient(AbstractNotionClient):
                     "Make sure the relevant pages and databases are shared with your integration."
                 )
             return "database", obj
-        
+
         if parent["type"] == "data_source_id":
             oid = parent.get("data_source_id")
             obj = self._get_by_id(oid)
@@ -890,7 +890,7 @@ class InMemoryNotionClient(AbstractNotionClient):
     # ------------------------------------------------------------------
     # Database finalization
     # ------------------------------------------------------------------
-    
+
     def _finalize_database(self, db: dict, data_source_id: str) -> None:
         parent_type, _ = self._resolve_parent(db)
         if parent_type != "page":
@@ -918,7 +918,7 @@ class InMemoryNotionClient(AbstractNotionClient):
     def _is_valid_uuid(self, oid: str) -> bool:
         if oid is None:
             return False
-        
+
         if not isinstance(oid, str):
             return False
 
@@ -927,9 +927,9 @@ class InMemoryNotionClient(AbstractNotionClient):
             val = uuid.UUID(oid, version=4)
         except ValueError:
             return False
-        
+
         # Ensure the string is in the standard canonical form
-        return str(val) == oid       
+        return str(val) == oid
 
 
     def _normalize_rich_text_item(self, rt: dict) -> dict:
@@ -995,7 +995,7 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         elif prop_type == "relation":
             self._normalize_relation(name, prop["relation"])
-                                   
+
         return prop
 
     def _normalize_properties(self, obj: dict) -> None:
@@ -1016,19 +1016,19 @@ class InMemoryNotionClient(AbstractNotionClient):
     def _normalize_relation(self, name: str, value: list[dict]) -> list[dict]:
             if not isinstance(value, list):
                 raise NotionError(f"relation property '{name}' must be a list of dictionaries containing object ids")
-            
+
             is_list_of_dicts = all(isinstance(item, dict) for item in value)
             if  not is_list_of_dicts:
                 raise NotionError(f"relation property '{name}' must be a list of dictionaries containing object ids")
-            
+
             all_dicts_contain_oids = all(item.get("id") is not None for item in value)
             if not all_dicts_contain_oids:
                 raise NotionError(f"relation property '{name}' contains some invalid object ids (missing 'id' key)")
-            
+
             all_dicts_contain_valid_oids = all(self._is_valid_uuid(item.get("id")) for item in value)
             if not all_dicts_contain_valid_oids:
                 raise NotionError(f"relation property '{name}' contains some invalid object ids (not a UUIDv4)")
-            
+
             # Returns the (possibly transformed) list.
             # Today the return is identical to the input — validation-only, no real canonicalisation.
             return value
@@ -1050,11 +1050,11 @@ class InMemoryNotionClient(AbstractNotionClient):
                 self._finalize_page_under_data_source(obj, parent_obj)
 
             self._normalize_properties(obj)
-                
+
 
         elif type_ == "database":
             ds = self._new_object(
-                "data_source", 
+                "data_source",
                 payload = payload["initial_data_source"],
             )
             self._finalize_data_source(ds)
@@ -1073,7 +1073,7 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         self._store[obj["id"]] = obj
         return copy.deepcopy(obj)
-    
+
     # ------------------------------------------------------------------
     # Utility methods
     # ------------------------------------------------------------------
@@ -1081,7 +1081,7 @@ class InMemoryNotionClient(AbstractNotionClient):
     def _generate_property_id(self) -> str:
         """
         Generate a pseudo Notion-like property id.
-        
+
         These ids are short, random strings containing
         letters and a few special characters, then URL-encoded.
         """
@@ -1101,7 +1101,7 @@ class InMemoryNotionClient(AbstractNotionClient):
 
     def _store_len(self) -> int:
         return len(self._store)
-    
+
     # ------------------------------------------------------------------
     # Public API methods
     # ------------------------------------------------------------------
@@ -1131,7 +1131,7 @@ class InMemoryNotionClient(AbstractNotionClient):
 
         if page_id is None:
             raise NotionError(f"Invalid request URL: page_id should be defined.")
-            
+
         obj = self._get_by_id(page_id)
         if not obj or obj["object"] != "page":
             raise NotionError(
@@ -1148,14 +1148,14 @@ class InMemoryNotionClient(AbstractNotionClient):
             raise NotionError(
                 "Body failed validation: body.archived or body.in_trash or "
                 "body.properties should be defined."
-            )          
+            )
 
         if "archived" in payload:
             obj["archived"] = payload["archived"]
-        
+
         if "in_trash" in payload:
             obj["in_trash"] = payload["in_trash"]
-        
+
         if "properties" in payload:
             for k, v in payload["properties"].items():
                 existing = obj["properties"].get(k)
@@ -1197,9 +1197,9 @@ class InMemoryNotionClient(AbstractNotionClient):
         return copy.deepcopy(obj)
 
     def databases_update(
-            self, 
+            self,
             path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None, 
+            query_params: Optional[dict] = None,
             payload: Optional[dict] = None
     ) -> dict:
 
@@ -1254,7 +1254,7 @@ class InMemoryNotionClient(AbstractNotionClient):
             )
 
         return copy.deepcopy(database)
-    
+
     def data_sources_query(
         self,
         path_params: Optional[dict] = None,
@@ -1269,7 +1269,7 @@ class InMemoryNotionClient(AbstractNotionClient):
         )
 
         return engine.execute()
-    
+
     def data_sources_retrieve(
         self,
         path_params: Optional[dict] = None,
@@ -1292,10 +1292,10 @@ class InMemoryNotionClient(AbstractNotionClient):
         return copy.deepcopy(obj)
 
     def search(
-            self, 
+            self,
             path_params: Optional[dict] = None,
-            query_params: Optional[dict] = None, 
-            payload: Optional[dict] = None            
+            query_params: Optional[dict] = None,
+            payload: Optional[dict] = None
     ) -> dict:
         """Return all pages or databases whose title exactly matches the "query" text."""
 
@@ -1316,7 +1316,7 @@ class InMemoryNotionClient(AbstractNotionClient):
                 raise NotionError(
                     "Body failed validation: body.filter should be an object (not a string).",
                     status_code=400,
-                    code="invalid_json"                    
+                    code="invalid_json"
                 )
 
             filter_prop = filter.get('property')
@@ -1324,17 +1324,17 @@ class InMemoryNotionClient(AbstractNotionClient):
                 raise NotionError(
                     "Body failed validation: body.property should be defined.",
                     status_code=400,
-                    code="invalid_json"                    
+                    code="invalid_json"
                 )
-            
+
             filter_by = filter.get('value')
             if filter_by is None:
                 raise NotionError(
                     "Body failed validation: body.value should be defined.",
                     status_code=400,
-                    code="invalid_json"                    
+                    code="invalid_json"
                 )
-            
+
             # 2025-09-03: databases no longer appear as search results — search
             # yields pages and data sources only (ADR-0014).
             if filter_by not in ("page", "data_source"):
@@ -1411,7 +1411,7 @@ class FileBasedNotionClient(InMemoryNotionClient):
             c.pages_create(payload1)   # payload* are previously created JSON Notion objects to be added
             c.pages_create(payload2)
             c.pages_create(payload3)
-    
+
     .. versionadded:: 0.8.0
 
     """
@@ -1430,7 +1430,7 @@ class FileBasedNotionClient(InMemoryNotionClient):
 
 
     def __init__(
-        self, 
+        self,
         path: str,
         *,
         read_only: bool = False,
@@ -1505,7 +1505,7 @@ class FileBasedNotionClient(InMemoryNotionClient):
 
         # IMPORTANT: store must contain canonical objects
         self._store = copy.deepcopy(objects)
-    
+
     def flush(self) -> None:
         if self._read_only:
             return
@@ -1536,7 +1536,7 @@ class FileBasedNotionClient(InMemoryNotionClient):
         if self._auto_load:
             self.load()
         return self
-        
+
     def close(self) -> None:
         """Flush the store to disk.
 
@@ -1656,7 +1656,7 @@ class _Condition(_Expression):
         "title.equals":                 lambda a, b: a == b if a is not EMPTY_TEXT else False,
         "title.does_not_equal":         lambda a, b: True if a is EMPTY_TEXT else a != b,
         "title.is_empty":               lambda a, _: a is EMPTY_TEXT or a == "",
-        "title.is_not_empty":           lambda a, _: a is not EMPTY_TEXT and a != "", 
+        "title.is_not_empty":           lambda a, _: a is not EMPTY_TEXT and a != "",
         "title.contains":               lambda a, b: False if a is EMPTY_TEXT else b in a,
         "title.does_not_contain":       lambda a, b: True if a is EMPTY_TEXT else b not in a,
         "title.starts_with":            lambda a, b: False if a is EMPTY_TEXT else a.startswith(b),
@@ -1670,17 +1670,17 @@ class _Condition(_Expression):
         "number.is_empty":              lambda a, _: a is None,
         "number.is_not_empty":          lambda a, _: a is not None,
         "number.greater_than_or_equal_to": lambda a, b: a >= b,
-        "number.less_than_or_equal_to": lambda a, b: a <= b,  
+        "number.less_than_or_equal_to": lambda a, b: a <= b,
 
         # checkbox
         "checkbox.equals":              lambda a, b: a is b,
-        "checkbox.does_not_equal":      lambda a, b: a is not b,     
+        "checkbox.does_not_equal":      lambda a, b: a is not b,
 
         # relation
         "relation.contains":            lambda a, b: b in [i["id"] for i in a],
         "relation.does_not_contain":    lambda a, b: b not in [i["id"] for i in a],
         "relation.is_empty":            lambda a, _: len(a) == 0,
-        "relation.is_not_empty":        lambda a, _: len(a) > 0, 
+        "relation.is_not_empty":        lambda a, _: len(a) > 0,
     }
 
     def __init__(self, page: dict, condition: dict):

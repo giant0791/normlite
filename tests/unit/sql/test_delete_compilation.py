@@ -132,7 +132,7 @@ def test_where_generative_multi_clause(students: Table, delete_stmt: Delete):
     assert asdict['payload']['filter'] == {
         'and': [
             {
-                'property': 'name', 
+                'property': 'name',
                 'title': {
                     'equals': ':param_0'
                 }
@@ -143,7 +143,7 @@ def test_where_generative_multi_clause(students: Table, delete_stmt: Delete):
                     'less_than_or_equal_to': ':param_1'
                 }
             }
-        ]        
+        ]
     }
 
     assert 'param_0' in compiled._execution_binds

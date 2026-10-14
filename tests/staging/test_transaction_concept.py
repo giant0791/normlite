@@ -30,16 +30,16 @@ A full SQL-like front-end to Notion needs a transactional model to ensure ACID.
 normlite clients do not interact directly with Notion integrations.
 They send their requests to a proxy: TransactionManagerServer.
 
-A TransactionManagerServer is a Flask REST API application that executes Notion API calls 
+A TransactionManagerServer is a Flask REST API application that executes Notion API calls
 *on behalf* of normlite clients.
 
-normlite clients interact with the TransactionManagerClient. This acts as proxy to the 
+normlite clients interact with the TransactionManagerClient. This acts as proxy to the
 TransactionManagerServer behind the scenes (see test_engine_with_txn_client() for a detailed example
 of seamless integration of the txn client into the engine connection model).
 
 ### Commit as you go
 Updates to databases are made persistent by commiting a transaction.
-"commit as you go" is a commit-style to commit data changes using the Connection.commit() method 
+"commit as you go" is a commit-style to commit data changes using the Connection.commit() method
 *inside* the block where we have the connection object:
 
 >>> with engine.connect() as conn:
@@ -51,8 +51,8 @@ Updates to databases are made persistent by commiting a transaction.
 ...    conn.commit()
 
 "commit as you go" requires the `Connection` class to access the transaction, so that it can implement
-the `commit()` method (see test_connection_provide_commit() test for how the `Connection` class 
-implements its `commit()` API method by delegating it to the transaction manager previously 
+the `commit()` method (see test_connection_provide_commit() test for how the `Connection` class
+implements its `commit()` API method by delegating it to the transaction manager previously
 acquired by the engine).
 
 ### Commit changes to the database
@@ -62,13 +62,13 @@ When the `Connection.commit()` method is called, the following interactions take
 1. `TransactionManagerClient.commit()` issues the REST API request:
     `PATCH transactions/{txn_id}/commit`.
 
-2. `TransactionManagerServer.commit()` gets a call dispatched through Flask and starts executing 
+2. `TransactionManagerServer.commit()` gets a call dispatched through Flask and starts executing
 each change request contained in its list of change requests.
 
-3. `ChangeRequest.execute()` is called by the txn manager. This method calls the Notion API client 
+3. `ChangeRequest.execute()` is called by the txn manager. This method calls the Notion API client
 to perform the REST API call to effect the change in Notion
 
-4. `InternalIntegrationClient.__call__(endpoint, request, payload)` is called by 
+4. `InternalIntegrationClient.__call__(endpoint, request, payload)` is called by
 the `ChangeRequest.execute()` method. This method interacts via the Notion API with the integration.
 It takes care that the requested payload is processed accordingly.
 
@@ -83,12 +83,12 @@ The most critical change request is the ALTER/UPDATE, because it requires a writ
 table/row to prevent others to make their changes.
 
 **IMPORTANT**: When the txn manager executes a change request like ALTER/UPDATE, it must first ensure
-that the entity obiect id (oid) is not locked. 
+that the entity obiect id (oid) is not locked.
 If it is not locked, then it set a write lock, which means no one else can either read or write the locked entity.
 If it is locked, then is must abort the transaction.
 
 ### Begin a transaction block
-The Engine class can create a 
+The Engine class can create a
 
 """
 from __future__ import annotations
@@ -128,7 +128,7 @@ def payload() -> dict:
     return {
         'object': 'page',
         'id': '00000000-0000-0000-0000-000000000000'
-    }    
+    }
 
 @pytest.mark.skip()
 def test_engine_with_txn_client():
@@ -158,7 +158,7 @@ def test_txn_execute_change_req():
     # t2 is the transaction expected to fail to acquire the write lock.
     t2 = Transaction()
     t2.changes['pages.update'] = payload
-    
+
     # when a new transaction is added to the txn manager, it gets a unique id
     tid1 = '11111111-1111-1111-1111-111111111111'
     tid2 = '22222222-2222-2222-2222-222222222222'
@@ -188,15 +188,15 @@ def test_txn_manager_lock_entity(txn_manager: TransactionManager, payload: dict)
 def test_multiple_txns_share_lock(txn_manager: TransactionManager, payload: dict):
     lock_manager = txn_manager.lock_manager
     tids = [
-        UUID("11111111-1111-1111-1111-111111111111"),  
-        UUID("22222222-2222-2222-2222-222222222222"),  
-        UUID("33333333-3333-3333-3333-333333333333"),  
-        UUID("44444444-4444-4444-4444-444444444444"),  
-    ]    
-    
+        UUID("11111111-1111-1111-1111-111111111111"),
+        UUID("22222222-2222-2222-2222-222222222222"),
+        UUID("33333333-3333-3333-3333-333333333333"),
+        UUID("44444444-4444-4444-4444-444444444444"),
+    ]
+
     for tid in tids:
         lock_manager.acquire(payload['id'], tid, 'read')
-    
+
     assert len(lock_manager.locks[payload['id']]) == 4
 
 def test_only_one_txn_holds_exclusive_lock(txn_manager: TransactionManager, payload: dict):
@@ -205,7 +205,7 @@ def test_only_one_txn_holds_exclusive_lock(txn_manager: TransactionManager, payl
     tid1 = UUID("11111111-1111-1111-1111-111111111111")
     lock_manager.acquire(roid, tid1, 'read')
     lock_manager.acquire(roid, tid1, 'write')
-    
+
     assert lock_manager.locks[roid] == [(tid1, 'write')]
 
 def test_attempt_to_acquire_write_lock_on_read_locked_resource(txn_manager: TransactionManager, payload: dict):
@@ -267,12 +267,12 @@ def test_release_lock_for_txn(txn_manager: TransactionManager, payload: dict):
     lock_manager = txn_manager.lock_manager
     roid = payload['id']
     tids = [
-        UUID("11111111-1111-1111-1111-111111111111"),  
-        UUID("22222222-2222-2222-2222-222222222222"),  
-        UUID("33333333-3333-3333-3333-333333333333"),  
-        UUID("44444444-4444-4444-4444-444444444444"),  
-    ]    
-    
+        UUID("11111111-1111-1111-1111-111111111111"),
+        UUID("22222222-2222-2222-2222-222222222222"),
+        UUID("33333333-3333-3333-3333-333333333333"),
+        UUID("44444444-4444-4444-4444-444444444444"),
+    ]
+
     for tid in tids:
         lock_manager.acquire(roid, tid, 'read')
 
@@ -284,12 +284,12 @@ def test_no_locks_after_all_txn_releasetxn_manager(txn_manager: TransactionManag
     lock_manager = txn_manager.lock_manager
     roid = payload['id']
     tids = [
-        UUID("11111111-1111-1111-1111-111111111111"),  
-        UUID("22222222-2222-2222-2222-222222222222"),  
-        UUID("33333333-3333-3333-3333-333333333333"),  
-        UUID("44444444-4444-4444-4444-444444444444"),  
-    ]    
-    
+        UUID("11111111-1111-1111-1111-111111111111"),
+        UUID("22222222-2222-2222-2222-222222222222"),
+        UUID("33333333-3333-3333-3333-333333333333"),
+        UUID("44444444-4444-4444-4444-444444444444"),
+    ]
+
     for tid in tids:
         lock_manager.acquire(roid, tid, 'read')
 

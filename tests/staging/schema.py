@@ -31,16 +31,16 @@ OPS_BY_TYPE = {
 def create_type_engine(typ: str) -> TypeEngine:
     if typ == 'number':
         return Integer()
-    
+
     if typ == 'title':
         return String(is_title=True)
-    
+
     if typ == 'rich_text':
         return String()
-    
+
     if typ == 'date':
         return Date()
-    
+
     raise AssertionError(f'Unsupported type: {typ}')
 
 

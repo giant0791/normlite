@@ -1,6 +1,6 @@
 """This test module focuses on verifying that compilation and parameters binding of the DML constructs are correct.
 
-Compilation correctness means that tests check 
+Compilation correctness means that tests check
 1. the emitted JSON code is as expected (template with named arguments)
 2. the parameters are correctly bound to the named arguments
 
@@ -26,7 +26,7 @@ from tests.utils.db_helpers import attach_table_oid
 def test_insert_bind_values():
     metadata = MetaData()
     students = Table(
-        'students', 
+        'students',
         metadata,
         Column('name', String(is_title=True)),
         Column('year_reg', Date())
@@ -38,12 +38,12 @@ def test_insert_bind_values():
     assert isinstance(name, BindParameter)
     assert stmt._single_parameters["name"] == 'Galileo Galilei'
     assert isinstance(year_reg, BindParameter)
-    assert stmt._single_parameters["year_reg"] == datetime(1689, 9, 1) 
+    assert stmt._single_parameters["year_reg"] == datetime(1689, 9, 1)
 
 def test_compile_insert_bindparams():
     metadata = MetaData()
     students = Table(
-        'students', 
+        'students',
         metadata,
         Column('name', String(is_title=True)),
         Column('year_reg', Date())
@@ -56,7 +56,7 @@ def test_compile_insert_bindparams():
     compiled = stmt.compile(sql_compiler)
     name_bp = compiled._execution_binds['name']
     year_bp = compiled._execution_binds['year_reg']
-    
+
     assert isinstance(name_bp, BindParameter)
     assert name_bp.role is _BindRole.COLUMN_VALUE
     assert name_bp.value == _NoArg.NO_ARG               # exec bindings have no value
@@ -177,12 +177,12 @@ def test_compile_binexp_title_startswith():
 def test_compile_binexp_number_operators():
     metadata = MetaData()
     students = Table(
-        'students', 
-        metadata, 
+        'students',
+        metadata,
         Column("name", String(is_title=True)),
         Column('id', Integer()),
         Column('rate', Money(currency='dollar')),
-        Column('grade', Numeric())    
+        Column('grade', Numeric())
     )
 
     e1 = students.c.id == 123456
@@ -191,7 +191,7 @@ def test_compile_binexp_number_operators():
 
     # reusing the compiler means that
     # the bind param counter increments and does not get reset
-    nc = NotionCompiler()                                       
+    nc = NotionCompiler()
     nc._compiler_state = CompilerState()
     with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
         d1 = e1._compiler_dispatch(nc)
@@ -201,7 +201,7 @@ def test_compile_binexp_number_operators():
     assert d1['property'] == 'id'
     assert d2['property'] == 'rate'
     assert d3['property'] == 'grade'
-    assert d1['number'] == {'equals': ':param_0'}               
+    assert d1['number'] == {'equals': ':param_0'}
     assert d2['number'] == {'less_than': ':param_1'}            # because you are using the same compiler instance
     assert d3['number'] == {'greater_than': ':param_2'}         # because you are using the same compiler instance
 
@@ -236,7 +236,7 @@ def test_compile_binexp_bool_opertors():
     e2: BinaryExpression = students.c.is_active != True
     e3: BinaryExpression = students.c.is_active.is_(True)
     e4: BinaryExpression = students.c.is_active.is_not(True)
-    nc = NotionCompiler()                                       
+    nc = NotionCompiler()
     nc._compiler_state = CompilerState()
     with nc._compiling(new_state=_CompileState.COMPILING_WHERE):
         d1 = e1._compiler_dispatch(nc)
@@ -264,8 +264,8 @@ def test_compile_binexp_bool_forbid_truthiness():
 def test_compile_select():
     metadata = MetaData()
     students = Table(
-        'students', 
-        metadata, 
+        'students',
+        metadata,
         Column('name', String(is_title=True)),
         Column('start_date', Date())
     )
@@ -286,7 +286,7 @@ def test_compile_select_w_where():
     students = Table('students', metadata, Column('start_date', Date()), Column("name", String(is_title=True)))
     # monkey patch the id to simulate reflection
     database_id = str(uuid.uuid4())
-    attach_table_oid(students, database_id)    
+    attach_table_oid(students, database_id)
     stmt = select(students).where(students.c.start_date.before(date.today))
     sql_compiler = NotionCompiler()
     compiled = stmt.compile(sql_compiler)
@@ -299,14 +299,14 @@ def test_compile_select_w_where():
 def test_compile_select_concat_wheres():
     metadata = MetaData()
     students = Table(
-        'students', 
-        metadata, 
+        'students',
+        metadata,
         Column('name', String(is_title=True)),
         Column('start_date', Date())
     )
     # monkey patch the id to simulate reflection
     database_id = str(uuid.uuid4())
-    attach_table_oid(students, database_id)    
+    attach_table_oid(students, database_id)
     stmt = (
         select(students)
         # ``==`` deliberately, not ``!=``: the subject here is CONCATENATION.
@@ -321,7 +321,7 @@ def test_compile_select_concat_wheres():
     compiled = stmt.compile(sql_compiler)
     as_dict = compiled.as_dict()
     filter = as_dict['payload']['filter']
-    and_clauselist =  filter['and'] 
+    and_clauselist =  filter['and']
     assert len(and_clauselist) == 2
     assert and_clauselist[0]['property'] == 'name'
     assert and_clauselist[1]['property'] == 'start_date'
@@ -468,7 +468,7 @@ def test_compile_nested_boolean_clause_list():
 
     # monkey patch the id to simulate reflection
     database_id = str(uuid.uuid4())
-    attach_table_oid(projects, database_id)    
+    attach_table_oid(projects, database_id)
     # WHERE:
     # done = true
     # AND (tags contains "A" OR tags contains "B")
@@ -526,7 +526,7 @@ def test_select_where_filter_binding(engine: Engine):
 
     # monkey patch the id to simulate reflection
     database_id = str(uuid.uuid4())
-    attach_table_oid(students, database_id)    
+    attach_table_oid(students, database_id)
 
     stmt = (
         select(students)

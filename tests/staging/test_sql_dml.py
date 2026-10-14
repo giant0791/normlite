@@ -64,7 +64,7 @@ class Select(SQLANode):
 
     def __repr__(self):
         return f"Select(columns={self.columns!r}, where={self.whereclause!r})"
-    
+
 
 @pytest.fixture
 def students() -> Table:
@@ -72,7 +72,7 @@ def students() -> Table:
         'students',
         Column('id', Integer()),
         Column('name', String(is_title=True)),
-        Column('grade', String())            
+        Column('grade', String())
     )
 
 def test_insert_gen_values_kwargs(students: Table):
@@ -110,7 +110,7 @@ def test_insert_gen_values_tuple_not_enough_values(students: Table):
         insert_stmt = students.insert().values((123456, 'Isaac Newton',))
 
 def test_effective_table_len(students: Table):
-    # use len to get the number of user defined columns, 
+    # use len to get the number of user defined columns,
     # i.e. excl. those starting with '_no_'
     assert students.c.len() == 3
 

@@ -19,7 +19,7 @@ def new_pg_payload() -> Dict[str,Any]:
         },
         'parent': parent
     }
-    
+
     return payload
 
 @pytest.fixture
@@ -55,8 +55,8 @@ def test_dbapi_cursor_execute_create_databases(dbapi_cursor: Cursor, new_db_payl
     operation = dict(endpoint = 'databases', request = 'create', payload=new_db_payload)
     dbapi_cursor.execute(operation)
     assert dbapi_cursor.rowcount == 1
-    row = dbapi_cursor.fetchone()      
-    
+    row = dbapi_cursor.fetchone()
+
     # IMPORTANT: unwrap because the row elements are 3-value tuples
     _, _, database_id = row[0]
     _, _, database_name = row[1]
@@ -68,14 +68,14 @@ def test_dbapi_cursor_execute_create_databases(dbapi_cursor: Cursor, new_db_payl
     _, _, ret_database_id = row[0]
     _, _, ret_database_name = row[1]
     assert ret_database_id == database_id
-    assert ret_database_name == database_name 
-    
+    assert ret_database_name == database_name
+
 
 def test_dbapi_cursor_execute_create_pages(dbapi_cursor: Cursor, new_db_payload: dict, new_pg_payload: dict):
     operation = dict(endpoint = 'databases', request = 'create', payload=new_db_payload)
     dbapi_cursor.execute(operation)
     assert dbapi_cursor.rowcount == 1
-    row = dbapi_cursor.fetchone()      
+    row = dbapi_cursor.fetchone()
     _, _, database_id = row[0]
 
     parent = dict(type='database_id', database_id=database_id)
@@ -90,7 +90,7 @@ def test_dbapi_cursor_execute_update_pages(dbapi_cursor: Cursor, new_db_payload:
     operation = dict(endpoint = 'databases', request = 'create', payload=new_db_payload)
     dbapi_cursor.execute(operation)
     assert dbapi_cursor.rowcount == 1
-    row = dbapi_cursor.fetchone()      
+    row = dbapi_cursor.fetchone()
     _, _, database_id = row[0]
 
     # 2. add a page
@@ -116,7 +116,7 @@ def test_dbapi_cursor_no_properties(dbapi_cursor: Cursor, new_db_payload: dict):
     payload_wo_properties.pop('properties')
     operation = dict(endpoint = 'databases', request = 'create', payload=payload_wo_properties)
     with pytest.raises(
-        InterfaceError, 
+        InterfaceError,
         match='Body failed validation: body.properties should be defined,'):
         dbapi_cursor.execute(operation)
 

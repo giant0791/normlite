@@ -121,9 +121,9 @@ def test_roundtrip_differential_bug():
     )
     source = """
         and_(
-            (students.c.isactive == False), 
+            (students.c.isactive == False),
             or_(
-                (students.c.start_on.after(None)), 
+                (students.c.start_on.after(None)),
                 (students.c.name.endswith('Douglas Mcdonald'))
             )
         )
@@ -143,7 +143,7 @@ def test_roundtrip_differential_bug():
 def test_roundtrip_differential_massive():
     MAX_COLS = 4
     MAX_ITER = 100
- 
+
     compiler = PythonExpressionCompiler()
     generator = ReferenceGenerator(seed=1)
 

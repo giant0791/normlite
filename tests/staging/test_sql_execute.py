@@ -26,13 +26,13 @@ def test_execute_createtable(create_table_stmt: str):
     table_node.compile()
 
     # IMPORTANT: This approach is very clean and requires the Cursor.execute() to accept
-    # JSON objects like this: 
+    # JSON objects like this:
     assert table_node.operation['endpoint'] == 'databases'
     assert table_node.operation['request'] == 'create'
     assert table_node.operation['payload'] == {
         "title": [
             {
-                "type": "text", 
+                "type": "text",
                 "text": {"content": "students"}
             }
         ],
@@ -106,7 +106,7 @@ def test_execute_createtable(create_table_stmt: str):
                     ]
                 }
             }
-        ),       
+        ),
     ]
 )
 def test_where_clause(sql: str, notion_json: dict):

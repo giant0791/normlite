@@ -176,7 +176,7 @@ def test_where_generative_one_clause(students: Table, select_stmt: Select):
     assert isinstance(stmt._whereclause.expression, BinaryExpression)
     assert 'filter' in asdict['payload']
     assert asdict['payload']['filter'] == {
-        'property': 'name', 
+        'property': 'name',
         'title': {
             'equals': ':param_0'
         }
@@ -237,7 +237,7 @@ def test_where_generative_multi_clause(students: Table, select_stmt: Select):
     assert asdict['payload']['filter'] == {
         'and': [
             {
-                'property': 'name', 
+                'property': 'name',
                 'title': {
                     'equals': ':param_0'
                 }
@@ -248,7 +248,7 @@ def test_where_generative_multi_clause(students: Table, select_stmt: Select):
                     'less_than_or_equal_to': ':param_1'
                 }
             }
-        ]        
+        ]
     }
 
     assert 'param_0' in compiled._execution_binds
@@ -309,16 +309,16 @@ def test_columns_all_projection(students: Table):
     compiled = stmt.compile(nc)
     asdict = compiled.as_dict()
     sys_expected = [
-        'object_id', 
-        'is_archived', 
-        'is_deleted', 
-        'created_at', 
+        'object_id',
+        'is_archived',
+        'is_deleted',
+        'created_at',
     ]
     usr_expected = [
-        'name', 
-        'id', 
-        'is_active', 
-        'start_on', 
+        'name',
+        'id',
+        'is_active',
+        'start_on',
         'grade'
     ]
 
@@ -416,7 +416,7 @@ def test_full_select(students: Table):
     assert asdict['payload']['filter'] == {
         'and': [
             {
-                'property': 'name', 
+                'property': 'name',
                 'title': {
                     'equals': ':param_0'
                 }
@@ -427,7 +427,7 @@ def test_full_select(students: Table):
                     'less_than_or_equal_to': ':param_1'
                 }
             }
-        ]        
+        ]
     }
 
     # check order_by is correctly compiled in "sorts"
@@ -552,7 +552,7 @@ def test_plain_select_harvests_a_planning_context_that_holds_nothing_back(
     assert compiled.planning_context.recheck_where is None
 
 # Behavior under test:
-# A SELECT whose WHERE is a negation sends no filter to Notion, 
+# A SELECT whose WHERE is a negation sends no filter to Notion,
 # and the whole negation is held for client-side evaluation instead.
 def test_negated_where_is_not_sent_to_notion(students: Table):
     # Arrange
@@ -567,7 +567,7 @@ def test_negated_where_is_not_sent_to_notion(students: Table):
     assert compiled.planning_context.recheck_where is predicate
 
 # Behavior under test:
-# A negated conjunct is dropped from the pushed filter 
+# A negated conjunct is dropped from the pushed filter
 # while its pushable siblings still go to Notion.
 def test_negated_conjunct_is_dropped_and_its_siblings_still_push(students: Table):
     # Arrange

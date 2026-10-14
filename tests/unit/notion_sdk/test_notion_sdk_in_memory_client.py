@@ -129,7 +129,7 @@ def create_database(client):
             title="root"
         )
     )
-    
+
     db = client.databases_create(
         payload=make_database(page['id'])
     )
@@ -538,9 +538,9 @@ def test_data_sources_query_returns_empty_list_when_no_match(client):
         payload=make_database(client._ROOT_PAGE_ID_)
     )
     ds = data_source_of(client, db)
-    
+
     client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
-    
+
     result = client.data_sources_query(
         path_params={"data_source_id": ds["id"]},
         payload={
@@ -548,9 +548,9 @@ def test_data_sources_query_returns_empty_list_when_no_match(client):
                 "property": "Age",
                 "number": {"equals": 99},
             }
-        },      
-    )           
-    
+        },
+    )
+
     assert result["results"] == []
     assert result["has_more"] is False
 
@@ -562,7 +562,7 @@ def test_data_sources_query_does_not_return_deleted_rows_when_in_trash_false(cli
 
     p1 = client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
     p2 = client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
-    
+
     client.pages_update(
         path_params={"page_id": p1["id"]},
         payload={"in_trash": True},
@@ -571,8 +571,8 @@ def test_data_sources_query_does_not_return_deleted_rows_when_in_trash_false(cli
     result = client.data_sources_query(
         path_params={"data_source_id": ds["id"]},
         payload={"in_trash": False},
-    )   
-    
+    )
+
     assert len(result["results"]) == 1
     assert {p["id"] for p in result["results"]} == {p2["id"]}
 
@@ -581,10 +581,10 @@ def test_data_sources_query_skips_deleted_rows_by_default(client):
         payload=make_database(client._ROOT_PAGE_ID_)
     )
     ds = data_source_of(client, db)
-    
+
     p1 = client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
     p2 = client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
-    
+
     client.pages_update(
         path_params={"page_id": p1["id"]},
         payload={"in_trash": True},
@@ -595,7 +595,7 @@ def test_data_sources_query_skips_deleted_rows_by_default(client):
         path_params={"data_source_id": ds["id"]},
         payload={},
     )
-    
+
     assert len(result["results"]) == 1
     assert {p["id"] for p in result["results"]} == {p2["id"]}
 
@@ -626,10 +626,10 @@ def test_data_sources_query_ignores_in_trash_true_and_still_skips_deleted(client
 def test_data_sources_query_with_simple_filter_number_equals(client):
       db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
       ds = data_source_of(client, db)
-  
+
       client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
       client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
-  
+
       result = client.data_sources_query(
           path_params={"data_source_id": ds["id"]},
           payload={
@@ -637,9 +637,9 @@ def test_data_sources_query_with_simple_filter_number_equals(client):
                   "property": "Age",
                   "number": {"equals": 30},
               }
-          },      
-      )           
-              
+          },
+      )
+
       assert len(result["results"]) == 1
       assert result["results"][0]["properties"]["Age"]["number"] == 30
 
@@ -657,9 +657,9 @@ def test_data_sources_query_with_simple_filter_number_equals(client):
                 "property": "Age",
                 "number": {"equals": 30},
             }
-        },      
-    )           
-            
+        },
+    )
+
     assert len(result["results"]) == 1
     assert result["results"][0]["properties"]["Age"]["number"] == 30
 
@@ -678,15 +678,15 @@ def test_data_sources_query_with_title_contains_filter(client):
                 "property": "Name",
                 "title": {"contains": "Ali"},
             }
-        },      
-    )           
-            
-    names = [   
+        },
+    )
+
+    names = [
         p["properties"]["Name"]["title"][0]["text"]["content"]
         for p in result["results"]
     ]
     assert set(names) == {"Alice", "Alicia"}
-      
+
 def test_data_sources_query_with_and_filter(client):
     db = client.databases_create(payload=make_database(client._ROOT_PAGE_ID_))
     ds = data_source_of(client, db)
@@ -694,7 +694,7 @@ def test_data_sources_query_with_and_filter(client):
     client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
     client.pages_create(payload=make_ds_page(ds["id"], "Alice", 30))
     client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
-    
+
     result = client.data_sources_query(
         path_params={"data_source_id": ds["id"]},
         payload={
@@ -704,9 +704,9 @@ def test_data_sources_query_with_and_filter(client):
                     {"property": "Age", "number": {"equals": 30}},
                 ]
             }
-        },      
-    )               
-                    
+        },
+    )
+
     assert len(result["results"]) == 1
     page = result["results"][0]
     assert page["properties"]["Name"]["title"][0]["text"]["content"] == "Alice"
@@ -719,7 +719,7 @@ def test_data_sources_query_with_or_filter(client):
     client.pages_create(payload=make_ds_page(ds["id"], "Alice", 20))
     client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
     client.pages_create(payload=make_ds_page(ds["id"], "Charlie", 40))
-    
+
     result = client.data_sources_query(
         path_params={"data_source_id": ds["id"]},
         payload={
@@ -729,13 +729,13 @@ def test_data_sources_query_with_or_filter(client):
                     {"property": "Age", "number": {"equals": 40}},
                 ]
             }
-        },      
-    )               
-                    
+        },
+    )
+
     names = {
         p["properties"]["Name"]["title"][0]["text"]["content"]
         for p in result["results"]
-    }   
+    }
     assert names == {"Alice", "Charlie"}
 
 def test_data_sources_query_last_page_when_rows_are_exact_multiple_of_page_size(client):
@@ -747,7 +747,7 @@ def test_data_sources_query_last_page_when_rows_are_exact_multiple_of_page_size(
     client.pages_create(payload=make_ds_page(ds["id"], "Bob", 30))
     client.pages_create(payload=make_ds_page(ds["id"], "Carol", 40))
     client.pages_create(payload=make_ds_page(ds["id"], "Dave", 50))
-    
+
     page_one = client.data_sources_query(
         path_params={"data_source_id": ds["id"]},
         payload={"page_size": 2},
@@ -756,7 +756,7 @@ def test_data_sources_query_last_page_when_rows_are_exact_multiple_of_page_size(
         path_params={"data_source_id": ds["id"]},
         payload={"page_size": 2, "start_cursor": page_one["next_cursor"]},
     )
-        
+
     assert len(page_two["results"]) == 2
     assert page_two["has_more"] is False
     assert page_two["next_cursor"] is None
@@ -771,7 +771,7 @@ def test_data_sources_query_paginates_the_filtered_set_not_the_raw_store(client)
     m2 = client.pages_create(payload=make_ds_page(ds["id"], "Carol", 30))
     client.pages_create(payload=make_ds_page(ds["id"], "Dave", 99))
     m3 = client.pages_create(payload=make_ds_page(ds["id"], "Eve", 30))
-    
+
     age_is_30 = {"property": "Age", "number": {"equals": 30}}
 
     page_one = client.data_sources_query(
@@ -782,14 +782,14 @@ def test_data_sources_query_paginates_the_filtered_set_not_the_raw_store(client)
         path_params={"data_source_id": ds["id"]},
         payload={"filter": age_is_30, "page_size": 2, "start_cursor": page_one["next_cursor"]},
     )
-        
+
     # Page sizes follow the filtered set (3 matches → 2 then 1), not the raw store (5).
     assert len(page_one["results"]) == 2
     assert page_one["has_more"] is True
     assert len(page_two["results"]) == 1
     assert page_two["has_more"] is False
     assert page_two["next_cursor"] is None
-    
+
     # Only the matching rows appear, in order; the non-matching rows are never paged in.
     seen_ids = [p["id"] for p in page_one["results"]] + \
                 [p["id"] for p in page_two["results"]]
@@ -1048,11 +1048,11 @@ def test_pages_update_in_trash_flag(client):
 # Normalization tests
 # Note: All tests deliberately avoid getters when verifying
 # normalization invariants, in order to avoid circular trusts
-# 
+#
 # IMPORTANT:
 #     Do not use a consumer to validate a producer.
-# 
-# getters are allowed in behavioral tests, because they 
+#
+# getters are allowed in behavioral tests, because they
 # answers:
 #     “Does the public API behave correctly given canonical input?”
 # ----------------------------------------------------------
@@ -1146,7 +1146,7 @@ def test_database_title_is_normalized(client):
 
 def test_page_under_database_properties_are_normalized(client):
     db = client.databases_create(
-        payload={ 
+        payload={
             'parent': {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             'title': rt("tables"),
             'initial_data_source': {
@@ -1180,7 +1180,7 @@ def test_page_under_database_properties_are_normalized(client):
 
 def test_page_schema_mismatch_raises(client):
     db = client.databases_create(
-        payload={            
+        payload={
             "parent": {"type": "page_id", "page_id": client._ROOT_PAGE_ID_},
             "title": rt("tables"),
             "initial_data_source": {"properties": {"name": {"title": {}}}},
@@ -1272,7 +1272,7 @@ def test_database_update_title(client, database):
             "initial_data_source": {"properties": database["properties"]}
         }
     )
-    
+
     result = client.databases_update(
         path_params={"database_id": database_obj["id"]},
         payload={
@@ -1290,7 +1290,7 @@ def test_database_update_title_invalid_type(client, database):
             "initial_data_source": {"properties": database["properties"]}
         }
     )
-    
+
     with pytest.raises(NotionError, match="rich_text"):
         client.databases_update(
             path_params={"database_id": database_obj["id"]},

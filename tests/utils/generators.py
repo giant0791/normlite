@@ -178,7 +178,7 @@ class ReferenceGenerator:
             schema[name] = {"type": typ}
 
         return schema
-              
+
     def gen_page(self, schema: dict) -> dict:
         properties = {}
 
@@ -259,7 +259,7 @@ class ReferenceGenerator:
                     max_value=9999.999
                 )
             }
-        
+
         if typ == "dollar":
             return {
                 "type": "number",
@@ -280,13 +280,13 @@ class ReferenceGenerator:
                     "end": None
                 }
             }
-        
+
         if typ == "relation":
             k = self.rng.randint(0, 3)
             return {
                 "type": "relation",
                 "relation": [
-                    {"id": id_} 
+                    {"id": id_}
                     for id_ in self.rng.sample(self._relation_id_pool, k)
                 ],
             }
@@ -413,7 +413,7 @@ class ReferenceGenerator:
 class Generator(Protocol[T]):
     def generate(self, max_cols: int = 8, max_depth: int = 6) -> T:
         """Generate an expression using column elements from a randomly generated table.
-        
+
         Public API for expression generators.
         It randomly generates an AST with the columns from a randomly generated table.
         The table has ``max_cols``.
@@ -692,7 +692,7 @@ class ExpressionGenerator(_BaseGenerator[str]):
 
         if op in self.INFIX_OPS:
             return f"({col} {self.INFIX_OPS[op]} {repr(value)})"
-        
+
         if op in self.METHOD_OPS:
             if op in (Operator.IS_EMPTY, Operator.IS_NOT_EMPTY):
                 return f"({col}.{self.METHOD_OPS[op]}())"

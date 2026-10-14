@@ -47,7 +47,7 @@ def test_binexpr(students_table, exec_namespace):
 
 def test_exprgen_smoke(students_table, exec_namespace):
     """Smoke test — does it even run?
-    
+
     Goal: Ensure generated expressions:
 
     * are strings
@@ -58,7 +58,7 @@ def test_exprgen_smoke(students_table, exec_namespace):
 
     * return a ColumnElement
     """
-    
+
     gen = ExpressionGenerator(seed=1)
 
     expr = gen.generate(students_table)
@@ -196,4 +196,4 @@ def test_ast_inequality_bug():
     b = (table_cd613e30.c.col_0 < 779)
 
     assert ast_equal(a, b)
-    
+

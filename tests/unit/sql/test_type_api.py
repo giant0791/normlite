@@ -7,12 +7,12 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from normlite import (
-    Boolean, 
-    Date, 
-    Integer, 
-    Money, 
-    Numeric, 
-    String, 
+    Boolean,
+    Date,
+    Integer,
+    Money,
+    Numeric,
+    String,
     Relation,
     TypeEngine
 )
@@ -33,39 +33,39 @@ def filter_proc():
 
 @pytest.mark.parametrize('type_obj, no_obj, py_obj, no_type', [
     (
-        Integer(), 
-        {"number": 25}, 
-        25, 
+        Integer(),
+        {"number": 25},
+        25,
         "number"
     ),
     (
-        Numeric(), 
-        {"number": 2.5}, 
-        Decimal(2.5), 
-        "number"
-    ), 
-    (
-        Money('euro'), 
-        {"number": 1.8}, 
-        Decimal(1.8), 
+        Numeric(),
+        {"number": 2.5},
+        Decimal(2.5),
         "number"
     ),
     (
-        Boolean(), 
-        {"checkbox" : True}, 
-        True, 
+        Money('euro'),
+        {"number": 1.8},
+        Decimal(1.8),
+        "number"
+    ),
+    (
+        Boolean(),
+        {"checkbox" : True},
+        True,
         "checkbox"
     ),
     (
-        String(), 
+        String(),
         {'rich_text':[{"text": {"content": "A nice, woderful day with you"}}]},
-        "A nice, woderful day with you", 
+        "A nice, woderful day with you",
         "rich_text"
     ),
     (
-        String(is_title=True), 
-        {'title':[{"text": {"content": "A nice, woderful day with you"}}]}, 
-        "A nice, woderful day with you", 
+        String(is_title=True),
+        {'title':[{"text": {"content": "A nice, woderful day with you"}}]},
+        "A nice, woderful day with you",
         "title"
     ),
 ])
@@ -76,7 +76,7 @@ def test_type_engine_scalar_datatypes(type_obj: TypeEngine, no_obj: dict, py_obj
     bound = bind(py_obj)
     restored = result(no_obj)
 
-    assert result(bind(py_obj)) == py_obj   
+    assert result(bind(py_obj)) == py_obj
     assert bound == no_obj
     assert restored == py_obj
     assert type_obj.get_col_spec() == no_type
@@ -86,7 +86,7 @@ def test_type_engine_datetimerange_from_json_start_only():
         "date": {
             "start": "2026-03-26"
         }
-    } 
+    }
 
     dtr = DateTimeRange.from_json(dt_obj)
 
@@ -99,7 +99,7 @@ def test_type_engine_datetimerange_from_json_start_only_w_tz():
             "start": "2026-03-26T23:59:59",
             "time_zone": "America/Los_Angeles"
         }
-    } 
+    }
 
     dtr = DateTimeRange.from_json(dt_obj)
     tzinfo = ZoneInfo("America/Los_Angeles")
@@ -114,7 +114,7 @@ def test_type_engine_datetimerange_from_json_start_end():
             "start": "2026-03-26",
             "end": "2026-04-26"
         }
-    } 
+    }
 
     dtr = DateTimeRange.from_json(dt_obj)
 
@@ -126,7 +126,7 @@ def test_type_engine_datetimerange_from_json_no_start_raises():
         "date": {
             "end": "2026-04-26"
         }
-    } 
+    }
 
     with pytest.raises(ValueError, match="must contain 'start' field"):
         dtr = DateTimeRange.from_json(dt_obj)
@@ -137,7 +137,7 @@ def test_type_engine_datetimerange_from_json_end_before_start_raises():
             "start":"2026-05-26",
             "end": "2026-04-26"
         }
-    } 
+    }
 
     with pytest.raises(ValueError, match=">= start datetime"):
         dtr = DateTimeRange.from_json(dt_obj)
@@ -149,7 +149,7 @@ def test_type_engine_datetimerange_invalid_tz_raises_from_json():
             "end": "2026-04-26",
             "time_zone": "Invalid/Zone"
         }
-    } 
+    }
 
     with pytest.raises(ArgumentError) as exc:
         dtr = DateTimeRange.from_json(dt_obj)
@@ -163,7 +163,7 @@ def test_type_engine_datetimerange_dt_only_w_tz_raises():
             "start": "2026-03-26",
             "time_zone": "Europe/Berlin"
         }
-    } 
+    }
 
     with pytest.raises(ValueError) as exc:
         dtr = DateTimeRange.from_json(dt_obj)
@@ -172,21 +172,21 @@ def test_type_engine_datetimerange_dt_only_w_tz_raises():
 
 @pytest.mark.parametrize('type_obj, no_obj, py_obj, no_type', [
     (
-        Date(), 
-        {"date": {"start": "2023-02-23", "end": None, "time_zone": None}}, 
-        DateTimeRange("2023-02-23"), 
+        Date(),
+        {"date": {"start": "2023-02-23", "end": None, "time_zone": None}},
+        DateTimeRange("2023-02-23"),
         "date"
     ),
     (
-        Date(), 
-        {"date": {"start": "2023-02-23", "end": "2023-04-23", "time_zone": None}}, 
-        DateTimeRange(date(2023,2,23), "2023-04-23"), 
+        Date(),
+        {"date": {"start": "2023-02-23", "end": "2023-04-23", "time_zone": None}},
+        DateTimeRange(date(2023,2,23), "2023-04-23"),
         "date"
     ),
     (
-        Date(), 
-        {"date": {"start": "2023-02-23T00:00:00", "end": "2023-04-23T00:00:00", "time_zone": "Europe/Rome"}}, 
-        DateTimeRange(datetime(2023,2,23), datetime(2023,4,23), timezone="Europe/Rome"), 
+        Date(),
+        {"date": {"start": "2023-02-23T00:00:00", "end": "2023-04-23T00:00:00", "time_zone": "Europe/Rome"}},
+        DateTimeRange(datetime(2023,2,23), datetime(2023,4,23), timezone="Europe/Rome"),
         "date"
     ),
 ])
@@ -197,7 +197,7 @@ def test_type_engine_date_datatypes(type_obj: TypeEngine, no_obj: dict, py_obj: 
     bound = bind(py_obj)
     restored = result(no_obj)
 
-    assert result(bind(py_obj)) == py_obj   
+    assert result(bind(py_obj)) == py_obj
     assert bound == no_obj
     assert restored == py_obj
     assert type_obj.get_col_spec() == no_type

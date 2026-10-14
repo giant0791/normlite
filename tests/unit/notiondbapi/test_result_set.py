@@ -26,21 +26,21 @@ class _RowGetter:
             col: idx
             for idx, col in enumerate(self._METADATA)
         }
-    
-    def getter(self, column_name: str) -> Callable[[Sequence[Any]], Any]: 
+
+    def getter(self, column_name: str) -> Callable[[Sequence[Any]], Any]:
         idx = self.index_map[column_name]
 
         def _getter(row: Sequence[Any]) -> Any:
             return row[idx]
-        
+
         return _getter
-    
+
     def value_getter(self, value_name: str) -> Callable[[Sequence[Any]], Any]:
         idx = self.value_map[value_name]
 
         def _value_getter(row: Sequence) -> Any:
             return row[idx]
-        
+
         return _value_getter
 
 @pytest.fixture
@@ -270,7 +270,7 @@ def row_description() -> tuple[tuple, ...]:
 @pytest.fixture
 def client() -> InMemoryNotionClient:
     new_client = InMemoryNotionClient()
-    new_client._ensure_root()   
+    new_client._ensure_root()
     return new_client
 
 @pytest.fixture
@@ -278,26 +278,26 @@ def prefilled_client(client: InMemoryNotionClient) -> InMemoryNotionClient:
     _, _ = add_pages(
         client, [
             {
-                "name": "Galileo Galilei", 
-                "id": 123456, 
-                "is_active": False, 
-                "start_on": "1581-01-01", 
+                "name": "Galileo Galilei",
+                "id": 123456,
+                "is_active": False,
+                "start_on": "1581-01-01",
                 "grade": "A"
-            }, 
+            },
             {
-                "name": "Isaac Newton", 
-                "id": 123457, 
-                "is_active": False, 
-                "start_on": "1681-01-01", 
+                "name": "Isaac Newton",
+                "id": 123457,
+                "is_active": False,
+                "start_on": "1681-01-01",
                 "grade": "B"
-            }, 
+            },
             {
-                "name": "Ada Lovelace", 
-                "id": 123458, 
-                "is_active": False, 
-                "start_on": "1781-01-01", 
+                "name": "Ada Lovelace",
+                "id": 123458,
+                "is_active": False,
+                "start_on": "1781-01-01",
                 "grade": "C"
-            }, 
+            },
         ]
     )
 
@@ -411,10 +411,10 @@ def test_resultset_created_pages_from_json(client: InMemoryNotionClient, row_des
     _, pages = add_pages(
         client, [
             {
-                "name": "Galileo Galilei", 
-                "id": 123456, 
-                "is_active": False, 
-                "start_on": "1581-01-01", 
+                "name": "Galileo Galilei",
+                "id": 123456,
+                "is_active": False,
+                "start_on": "1581-01-01",
                 "grade": "A"
             }
         ]
@@ -456,7 +456,7 @@ def test_resultset_fetchall(prefilled_client: InMemoryNotionClient, data_source_
     results = prefilled_client.data_sources_query(path_params={"data_source_id": data_source_id})
     resultset = ResultSet.from_json(row_description, results)
     row_getters = _RowGetter(row_description)
-    get_col_name = row_getters.getter("name")   
+    get_col_name = row_getters.getter("name")
     all = [rich_text_to_plain_text(get_col_name(row)["title"]) for row in resultset]
 
     assert ["Galileo Galilei", "Isaac Newton", "Ada Lovelace"] == all
@@ -550,7 +550,7 @@ def test_resultset_database_cols_from_json(prefilled_client: InMemoryNotionClien
     assert ["column_name", "column_type", "column_id", "metadata", "is_system"] == col_names
 
 def test_resultset_database_cols_from_json_extract_table_name(
-    prefilled_client: InMemoryNotionClient, 
+    prefilled_client: InMemoryNotionClient,
     row_description: tuple[tuple, ...],
     database_id: str
 ):
@@ -614,7 +614,7 @@ def test_resultset_last_inserted_rowids_from_pages(
     results = prefilled_client.data_sources_query(path_params={"data_source_id": data_source_id})
     resultset = ResultSet.from_json(row_description, results)
 
-    assert len(resultset.last_inserted_rowids) == len(resultset)    
+    assert len(resultset.last_inserted_rowids) == len(resultset)
 
 def test_resultset_last_inserted_rowids_from_database(prefilled_client: InMemoryNotionClient, database_id: str):
     database = prefilled_client.databases_retrieve(
@@ -650,7 +650,7 @@ def test_rs_real_life_db_notion_object_creates_rows_as_metadata(database_retriev
         ("Description",),
         ("Name",),
     ])
-    
+
     get_metadata = rg.value_getter("metadata")
 
     assert len(rs) == 8

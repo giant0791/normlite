@@ -41,11 +41,11 @@ class PageIterator:
 
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         if self._exhausted:
             raise StopIteration
-        
+
         page = self._page_fetcher(self._start_cursor)
         if page.get("has_more", False):
             next_cursor = page.get("next_cursor")
@@ -54,9 +54,9 @@ class PageIterator:
                 # set the exhausted flag anyway
                 self._exhausted = True
                 raise ValueError("Malformed Notion result object")
-            
+
             self._start_cursor = next_cursor
-        
+
         else:
             self._exhausted = True
 
@@ -71,9 +71,9 @@ class JsonPageSource:
     """
 
     def __init__(
-        self, 
-        page_iter: PageIterator, 
-        description: Sequence[tuple], 
+        self,
+        page_iter: PageIterator,
+        description: Sequence[tuple],
         translate: callable,
     ):
         self._page_iter = page_iter

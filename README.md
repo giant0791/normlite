@@ -22,15 +22,15 @@ Here’s a sneak peek of what using `normlite` feels like:
 from datetime import date
 
 from normlite import (
-    create_engine, 
-    insert, 
+    create_engine,
+    insert,
     select,
-    Table, 
+    Table,
     Column,
-    String, 
-    Integer, 
-    Boolean, 
-    Date, 
+    String,
+    Integer,
+    Boolean,
+    Date,
     MetaData,
 )
 
@@ -52,28 +52,28 @@ students = Table(
 # create table and add some rows
 with engine.connect() as connection:
     students.create(bind=engine)
-    
+
     stmt = (
         insert(students)
         .values(
-            id=123456, 
-            name='Galileo Galilei', 
-            grade='A', 
-            is_active=False, 
+            id=123456,
+            name='Galileo Galilei',
+            grade='A',
+            is_active=False,
             started_on=date(1581, 9, 1)
         )
     )
 
     connection.execute(stmt)
-    
+
     stmt = students.insert()
     connection.execute(
-        stmt, 
+        stmt,
         {
-            'id': 123457, 
-            'name': 'Isaac Newton', 
-            'grade': 'B', 
-            'is_active': False, 
+            'id': 123457,
+            'name': 'Isaac Newton',
+            'grade': 'B',
+            'is_active': False,
             'started_on': date(1661, 9, 1)
         }
     )
@@ -87,12 +87,12 @@ with engine.connect() as connection:
 
     # print values for user defined columns only
     for row in rows:
-        print(row) 
-        
+        print(row)
+
 # (123456, 'Galileo Galilei', 'A', False, datetime.datetime(1581, 9, 1, 0, 0))
 # (123457, 'Isaac Newton', 'B', False, datetime.datetime(1661, 9, 1, 0, 0))
 ```
-See the `examples/` directory in the repo for more example code. 
+See the `examples/` directory in the repo for more example code.
 
 # Why I Started This Project
 

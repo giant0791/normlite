@@ -23,57 +23,57 @@
 
 class NormliteError(Exception):
     """Base exception class for all ``normlite`` exceptions.
-    
+
     .. versionadded: 0.5.0
     """
     ...
 
 class NoResultFound(NormliteError):
     """Raised when exactly one result row is expected, but none was found.
-    
+
     .. versionadded: 0.5.0
     """
     ...
 
 class MultipleResultsFound(NormliteError):
     """Raised if multiple rows were found when exactly one was required.
-    
+
     .. versionadded: 0.5.0
     """
     ...
 
 class DuplicateColumnError(NormliteError):
     """Raised when an already existing column is added to a table.
-    
+
     .. versionadded:: 0.7.0
     """
     ...
 
 class ArgumentError(NormliteError):
     """Raised when an erroneous argument is passed.
-    
+
     .. versionadded:: 0.7.0
     """
     ...
 
 class InvalidRequestError(NormliteError):
     """Raised when a ``normlite`` method or function cannot perform as requested.
-    
+
     .. versionadded:: 0.7.0
     """
     ...
 
 class UnsupportedCompilationError(NormliteError):
     """Raised when an operation is not supported by the given compiler.
-    
+
     .. versionadded:: 0.7.0
     """
 
 class ResourceClosedError(NormliteError):
     """The cursor cannot deliver rows.
-    
+
     This exception is raised when a cursor (resource) cannot return rows because it is
-    either closed (i.e. exhausted) or it represents the result from an SQL statement that 
+    either closed (i.e. exhausted) or it represents the result from an SQL statement that
     does not return values (e.g. ``INSERT``).
 
     .. versionadded:: 0.5.0
@@ -101,19 +101,19 @@ class NoSuchTableError(NormliteError):
 
 class NoSuchColumnError(InvalidRequestError):
     """A nonexistent column is requested from a row.
-    
+
     .. versionadded:: 0.9.0
     """
 
 class StatementError(NormliteError):
     """An error occurred during execution of a SQL statement.
-    
+
     .. versionadded:: 0.9.0
     """
 
 class NoReferenceError(InvalidRequestError):
     """Raised by ``ForeignKey`` to indicate a reference cannot be resolved.
-    
+
     .. versionadded:: 0.11.0
     """
 
@@ -134,7 +134,7 @@ class NoReferencedTableError(NoReferenceError):
 
 class NoReferencedColumnError(NoReferenceError):
     """Raised by ``ForeignKey`` when the referred ``Column`` cannot be located.
-    
+
     .. versionadded:: 0.11.0
     """
 

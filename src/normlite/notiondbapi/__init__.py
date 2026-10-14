@@ -17,15 +17,15 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from .dbapi2 import (
-    DBAPIParamStyle, 
-    Error, 
+    DBAPIParamStyle,
+    Error,
     InterfaceError,
     DatabaseError,
     InternalError,
     ProgrammingError,
     Cursor,
     Connection,
-) 
+)
 
 __all__ = [
     'DBAPIParamStyle',

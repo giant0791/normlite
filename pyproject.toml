@@ -50,12 +50,12 @@ dev = [
 pythonpath = ["src"]
 
 [tool.pytest.ini_options]
-addopts = [ 
+addopts = [
     "--strict-markers",
-    "--tb=short", 
-    "-v",  
-    "-s",  
-] 
+    "--tb=short",
+    "-v",
+    "-s",
+]
 testpaths = ["tests/unit"]
 
 [tool.coverage.run]

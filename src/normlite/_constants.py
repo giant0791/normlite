@@ -36,7 +36,7 @@ class SpecialColumns(StrEnum):
     .. versionchanged:: 0.8.0
         This enum class adds parent id as important attribute for Notion pages and databases, so that these ids are
         readily available in their ``normlite`` counterparts.
-    
+
     .. versionadded:: 0.7.0
 
     """
@@ -48,26 +48,26 @@ class SpecialColumns(StrEnum):
 
     NO_PID = "parent_id"
     """Parent identifier for a Notion entity.
-    
+
     The parent identifier is the "database_id" key for pages belonging to a database and
     the "page_id" for databases.
 
     .. versionadded:: 0.8.0
-    
+
     """
 
     NO_TITLE = "table_name"
     """Notion "title" key for database objects."""
-    
+
     NO_ARCHIVED = "is_archived"
     """Notion "archived" key for all objects."""
-    
+
     NO_IN_TRASH = "is_deleted"
     """Notion "in_trash" key for all objects."""
 
     NO_CREATED_TIME = "created_at"
     """Date and time when this page was created. Formatted as an ISO 8601 date time string.
-    
+
     .. versionadded:: 0.9.0
     """
 
@@ -75,7 +75,7 @@ class SpecialColumns(StrEnum):
     @normlite_deprecated("This method is deprecated and will be remove in a future version.")
     def values(cls) -> tuple[str, ...]:
         """Provide all constants values as tuple.
-        
+
         Helper class method for implementing is in tests.
 
         .. versionchanged:: 0.9.0
