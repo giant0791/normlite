@@ -1,4 +1,3 @@
-import pdb
 from datetime import date
 
 import re
@@ -8,7 +7,6 @@ import pytest
 from normlite.exceptions import CompileError
 from normlite.sql.compiler import (
     _FILTER_MAX_DEPTH_EXCEEDED,
-    _UNPUSHABLE_FILTER_TERM,
 )
 from normlite.sql.dml import delete, insert, select
 from normlite.sql.elements import not_
@@ -207,56 +205,28 @@ def test_delete_does_not_affect_other_rows(engine, students):
     assert len(remaining) == 5
 
 
-def test_delete_with_a_negated_conjunct_is_refused_and_deletes_nothing(
-    engine, prepared_students
-):
-    """A DML WHERE that cannot be pushed EXACTLY must raise, never prune (#383).
+def test_delete_rechecks_a_negation_nested_under_an_or(engine, prepared_students):
+    """The recheck decides a NOT that is buried under an OR (#412).
 
-    Every populated row carries ``grade == "A"``, so ``id == 1 AND NOT grade == "A"``
-    is false for all ten of them and SQL deletes nothing.
+    The tree is a MIXED operator alternation, ``and -> or -> and -> not``.
+    ``BooleanClauseList.__init__`` flattens same-operator nesting, so only
+    alternating operators keep the ``not`` deep. The ``or`` has a ``not`` arm, so
+    it is unpushable WHOLE. The pushed filter keeps only ``is_active IS TRUE`` and
+    matches all eleven rows. The recheck must decide.
 
-    ``not`` has no Notion filter form, so the pushed filter cannot mean what this
-    WHERE means. On the SELECT path that is harmless: the conjunct is dropped, the
-    filter weakens to a superset, and the client-side recheck decides (ADR-0022).
-    DELETE has no recheck (#397) -- the pushed filter IS the decision -- so a
-    dropped conjunct is a deleted row. Refusing to compile is the only sound
-    answer until #397 retires the refusal.
+    Three-way cast:
 
-    The survivor assertion is not redundant with the raise: it fails a gate that
-    fires *after* :meth:`Delete._setup_execution` has already staged the
-    ``pages.update`` archives.
+    * the ten ``name_i`` rows have ``grade == "A"``, so the WHERE is false;
+    * ``name_1`` has ``id == 1`` too. A recheck that drops the ``not`` trashes it;
+    * ``Galileo`` has ``id == 1`` and ``grade == "C"``, so the WHERE is true.
+      DELETE trashes him and only him.
     """
-    stmt = delete(prepared_students).where(
-        (prepared_students.c.id == 1) & not_(prepared_students.c.grade == "A")
-    )
-
-    with pytest.raises(CompileError, match=re.escape(_UNPUSHABLE_FILTER_TERM)):
-        run_execute(engine, stmt)
-
     with engine.connect() as conn:
-        survivors = conn.execute(select(prepared_students.c.id)).all()
+        conn.execute(insert(prepared_students).values(
+            name="Galileo Galilei", id=1, is_active=True,
+            start_on=date(1600, 1, 1), grade="C",
+        ))
 
-    assert sorted(row.id for row in survivors) == list(range(10))
-
-def test_delete_refuses_a_negation_nested_under_an_or(engine, prepared_students):
-    """The DML gate must judge the WHOLE tree, not just its root (#383).
-
-    Sibling of :func:`test_delete_with_a_negated_conjunct_is_refused_and_deletes_nothing`,
-    which pins the gate itself. This one pins the RECURSION: the strict mode is a
-    property of the walk, so it has to reach a ``not`` buried at any depth.
-
-    The tree is a MIXED operator alternation, ``and -> or -> and -> not``, and that
-    is the whole point of the shape. ``BooleanClauseList.__init__`` flattens
-    same-operator nesting at construction, so an ``and`` directly inside an ``and``
-    collapses into one node the root-level check already catches; only alternating
-    operators preserve the depth. A gate that recursed in lax mode reported this
-    tree as pushable, dropped ``NOT grade == "A"``, and archived ``name_1``.
-
-    Every row has ``is_active`` true and ``grade == "A"``, so ``grade == "B"`` is
-    false and ``id == 1 AND NOT grade == "A"`` is false: the WHERE is false for all
-    ten rows and SQL deletes nothing. The pruned filter would delete exactly one,
-    which is why the survivor assertion names the surviving ids.
-    """
     stmt = delete(prepared_students).where(
         prepared_students.c.is_active.is_(True)
         & (
@@ -268,14 +238,13 @@ def test_delete_refuses_a_negation_nested_under_an_or(engine, prepared_students)
         )
     )
 
-    with pytest.raises(CompileError, match=re.escape(_UNPUSHABLE_FILTER_TERM)):
-        run_execute(engine, stmt)
+    result = run_execute(engine, stmt)
 
     with engine.connect() as conn:
-        survivors = conn.execute(select(prepared_students.c.id)).all()
+        survivors = conn.execute(select(prepared_students.c.name)).all()
 
-    assert sorted(row.id for row in survivors) == list(range(10))
-
+    assert sorted(row.name for row in survivors) == [f"name_{i}" for i in range(10)]
+    assert_rowcount(result, 1)
 
 def test_delete_by_a_not_equal_where_keeps_a_valueless_row(engine, prepared_students):
     """A ``!=`` push must not delete the rows SQL calls UNKNOWN (#383).
@@ -292,9 +261,10 @@ def test_delete_by_a_not_equal_where_keeps_a_valueless_row(engine, prepared_stud
     which pins the SAME predicate on the SAME three-row cast and reaches the
     OPPOSITE verdict -- there the valueless row must be dropped, here it must
     survive, because a row the predicate excludes is a row DELETE must not touch).
-    DELETE has no recheck (#397): the pushed filter IS the decision, so a filter
-    that over-matches is a row destroyed. ``_all_terms_pushable`` cannot see this
-    -- no *term* is dropped, the loss is inside one term.
+    Before #412, DELETE had no recheck: the pushed filter WAS the decision, so a
+    filter that over-matched was a row destroyed. The ``!=`` leaf repair
+    (``e26d7af``) made this push exact. Since #412 the recheck decides too, so
+    this test is a guard on both.
 
     Three-way cast, because a row count alone would not observe the predicate:
 
@@ -441,8 +411,8 @@ def test_delete_by_is_empty_deletes_only_the_valueless_row(engine, prepared_stud
     such a rule (session 17): the DML gate refused this DELETE with "does not
     support negated terms" -- a reason that is false -- and the full suite stayed
     green. This test closes that gap. On SELECT the same mistake is invisible in
-    the rows, because the recheck decides; DELETE has no recheck (#397), so the
-    gate's answer is the user's answer.
+    the rows, because the recheck decides. Before #412 DELETE had no recheck, so
+    the gate's answer was the user's answer.
 
     Two-way cast, so the test observes the predicate and not a row count:
 
@@ -500,59 +470,107 @@ def test_delete_by_is_not_empty_spares_only_the_valueless_row(engine, prepared_s
     assert_rowcount(result, 10)
 
 
-def test_delete_by_a_none_comparison_is_refused_and_deletes_nothing(
-    engine, prepared_students
-):
-    """A ``None`` literal under ``!=`` is unpushable, so DELETE refuses it (#383).
+@pytest.mark.xfail(
+    strict=True,
+    reason="#422: eval3 answers `5 != None` as TRUE, not UNKNOWN",
+)
+def test_delete_by_a_none_comparison_trashes_nothing(engine, prepared_students):
+    """``id != None`` is UNKNOWN for every row, so DELETE trashes nothing (#412).
 
-    Notion rejects a ``null`` comparison value under ``does_not_equal`` with HTTP 400
-    (measured 2026-10-05). DELETE has no recheck (#397), so it cannot drop the
-    term. It must refuse the WHERE.
+    In SQL a comparison against NULL is UNKNOWN, and the WHERE policy drops
+    UNKNOWN. The recheck decides the rows (ADR-0022), so its answer is the
+    user's answer.
 
-    In SQL, ``id != NULL`` is UNKNOWN for every row, so SQL deletes nothing.
+    Two-way cast, so both kinds of cell are covered:
 
-    The survivor assertion fails a gate that fires *after*
-    :meth:`Delete._setup_execution` has staged the ``pages.update`` archives.
+    * the ten ``name_i`` rows have a valued ``id``. Today ``eval3`` answers
+      ``5 != None`` as TRUE and DELETE trashes them. This is the defect (#422);
+    * ``Nullius`` has a valueless ``id``. ``eval3`` already answers UNKNOWN.
     """
-    stmt = delete(prepared_students).where(prepared_students.c.id != None)
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Nullius", id=None, is_active=True,
+            start_on=date(1600, 1, 1), grade="A",
+        ))
 
-    with pytest.raises(CompileError, match=re.escape(_UNPUSHABLE_FILTER_TERM)):
-        run_execute(engine, stmt)
+    result = run_execute(
+        engine, delete(prepared_students).where(prepared_students.c.id != None)
+    )
 
     with engine.connect() as conn:
-        survivors = conn.execute(select(prepared_students.c.id)).all()
+        survivors = conn.execute(select(prepared_students.c.name)).all()
 
-    assert sorted(row.id for row in survivors) == list(range(10))
+    assert sorted(row.name for row in survivors) == sorted(
+        ["Nullius"] + [f"name_{i}" for i in range(10)]
+    )
+    assert_rowcount(result, 0)
 
 
-def test_delete_with_an_empty_string_under_not_equal_is_refused_and_deletes_nothing(
+def test_delete_by_an_equal_none_comparison_executes_and_trashes_nothing(
     engine, prepared_students
 ):
-    """A DELETE must refuse an empty-string literal under ``!=`` (#382).
+    """``id == None`` executes and is UNKNOWN for every row, so DELETE trashes nothing (#412).
+
+    Before #412, DELETE refused a ``None`` literal with a ``CompileError``. This
+    test is a guard: it pins that the DELETE executes. The strict xfail on
+    ``id != None`` cannot pin this, because a strict xfail accepts any exception.
+
+    Two-way cast, so both kinds of cell are covered:
+
+    * the ten ``name_i`` rows have a valued ``id``;
+    * ``Nullius`` has a valueless ``id``. In SQL, ``NULL = NULL`` is UNKNOWN
+      too, so DELETE does not trash him.
+    """
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Nullius", id=None, is_active=True,
+            start_on=date(1600, 1, 1), grade="A",
+        ))
+
+    result = run_execute(
+        engine, delete(prepared_students).where(prepared_students.c.id == None)
+    )
+
+    with engine.connect() as conn:
+        survivors = conn.execute(select(prepared_students.c.name)).all()
+
+    assert sorted(row.name for row in survivors) == sorted(
+        ["Nullius"] + [f"name_{i}" for i in range(10)]
+    )
+    assert_rowcount(result, 0)
+
+
+def test_delete_by_an_empty_string_under_not_equal_spares_the_blank_row(
+    engine, prepared_students
+):
+    """The recheck decides ``grade != ""``, not Notion (#382, #412).
 
     Measured against the live API (``Notion-Version: 2026-03-11``): Notion
-    IGNORES ``rich_text.does_not_equal ""`` and returns every row of the data
-    source. DELETE has no recheck (#397), so the pushed filter IS the decision.
-    Against real Notion this WHERE deletes every row, blank cells included.
+    IGNORES ``rich_text.does_not_equal ""`` and returns every row. So the
+    compiler does not push this leaf. No filter goes to Notion, the scan reads
+    every row, and the recheck decides.
 
-    The in-memory client evaluates ``does_not_equal ""`` correctly. Today this
-    statement deletes all ten rows here, and that looks correct. The defect is
-    visible only against real Notion, so the test pins the refusal.
+    Two-way cast:
 
-    The survivor assertion fails a gate that fires *after*
-    :meth:`Delete._setup_execution` has already staged the ``pages.update``
-    archives.
+    * the ten ``name_i`` rows have ``grade == "A"``. DELETE trashes them;
+    * ``Blank`` has an empty grade. The WHERE is false, so he survives. A DELETE
+      that trusts the unfiltered scan trashes him too.
     """
-    stmt = delete(prepared_students).where(prepared_students.c.grade != "")
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Blank", id=100, is_active=True,
+            start_on=date(1600, 1, 1), grade="",
+        ))
 
-    with pytest.raises(CompileError, match=re.escape(_UNPUSHABLE_FILTER_TERM)):
-        run_execute(engine, stmt)
+    result = run_execute(
+        engine, delete(prepared_students).where(prepared_students.c.grade != "")
+    )
 
     with engine.connect() as conn:
-        survivors = conn.execute(select(prepared_students.c.id)).all()
+        survivors = conn.execute(select(prepared_students.c.name)).all()
 
-    assert sorted(row.id for row in survivors) == list(range(10))
-
+    assert [row.name for row in survivors] == ["Blank"]
+    assert_rowcount(result, 10)
 
 def test_delete_asks_notion_only_for_the_properties_its_where_reads(
     engine, prepared_students, monkeypatch
@@ -663,3 +681,86 @@ def test_delete_across_several_scan_pages_leaves_no_matching_row(engine, student
     sel = select(students.c.object_id).where(students.c.is_active.is_(True))
     with engine.connect() as conn:
         assert conn.execute(sel).all() == []
+
+
+def test_delete_with_a_negated_conjunct_trashes_exactly_what_select_returns(
+    engine, prepared_students
+):
+    # Arrange: ten rows with ids 0..9. The WHERE keeps ids 0 and 2 only.
+    # Each statement gets a new WHERE object: compiling an expression assigns
+    # roles to its binds, so one object cannot go into two statements.
+    def where():
+        return (prepared_students.c.id < 3) & not_(prepared_students.c.id == 1)
+
+    with engine.connect() as conn:
+        selected = conn.execute(select(prepared_students.c.id).where(where())).all()
+
+    # Act
+    result = run_execute(engine, delete(prepared_students).where(where()))
+
+    # Assert: DELETE trashes the SELECT's rows, and no other row.
+    assert sorted(row.id for row in selected) == [0, 2]
+    assert_rowcount(result, 2)
+
+    with engine.connect() as conn:
+        survivors = conn.execute(select(prepared_students.c.id)).all()
+
+    assert sorted(row.id for row in survivors) == [1, 3, 4, 5, 6, 7, 8, 9]
+
+
+def test_delete_by_an_or_with_a_negated_arm_trashes_exactly_what_select_returns(
+    engine, prepared_students
+):
+    # Arrange: ten rows with ids 0..9 and grade "A", plus Bee with grade "B".
+    # The WHERE keeps name_1 (id == 1) and Bee (grade is not "A").
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Bee", id=50, is_active=True,
+            start_on=date(1600, 1, 1), grade="B",
+        ))
+
+    def where():
+        return (prepared_students.c.id == 1) | not_(prepared_students.c.grade == "A")
+
+    with engine.connect() as conn:
+        selected = conn.execute(select(prepared_students.c.name).where(where())).all()
+
+    # Act
+    result = run_execute(engine, delete(prepared_students).where(where()))
+
+    # Assert: DELETE trashes the SELECT's rows, and no other row.
+    assert sorted(row.name for row in selected) == ["Bee", "name_1"]
+    assert_rowcount(result, 2)
+
+    with engine.connect() as conn:
+        survivors = conn.execute(select(prepared_students.c.name)).all()
+
+    assert sorted(row.name for row in survivors) == sorted(
+        f"name_{i}" for i in range(10) if i != 1
+    )
+
+
+def test_delete_returning_gives_only_the_trashed_rows(engine, prepared_students):
+    # Arrange: ten rows with ids 0..9 and grade "A", plus Bee with grade "B".
+    # The WHERE keeps name_1 (id == 1) and Bee (grade is not "A").
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Bee", id=50, is_active=True,
+            start_on=date(1600, 1, 1), grade="B",
+        ))
+
+    stmt = (
+        delete(prepared_students)
+        .where(
+            (prepared_students.c.id == 1) | not_(prepared_students.c.grade == "A")
+        )
+        .returning(prepared_students.c.name)
+    )
+
+    # Act
+    result = run_execute(engine, stmt)
+    rows = result.all()
+
+    # Assert: one RETURNING row for each trashed row, and no other row.
+    assert sorted(row.name for row in rows) == ["Bee", "name_1"]
+    assert_rowcount(result, 2)

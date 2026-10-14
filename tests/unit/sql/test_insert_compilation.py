@@ -99,7 +99,7 @@ def test_compiler_detects_missing_values(students: Table, insert_values: dict):
 
 def test_bindparam_role_already_assigned_error():
     nc = NotionCompiler()
-    with pytest.raises(CompileError, match='role already assigned'):
+    with pytest.raises(CompileError, match="already has the role COLUMN_VALUE"):
         bp = BindParameter(key='fake')
         bp.role = _BindRole.COLUMN_VALUE
         nc._add_bindparam(bp)
