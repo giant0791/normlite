@@ -245,9 +245,6 @@ class Connection:
         elif ctx.execution_style == ExecutionStyle.EXECUTE:
             self._execute_single(ctx)
         
-        elif ctx.execution_style == ExecutionStyle.EXECUTEMANY:
-            self._execute_many(ctx)
-        
         elif ctx.execution_style == ExecutionStyle.INSERTMANYVALUES:
             self._execute_insert_many(ctx)
 
@@ -274,19 +271,6 @@ class Connection:
             context.parameters,
             streamable=elem.is_select,      # stream_results, yield_per options considered for SELECT statements only
             execution_options=context.execution_options
-        )
-
-    
-    def _execute_many(self, context: ExecutionContext) -> None:
-        elem = context.invoked_stmt
-
-        # 6. side effects happen (HTTP)
-        #    execute_many uses the bulk_* attributes which have been prepared in the 
-        #    invoked statement's _finilize_execution() hook
-        self._engine.do_executemany(
-            context._get_exec_cursor(), 
-            context.bulk_operation, 
-            context.bulk_parameters
         )
 
     def _execute_insert_many(self, context: ExecutionContext) -> None:

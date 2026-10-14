@@ -841,7 +841,7 @@ class Delete(UpdateBase):
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
         if self._returning:
-            # _execute_query_plan already set context._result_cursor
+            # _execute_query_plan already sets context._result_cursor
             # from the ModifyTable rows (ADR-0023)
             return
 
@@ -876,53 +876,13 @@ class Update(ValuesBase):
         return self
 
     def _setup_execution(self, context: ExecutionContext) -> None:
-        elem = context.invoked_stmt
-
-        schema_for_query: SchemaInfo = SchemaInfo.from_table(
-            self._table,
-            execution_names=context.compiled.fetch_columns(),
-            projected_names=context.compiled.result_columns(),
-        )
-        context._cursor._inject_description(schema_for_query.as_sequence())
-
-        try:
-            context.engine.do_execute(
-                context._cursor,
-                context.operation,
-                context.parameters,
-            )
-        except Error as exc:
-            elem._handle_dbapi_error(exc, context)
-
-        pages = context._cursor.fetchall()
-
-        result_cursor = context.connection._engine.raw_connection().cursor()
-        schema_for_result: SchemaInfo = SchemaInfo.from_table(
-            self._table,
-            execution_names=context.compiled.fetch_columns(),
-            projected_names=context.compiled.result_columns(),
-        )
-        result_cursor._inject_description(schema_for_result.as_sequence())
-
-        get_object_id = schema_for_result.column_getter("object_id")
-        update_payload_template = context.compiled_dict['update_payload']
-        bulk_params = []
-
-        for page in pages:
-            params_copy = dict(context.resolved_params)
-            properties = context._bind_params(update_payload_template, params_copy)
-            bulk_params.append({
-                "path_params": {"page_id": get_object_id(page)},
-                "payload": {"properties": properties},
-            })
-
-        context._staged_result_cursor = result_cursor
-        context.bulk_operation = {"endpoint": "pages", "request": "update"}
-        context.bulk_parameters = bulk_params
+        # no-op: UPDATE executes through the query plan (ADR-0023)
+        pass
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
         if self._returning:
-            context._result_cursor = context._staged_result_cursor
+            # _execute_query_plan already sets context._result_cursor
+            # from the ModifyTable rows (ADR-0023)
             return
 
         implicit_returning = context.execution_options.get("implicit_returning", False)

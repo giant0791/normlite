@@ -1428,13 +1428,15 @@ class NotionCompiler(SQLCompiler):
             )
 
         with self._compiling(new_state=_CompileState.COMPILING_VALUES):
-            update_payload = self._compile_update_values(update._values)
+            # construct the update payload template containing the values as bind params
+            update_payload_template = self._compile_update_values(update._values)
 
         return {
             'operation': operation,
             'path_params': path_params,
             'payload': payload,
-            'update_payload': update_payload,
+            'update_operation': ROWS_UPDATE,
+            'update_params': {"payload": {"properties": update_payload_template}},
         }
 
     def _compile_update_values(self, values: dict) -> dict:

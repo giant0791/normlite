@@ -44,8 +44,13 @@ def run_context(
         connection._execute_query_plan(ctx)
     elif ctx.execution_style == ExecutionStyle.EXECUTE:
         engine.do_execute(ctx._get_exec_cursor(), ctx.operation, ctx.parameters)
-    else:
-        engine.do_executemany(ctx._get_exec_cursor(), ctx.bulk_operation, ctx.bulk_parameters)
+    elif ctx.execution_style == ExecutionStyle.INSERTMANYVALUES:
+        # No caller sends a multi-row INSERT yet. Copy the dispatch of
+        # Connection._execute_insert_many when the first one does.
+        raise NotImplementedError(
+            "run_context does not dispatch INSERTMANYVALUES: "
+            "copy Connection._execute_insert_many first"
+        )
 
     ctx.post_exec()
     ctx.invoked_stmt._finalize_execution(ctx)

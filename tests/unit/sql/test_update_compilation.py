@@ -2,8 +2,8 @@ import uuid
 import pytest
 
 from normlite.exceptions import CompileError
-from normlite.sql.compiler import NotionCompiler
-from normlite.sql.dml import Update, delete, select, update
+from normlite.sql.compiler import ROWS_UPDATE, NotionCompiler
+from normlite.sql.dml import delete, select, update
 from normlite.sql.elements import BooleanClauseList
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, Integer, String
@@ -32,7 +32,6 @@ def students(metadata):
     return table
 
 
-
 @pytest.fixture
 def db_id(students):
     oid = str(uuid.uuid4())
@@ -45,10 +44,12 @@ def compile_update(stmt):
     compiled = stmt.compile(nc)
     return compiled, compiled.as_dict()
 
-
 # ── helper ────────────────────────────────────────────────────────────────────
 
 ALL_COLUMNS = {'name', 'id', 'is_active', 'start_on', 'grade'}
+
+def values_template(asdict):
+    return asdict['update_params']['payload']['properties']
 
 # ── 1 & 2. Tracer bullet + compiled dict shape ────────────────────────────────
 
@@ -67,7 +68,10 @@ def test_update_compiled_dict_shape(students, db_id):
     assert 'path_params' in asdict
     assert asdict['path_params']['data_source_id'] == ':data_source_id'
     assert 'payload' in asdict
-    assert 'update_payload' in asdict
+    assert asdict['update_operation'] == ROWS_UPDATE
+    assert 'update_params' in asdict
+    assert 'payload' in asdict['update_params']
+    assert 'properties' in asdict['update_params']['payload']
 
 
 def test_update_routes_to_data_source_query(students, db_id):
@@ -93,15 +97,15 @@ def test_update_payload_contains_values_template(students, db_id):
     stmt = update(students).values(name='Newton', grade='A')
     compiled, asdict = compile_update(stmt)
 
-    update_payload = asdict['update_payload']
-    # update_payload must have a named placeholder for each supplied column
-    assert 'name' in update_payload
-    assert 'grade' in update_payload
-    assert update_payload['name'].startswith(':')
-    assert update_payload['grade'].startswith(':')
+    template = values_template(asdict)
+    # template must have a named placeholder for each supplied column
+    assert 'name' in template
+    assert 'grade' in template
+    assert template['name'].startswith(':')
+    assert template['grade'].startswith(':')
     # the values params must be registered as execution binds
-    name_key = update_payload['name'][1:]
-    grade_key = update_payload['grade'][1:]
+    name_key = template['name'][1:]
+    grade_key = template['grade'][1:]
     assert name_key in compiled._execution_binds
     assert grade_key in compiled._execution_binds
     # filter payload must NOT contain the values params
@@ -116,11 +120,11 @@ def test_update_partial_values(students, db_id):
     stmt = update(students).values(name='Newton')
     compiled, asdict = compile_update(stmt)
 
-    update_payload = asdict['update_payload']
-    assert set(update_payload.keys()) == {'name'}
+    template = values_template(asdict)
+    assert set(template.keys()) == {'name'}
     omitted = ALL_COLUMNS - {'name'}
     for col in omitted:
-        assert col not in update_payload
+        assert col not in template
 
 
 # ── 5 & 6. WHERE clause ───────────────────────────────────────────────────────
@@ -167,18 +171,18 @@ def test_update_values_dict_syntax(students, db_id):
     stmt = update(students).values({'name': 'Newton', 'grade': 'A'})
     compiled, asdict = compile_update(stmt)
 
-    update_payload = asdict['update_payload']
-    assert 'name' in update_payload
-    assert 'grade' in update_payload
+    template = values_template(asdict)
+    assert 'name' in template
+    assert 'grade' in template
 
 
 def test_update_chained_values(students, db_id):
     stmt = update(students).values(name='Newton').values(grade='A')
     compiled, asdict = compile_update(stmt)
 
-    update_payload = asdict['update_payload']
-    assert 'name' in update_payload
-    assert 'grade' in update_payload
+    template = values_template(asdict)
+    assert 'name' in template
+    assert 'grade' in template
 
 
 # ── 10. CompileError without .values() ───────────────────────────────────────

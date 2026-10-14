@@ -1,4 +1,4 @@
-# normlite/engine/context.py 
+# normlite/engine/context.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -27,7 +27,7 @@ The design of SQL statement execution separates responsibilities cleanly using t
    * - Class
      - Responsibility
    * - :class:`normlite.sql.base.Executable`
-     - Describes *what* to execute (e.g. :class:`normlite.sql.ddl.CreateTable`, :class:`normlite.sql.dml.Insert`) 
+     - Describes *what* to execute (e.g. :class:`normlite.sql.ddl.CreateTable`, :class:`normlite.sql.dml.Insert`)
        :class:`notiondbapi._model.NotionPage` for more details).
    * - :class:`normlite.sql.base.SQLCompiler`
      - Translates the :class:`normlite.sql.base.Executable` into a serializable payload.
@@ -63,31 +63,25 @@ if TYPE_CHECKING:
 
 class ExecutionStyle(Enum):
     """Define the execution style for a context.
-    
+
+    .. versionchanged:: 0.14.0
+        ``EXECUTEMANY`` retired. DELETE and UPDATE, with or without RETURNING, execute
+        as ``EXECUTEQUERYPLAN`` (ADR-0023).
+
     .. versionadded:: 0.8.0
     """
-    
+
     EXECUTE = auto()
     """A single operation is executed.
-    
+
     It indicates cursor.execute() will be used.
-
-    .. versionchanged:: 0.9.0
-    """
-
-    EXECUTEMANY = auto()
-    """Multiple operations are executed on a query result.
-
-    It indicates that cursor.execute() will be used.
-    This execution style is used for DELETE/UPDATE statements where the execution loop is
-    driven by the query results.
 
     .. versionchanged:: 0.9.0
     """
 
     INSERTMANYVALUES = auto()
     """The same operation is executed multiple times with different parameters.
-    
+
     This execution style is used for INSERT statements that add multiple rows. The execution loop is
     driven by the parameters.
 
@@ -99,7 +93,7 @@ class ExecutionStyle(Enum):
 
     This execution style is used for SELECT-JOIN statements, which require complex IO flows.
     The query planner drives the execution and result collection.
-    
+
     .. seealso::
         :class:`normlite.sql.queryplan.Planner`
 
@@ -111,8 +105,8 @@ class ExecutionContext:
 
     This class manages the key activities for the execution of SQL statements.
     It binds dynamically the parameters at runtime prior to execution using the owned :class:`normlite.sql.Compiled` object.
-    After execution, it sets up the :class:`normlite.cursor.CursorResult` object to be returned using the owned :class:`normlite.notiondbapi.dbapi2.Cursor` 
-    (which contains the result set of the executed statement). 
+    After execution, it sets up the :class:`normlite.cursor.CursorResult` object to be returned using the owned :class:`normlite.notiondbapi.dbapi2.Cursor`
+    (which contains the result set of the executed statement).
 
     .. versionchanged:: 0.8.0
         :meth:`_bind_params()` now binds values to named arguments by looking up parameters recursively.
@@ -131,18 +125,18 @@ class ExecutionContext:
 
     engine: Engine
     """Engine which the connection is associated with.
-    
+
     .. versionadded:: 0.8.0
     """
 
     connection: Connection
     """Connection associated with the engine.
-    
+
     .. versionadded::0.8.0
     """
 
     _cursor: Optional[DBAPICursor]
-    """The DBAPI cursor holding the result set of the executed statement if no pre-fetch/post-fetch 
+    """The DBAPI cursor holding the result set of the executed statement if no pre-fetch/post-fetch
     is required.
 
     .. seealso::
@@ -155,7 +149,7 @@ class ExecutionContext:
 
     compiled: Compiled
     """The compiled statement.
-    
+
     .. versionchanged:: 0.8.0
     """
 
@@ -163,7 +157,7 @@ class ExecutionContext:
     """The JSON object representing result of the compilation + parameter binding.
 
     This attribute must be computed prior to executing the context.
-    
+
     .. versionadded:: 0.8.0
 
     Example::
@@ -231,25 +225,25 @@ class ExecutionContext:
 
     distilled_params: _CoreMultiExecuteParams
     """The normalized bind parameters containing the values to be bound into :attr:`compiled_dict`.
-    
+
     .. versionadded:: 0.8.0
     """
 
     path_params: Optional[dict]
     """The path params for the DBAPI operation.
-    
+
     .. versionadded:: 0.8.0
     """
 
     query_params: Optional[dict]
     """The query params for the DBAPI operation.
-    
+
     .. versionadded:: 0.8.0
     """
 
     payload: Optional[list[dict]]
     """The payload parameter for the DBAPI operation.
-    
+
     .. versionadded:: 0.8.0
     """
 
@@ -261,31 +255,31 @@ class ExecutionContext:
 
     execution_options: ExecutionOptions
     """Execution options associated with the current statement execution.
-    
+
     .. versionadded:: 0.8.0
     """
 
     _result: Optional[CursorResult]
     """The cursor result of the operation(s) executed in this context.
-    
+
     .. versionadded:: 0.8.0
     """
 
-    _rowcount: Optional[int] 
+    _rowcount: Optional[int]
     """The rowcount returned by an INSERT/UPDATE/DELETE/SELECT statement.
-    
+
     .. versionadded:: 0.9.0
     """
 
     _returned_primary_keys_rows: Optional[list[tuple]]
     """The list of primary keys returned by the last executed DML statement as row.
-    
-    .. versionadded:: 0.9.0 
+
+    .. versionadded:: 0.9.0
     """
 
     bulk_operation: Optional[dict]
     """The operation to be executed when :attr:`execution_style` is :attr:`ExecutionStyle.EXCUTEMANY`.
-    
+
     .. versionadded:: 0.9.0
     """
 
@@ -297,22 +291,29 @@ class ExecutionContext:
 
     _result_cursor: Optional[DBAPICursor]
     """The cursor used internally for prefetching/postfetching Notion pages in delete/update/insert.
-    
+
     .. versionadded:: 0.9.0
     """
 
     _staged_result_cursor: Optional[DBAPICursor]
-    """The cursor used internally to route results after pre-fetch/post-fetching.
-    
+    """The cursor that holds the RETURNING rows of INSERT ... RETURNING.
+
+    ``Insert._setup_execution`` stamps the RETURNING description on it. The post-fetch
+    ``pages.retrieve`` operations write their result sets into it. It stays separate from
+    :attr:`_cursor`, which holds the ``pages.create`` result sets.
+
+    .. versionchanged:: 0.14.0
+        Only INSERT ... RETURNING uses it. DELETE and UPDATE execute through the query plan.
+
     .. versionadded:: 0.9.0
     """
 
     def __init__(
             self,
             engine: Engine,
-            connection: Connection, 
-            cursor: DBAPICursor, 
-            compiled: Compiled, 
+            connection: Connection,
+            cursor: DBAPICursor,
+            compiled: Compiled,
             distilled_params: Optional[_CoreMultiExecuteParams] = None,
             *,
             execution_options: Optional[Mapping[str, Any]] = None
@@ -323,7 +324,7 @@ class ExecutionContext:
         self.compiled = compiled
         self.compiled_dict = compiled.as_dict()
         self.invoked_stmt = compiled._element
-        self.execution_options = execution_options or frozendict() 
+        self.execution_options = execution_options or frozendict()
         self.distilled_params = distilled_params or [{}]
         self.path_params = None
         self.query_params = None
@@ -343,7 +344,7 @@ class ExecutionContext:
 
         This property implements **cursor routing**, selecting the cursor that
         represents the *final, user-visible outcome* of the execution.
-        
+
         Design principle
         ----------------
         The decision of *which cursor to expose* is made **entirely upstream**
@@ -364,28 +365,24 @@ class ExecutionContext:
         return self._result_cursor or self._cursor
 
     def _get_exec_cursor(self) -> DBAPICursor:
-        """Return the execution cursor to be used in the pipeline.
-        
+        """Return the cursor that executes the dispatched DBAPI operation.
+
         This method is a private API that only :class:`normlite.engine.base.Connection` may use.
-        It hides the implementaion details related to which cursor shall be used to execute the DBAPI operation.
-        The cursor is crucial because it holds the result set(s). Different cursors are created, 
-        depending on the statement being executed.
-        For ``EXECUTE`` and ``INSERTMANYVALUES`` style statements (e.g., SELECT or bulk inserts), the :attr:`_cursor` is used to execute the operation
-        and to hold the corresponding result set.
-        For ``EXECUTEMANY`` style statements (e.g., DELETE/UPDATE/INSERT...RETURNING), the :attr:`_staged_result_cursor`
-        is used to execute the operation and to hold the corresponding result set.
+        The :attr:`_cursor` executes the operation and holds its result set(s).
+
+        .. versionchanged:: 0.14.0
+            Always return :attr:`_cursor`. DELETE and UPDATE execute through the query plan
+            (ADR-0023). Only INSERT ... RETURNING uses :attr:`_staged_result_cursor`, and the
+            INSERT hook sends its ``pages.retrieve`` operations to it directly.
 
         .. versionadded:: 0.9.0
         """
-        if self.execution_style in (ExecutionStyle.EXECUTE, ExecutionStyle.INSERTMANYVALUES):
-            return self._cursor
-        
-        return self._staged_result_cursor
+        return self._cursor
 
     def _determine_execution_style(self) -> ExecutionStyle:
         if len(self.distilled_params) > 1:
             # user has provided a list of dictionaries as parameters to Connection.execute()
-            return ExecutionStyle.INSERTMANYVALUES 
+            return ExecutionStyle.INSERTMANYVALUES
 
         stmt = self.invoked_stmt
 
@@ -393,28 +390,26 @@ class ExecutionContext:
         if stmt.is_insert and stmt._has_multi_parameters:
             return ExecutionStyle.INSERTMANYVALUES
 
-        # update with single parameters
-        if stmt.is_update:
-            return ExecutionStyle.EXECUTEMANY
-        
         # REFACTORED: SELECT statements are now always query plan driven
         # (see #384, routing is inside C2)
         # REFACTORED: DELETE statements are also always query plan driven
         # (see #411, ADR-0023)
-        if stmt.is_select or stmt.is_delete:
+        # REFACTORED: UPDATE statements are also always query plan driven
+        # (see #413, ADR-0023)
+        if stmt.is_select or stmt.is_delete or stmt.is_update:
             return ExecutionStyle.EXECUTEQUERYPLAN
-        
+
         # select or insert without returning
         return ExecutionStyle.EXECUTE
 
     @property
     def operation(self) -> dict:
         """Return the DBAPI operation.
-        
+
         .. versionadded:: 0.8.0
         """
         return self.compiled_dict['operation']
-    
+
     @property
     def parameters(self) -> Union[dict, list[dict]]:
         """Return the DBAPI parameters for the related operation.
@@ -433,9 +428,9 @@ class ExecutionContext:
 
         .. seealso::
             :class:`normlite.notion_sdk.client.AbstractNotionClient` for the client parameters API structure.
-        
-        .. versionchanged:: 0.9.0    
-        
+
+        .. versionchanged:: 0.9.0
+
         .. versionadded:: 0.8.0
         """
 
@@ -465,7 +460,7 @@ class ExecutionContext:
             dbapi_params['payload'] = self.payload
 
         return dbapi_params
-    
+
     def pre_exec(self) -> None:
         """Perform value binding and type adaptation before execution.
 
@@ -475,7 +470,7 @@ class ExecutionContext:
         .. versionchanged:: 0.8.0
             In this version, binding has been extended to support the override case (user-provided parameters in the execute call).
             Execution options resolution is also supported now.
-        """ 
+        """
         # determine execution style
         self.execution_style = self._determine_execution_style()
 
@@ -488,14 +483,14 @@ class ExecutionContext:
         # validate insert values, if stmt is_insert
         if self.compiled._compiler_state.is_insert:
             self._validate_insert_values(resolved_params)
-        
- 
+
+
         # resolve execution options
         self._resolve_exec_options()
 
         if 'path_params' in self.compiled_dict:
             self.path_params = self._bind_params(
-                self.compiled_dict['path_params'], 
+                self.compiled_dict['path_params'],
                 resolved_params[0]
             )
 
@@ -523,50 +518,52 @@ class ExecutionContext:
         # inject schema info if invoked statement is not DDL
         if self.invoked_stmt.is_ddl:
             return
-        
+
         schema = SchemaInfo.from_table(
             self.invoked_stmt.get_table(),
-            execution_names=self.compiled.fetch_columns(), 
+            execution_names=self.compiled.fetch_columns(),
             projected_names=self.compiled.result_columns()
         )
-    
+
         self._cursor._inject_description(schema.as_sequence())
 
     def _assert_all_params_consumed(self, resolved_params: list[dict[str, BindParameter]]):
-        if self.invoked_stmt.is_update:
-            return
-
         from normlite.sql.elements import _BindRole
 
-        # A pruned filter (#383) leaves the binds of the leaves it removed unpopped.
-        # They are not unused: `recheck_where` holds the whole predicate and `eval3`
-        # reads each value off the AST's own BindParameter, so the RECHECK consumes
-        # them -- a second consumer, exactly as UPDATE's SET clause is.
+        # A bind left in the parameter set after the payload bind is an orphan,
+        # unless a later consumer reads it. Two consumers exist:
         #
-        # This holds for SELECT and DELETE: both execute through the plan, and
-        # the plan rechecks `recheck_where` (#412). UPDATE holds its WHERE too
-        # (#409), but nothing consumes it until #413. The skip is still safe:
-        # DML never prunes (its depth gate raises), and an unpushable leaf is
-        # never dispatched, so it registers no bind. A DML filter therefore
-        # leaves no orphan. Do NOT let a DML statement prune unless its plan
-        # rechecks `recheck_where`: this skip would then hide the orphans.
+        # 1. The recheck reads COLUMN_FILTER binds. A pruned filter (#383) leaves
+        #    the binds of the removed leaves unpopped. `recheck_where` holds the
+        #    whole predicate, and `eval3` reads each value from the AST's own
+        #    BindParameter. SELECT, DELETE and UPDATE all recheck through the
+        #    plan (#412, #413). This exemption trusts the Planner: it must place
+        #    a Filter for every `recheck_where`, or this check hides the orphans.
+        # 2. The Planner reads UPDATE's COLUMN_VALUE binds. It binds the SET
+        #    template from `resolved_params` after pre_exec (ADR-0023). This
+        #    does not depend on a WHERE. INSERT has no such consumer: an INSERT
+        #    value that nobody writes is data loss.
         rechecked = self.compiled.planning_context.recheck_where is not None
+        planner_binds_values = self.invoked_stmt.is_update
+
+        def has_consumer(bp: BindParameter) -> bool:
+            if bp.role is _BindRole.COLUMN_FILTER:
+                return rechecked
+            if bp.role is _BindRole.COLUMN_VALUE:
+                return planner_binds_values
+            return False
 
         for i, param_set in enumerate(resolved_params):
-            orphans = [
-                key
-                for key, bp in param_set.items()
-                if not (rechecked and bp.role is _BindRole.COLUMN_FILTER)
-            ]
+            orphans = [key for key, bp in param_set.items() if not has_consumer(bp)]
             if orphans:
                 raise ArgumentError(
                     f"Unused bind parameters in parameter set {i}: "
                     f"{', '.join(orphans)}"
                 )
-                
+
     def post_exec(self) -> None:
         """Perform row counting preservation after execution.
-        
+
         .. versionchanged:: 0.9.0
         """
         if self.invoked_stmt.is_ddl:
@@ -578,26 +575,26 @@ class ExecutionContext:
         if exec_opts.get('preserve_rowcount', False):
             self._rowcount =  self.cursor.rowcount
             return
-        
+
         self._rowcount = -1
-    
+
     def _is_no_params(self, distilled):
         return distilled is None or distilled == [{}]
-    
+
     def _resolve_parameters(
-        self, 
+        self,
         overrides: _CoreMultiExecuteParams
     ) -> Sequence[Mapping[str, BindParameter]]:
         """Resolve binding parameters using the values passed as normalized parameters in the constructor.
 
         Supports both single and multi-parameter execution.
-        
+
         .. versionchanged: 0.9.0
             It uses :meth:`normlite.sql.compiler.NotionCompiler.construct_params` to resolve overrides.
 
         .. versionadded:: 0.8.0
         """
-        
+
         from normlite.sql.elements import BindParameter
 
         param_sets: list[dict[str, Any]] = []
@@ -753,7 +750,7 @@ class ExecutionContext:
             raise RuntimeError(f'Bind parameter: {bindparam.key} has incorrect role: {bindparam.role}')
 
         return processor(raw) if processor else raw
-     
+
     def _bind_params(self, template: dict, params: dict) -> dict:
         """Helper for binding parameters at runtime."""
 
@@ -768,13 +765,13 @@ class ExecutionContext:
             key = template[1:]
             if key not in params:
                 raise KeyError(f"Missing parameter: {key}")
-            
+
             bindparam = params.pop(key)
             return self._resolve_bindparam(bindparam)
 
         # int, float, None …
         return template
-        
+
     def setup_cursor_result(self, clear_buffered: bool = False) -> CursorResult:
         """Finalize execution and materialize a :class:`normlite.engine.cursor.CursorResult`.
 
@@ -827,7 +824,7 @@ class ExecutionContext:
 
         .. versionchanged:: 0.8.0
             This version formalizes structural membership and API contract.
-            
+
         Returns:
             CursorResult: A read-only result object representing the finalized outcome of
                 this execution.
@@ -842,7 +839,7 @@ class ExecutionContext:
 
         return self._result
 
-    def get_rowcount(self) -> Optional[int]:        
+    def get_rowcount(self) -> Optional[int]:
         """Return the DBAPI ``cursor.rowcount`` value, or in some
         cases an interpreted value.
 

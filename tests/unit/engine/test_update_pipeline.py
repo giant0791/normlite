@@ -11,6 +11,7 @@ from normlite.sql.dml import update, select
 from normlite.sql.elements import not_
 
 from tests.utils.execution import run_execute
+from tests.utils.spies import QueryParamsRecordingClient
 from tests.utils.db_helpers import (
     create_students_db,
     attach_table_oid,
@@ -296,3 +297,31 @@ def test_update_by_an_empty_string_comparison_is_refused_with_a_true_reason(
     rows = select_all(engine, prepared_students)
     assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
 
+
+
+def test_update_asks_notion_only_for_the_properties_its_where_reads(
+    engine, prepared_students, monkeypatch
+):
+    # Arrange: ten rows with ids 0..9, and an UPDATE whose WHERE reads only
+    # `id`. A spy at the Notion boundary records the query params of every
+    # `data_sources.query` request that the UPDATE sends.
+    spy = QueryParamsRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    stmt = (
+        update(prepared_students)
+        .values(grade="Z")
+        .where(prepared_students.c.id != 1)
+    )
+
+    # Act: run the UPDATE through the public API.
+    result = run_execute(engine, stmt)
+
+    # Assert: the UPDATE changes nine rows, and every query to Notion asks
+    # for the `id` property only. `object_id` never goes into
+    # filter_properties (ADR-0006).
+    assert_rowcount(result, 9)
+    assert spy.query_params_seen
+    for query_params in spy.query_params_seen:
+        assert query_params is not None
+        assert query_params.get("filter_properties") == ["id"]
