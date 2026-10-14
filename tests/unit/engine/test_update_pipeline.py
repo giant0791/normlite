@@ -325,3 +325,30 @@ def test_update_asks_notion_only_for_the_properties_its_where_reads(
     for query_params in spy.query_params_seen:
         assert query_params is not None
         assert query_params.get("filter_properties") == ["id"]
+
+
+def test_update_with_no_where_asks_notion_only_for_the_title(
+    engine, prepared_students, monkeypatch
+):
+    # Arrange: ten rows, and an UPDATE with no WHERE. The UPDATE reads no
+    # property, but Notion cannot return zero properties: an empty
+    # filter_properties means "all properties". The title is the one property
+    # that every Notion data source has. In `students`, the title column is
+    # `name`. A spy at the Notion boundary records the query params of every
+    # `data_sources.query` request that the UPDATE sends.
+    spy = QueryParamsRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    stmt = update(prepared_students).values(grade="Z")
+
+    # Act: run the UPDATE through the public API.
+    result = run_execute(engine, stmt)
+
+    # Assert: the UPDATE changes all ten rows, and every query to Notion asks
+    # for the title property only, by its column name. `object_id` never goes
+    # into filter_properties (ADR-0006).
+    assert_rowcount(result, 10)
+    assert spy.query_params_seen
+    for query_params in spy.query_params_seen:
+        assert query_params is not None
+        assert query_params.get("filter_properties") == ["name"]

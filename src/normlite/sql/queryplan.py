@@ -872,15 +872,15 @@ class Planner:
     def plan(self) -> VolcanoOperator:
         """Build the operator tree for the invoked SELECT/DELETE statement.
 
-        The following shapes are produced, and every SELECT/DELETE takes one of them:
+        The following shapes are produced, and every SELECT/DELETE/UPDATE takes one of them:
 
         * aggregate -- ``Scan -> Aggregate``
         * plain select -- ``Scan -> [Filter] -> Project``, the ``Scan`` widened to fetch
           whatever the recheck reads and ``Project`` trimming it back off
         * join -- ``(Scan, Scan) -> HashJoin -> [Filter] -> [Sort]``
-        * delete -- ``Scan -> [Filter]``, the ``Scan`` widened to fetch
-          whatever the recheck reads. A DELETE with no WHERE clause lowers the retrieval cost
-          by fetching the title column only.
+        * delete/update -- ``Scan -> [Filter]``, the ``Scan`` widened to fetch
+          whatever the recheck reads. A DELETE/UPDATE with no WHERE clause lowers
+          the retrieval cost by fetching the title column only.
 
         Only the first join of the statement is planned; chaining ``.join()``
         silently drops the rest.
@@ -889,10 +889,11 @@ class Planner:
             VolcanoOperator: The root of the plan, ready to be opened.
 
         Raises:
-            InvalidRequestError: If the invoked statement is not a SELECT or a DELETE.
+            InvalidRequestError: If the invoked statement is neither a SELECT nor a DELETE
+                nor an UPDATE.
 
         .. versionchanged:: 0.14.0
-            Plan DELETE statements.
+            Plan DELETE and UPDATE statements.
 
         .. versionadded:: 0.13.0
         """
@@ -964,11 +965,12 @@ class Planner:
                     # the cells the recheck has to read.
                     narrows = True
 
-            elif invoked_stmt.is_delete:
-                # DELETE with no WHERE clause reads no property, but an empty
-                # filter_properties means "all properties" to Notion. Fetch the
-                # title only: every Notion data source has one. A list, because
-                # a Table declared without a title gives [] (no narrowing).
+            elif invoked_stmt.is_delete or invoked_stmt.is_update:
+                # DELETE/UPDATE with no WHERE clause reads no property,
+                # but an empty filter_properties means "all properties"
+                # to Notion. Fetch the title only: every Notion data source
+                # has one. A list, because a Table declared without a title
+                # gives [] (no narrowing).
                 title_cols = [
                     c.name
                     for c in stmt_table.uc
@@ -996,7 +998,7 @@ class Planner:
                 ]
 
             # no projected_names: SELECT result_columns are a subset of fetch_columns,
-            # and DELETE RETURNING reads the write response, never the Scan (ADR-0023)
+            # and DELETE/UPDATE RETURNING read the write response, never the Scan (ADR-0023)
             schema = SchemaInfo.from_table(
                 stmt_table,
                 execution_names=execution_names,
