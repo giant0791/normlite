@@ -1,13 +1,13 @@
 # ADR-0023: DELETE and UPDATE execute through the Query plan (ModifyTable)
 
-**Status:** Proposed — supersedes the DML parts of
+**Status:** Accepted — supersedes the DML parts of
 [ADR-0020](./0020-execution-layering-sql-builds-engine-drives.md) Consequences and extends
 [ADR-0018](./0018-query-plan-operator-tree.md); required by
 [ADR-0022](./0022-lossy-pushdown-and-the-recheck.md)
 **Date:** 2026-10-11
 
-> Held at `Proposed` until the last statement moves, as ADR-0022 was: DELETE in #411, UPDATE in
-> #413. Flip it on the commit that deletes `ExecutionStyle.EXECUTEMANY`.
+> Accepted in #413, on the commit that deletes `ExecutionStyle.EXECUTEMANY`. DELETE moved in #411,
+> UPDATE in #413.
 
 ---
 
