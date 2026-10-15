@@ -473,7 +473,7 @@ def test_an_aggregate_refuses_an_over_deep_where_before_fetching_a_page(
         # prose: a plain SELECT over the same predicate DOES recheck, so reducing
         # its rows client-side gives the answer the aggregate declined to give.
         # A fresh expression object -- reusing `over_deep` raises
-        # "BindParameter role already assigned".
+        # "BindParameter ... already has the role COLUMN_FILTER".
         plain = connection.execute(
             select(students.c.name).where(
                 (students.c.id < 1000)

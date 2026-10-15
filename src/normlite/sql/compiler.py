@@ -42,7 +42,8 @@ _NOTION_MAX_FILTER_DEPTH = 2
 
 # Private refusal reasons for the aggregate SELECT, DELETE and UPDATE.
 # The two refusal helpers below use these strings, and the tests match on them.
-# They are REMOVED, not relaxed: DELETE and UPDATE with #397, the aggregate with #399.
+# They are REMOVED, not relaxed. Only UPDATE still refuses an unpushable term: #413
+# removes that. The depth refusal goes for DML with #417, for the aggregate with #399.
 _FILTER_MAX_DEPTH_EXCEEDED = "It exceeds Notion filter max depth"
 _UNPUSHABLE_FILTER_TERM = "Notion filter syntax cannot express negated terms, null comparison values or empty-string text values"
 
@@ -52,12 +53,13 @@ ROWS_UPDATE = {"endpoint": "pages", "request": "update"}
 # Refusal helpers.
 # The compiler calls them to refuse a WHERE clause that Notion cannot evaluate exactly
 # AND that no client-side recheck corrects.
-# They are REMOVED with the last refusing statement: #397 for DML, #399 for the aggregate.
+# They are REMOVED with the last refusing statement: #413 and #417 for DML, #399 for the aggregate.
+# DELETE stays a _RefusingStmt for the depth refusal only (#417).
 # The helpers add the periods and select the consequence by the _RefusingStmt key.
 _RefusingStmt = Literal["An aggregate SELECT", "UPDATE", "DELETE"]
 
 _NO_RECHECK_CONSEQUENCE: dict[_RefusingStmt, str] = {
-    "DELETE": "DELETE bypasses the query plan, so its WHERE has no recheck (#397)",
+    "DELETE": "DELETE does not prune a too-deep filter yet (#417)",
     "UPDATE": "UPDATE bypasses the query plan, so its WHERE has no recheck (#397)",
     "An aggregate SELECT": "The aggregate would reduce rows this WHERE excludes (#399)",
 }
@@ -201,9 +203,9 @@ def _is_pushable(node: ColumnElement, strict: bool = False) -> bool:
         and the asymmetry is not stylistic. Dropping a conjunct WEAKENS the filter, so
         the backend returns a SUPERSET of the answer. On the ``SELECT`` path that is
         sound, because the push never decides -- the client-side recheck does
-        (ADR-0022) -- so lax is correct there. ``DELETE``/``UPDATE`` have no recheck
-        (#397): the pushed filter IS the decision, and a dropped conjunct is a row
-        mutated that the WHERE excludes. Hence strict.
+        (ADR-0022) -- so lax is correct there. ``DELETE`` has a recheck too (#412).
+        ``UPDATE`` has no recheck yet (#413): the pushed filter IS the decision, and
+        a dropped conjunct is a row mutated that the WHERE excludes. Hence strict.
 
         **or** applies ``all()`` in both modes, but ``strict`` still has to reach it:
         the mode selects the question put to the CHILDREN, and an **and** nested under
@@ -289,8 +291,8 @@ def _all_terms_pushable(node: ColumnElement) -> bool:
         Issue `normlite pushes filter constructs the Notion API rejects with HTTP 400 <https://github.com/giant0791/normlite/issues/383>`_.
 
         Issue `DELETE/UPDATE bypass the query plan, so their WHERE has no recheck <https://github.com/giant0791/normlite/issues/397>`_,
-        which retires this gate by giving DML a recheck -- at which point the refusal
-        is REMOVED, not relaxed.
+        which retires this gate by giving DML a recheck. DELETE no longer calls it
+        (#412). UPDATE stops in #413, and then this gate is REMOVED, not relaxed.
 
     .. versionadded:: 0.13.0
     """
@@ -1288,11 +1290,12 @@ class NotionCompiler(SQLCompiler):
             must not dispatch through this method (#416).
 
         .. attention::
-            This method sets the planning context's ``.recheck_where`` with the WHERE clause.
+            This method does not set ``recheck_where``. The caller sets it before it dispatches the WHERE clause.
             The pushed filter can be lossy, so the planner keeps the full predicate for the recheck (ADR-0022).
             Only ``_prune`` creates orphan binds. An unpushable leaf is never dispatched, so it registers no bind.
-            Do **not** let DML prune before a recheck consumes ``recheck_where``: the early return
-            in ``_assert_all_params_consumed`` would then hide the orphans.
+            When ``recheck_where`` is set, ``_assert_all_params_consumed`` does not report filter binds,
+            because the recheck consumes them. Do **not** let a DML statement prune unless its plan rechecks
+            ``recheck_where``: that check would then hide the orphans.
 
         .. seealso::
             :meth:`normlite.engine.context.ExecutionContext._assert_all_params_consumed`
@@ -1324,7 +1327,6 @@ class NotionCompiler(SQLCompiler):
                 filter_obj=filter_obj,
                 remedy=remedy,
             )
-            self.planning_context.recheck_where = expression
 
         return filter_obj
     
@@ -1359,18 +1361,15 @@ class NotionCompiler(SQLCompiler):
             path_params['data_source_id'] = f':{db_id_key}'
 
         if delete._whereclause.has_expression():
-            where_expression = delete._whereclause.expression
-            _raise_if_filter_term_unpushable(
-                stmt="DELETE",
-                where_expression=where_expression,
-                remedy="Express the condition without NOT, replace \"== None\" / \"!= None\" with is_empty() / is_not_empty() (they also match empty cells), or SELECT the rows first and delete them by object_id",
-            )
-
-            payload['filter'] = delete._whereclause._compiler_dispatch(
-                self,
-                stmt="DELETE",
-                remedy="SELECT the rows first and delete them by object_id"
-            )
+            expression = delete._whereclause.expression
+            self.planning_context.recheck_where = expression
+            if _is_pushable(expression):
+                # compile the DELETE's WHERE clause if the expression is pushable
+                payload['filter'] = delete._whereclause._compiler_dispatch(
+                    self,
+                    stmt="DELETE",
+                    remedy="SELECT the rows first and delete them by object_id"
+                )
 
         compiled_dict = {
             'operation': operation, 
@@ -1421,7 +1420,7 @@ class NotionCompiler(SQLCompiler):
                 where_expression=where_expression,
                 remedy="Express the condition without NOT, replace \"== None\" / \"!= None\" with is_empty() / is_not_empty() (they also match empty cells), or SELECT the rows first and update them by object_id",
             )
-
+            self.planning_context.recheck_where = where_expression
             payload['filter'] = update._whereclause._compiler_dispatch(
                 self,
                 stmt="UPDATE",
@@ -1622,7 +1621,12 @@ class NotionCompiler(SQLCompiler):
         """
 
         if bindparam.role != _BindRole.NO_BINDROLE:
-            raise CompileError("BindParameter role already assigned")
+            raise CompileError(
+                f"BindParameter {bindparam.key!r} already has the role "
+                f"{bindparam.role.name}. The compiler assigns a role only once, "
+                f"so this expression was compiled before. Build a new "
+                f"expression for each statement."
+            )
 
         state = self._compiler_state.compile_state
 
