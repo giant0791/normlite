@@ -60,10 +60,10 @@ def test_inmemclient_open_an_existing_database():
             'table_id': {'rich_text': [{'text': {'content': students_db_id}}]},
         }
     }
-    
+
     # lookup students database: Engine.has_table()
     tables_obj = client._get_by_title('tables', 'database')
 
-    
+
 
 

@@ -45,7 +45,7 @@ else:
 
             return wrapper
         return decorator
-    
+
 class frozendict(Mapping):
     __slots__ = ("_data", "_hash")
 

@@ -10,7 +10,7 @@ def bind_equal(a: BindParameter, b: BindParameter) -> bool:
     ac = a.callable_
     bv = b.value
     bc = b.callable_
-    
+
     if av is None and bv is None:
         return ac is bc
 

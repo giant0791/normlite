@@ -14,11 +14,11 @@ class Row:
 
     .. versionchanged:: 0.7.0
         :meth:`__getattr__()` has been added to provide access to row values with Python dot notation.
-    
+
     .. versionchanged:: 0.5.0
         :class:`Row` has been significantly extended to provide iteratable capabilities
         and a mapping-sytle object to access the values of the columns returned in the row.
-        
+
     """
     def __init__(self, metadata: CursorResultMetaData, row_data: tuple):
         self._metadata = metadata
@@ -32,7 +32,7 @@ class Row:
         else:
             self._process_dml_row(row_data)
 
-    
+
     def _process_dml_row(self, row_data: tuple) -> None:
         for rec in self._metadata._colmap.values():
             _, col_index, col_type = rec
@@ -41,7 +41,7 @@ class Row:
             result_proc = type_factory.result_processor()
             value = row_data[col_index]
             self._values[col_index] = result_proc(value)
-    
+
     def _process_ddl_row(self, row_data: tuple) -> None:
         col_name, col_type, col_id, col_value, is_system = row_data
         type_factory = type_mapper[col_type]
@@ -77,14 +77,14 @@ class Row:
                 return self._values[key_or_index]
             except IndexError:
                 raise IndexError(f"{type(self).__name__} index out of range: {key_or_index}")
-            
+
         elif isinstance(key_or_index, str):
             try:
                 col_name = self._metadata.key_to_index[key_or_index]
                 return self._values[col_name]
             except KeyError:
                 raise KeyError(f"{type(self).__name__} has no column named {key_or_index!r}")
-            
+
         else:
             raise TypeError(
                 f"{type(self).__name__} indices must be str (column name) or int (column index), "
@@ -97,9 +97,9 @@ class Row:
 
     def mapping(self) -> dict:
         """Provide the mapping object for this row.
-        
+
         .. versionadded:: 0.5.0
-        
+
         """
         return RowMapping(self)
 
@@ -108,7 +108,7 @@ class Row:
 
     def __str__(self):
         """Return the values for user defined columns only.
-        
+
         .. versionchanged:: 0.8.0
             This version returns the values for user defined columns only.
         """
@@ -117,18 +117,18 @@ class Row:
 
 class RowMapping(Mapping[str, Any]):
     """Helper to construct mapping objects for rows.
-    
+
     :class:`RowMapping` provides a dedicated mapping implementation for column name, column value pairs.
-        
+
     .. versionadded:: 0.5.0
-    
+
     """
     def __init__(self, row: Row):
         self._row = row
         """The underlying row object."""
 
         self._mapping = {
-            key: value 
+            key: value
             for key, value in zip(self._row._metadata.keys, self._row)
         }
         """The mapping object created from the row object."""
@@ -141,7 +141,7 @@ class RowMapping(Mapping[str, Any]):
 
     def __len__(self):
         return len(self._row._metadata.keys)
-    
+
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, Mapping):
             return dict(self.items()) == dict(other.items())

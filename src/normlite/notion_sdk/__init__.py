@@ -1,4 +1,4 @@
-# notion_sdk/__init__.py 
+# notion_sdk/__init__.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -25,8 +25,8 @@ a quick and easy way to learn and get familiar with ``normlite`` without having 
 There is also a file based version of this class, which adds persistence of the created objects.
 
 .. seealso::
-    
-    - :class:`normlite.notion_sdk.client.InMemoryNotionClient` 
+
+    - :class:`normlite.notion_sdk.client.InMemoryNotionClient`
     - :class:`normlite.notion_sdk.client.FileBasedNotionClient`
 
 .. note::
@@ -35,5 +35,5 @@ There is also a file based version of this class, which adds persistence of the 
 
 
 
-        
+
 

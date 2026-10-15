@@ -19,25 +19,25 @@
 """
 This example shows how to create a new table and insert rows.
 It illustrates the returning behavior of the INSERT statement.
-It uses an in-memory client. 
+It uses an in-memory client.
 """
 from datetime import date
 
 from normlite import (
-    create_engine, 
-    insert, 
-    Table, 
+    create_engine,
+    insert,
+    Table,
     Column,
-    String, 
-    Integer, 
-    Boolean, 
-    Date, 
+    String,
+    Integer,
+    Boolean,
+    Date,
     MetaData,
     ExecutionOptions,
     CursorResult
 )
 
-def print_result(result: CursorResult, max_col_width: int = 12, indent: int = 0):    
+def print_result(result: CursorResult, max_col_width: int = 12, indent: int = 0):
     # 1. Fetch all rows to calculate widths (note: fetchall() consumes the result)
     rows = result.fetchall()
 
@@ -66,13 +66,13 @@ def print_result(result: CursorResult, max_col_width: int = 12, indent: int = 0)
 
     # 4. Create formatting template
     format_str = "  ".join([f"{{:<{w}}}" for w in col_widths])
-    
+
     # 5. Print Header
     print(f"{indent_prefix}{format_str.format(*[format_val(h) for h in headers])}")
-    
+
     # 6. Print Separator
     print(f"{indent_prefix}{'--'.join(['-' * w for w in col_widths])}")
-    
+
     # 7. Print Data
     for row in processed_rows:
         print(f"{indent_prefix}{format_str.format(*row)}")
@@ -106,12 +106,12 @@ def print_use_case(
         print("  No rows returned (returned_rows is False)")
 
     print("=====================================================================================")
-    
+
 
 # create bind to in-memory database
 engine = create_engine('normlite:///:memory:')
 engine.execution_options(
-    preserve_rowcount=True, 
+    preserve_rowcount=True,
     preserve_rowid=False,
     isolation_level="AUTOCOMMIT",
     implicit_returning=False,
@@ -136,10 +136,10 @@ with engine.connect() as connection:
     stmt = (
         insert(students)
         .values(
-            id=123456, 
-            name='Galileo Galilei', 
-            grade='A', 
-            is_active=False, 
+            id=123456,
+            name='Galileo Galilei',
+            grade='A',
+            is_active=False,
             started_on=date(1581, 9, 1)
         )
     )
@@ -148,7 +148,7 @@ with engine.connect() as connection:
 
     print("\nINSERT implicit eturning behavior examples")
     print_use_case(
-        result, 
+        result,
         "No returning clause, insert sigle row",
         engine.get_execution_options(),
         expected_rowcount=1
@@ -156,18 +156,18 @@ with engine.connect() as connection:
     stmt = students.insert()
     connection.execution_options(implicit_returning=True)
     result = connection.execute(
-        stmt, 
+        stmt,
         {
-            'id': 123457, 
-            'name': 'Isaac Newton', 
-            'grade': 'B', 
-            'is_active': False, 
+            'id': 123457,
+            'name': 'Isaac Newton',
+            'grade': 'B',
+            'is_active': False,
             'started_on': date(1661, 9, 1)
         }
     )
 
     print_use_case(
-        result, 
+        result,
         "No returning clause, insert sigle row with implicit returning",
         connection.get_execution_options(),
         expected_rowcount=1,
@@ -193,15 +193,15 @@ with engine.connect() as connection:
     stmt = (
         insert(students)
         .values(
-            id=200000, 
-            name='Sarah', 
-            grade='A', 
-            is_active=False, 
+            id=200000,
+            name='Sarah',
+            grade='A',
+            is_active=False,
             started_on="2009-09-01"
         )
         .returning(students.c.object_id, students.c.created_at)
     )
-    
+
     connection.execution_options(implicit_returning=False)
     result = connection.execute(stmt)
     print_use_case(

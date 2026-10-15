@@ -73,7 +73,7 @@ def test_compiler_table_def_misspelled():
     assert f'Unknown table: {ast.table_name}' in str(exc.value)
 
 def test_compiler_table_not_added_to_catalog():
-    # Create an empty MetaData object 
+    # Create an empty MetaData object
     table_catalog: MetaData = MetaData()
 
     # Create the InsertStatement to be compiled with the misspelled table name

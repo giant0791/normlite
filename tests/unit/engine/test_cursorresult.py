@@ -49,7 +49,7 @@ def make_insert_bulk_cursor(
     students: Table,
     n_rows: int = 5
 ) -> CursorResult:
-    
+
     # 1. create the students database
     db_id = create_students_db(engine)
     attach_table_oid(students, db_id)
@@ -58,7 +58,7 @@ def make_insert_bulk_cursor(
     connection = engine.raw_connection()
     cursor = connection.cursor()
 
-    # 3. prepare bulk operation and parameters  
+    # 3. prepare bulk operation and parameters
     bulk_operation = {"endpoint": "pages", "request": "create"}
     bulk_parameters = []
 
@@ -149,7 +149,7 @@ def test_one_expects_one_row_only(
 
 def test_one_soft_closes_after_usage(
     engine: Engine,
-    students: Table      
+    students: Table
 ):
     exec_ctx = make_ctx(engine, students, n_rows=1)
     result = CursorResult(exec_ctx)
@@ -163,8 +163,8 @@ def test_one_raises_if_more_rows_avail(
     students: Table,
 ):
     exec_ctx = make_ctx(engine, students, n_rows=5)
-    result = CursorResult(exec_ctx) 
-    
+    result = CursorResult(exec_ctx)
+
     with pytest.raises(MultipleResultsFound):
         row = result.one()
 
@@ -173,8 +173,8 @@ def test_one_raises_if_no_rows_avail(
     students: Table,
 ):
     no_rows_exec_ctx = make_ctx(engine, students, n_rows=0)
-    result = CursorResult(no_rows_exec_ctx)         
-    
+    result = CursorResult(no_rows_exec_ctx)
+
     with pytest.raises(NoResultFound):
         row = result.one()
 
@@ -184,8 +184,8 @@ def test_one_raises_if_closed(
 ):
     no_rows_exec_ctx = make_ctx(engine, students)
     result = CursorResult(no_rows_exec_ctx)
-    result.close()         
-    
+    result.close()
+
     with pytest.raises(ResourceClosedError):
         row = result.one()
 
@@ -207,7 +207,7 @@ def test_all_returns_all_rows(
 
 def test_all_soft_closes_after_usage(
     engine: Engine,
-    students: Table      
+    students: Table
 ):
     exec_ctx = make_ctx(engine, students, n_rows=1)
     result = CursorResult(exec_ctx)
@@ -222,8 +222,8 @@ def test_all_raises_if_closed(
 ):
     no_rows_exec_ctx = make_ctx(engine, students)
     result = CursorResult(no_rows_exec_ctx)
-    result.close()         
-    
+    result.close()
+
     with pytest.raises(ResourceClosedError):
         row = result.all()
 
@@ -256,7 +256,7 @@ def test_fetchone_returns_rows_one_by_one(
     second = result.fetchone()
     third = result.fetchone()
     should_be_none = result.fetchone()
-    
+
     assert first.name == "name_0"
     assert second.name == "name_1"
     assert third.name == "name_2"
@@ -268,8 +268,8 @@ def test_fetchone_raises_if_closed(
 ):
     no_rows_exec_ctx = make_ctx(engine, students)
     result = CursorResult(no_rows_exec_ctx)
-    result.close()         
-    
+    result.close()
+
     with pytest.raises(ResourceClosedError):
         row = result.fetchone()
 
@@ -303,7 +303,7 @@ def test_fetchall_soft_closes_cursor(
 
     assert should_be_none is None
     assert not result.returns_rows
-    
+
 # -----------------------------------------
 # fetchall() tests
 # -----------------------------------------
@@ -316,7 +316,7 @@ def test_fetchmany_returns_arrasize_multiples_of_rows(
         try:
             # Parse the ISO 8601 string into a datetime object
             parsed_dt = datetime.fromisoformat(iso_string)
-            
+
             # Compare only the date parts (Year, Month, Day)
             return parsed_dt.date() == datetime.now().date()
         except ValueError:
@@ -333,7 +333,7 @@ def test_fetchmany_returns_arrasize_multiples_of_rows(
     assert is_today(first_batch[0].created_at)
     assert is_today(first_batch[3].created_at)
     assert is_today(second_batch[0].created_at)
-    assert is_today(second_batch[3].created_at)   
+    assert is_today(second_batch[3].created_at)
 
 def test_fetchmany_returns_all_if_arraysize_less_than_rows(
     engine: Engine,
@@ -385,4 +385,3 @@ def test_fetchmany_acts_like_fetchone_if_no_size(
 
     assert len(only_one) == 1
     assert result.returns_rows
-    

@@ -63,19 +63,19 @@ def test_init_create_tables_w_dbapi(dbapi_cursor: Cursor, tables_parameters: dic
         dict(endpoint='databases', request='create'),
         parameters=tables_parameters
     )
- 
+
     results = cursor.fetchall()
     assert cursor.rowcount == 1
 
     created_db = results[0]
     created_db_id = created_db[0][-1]
     assert cursor.lastrowid == uuid.UUID(created_db_id).int
-    
+
     _ = cursor.execute(
-        dict(endpoint='databases', request='retrieve'), 
+        dict(endpoint='databases', request='retrieve'),
         {'payload': dict(id=created_db_id), 'params': {}}
     )
-    
+
     results = cursor.fetchall()
     assert cursor.rowcount == 1
     retrieved_db = results[0]
@@ -83,4 +83,4 @@ def test_init_create_tables_w_dbapi(dbapi_cursor: Cursor, tables_parameters: dic
 
     assert retrieved_db_id == created_db_id
     assert retrieved_db == created_db
- 
+

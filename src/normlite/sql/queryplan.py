@@ -49,7 +49,7 @@ NOTION_MAX_PAGE_SIZE = 100
 @runtime_checkable
 class VolcanoOperator(Protocol):
     """Base class for Volcano operators implementing the iterator model.
-    
+
     .. versionadded:: 0.13.0
     """
     def open(self, connection: Connection) -> None:
@@ -82,8 +82,8 @@ class Scan(VolcanoOperator):
     """
 
     def __init__(
-        self, 
-        operation: dict, 
+        self,
+        operation: dict,
         parameters: Union[dict, list[dict]],
         schema: SchemaInfo,
         *,
@@ -111,16 +111,16 @@ class Scan(VolcanoOperator):
         self._cursor._inject_description(self._schema.as_sequence())
         self._cursor.execute(
             self._operation,
-            self._parameters, 
+            self._parameters,
             stream_results=True,
             yield_per=self._yield_per
         )
 
     def next(self) -> Optional[list[tuple]]:
         """Return the next batch of raw rows, or ``None`` once the store is drained."""
-        next_batch = self._cursor.fetchmany(size=self._page_size)            
+        next_batch = self._cursor.fetchmany(size=self._page_size)
         return next_batch if next_batch else None
-    
+
     def close(self) -> None:
         """Close the cursor opened by :meth:`open`."""
         self._cursor.close()
@@ -129,7 +129,7 @@ class Scan(VolcanoOperator):
     def result_schema(self) -> SchemaInfo:
         """Provide the schema this scan was constructed with."""
         return self._schema
-    
+
 class HashJoin(VolcanoOperator):
     """Merge two scans on the left table's relation column.
 
@@ -184,7 +184,7 @@ class HashJoin(VolcanoOperator):
         """Open both children on ``connection``."""
         self._left_child.open(connection)
         self._right_child.open(connection)
-        
+
     def next(self) -> Optional[list[tuple]]:
         """Drain both children and return every merged row in one batch.
 
@@ -215,7 +215,7 @@ class HashJoin(VolcanoOperator):
         right_rows = right_rows or []
 
         return self._merge_rows(left_rows, right_rows)
-    
+
     def _merge_rows(self, left_rows: list[tuple], right_rows: list[tuple]) -> list[tuple]:
         """Cross-product the captured left rows with the right rows whose
         object_id matches the decoded relation list on each left row.
@@ -401,7 +401,7 @@ class Filter(VolcanoOperator):
         # (`courses.title`) and would never match a bare-name test. The getter
         # is taken at the merged (qualified) name via the existing index.
         # See ADR-0009.
-        # 
+        #
         # IMPORTANT:
         # identity-by-table is collision-proof but **not self-join-proof**
         #
@@ -414,7 +414,7 @@ class Filter(VolcanoOperator):
             if any(c.table is t for t in self._predicate_tables)
         ]
         self._predicate_getters = [
-            self._merged_schema.column_getter(c.name) 
+            self._merged_schema.column_getter(c.name)
             for c in self._predicate_cols
         ]
 
@@ -441,14 +441,14 @@ class Filter(VolcanoOperator):
         merged_rows = self._source.next()
         if merged_rows is None:
             return None
-        
+
         merged_rows = [
             r for r in merged_rows
             if self._predicate_passes(r, self._predicate_getters, self._predicate_cols)
         ]
 
         return merged_rows
-    
+
     def close(self) -> None:
         """Close the source operator."""
         self._source.close()
@@ -497,7 +497,7 @@ class Filter(VolcanoOperator):
             bool: ``True`` only where the predicate evaluates to ``TRUE``.
 
         .. note::
-            The page map is keyed by :attr:`normlite.sql.resultschema.ResultColumn.table` by identity, 
+            The page map is keyed by :attr:`normlite.sql.resultschema.ResultColumn.table` by identity,
             so a self-join collapses both pages onto one key.
 
         .. versionadded:: 0.13.0
@@ -516,7 +516,7 @@ class Filter(VolcanoOperator):
             pages.setdefault(col.table, {})[col.bare_name] = cell
 
         return eval3(self._filter, pages, schema=None) is TRUE
-    
+
 class Sort(VolcanoOperator):
     """Apply a held-back ORDER BY client-side.
 
@@ -528,7 +528,7 @@ class Sort(VolcanoOperator):
     .. versionadded:: 0.13.0
     """
 
-    def __init__(        
+    def __init__(
         self,
         source: VolcanoOperator,
         schema: SchemaInfo,
@@ -584,8 +584,8 @@ class Sort(VolcanoOperator):
             reverse = direction == "descending"
 
             def sort_key(
-                row: tuple[dict], 
-                col: ResultColumn = col, 
+                row: tuple[dict],
+                col: ResultColumn = col,
                 getter: Callable[[Sequence[Any]], Any] = getter
             ) -> tuple[bool, Any]:
                 value = type_mapper[col.type_code].result_processor()(getter(row))
@@ -738,7 +738,7 @@ class Project(VolcanoOperator):
 class ModifyTable(VolcanoOperator):
     """Mutate rows in DELETE and UPDATE query plans.
 
-    This mutation operator reads rows all at once, so it structurally avoids the Halloween Problem 
+    This mutation operator reads rows all at once, so it structurally avoids the Halloween Problem
     (see [A well-intentioned query and the Halloween Problem](https://ieeexplore.ieee.org/document/1010071)).
     The writes are complete when :meth:`ModifyTable.open` returns.
 
@@ -747,10 +747,10 @@ class ModifyTable(VolcanoOperator):
     .. attention:: Not Atomic
         A failed write raises at once, and the earlier writes stay. This is today's normlite behaviour.
 
-    .. note:: 
-         
+    .. note::
+
          - **Mutations never stream** - The DELETE Scan does not take ``yield_per``.
-         
+
          - **Blocking operator** -  ``ModifyTable`` is a blocking operator that also
            completes its side effects before its first batch.
 
@@ -759,7 +759,7 @@ class ModifyTable(VolcanoOperator):
     """
 
     def __init__(
-        self, 
+        self,
         source: VolcanoOperator,
         operation: dict,
         parameters: dict,
@@ -798,9 +798,9 @@ class ModifyTable(VolcanoOperator):
         self._source.open(connection)
         self._cursor = connection.cursor()
         self._cursor._inject_description(self._returning_schema.as_sequence())
-        
+
         # drain the source and fetch all rows to be updated
-        fetched_rows = []        
+        fetched_rows = []
         while (batch := self._source.next()) is not None:
             fetched_rows.extend(batch)
 
@@ -814,7 +814,7 @@ class ModifyTable(VolcanoOperator):
             {
                 "path_params": {"page_id": self._get_row_oid(row)},
                 "payload": payload
-            } for row in fetched_rows        
+            } for row in fetched_rows
         ]
 
         # execute the bulk operation
@@ -824,11 +824,11 @@ class ModifyTable(VolcanoOperator):
         )
 
         # buffer the modified rows for later use
-        self._modified_rows = list(self._cursor._iter_all())    
+        self._modified_rows = list(self._cursor._iter_all())
 
     def next(self) -> Optional[list[tuple]]:
         """Return the next batch of modified rows or ``None`` if no rows were modified.
-        
+
         .. note::
             This method returns all modified rows in **one** single batch.
             After draining, subsequent calls return ``None`` as per operator's protocol.
@@ -839,7 +839,7 @@ class ModifyTable(VolcanoOperator):
             return modified_rows
 
         return None
-    
+
     def close(self) -> None:
         """Close the source operator and the cursor opened by :meth:`open`."""
         self._source.close()
@@ -998,11 +998,11 @@ class Planner:
                 yield_per = None
 
             scan = Scan(
-                ctx.operation, 
+                ctx.operation,
                 scan_params,
-                schema=schema, 
+                schema=schema,
                 # the operator above this Scan can consume batch-by-batch only if it's not DELETE
-                yield_per=yield_per   
+                yield_per=yield_per
             )
             plan = scan
 
@@ -1043,7 +1043,7 @@ class Planner:
 
             # plain SELECT: put the projection at the top of the plan
             return Project(plan, ctx.compiled.planning_context.pre_widening_fetch_columns)
-        
+
         # SELECT with JOIN
         join: Join = invoked_stmt._joins[0]
         projection = list(invoked_stmt._projection)
@@ -1065,7 +1065,7 @@ class Planner:
             join,
             projection
         )
-    
+
         # add a filter on top of the plan, if the WHERE clause has an expression
         if recheck_where is not None:
             merged_schema = SchemaInfo.from_join(
@@ -1099,6 +1099,6 @@ class Planner:
             sorts = compile_residual_sorts(residual_sorts)
             merged_schema = SchemaInfo.from_join(join.left, join.right, *invoked_stmt._projection)
             plan = Sort(source=plan, schema=merged_schema, sorts=sorts, table=join.right)
-        
+
         return plan
- 
+

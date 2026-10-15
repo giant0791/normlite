@@ -16,11 +16,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Provide tokenizer and parser to generate an SQL AST and a cross-compiler for 
+"""Provide tokenizer and parser to generate an SQL AST and a cross-compiler for
 the Notion API.
 
 Central module providing SQL parsing as well as cross-compiling SQL-to-JSON capabilities.
-To generate ``INSERT`` constructs, the cross-compiler needs a repository where all 
+To generate ``INSERT`` constructs, the cross-compiler needs a repository where all
 the table metada are stored and accessible.
 
 .. deprecated:: 0.7.0
@@ -78,7 +78,7 @@ Token = Tuple[TokenType, str]
 """Type alias for a token used by :func:`tokenize()`."""
 
 KEYWORDS = {
-    "create", "table", "insert", "into", "values", 
+    "create", "table", "insert", "into", "values",
     "int", "varchar", "title_varchar",
     "where" , "and", "or"
 }
@@ -109,7 +109,7 @@ def tokenize(sql: str) -> Iterator[Token]:
         SyntaxError: Unexpected charachter at position index.
 
     Yields:
-        Iterator[Token]: The :class:`Token` iterator 
+        Iterator[Token]: The :class:`Token` iterator
     """
     pos = 0
     while pos < len(sql):
@@ -146,14 +146,14 @@ class SqlNode(ABC):
             dict: The cross-compiled JSON code as dictionary.
         """
         raise NotImplementedError
-            
+
 class Visitor:
     def __init__(self, table_catalog: Optional[MetaData] = None):
         self._table_catalog = table_catalog
 
     def visit(self, node: SqlNode) -> dict:
         return node.accept(self)
-    
+
     def visit_ColumnDef(self, node: ColumnDef) -> dict:
         raise NotImplementedError
 
@@ -175,14 +175,14 @@ class MetaData():
     def add(self, table: CreateTable) -> None:
         table_name = table.table_name
         if table_name in self.tables:
-            raise KeyError(f'MetaData does not allow duplicate tables: {table_name} already exists')    
+            raise KeyError(f'MetaData does not allow duplicate tables: {table_name} already exists')
 
         self.tables[table_name] = table
 
     def __contains__(self, table_ident: Union[CreateTable, str]) -> bool:
         name = table_ident.name if isinstance(table_ident, CreateTable) else table_ident
         return (name in self.tables)
-    
+
     def __getitem__(self, tablename: str) -> CreateTable:
         if tablename in self.tables:
             return self.tables[tablename]
@@ -206,12 +206,12 @@ class ColumnDef(SqlNode):
             return self.name == value.name and self.type == value.type
 
         return False
-    
+
     def __repr__(self) -> str:
         return f'ColumnDef(name="{self.name}, type="{self.type}")'
 
     def accept(self, visitor) -> dict:
-        return visitor.visit_ColumnDef(self)    
+        return visitor.visit_ColumnDef(self)
 
 class CreateTable(SqlNode):
     """Provide the AST node for the SQL construct ``CREATE TABLE``."""
@@ -233,9 +233,9 @@ class CreateTable(SqlNode):
 
 class InsertStatement(SqlNode):
     def __init__(
-            self, 
-            table_name: str, 
-            columns: List[str], 
+            self,
+            table_name: str,
+            columns: List[str],
             values: List[Union[int, str]]
     ):
         self.table_name = table_name
@@ -244,7 +244,7 @@ class InsertStatement(SqlNode):
 
     def accept(self, visitor) -> dict:
         return visitor.visit_InsertStatement(self)
-    
+
 class BinaryOp(SqlNode):
     """Provide the AST node for SQL binary operators in expressions allowed in ``WHERE`` clauses."""
     def __init__(self, left: SqlNode, op: str, right: SqlNode):
@@ -298,7 +298,7 @@ class Expression(SqlNode):
 
     def accept(self, visitor):
         return visitor.visit_expression(self)
-    
+
     def compile(self) -> None:
         pass
 
@@ -450,7 +450,7 @@ class SqlToJsonVisitor(Visitor):
         for col in node.columns:
             if col.type.startswith('title_varchar'):
                 title_count += 1
-        
+
         if title_count != 1:
             raise ValueError(
                 f"Invalid table schema: expected exactly one 'title_varchar' column, found {title_count}"
@@ -464,7 +464,7 @@ class SqlToJsonVisitor(Visitor):
                 }
             ],
             "properties": {
-                col.name: col.accept(self) 
+                col.name: col.accept(self)
                 for col in node.columns
             }
         }
@@ -482,7 +482,7 @@ class SqlToJsonVisitor(Visitor):
 
     def visit_InsertStatement(self, node: InsertStatement) -> dict:
         if not self._table_catalog:
-            # The insert statement visitor requires a table catalog to 
+            # The insert statement visitor requires a table catalog to
             # properly process the column type when cross-compiling
             raise AttributeError(
                 'No table catalog defined. '
@@ -490,7 +490,7 @@ class SqlToJsonVisitor(Visitor):
                 'Initialize the visitor with a MetaData object containing '
                 'the table you are referring to in the InsertStatement.'
             )
-        
+
         table_def: CreateTable = self._table_catalog[node.table_name]
         if not table_def:
             raise KeyError(
@@ -563,9 +563,9 @@ class SqlToJsonVisitor(Visitor):
                 self._op_map[node.operator]: node.value
             }
         }
-    
+
     def visit_binary_op(self, node: BinaryOp) -> dict:
-        """Cross-compile a SQL binary operator contained in a SQl expression. 
+        """Cross-compile a SQL binary operator contained in a SQl expression.
 
         Args:
             node (BinaryOp): The AST node representing the binary operator.
@@ -573,7 +573,7 @@ class SqlToJsonVisitor(Visitor):
         Returns:
             dict: The cross-compiled Notion JSON binary operator string (example: ``"equals"``).
         """
-        
+
         # propagate the table clause to the left and right arms
         node.left.table_clause = node.table_clause
         node.right.table_clause = node.table_clause
@@ -584,21 +584,21 @@ class SqlToJsonVisitor(Visitor):
                 node.right.accept(self)
             ]
         }
-            
+
 def text(sqlcode: str) -> SqlNode:
     """Construct a new :class:`SqlNode` node from a textual SQL string directly.
 
-    The main benefits of the :func:`text()` are support for bind parameters, and 
+    The main benefits of the :func:`text()` are support for bind parameters, and
     result-column typing behavior.
-    The :func:`text()` enables the simplified SQL code execution as follows, as shown by the 
+    The :func:`text()` enables the simplified SQL code execution as follows, as shown by the
     following example::
 
         >>> from normlite.sql import text
         >>> result = connection.execute(text("SELECT * FROM students"))
-    
-    Bind parameters are specified by name (named parameter style). 
+
+    Bind parameters are specified by name (named parameter style).
     Example::
-    
+
         >>> from normlite.sql import text
         >>> t = text("SELECT * FROM students WHERE studentid=:studentid")
         >>> result = connection.execute(t, {"studentid": 1234})

@@ -34,7 +34,7 @@ def students(metadata: MetaData) -> Table:
         Column('start_on', Date()),
         Column('grade',  String())
     )
-    
+
     return students
 
 @pytest.fixture
@@ -98,7 +98,7 @@ def create_students_db(engine: Engine) -> None:
 #---------------------------------------
 def test_columncollection_getattr(students: Table):
     sc = students.columns
- 
+
     assert isinstance(sc.start_on, Column)
     assert not sc.start_on.primary_key
 
@@ -106,7 +106,7 @@ def test_columncollection_getitem(students: Table):
     sc = students.columns
     col_slice = sc[0:3]
     col_slice_names = [c.name for c in col_slice]
- 
+
     assert isinstance(sc['id'], Column)
     assert isinstance(sc[0], Column)
     assert not sc['id'].primary_key
@@ -116,7 +116,7 @@ def test_columncollection_getitem(students: Table):
 
 def test_columncollection_contains(students: Table):
     uc = students.user_columns
- 
+
     assert 'id' in uc
     assert not 'object_id' in uc
 
@@ -168,20 +168,20 @@ def test_sys_columncollection_asreadonly(students: Table):
         del ro_sc['created_at']
 
 def test_usr_columncollection_no_duplicates(students: Table):
-    sc = students.columns 
+    sc = students.columns
     dup_col = 'id'
     with pytest.raises(DuplicateColumnError, match=f'not allow duplicate columns: {dup_col}'):
         sc.add(Column('id', String()))
 
 def test_sys_columncollection_no_duplicates(students: Table):
-    sc = students._sys_columns 
+    sc = students._sys_columns
     dup_col = 'is_archived'
     with pytest.raises(DuplicateColumnError, match=f'not allow duplicate columns: {dup_col}'):
         sc.add(Column('is_archived', String()))
 
 # --------------------------------------
 # Table tests
-#---------------------------------------        
+#---------------------------------------
 
 def test_unreflected_columns_returns_none_sys_column_values(students: Table):
     assert students.get_oid() is None
@@ -218,7 +218,7 @@ def test_sys_columns_cannot_be_redefined(metadata: MetaData):
             SystemColumn("object_id", String(is_title=True))
         )
 
-    assert "object_id" in str(exc.value) 
+    assert "object_id" in str(exc.value)
 
 def test_usr_columns_cannot_be_pk(metadata: MetaData):
     with pytest.raises(ArgumentError) as exc:
@@ -273,7 +273,7 @@ def test_table_construct():
 
 def test_table_repr_contains_sys_columns(students: Table):
     table_repr = repr(students)
-    
+
     assert "object_id" in table_repr
     assert "is_deleted" in table_repr
     assert "is_archived" in table_repr
@@ -401,8 +401,8 @@ def includes_all(l: list[str], values: Iterable[str]) -> bool:
 def test_metadata_contains(metadata: MetaData):
     metadata = MetaData()
     students = Table(
-        'students', 
-        metadata, 
+        'students',
+        metadata,
         Column('id', Integer()),
         Column('name', String(is_title=True))
     )
@@ -419,8 +419,8 @@ def test_metadata_contains(metadata: MetaData):
 def test_metadata_sorted_tables():
     metadata = MetaData()
     students = Table(
-        'students', 
-        metadata, 
+        'students',
+        metadata,
         Column('id', Integer()),
         Column('name', String(is_title=True))
     )
@@ -483,7 +483,7 @@ def test_create_sets_oid(engine, students):
 def test_drop_table_uses_cached_sys_table_page_id(students: Table, engine: Engine):
     students.create(bind=engine)
     cached_page_id = students._sys_tables_page_id
-    assert cached_page_id is not None    
+    assert cached_page_id is not None
 
     engine.require_table_metadata = Mock(
         wraps=engine.find_table_metadata
@@ -497,7 +497,7 @@ def test_drop_table_falls_back_when_sys_table_page_id_missing(students: Table, e
     students.create(bind=engine)
 
     # simulate pre-step-1 Table or reflected Table
-    students._sys_tables_page_id = None    
+    students._sys_tables_page_id = None
 
     engine.require_table_metadata = Mock(
         wraps=engine.find_table_metadata
@@ -524,7 +524,7 @@ def test_drop_table_recovers_from_stale_sys_table_page_id(students: Table, engin
     assert students._sys_tables_page_id == sys_tables_page_id
 
 def test_drop_table_detects_catalog_corruption_more_than_one_table_entry(
-        students: Table, 
+        students: Table,
         engine: Engine
 ):
     # Create normally (cache is populated correctly)
@@ -561,13 +561,13 @@ def test_drop_table_detects_catalog_corruption_more_than_one_table_entry(
             },
         },
     )
- 
+
     students._sys_tables_page_id = None
     with pytest.raises(InternalError, match="multiple tables named 'students' in catalog 'memory'"):
         students.drop(bind=engine)
 
 def test_drop_table_detects_catalog_corruption_no_table_entry_found(
-    students: Table, 
+    students: Table,
     engine: Engine
 ):
     # Create normally (cache is populated correctly)
@@ -629,7 +629,7 @@ def test_create_after_drop_without_restore_raises(engine, students):
 
     with pytest.raises(ProgrammingError, match="restore_dropped=True"):
         students.create(engine)
-        
+
 @pytest.mark.skip('Table repair not supported yet.')
 def test_create_when_orphaned_repairs_or_recreates(engine: Engine, students: Table):
     students.create(engine)
@@ -716,9 +716,9 @@ def test_table_autoload_dropped_raises(engine: Engine, students: Table, metadata
     with pytest.raises(ProgrammingError, match="'students' is dropped"):
         _ = Table('students', metadata, autoload_with=engine)
 
-def test_table_autoload_orphaned_raises(    
+def test_table_autoload_orphaned_raises(
     metadata: MetaData,
-    students: Table, 
+    students: Table,
     engine: Engine
 ):
     # Create normally (cache is populated correctly)
@@ -730,7 +730,7 @@ def test_table_autoload_orphaned_raises(
 
     with pytest.raises(InternalError, match="'students' is orphaned"):
         _ = Table('students', metadata, autoload_with=engine)
-       
+
 @pytest.mark.skip('MetaData reflection not supported in this version')
 def test_metadata_reflect(engine: Engine, metadata: MetaData):
     create_students_db(engine)

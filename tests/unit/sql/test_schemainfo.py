@@ -70,7 +70,7 @@ def test_schemainfo_column_index_returns_index(students: Table):
 
     assert schema_info.column_index("object_id") == 0
     assert schema_info.column_index("is_deleted") == 1
-    assert schema_info.column_index("name") == 2       
+    assert schema_info.column_index("name") == 2
 
 def test_schemainfo_column_index_raises_if_no_such_col(students: Table):
     schema_info: SchemaInfo = SchemaInfo.from_table(
@@ -97,7 +97,7 @@ def test_schemainfo_column_getter_returns_correct_value(students: Table):
     get_name = schema_info.column_getter("name")
 
     assert get_oid(row) == "abcd"
-    assert get_is_deleted(row) 
+    assert get_is_deleted(row)
     assert get_name(row) == "Alice"
 
 def test_schemainfo_column_index_on_unitialized_schema_raises():

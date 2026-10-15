@@ -16,7 +16,7 @@ from normlite.sql.schema import Table
 def test_values_is_generative(students: Table):
     stmt = ValuesBase(students)
     stmt = stmt.values(name='Galileo Galilei').values(is_active=True)
-    
+
     assert len(stmt._values) == len(stmt._single_parameters)
     assert stmt._values['name'].value == _NoArg.NO_ARG              # _values is the template
     assert stmt._single_parameters["name"] == "Galileo Galilei"     #  _single_parameters is the actual data
@@ -42,12 +42,12 @@ def test_compiler_correctness(students: Table, insert_values: dict):
     assert 'payload' in as_dict
     assert as_dict['operation'] == dict(endpoint='pages', request='create')
     assert all(
-        [   
-            key in as_dict['payload']['properties'].keys() 
-            for key in insert_values.keys() 
+        [
+            key in as_dict['payload']['properties'].keys()
+            for key in insert_values.keys()
         ]
     )
-    pairs = zip(stmt._values.keys(), as_dict['payload']['properties'].values()) 
+    pairs = zip(stmt._values.keys(), as_dict['payload']['properties'].values())
     assert all(
         [
             f':{key}' == param
@@ -73,14 +73,14 @@ def test_compiler_generates_values_as_bindparams(students: Table, insert_values:
     assert compiled._execution_binds['name'].role == _BindRole.COLUMN_VALUE
     assert compiled.params['id'] == 123456
     assert compiled._execution_binds['id'].role == _BindRole.COLUMN_VALUE
-    assert not compiled.params['is_active'] 
+    assert not compiled.params['is_active']
     assert compiled._execution_binds['is_active'].role == _BindRole.COLUMN_VALUE
     assert compiled.params['start_on'] == date(1690,1,1)
     assert compiled._execution_binds['start_on'].role == _BindRole.COLUMN_VALUE
     assert compiled.params['grade'] == 'A'
     assert compiled._execution_binds['grade'].role == _BindRole.COLUMN_VALUE
 
-def test_compiler_detects_missing_values(students: Table, insert_values: dict):        
+def test_compiler_detects_missing_values(students: Table, insert_values: dict):
     nc = NotionCompiler()
     mocked_db_id = str(uuid.uuid4())
     students._sys_columns["object_id"]._value = mocked_db_id

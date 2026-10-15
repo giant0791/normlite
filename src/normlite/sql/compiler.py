@@ -27,7 +27,7 @@ from normlite.sql.base import _CompileState, ClauseElement, SQLCompiler
 from normlite.sql.dml import Delete, Update, OrderByClause, WhereClause
 from normlite.sql.elements import _BindRole, Operator, OrderByExpression, ColumnElement, BinaryExpression
 from normlite.sql.elements import _NoArg
-from normlite.sql.elements import BooleanClauseList, UnaryExpression   
+from normlite.sql.elements import BooleanClauseList, UnaryExpression
 from normlite.sql.elements import BindParameter
 from normlite.sql.schema import ReadOnlyColumnCollection, Column
 from normlite.sql.type_api import String
@@ -384,7 +384,7 @@ def _prune(node: Any, parent_op: Optional[str] = None, level: int = 1) -> Any:
     if not isinstance(node, dict):
         # a non dict node is a leaf, nothing to prune, return the node
         return node
-    
+
     for op in ("or", "and"):
         if op in node:
             # extract children from the compound operator
@@ -401,9 +401,9 @@ def _prune(node: Any, parent_op: Optional[str] = None, level: int = 1) -> Any:
 
 
                 else:
-                    # it's an "and", drop the whole compound 
+                    # it's an "and", drop the whole compound
                     return {}
-                    
+
             # traverse each child node in children and apply the pruning rule
             survivors = []
             for child in children:
@@ -411,12 +411,12 @@ def _prune(node: Any, parent_op: Optional[str] = None, level: int = 1) -> Any:
                 survivors.append(survivor)
 
             if op == "or" and any(not s for s in survivors):
-                # An `or` may never absorb a falsy child: 
+                # An `or` may never absorb a falsy child:
                 # if any survivor of an `or` is falsy, the whole `or` is `{}`
                 return {}
-            
-            return _normalize_filter(op, survivors)            
-              
+
+            return _normalize_filter(op, survivors)
+
 
     # op not in ("or", "and"): it's a leaf, return as is
     return node
@@ -494,14 +494,14 @@ def _normalize_filter(op: str, clauses: list[dict]) -> dict:
     clauses = [clause for clause in clauses if clause]
 
 
-    # {'and', [{'and': [P, Q]}, R]} must be spliced into: {"and": [P, Q, R]} 
+    # {'and', [{'and': [P, Q]}, R]} must be spliced into: {"and": [P, Q, R]}
     # {"and": [{"and": [P, Q]}, {"and": [R, S]}]} -> {"and": [P, Q, R, S]}
     spliced: list[dict] = []
     for clause in clauses:
         if isinstance(clause, dict) and op in clause:
             # flatten same-op nested expressions
             spliced.extend(clause[op])
-            
+
         else:
             # leave different op nested or leaf nodes as is
             spliced.append(clause)
@@ -543,21 +543,21 @@ class NotionCompiler(SQLCompiler):
             ddl_stmt = CreateTable(students)
             compiled = ddl_stmt.compile(NotionCompiler())
             print(compiled.string)
-            
+
             # this is the stringified version of the compiled object
             {
-                "operation": {                                  # a dictionary specifying the Notion API 
-                    "endpoint": "databases",                    
-                    "request": "create",                        
+                "operation": {                                  # a dictionary specifying the Notion API
+                    "endpoint": "databases",
+                    "request": "create",
                 },
                 "payload": {                                    # parameterized payload
                     "parent": {
                         "type": "page_id",
                         "page_id": ":page_id"                   # bind param for parent page_id
                     },
-                    "title": {                                  
+                    "title": {
                         "text": {
-                        "content": ":table_name"                # bind param for table name 
+                        "content": ":table_name"                # bind param for table name
                         }
                     },
                     "properties": {                             # the table schema
@@ -585,13 +585,13 @@ class NotionCompiler(SQLCompiler):
         .. rubric:: Example 2: Add a new page to a Notion database
 
         .. code-block:: python
-        
+
             # create a new page belonging to the "students" database
             bind_params = {'student_id': 1234567, 'name': 'Galileo Galilei', 'grade': 'A'}
             stmt: Insert = insert(students).values(**expected_params)
             compiled = stmt.compile(NotionCompiler())
 
-            # 
+            #
             {
                 "operation": {
                     "endpoint": "pages",                        # INSERT corresponds to pages.create
@@ -642,7 +642,7 @@ class NotionCompiler(SQLCompiler):
             ddl_stmt = HasTable(
                 students,
                 '66666666-6666-6666-6666-666666666666',             # tables_id
-                'university'                                        # table_catalog   
+                'university'                                        # table_catalog
             )
             compiled = ddl_stmt.compile(NotionCompiler())
             compile_dict = compiled.as_dict()
@@ -654,7 +654,7 @@ class NotionCompiler(SQLCompiler):
                     'endpoint': 'databases',
                     'request': 'query',
                     'template': {
-                        'database_id': ':database_id',                    
+                        'database_id': ':database_id',
                         'filter': {
                             'and': [
                                 {
@@ -666,7 +666,7 @@ class NotionCompiler(SQLCompiler):
                                 {
                                     'property': 'table_catalog',
                                     'rich_text': {
-                                        'equals': ':table_catalog'     
+                                        'equals': ':table_catalog'
                                     }
                                 }
                             ]
@@ -697,9 +697,9 @@ class NotionCompiler(SQLCompiler):
         group: Optional[int] = None
     ) -> dict[str, Any]:
         """Inject values to the execution binds from compile time.
-        
+
         This methods constructs a dictionary with values computed based on the bind parameter role.
-        if ``params`` is supplied, it is merged into the values known at compile time (e. g., from a 
+        if ``params`` is supplied, it is merged into the values known at compile time (e. g., from a
         ``VALUES`` clause) and it is used to resolve the bind parameter values.
 
         .. versionadded:: 0.9.0
@@ -761,15 +761,15 @@ class NotionCompiler(SQLCompiler):
 
     def visit_create_table(self, ddl_stmt: CreateTable) -> dict:
         """Compile a ``CREATE TABLE`` statement.
-        
-        This visit method compiles the DDL :class:`normlite.sql.ddl.CreateTable` construct into the 
+
+        This visit method compiles the DDL :class:`normlite.sql.ddl.CreateTable` construct into the
         corresponding Notion payload.
 
         .. versionchanged:: 0.12.0
             This method now supports compilation for data sources as of Notion API 2025-09-03.
 
         .. versionchanged:: 0.8.0
-            This method now produces a fully parameterized template dictionary and 
+            This method now produces a fully parameterized template dictionary and
             provides the binds in the parameter dictionary.
             It fixes also the returning columns to be set to the **meta columns**.
 
@@ -783,20 +783,20 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state.stmt = ddl_stmt
         payload = {}
         stmt_table = ddl_stmt.get_table()
-        
+
         if stmt_table._db_parent_id is None:
             # changed back to CompileError:
             # normlite compiler is a payload builder, not a "real" SQL compiler
             # so it must enforce payload schema invariants such as
-            # database_id not being None 
+            # database_id not being None
             raise CompileError(f'Table: {stmt_table.name} has been previously neither created or reflected.')
 
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             # emit code for parent object
             parent_id_key = self._add_bindparam(
                 BindParameter(
-                    key='page_id', 
-                    value=stmt_table._db_parent_id, 
+                    key='page_id',
+                    value=stmt_table._db_parent_id,
                 )
             )
 
@@ -804,7 +804,7 @@ class NotionCompiler(SQLCompiler):
                 'type': 'page_id',
                 'page_id': f':{parent_id_key}'
             }
-        
+
            # emit code for title object
             title_key = self._add_bindparam(
                 BindParameter(
@@ -825,8 +825,8 @@ class NotionCompiler(SQLCompiler):
         )
         payload["initial_data_source"] = {
             "properties": properties
-        } 
-        
+        }
+
         self._compiler_state.result_columns = [
             col.name
             for col in stmt_table.c
@@ -835,14 +835,14 @@ class NotionCompiler(SQLCompiler):
         operation = dict(endpoint='databases', request='create')
         # columns to be returned are meta columns!!!
         self._compiler_state.result_columns = [
-            DBAPITypeCode.META_COL_NAME, 
-            DBAPITypeCode.META_COL_TYPE, 
-            DBAPITypeCode.META_COL_ID, 
+            DBAPITypeCode.META_COL_NAME,
+            DBAPITypeCode.META_COL_TYPE,
+            DBAPITypeCode.META_COL_ID,
             DBAPITypeCode.META_COL_VALUE
         ]
-        
-        return {'operation': operation, 'payload': payload}  
-    
+
+        return {'operation': operation, 'payload': payload}
+
     def visit_drop_table(self, ddl_stmt: DropTable) -> dict:
         self._compiler_state.is_ddl = True
         self._compiler_state.stmt = ddl_stmt
@@ -855,9 +855,9 @@ class NotionCompiler(SQLCompiler):
             # changed back to CompileError:
             # normlite compiler is a payload builder, not a "real" SQL compiler
             # so it must enforce payload schema invariants such as
-            # database_id not being None 
+            # database_id not being None
             raise CompileError(f'Table: {stmt_table.name} has been previously neither created or reflected.')
-        
+
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
@@ -878,11 +878,11 @@ class NotionCompiler(SQLCompiler):
         operation = dict(endpoint='databases', request='update')
 
         return {
-            'operation': operation, 
+            'operation': operation,
             'path_params': path_params,
             'payload': payload
-        }  
-        
+        }
+
     def visit_reflect_table(self, ddl_stmt: ReflectTable) -> dict:
         self._compiler_state.is_ddl = True
         self._compiler_state.stmt = ddl_stmt
@@ -901,14 +901,14 @@ class NotionCompiler(SQLCompiler):
 
         operation = dict(endpoint = 'data_sources', request='retrieve')
         return {
-            'operation': operation, 
+            'operation': operation,
             'path_params': path_params,
         }
 
     def visit_insert(self, insert: Insert) -> dict:
         """Compile the ``INSERT`` DML statement.
 
-        This visit method compiles the DML :class:`normlite.sql.dml.Insert` construct into a Notion payload 
+        This visit method compiles the DML :class:`normlite.sql.dml.Insert` construct into a Notion payload
         for the pages.create request.
 
         Raises:
@@ -927,7 +927,7 @@ class NotionCompiler(SQLCompiler):
 
 
         .. versionchanged:: 0.8.0
-            This method extends parameterization via named argument also to the "database_id" key. Thus, the "parameters" dictionary 
+            This method extends parameterization via named argument also to the "database_id" key. Thus, the "parameters" dictionary
             now contains the binding for this key.
 
         .. versionadded:: 0.7.0
@@ -942,7 +942,7 @@ class NotionCompiler(SQLCompiler):
 
         # select the user columns to be included in the returned rows
         self._compiler_state.result_columns = [
-            col.name 
+            col.name
             for col in insert._returning
         ]
 
@@ -965,8 +965,8 @@ class NotionCompiler(SQLCompiler):
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
-                    key='data_source_id', 
-                    value=insert._table.get_data_source_id(), 
+                    key='data_source_id',
+                    value=insert._table.get_data_source_id(),
                 )
             )
 
@@ -979,7 +979,7 @@ class NotionCompiler(SQLCompiler):
             payload['properties'] = self._compile_insert_update_values(insert._values)
 
         operation = dict(endpoint='pages', request='create')
-        return {'operation': operation, 'payload': payload}  
+        return {'operation': operation, 'payload': payload}
 
     def visit_order_by_clause(self, clause: OrderByClause) -> dict:
         if not clause.clauses:
@@ -991,7 +991,7 @@ class NotionCompiler(SQLCompiler):
             sorts.append(compiled)
 
         return sorts
-    
+
     def visit_order_by_expression(self, expr: OrderByExpression) -> dict:
         column = expr.column
 
@@ -1002,7 +1002,7 @@ class NotionCompiler(SQLCompiler):
                     supplied: {column.__class__.__name__}
                 """
             )
-        
+
         return {
             'property': column.name,
             'direction': expr.direction
@@ -1023,7 +1023,7 @@ class NotionCompiler(SQLCompiler):
 
         operation = dict(endpoint='data_sources', request='query')
         compiled_dict = {
-            'operation': operation, 
+            'operation': operation,
         }
 
         path_params = {}
@@ -1041,7 +1041,7 @@ class NotionCompiler(SQLCompiler):
         table = select.get_table()
         if table is None:
             # aggregate with no operand column (a columnless COUNT(*)) and no explicit
-            # select_from(): the FROM is unresolvable. Fail loud at compile, like 
+            # select_from(): the FROM is unresolvable. Fail loud at compile, like
             # visit_update's missing clause guard, rather that crashing on None.get_iod()
             raise CompileError(
                 "Aggregate select has no FROM: columnless func.count() (COUNT(*)) "
@@ -1051,7 +1051,7 @@ class NotionCompiler(SQLCompiler):
         data_source_id = table.get_data_source_id()
         if data_source_id is None:
             raise CompileError(f'Table: {table.name} has not been previously reflected.')
-        
+
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
@@ -1060,8 +1060,8 @@ class NotionCompiler(SQLCompiler):
                 )
             )
             path_params['data_source_id'] = f':{db_id_key}'
-            compiled_dict["path_params"] = path_params 
-     
+            compiled_dict["path_params"] = path_params
+
         if select._whereclause.has_expression():
             expression = select._whereclause.expression
             parent_tables = _get_expression_parent_tables(expression)
@@ -1155,8 +1155,8 @@ class NotionCompiler(SQLCompiler):
                                 )
                                 payload["filter"] = emitted_json
                             else:
-                                # for the left table, add "filter" to the payload 
-                                # only if the expression is pushable (see #383) 
+                                # for the left table, add "filter" to the payload
+                                # only if the expression is pushable (see #383)
                                 # prune the emitted_json to ensure max depth <= 2
                                 pruned = _prune(emitted_json)
                                 if pruned:
@@ -1180,7 +1180,7 @@ class NotionCompiler(SQLCompiler):
                         # measured -- _add_bindparam ran once inside the dispatch, and the
                         # literal survives unprocessed.
                         self.planning_context.recheck_where = expression
-        
+
         projection = self._compiler_state.stmt._projection
 
         if select._is_aggregate:
@@ -1189,7 +1189,7 @@ class NotionCompiler(SQLCompiler):
             # a pure COUNT(*) has no operand columns; fall back fetching object_id so
             # each matched page still yields one row for reduce() to count
             self._compiler_state.fetch_columns = operand_names or ["object_id"]
-        
+
         else:
             if projection:
                 # use select projections for the result columns
@@ -1207,7 +1207,7 @@ class NotionCompiler(SQLCompiler):
                     )
 
                 self._compiler_state.result_columns = [
-                    col 
+                    col
                     for col in self._compiler_state.fetch_columns
                     if col not in SpecialColumns
                 ]
@@ -1219,7 +1219,7 @@ class NotionCompiler(SQLCompiler):
                     len(self._compiler_state.result_columns) < len(uc_names)
                 ):
                     # add the filter_properties query parameters only
-                    # if any user column was projected and the projected user colums are 
+                    # if any user column was projected and the projected user colums are
                     # a subset of all user columns
                     query_params['filter_properties'] = self._compiler_state.result_columns
 
@@ -1239,7 +1239,7 @@ class NotionCompiler(SQLCompiler):
                     f"Cannot route ORDER BY expression: no source table could be "
                     f"determined for {type(order_by_clause).__name__}."
                 )
-            
+
             # Sort pushability is POSITIONAL: only the LEADING RUN of left-table
             # keys can ride in phase-1 (databases.query sorts by left-table
             # properties only). Stop the prefix at the first key that isn't purely
@@ -1265,8 +1265,8 @@ class NotionCompiler(SQLCompiler):
                 payload['sorts'] = sorts_obj
 
         compiled_dict ["payload"] = payload
-        
-        if query_params:           
+
+        if query_params:
             compiled_dict['query_params'] = query_params
 
         return compiled_dict
@@ -1329,20 +1329,20 @@ class NotionCompiler(SQLCompiler):
             )
 
         return filter_obj
-    
+
     def visit_delete(self, delete: Delete):
         self._compiler_state.is_delete = delete.is_delete
         self._compiler_state.stmt = delete
- 
+
         operation = dict(endpoint='data_sources', request='query')
         path_params = {}
         payload = {
             'page_size': 100,        # Notion imposed max page size
         }
- 
+
         # select the user columns to be included in the returned rows
         self._compiler_state.result_columns = [
-            col.name 
+            col.name
             for col in delete._returning
         ]
 
@@ -1350,7 +1350,7 @@ class NotionCompiler(SQLCompiler):
         data_source_id = table.get_data_source_id()
         if data_source_id is None:
             raise CompileError(f'Table: {table.name} has not been previously reflected.')
-        
+
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
@@ -1372,8 +1372,8 @@ class NotionCompiler(SQLCompiler):
                 )
 
         compiled_dict = {
-            'operation': operation, 
-            'path_params': path_params, 
+            'operation': operation,
+            'path_params': path_params,
             'payload': payload,
             'delete_operation': ROWS_UPDATE,
             'delete_params': {"payload": {"in_trash": True}}
@@ -1403,7 +1403,7 @@ class NotionCompiler(SQLCompiler):
         data_source_id = table.get_data_source_id()
         if data_source_id is None:
             raise CompileError(f'Table: {table.name} has not been previously reflected.')
-        
+
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
                 BindParameter(
@@ -1530,7 +1530,7 @@ class NotionCompiler(SQLCompiler):
                 expression.value
             )
         }
-    
+
     def visit_unary_expression(self, expression: UnaryExpression) -> NoReturn:
         """Refuse to emit a NOT expression: Notion filters have no ``not``.
 
@@ -1544,14 +1544,14 @@ class NotionCompiler(SQLCompiler):
         .. seealso::
 
             Issue `normlite pushes filter constructs the Notion API rejects with HTTP 400 <https://github.com/giant0791/normlite/issues/383>`_.
-        
+
         .. versionchanged:: 0.13.0
             Raises instead of emitting a ``{"not": ...}`` object, which Notion rejects.
         """
         raise UnsupportedCompilationError(
             f"Notion API does not support unary operators in filters: '{expression.operator}'"
         )
-    
+
     def visit_boolean_clause_list(self, expression: BooleanClauseList) -> dict:
         """Emit the JSON filter object for a compound expression, dropping unpushable conjuncts.
 
@@ -1598,25 +1598,25 @@ class NotionCompiler(SQLCompiler):
         return key
 
     def _add_bindparam(
-            self, 
-            bindparam: BindParameter, 
+            self,
+            bindparam: BindParameter,
             column_name: Optional[str] = None,
         ) -> str:
         """Assign keys, types and roles to the bind parameter argument based on the actual compilation phase.
-        
+
         At compilation phase, bind parameters' keys, types and roles only are known.
         The values are associated **only** at execution time by :meth:`construct_params`.
         This method assigns the bind parameters attributes according to the following scheme:
 
         * ``WHERE`` clause: key is an auto-generated anonymous parameter "params_n", type is the column's type and role is
-            :attr:`normlite.sql.base._CompileState.COLUMN_FILTER` (meaning the ``filter_value_processor()`` 
+            :attr:`normlite.sql.base._CompileState.COLUMN_FILTER` (meaning the ``filter_value_processor()``
             shall be used).
 
         * ``VALUES`` clause: key is the column's name, type is the column's type and role is
-            :attr:`normlite.sql.base._CompileState.COLUMN_VALUE` (meaning the ``bind_processor()`` 
-            shall be used). 
+            :attr:`normlite.sql.base._CompileState.COLUMN_VALUE` (meaning the ``bind_processor()``
+            shall be used).
 
-        * DBAPI parameters: the already assigned key remains, only the bind role is assigned to 
+        * DBAPI parameters: the already assigned key remains, only the bind role is assigned to
             :attr:`normlite.sql.base._CompileState.DBAPI_PARAM` (meaning the value shall be used).
         """
 
@@ -1634,11 +1634,11 @@ class NotionCompiler(SQLCompiler):
             # SELECT / WHERE: autogenerated key
             if column_name is not None:
                 raise CompileError('Bind parameters in a where clause shall not have a column name.')
-            
+
             key = self._next_bind_key()
             bindparam.key = key
             bindparam.role = _BindRole.COLUMN_FILTER
-        
+
         elif state == _CompileState.COMPILING_VALUES:
            # INSERT / UPDATE: key must be column name
             if column_name is None:
@@ -1652,7 +1652,7 @@ class NotionCompiler(SQLCompiler):
                 stmt = self._compiler_state.stmt
                 raise CompileError(
                     f"""
-                        Expected an insert or update statement, 
+                        Expected an insert or update statement,
                         received: {repr(stmt)}
                     """
                 )
@@ -1673,12 +1673,12 @@ class NotionCompiler(SQLCompiler):
 
             key = bindparam.key
             bindparam.role = _BindRole.DBAPI_PARAM
-            
+
         else:
             stmt = self._compiler_state.stmt
             raise CompileError(
                 f"""
-                    Invalid compiler state: {state}, 
+                    Invalid compiler state: {state},
                     while compiling statement: {repr(stmt)}.
                 """
             )
@@ -1687,16 +1687,16 @@ class NotionCompiler(SQLCompiler):
         return key
 
     def _compile_type_filter(
-            self, 
-            column: ColumnElement, 
-            operator: Operator, 
+            self,
+            column: ColumnElement,
+            operator: Operator,
             bindparam: BindParameter
     ) -> dict:
         type_ = column.type_
         if type_ is not bindparam.type_:
             raise CompileError(
                 f"""
-                    Type mismatch between column element: {column.name} 
+                    Type mismatch between column element: {column.name}
                     and bind parameter: {bindparam.key}:
                     column element type: {type_.__class__.__name__}
                     bind parameter type: {bindparam.type_.__class__.__name__}
@@ -1716,7 +1716,7 @@ class NotionCompiler(SQLCompiler):
                 notion_op: f':{key}'
             }
         }
-    
+
     def _compile_insert_update_values(self, values: dict) -> dict:
         properties = {}
         stmt_table = self._compiler_state.stmt._table
@@ -1750,11 +1750,11 @@ class NotionCompiler(SQLCompiler):
             properties[col.name] = f':{param_key}'
 
         return properties
-    
+
     def _compile_table_columns(self, user_cols: ReadOnlyColumnCollection) -> dict:
         from normlite.sql.type_api import Relation
 
-        # resolve oids for the all referenced columns         
+        # resolve oids for the all referenced columns
         stmt_table: Table = self._compiler_state.stmt._table
         referenced_ids = {
             c.column.name: c.reftable.get_data_source_id()
@@ -1771,13 +1771,13 @@ class NotionCompiler(SQLCompiler):
                 ref_oid = referenced_ids.get(col.name)
                 if ref_oid is None:
                     raise CompileError(f"Relation column '{col.name}' on table '{stmt_table.name}' has no ForeignKeyConstraint registered")
-                
+
                 prop_val["relation"]["data_source_id"] = referenced_ids[col.name]
 
-            properties[col.name] = prop_val    
+            properties[col.name] = prop_val
 
         return properties
-    
+
     @contextmanager
     def _compiling(self, new_state: _CompileState):
         prev = self._compiler_state.compile_state

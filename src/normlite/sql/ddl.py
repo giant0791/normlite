@@ -70,10 +70,10 @@ class _ColumnMetadata:
         """Return a TypeEngine instance, using the global type mapper."""
         Factory = type_mapper[self.type_code]
         return Factory(self.args)   # args set only types only
-    
+
 class HasTableMixin:
     """Mixin for objects that have a :class:`normlite.sql.schema.Table` object.
-    
+
     .. versionadded:: 0.8.0
     """
 
@@ -82,7 +82,7 @@ class HasTableMixin:
 
 class ExecutableDDLStatement(HasTableMixin, Executable):
     """Base class for all DDL executable statements.
-    
+
     .. versionadded:: 0.8.0
         This class is a convenient base class to set the :attr:`is_ddl` for all subclasses.
     """
@@ -92,10 +92,10 @@ class ExecutableDDLStatement(HasTableMixin, Executable):
         self._table = None
 
     def _execute_on_connection(
-            self, 
-            connection: Connection, 
+            self,
+            connection: Connection,
             params: Optional[_CoreAnyExecuteParams],
-            *, 
+            *,
             execution_options: Optional[dict] = None
     ) -> CursorResult:
 
@@ -104,7 +104,7 @@ class ExecutableDDLStatement(HasTableMixin, Executable):
         merged_execution_options = stmt_opts | call_opts
 
         return connection._execute_context(
-            self, 
+            self,
             execution_options=merged_execution_options
         )
 
@@ -113,7 +113,7 @@ class ExecutableDDLStatement(HasTableMixin, Executable):
 
         As of Notion 2025-09-03 the databases.create/retrieve response carries
         system columns only - user-column property ids and types live on the data
-        source. Fetch them and return a ReflectedTableInfo for the caller to merge.  
+        source. Fetch them and return a ReflectedTableInfo for the caller to merge.
         """
         context._result_cursor = context.engine.raw_connection().cursor()
         context.engine.do_execute(
@@ -129,18 +129,18 @@ class ExecutableDDLStatement(HasTableMixin, Executable):
 
 class CreateTable(ExecutableDDLStatement):
     """Represent a ``CREATE TABLE`` statement.
-    
+
     .. versionchanged:: 0.8.0
         This version runs on the new :class:`normlite.engine.base.Connection` execution pipeline.
 
-    .. versionadded:: 0.7.0    
+    .. versionadded:: 0.7.0
     """
     __visit_name__ = 'create_table'
 
     def __init__(self, table: Table):
         super().__init__()
         self._table = table
-      
+
     def _setup_execution(self, context: ExecutionContext) -> None:
         # nothing to be setup
         pass
@@ -153,7 +153,7 @@ class CreateTable(ExecutableDDLStatement):
         result = context.setup_cursor_result()
         rows = result.all()
         result.close()
-        data_as_tuples = [r.as_tuple() for r in rows]        
+        data_as_tuples = [r.as_tuple() for r in rows]
         reflected_table_info = ReflectedTableInfo.from_tuples(data_as_tuples)
         table = self._table
 
@@ -165,14 +165,14 @@ class CreateTable(ExecutableDDLStatement):
         reflected_table_info.merge_with(
             self._reflect_user_columns(context, reflected_table_info.dsid)
         )
-        
-        for colmeta in reflected_table_info.get_columns(): 
-            # As of Notion 2025-09-03 column ids are now all None 
-            # backfill all user columns with ids         
+
+        for colmeta in reflected_table_info.get_columns():
+            # As of Notion 2025-09-03 column ids are now all None
+            # backfill all user columns with ids
             if not colmeta.is_system:
                 # assign user column ids only
                 table.c[colmeta.name]._id = colmeta.id
-        
+
         # add this table to the sys "tables" catalog
         engine = context.engine
         entry = context.engine.create_table_metadata(
@@ -191,18 +191,18 @@ class DropTable(ExecutableDDLStatement):
 
     .. versionadded:: 0.8.0
     """
-    __visit_name__ = 'drop_table'    
+    __visit_name__ = 'drop_table'
 
     def __init__(self, table: Table):
         super().__init__()
         self._table = table
 
     def _setup_execution(self, context: ExecutionContext) -> None:
-        pass        
+        pass
 
     def _handle_dbapi_error(
-        self, 
-        exc: Error, 
+        self,
+        exc: Error,
         context: ExecutionContext
     ) -> Optional[NoReturn]:
         # DROP TABLE on a non-existing table
@@ -248,7 +248,7 @@ class DropTable(ExecutableDDLStatement):
 
 class ReflectTable(ExecutableDDLStatement):
     """Represent a convenient pseudo DDL statement to reflect a Notion database into a Python :class:`normlite.sql.schema.Table` object.
-    
+
     .. versionadded:: 0.8.0
     """
     __visit_name__ = 'reflect_table'
@@ -265,7 +265,7 @@ class ReflectTable(ExecutableDDLStatement):
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
         from normlite.sql.schema import Column
-        
+
         # IMPORTANT: This consumes the result stored in the execution context.
         # DDL reflection is not part of execution — it is interpretation of results.
         # So reflection consumes the results by interpreting and leaves the

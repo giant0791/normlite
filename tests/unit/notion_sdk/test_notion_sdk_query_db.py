@@ -20,10 +20,10 @@ def page() -> dict:
         }
     }
 
-        
+
 def test_conditions(page: dict):
     num_cond = _Condition(
-        page, 
+        page,
         {'property': 'student_id', 'number': {'greater_than': 666}}
     )
 
@@ -37,7 +37,7 @@ def test_conditions(page: dict):
 
 def test_composite_condition_true(page: dict):
     num_cond = _Condition(
-        page, 
+        page,
         {'property': 'student_id', 'number': {'greater_than': 666}}
     )
 
@@ -51,7 +51,7 @@ def test_composite_condition_true(page: dict):
 
 def test_composite_condition_false(page: dict):
     num_cond = _Condition(
-        page, 
+        page,
         {'property': 'student_id', 'number': {'less_than': 666}}
     )
 
@@ -59,7 +59,7 @@ def test_composite_condition_false(page: dict):
         page,
         {'property': 'name', 'title': {'contains': 'Isaac'}}
     )
-    
+
     comp_cond = _LogicalCondition('and', [num_cond, title_cond])
     assert not comp_cond.eval()
 
@@ -101,7 +101,7 @@ def test_filter_composite(page: dict):
             ]
         }
     })
-    
+
     assert filter.eval()
 
 def test_filter_composite_w_date(page: dict):
@@ -135,7 +135,7 @@ def test_filter_composite_w_date(page: dict):
             ]
         }
     })
-    
+
     assert filter.eval()
 
 # ------------------------------------------

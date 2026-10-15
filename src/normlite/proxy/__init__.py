@@ -30,6 +30,6 @@ The ``normlite`` client application interacts with the Flask proxy via the :clas
 
 Warning:
     The code in this package is experimental and subject to breaking changes in the future.
-    
+
     **Do not use it yet!**
 """

@@ -169,7 +169,7 @@ def test_params_nor_mapping_nor_seq():
     params = 12345
     with pytest.raises(TypeError, match='must be a mapping or a sequence of mappings'):
         distilled_params = _distill_params(params)
-    
+
 def test_not_all_mappings():
     params = [{'name': 'Gianmarco'}, 12345, ]
     with pytest.raises(TypeError, match='multi-execute parameter sequence must be a mapping'):
@@ -186,10 +186,10 @@ def test_resolve_params_for_insert(engine: Engine, students: Table, insert_value
     compiled = insert_stmt.compile(NotionCompiler())
     distilled_params = [{"id": 6789012}]
     ctx = ExecutionContext(
-        engine, 
-        engine.connect(), 
-        engine.raw_connection().cursor(), 
-        compiled, 
+        engine,
+        engine.connect(),
+        engine.raw_connection().cursor(),
+        compiled,
         distilled_params
     )
     ctx.pre_exec()
@@ -203,10 +203,10 @@ def test_resolve_params_for_select(engine: Engine, students: Table):
     select_stmt = select(students.c.id, students.c.is_active).where(students.c.name == 'Galileo Galilei')
     compiled = select_stmt.compile(NotionCompiler())
     ctx = ExecutionContext(
-        engine, 
-        engine.connect(), 
-        engine.raw_connection().cursor(), 
-        compiled, 
+        engine,
+        engine.connect(),
+        engine.raw_connection().cursor(),
+        compiled,
     )
     ctx.pre_exec()
 
@@ -222,10 +222,10 @@ def test_resolve_params_for_create_table(students: Table, engine: Engine):
     stmt = CreateTable(students)
     compiled = stmt.compile(engine._sql_compiler)
     ctx = ExecutionContext(
-        engine, 
-        engine.connect(), 
-        engine.raw_connection().cursor(), 
-        compiled, 
+        engine,
+        engine.connect(),
+        engine.raw_connection().cursor(),
+        compiled,
     )
     ctx.pre_exec()
 
@@ -245,8 +245,8 @@ def test_resolve_params_for_create_table(students: Table, engine: Engine):
 def test_execute_dml_context_row_preservation(
     preserve_rowcount,
     expected_rowcount,
-    engine: Engine, 
-    students: Table, 
+    engine: Engine,
+    students: Table,
     insert_values: dict
 ):
     # create database and mock reflection
@@ -288,8 +288,8 @@ def test_execute_dml_context_row_preservation(
 
 @pytest.mark.skip(".returning requires new feature (see issue #200)")
 def test_execute_dml_context_insert_returning(
-    engine: Engine, 
-    students: Table, 
+    engine: Engine,
+    students: Table,
     insert_values: dict
 ):
     # create database and mock reflection
@@ -326,8 +326,8 @@ def test_execute_dml_context_insert_returning(
 
 @pytest.mark.skip(".returning requires new feature (see issue #200)")
 def test_execute_dml_context_returning_correct_dbapi_description(
-    engine: Engine, 
-    students: Table, 
+    engine: Engine,
+    students: Table,
     insert_values: dict
 ):
     # create database and mock reflection
@@ -353,7 +353,7 @@ def test_execute_dml_context_returning_correct_dbapi_description(
     ctx.pre_exec()
     engine.do_execute(cursor, ctx.operation, ctx.parameters)
     ctx.post_exec()
- 
+
     # extract cursor.description
     description = cursor.description
     col_names = [name for name, _, _, _, _, _, _ in cursor.description]
@@ -372,7 +372,7 @@ def test_execute_dml_context_returning_correct_dbapi_description(
 def test_execute_dml_context_projection(
     preserve_rowcount,
     expected_rowcount,
-    engine: Engine, 
+    engine: Engine,
     students: Table
 ):
     # create database and mock reflection
@@ -407,7 +407,7 @@ def test_execute_dml_context_projection(
     rows = result.all()
     row_0_mapping = rows[0].mapping()
     row_1_mapping = rows[1].mapping()
-    
+
     assert len(rows) == 2
     assert result.rowcount == expected_rowcount
     assert students.c.is_active.name in row_0_mapping
@@ -425,11 +425,11 @@ def is_valid_uuid4(uuid_string: str) -> bool:
         # ValueError: badly formed hex string
         # AttributeError/TypeError: input isn't a string-like object
         return False
-    
+
     return True
 
 def test_execute_dml_context_delete_prefetch(
-    engine: Engine, 
+    engine: Engine,
     students: Table
 ):
     # create database and mock reflection
@@ -460,7 +460,7 @@ def test_execute_dml_context_delete_prefetch(
     ctx.pre_exec()
     elem = ctx.invoked_stmt
     elem._setup_execution(ctx)
-    
+
 
 def test_execute_ddl_context_create_table_returning_id_and_title(engine: Engine, students: Table):
     students._db_parent_id = engine._user_tables_page_id
@@ -482,7 +482,7 @@ def test_execute_ddl_context_create_table_returning_id_and_title(engine: Engine,
     rows = result.all()
     rows_as_tuples = [r.as_tuple() for r in rows]
     reflected_table_info = ReflectedTableInfo.from_tuples(rows_as_tuples)
-    
+
     assert reflected_table_info.name == 'students'
     assert is_valid_uuid4(reflected_table_info.id)
 
@@ -516,7 +516,7 @@ def test_execute_ddl_context_create_table_returning_property_ids(engine: Engine,
     assert isinstance(is_active_col.type, Boolean)
     assert isinstance(start_on_col.type, Date)
     assert isinstance(grade_col.type, String)
-    assert not grade_col.type.is_title 
+    assert not grade_col.type.is_title
 
 def test_execute_ddl_context_drop_table_returning_id_and_in_trash(engine: Engine, students: Table):
     database_id = create_students_db(engine)
@@ -559,20 +559,20 @@ def test_connection_exec_pipeline_simulated(engine: Engine, students: Table):
         compiled=compiled,
         distilled_params=distilled_params,
     )
-    
+
     elem = context.invoked_stmt
 
     context.pre_exec()                  # normalize params, options, payload
     elem._setup_execution(context)      # statement prepares execution
     engine.do_execute(                  # side effects happen (HTTP)
-        cursor, 
-        context.operation, 
+        cursor,
+        context.operation,
         context.parameters
     )
 
     context.post_exec()                 # The execution is mechanically complete before semantic interpretation begins
     elem._finalize_execution(context)   # semantic reconstruction / reflection
-    
+
     result = context.setup_cursor_result()
 
     assert not result.returns_rows
@@ -580,7 +580,7 @@ def test_connection_exec_pipeline_simulated(engine: Engine, students: Table):
     assert is_valid_uuid4(students.get_oid())
 
     name_col, id_col, is_active_col, start_on_col, grade_col = students._usr_columns
-    assert name_col._id 
+    assert name_col._id
     assert id_col._id
     assert is_active_col._id
     assert start_on_col._id
@@ -596,8 +596,8 @@ def test_connection_exec_pipeline_simulated(engine: Engine, students: Table):
 def test_connection_exec_dml_context_row_preservation(
     preserve_rowcount,
     expected_rowcount,
-    engine: Engine, 
-    students: Table, 
+    engine: Engine,
+    students: Table,
     insert_values: dict
 ):
     # create database and mock reflection
@@ -611,8 +611,8 @@ def test_connection_exec_dml_context_row_preservation(
             "preserve_rowcount": preserve_rowcount,
         }
         result = connection.execute(
-            insert_stmt, 
-            insert_values, 
+            insert_stmt,
+            insert_values,
             execution_options=execution_options
         )
 
@@ -626,8 +626,8 @@ def test_connection_exec_dml_context_row_preservation(
 
 @pytest.mark.skip(".returning requires new feature (see issue #200)")
 def test_connection_exec_dml_context_returning(
-    engine: Engine, 
-    students: Table, 
+    engine: Engine,
+    students: Table,
     insert_values: dict
 ):
     # create database and mock reflection
@@ -641,8 +641,8 @@ def test_connection_exec_dml_context_returning(
             "preserve_rowcount": False,
         }
         result = connection.execute(
-            insert_stmt, 
-            insert_values, 
+            insert_stmt,
+            insert_values,
             execution_options=execution_options
         )
 
@@ -661,8 +661,8 @@ def test_connection_exec_dml_context_returning(
 def test_connection_exec_dml_context_projection(
     preserve_rowcount,
     expected_rowcount,
-    engine: Engine, 
-    students: Table, 
+    engine: Engine,
+    students: Table,
 ):
     # create database and mock reflection
     database_id = create_students_db(engine)
@@ -683,14 +683,14 @@ def test_connection_exec_dml_context_projection(
             "preserve_rowcount": preserve_rowcount,
         }
         result = connection.execute(
-            select_stmt, 
+            select_stmt,
             execution_options=execution_options
         )
 
     rows = result.all()
     row_0_mapping = rows[0].mapping()
     row_1_mapping = rows[1].mapping()
-    
+
     assert len(rows) == 2
     assert result.rowcount == expected_rowcount
     assert students.c.is_active.name in row_0_mapping
@@ -710,10 +710,10 @@ def test_connection_exec_ddl_context_create_table(engine: Engine, students: Tabl
         }
 
         result = connection.execute(
-            stmt, 
+            stmt,
             execution_options=execution_options
         )
-    
+
     assert not result.returns_rows
     assert result.rowcount == -1
     assert is_valid_uuid4(students.get_oid())
@@ -733,20 +733,20 @@ def test_connection_exec_ddl_context_drop_table(engine: Engine, students: Table)
         }
 
         result = connection.execute(
-            stmt_create, 
+            stmt_create,
             execution_options=execution_options
         )
-        
+
         result = connection.execute(
-            stmt_drop, 
+            stmt_drop,
             execution_options=execution_options
         )
-    
+
     assert result.rowcount == -1
 
     inspector = engine.inspect()
 
     assert not inspector.has_table(students)
-    
+
 
 

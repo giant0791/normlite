@@ -19,8 +19,8 @@ def _notify(request, msg: str):
 def live_server(request):
     port = 5001
     process = multiprocessing.Process(
-        target=run_server, 
-        args=(port,), 
+        target=run_server,
+        args=(port,),
         daemon=True)
     process.start()
     time.sleep(1)  # crude but ensures the server is up

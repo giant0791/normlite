@@ -30,7 +30,7 @@ Concrete subclasses of :class:`TypeEngine` represent actual SQL types:
 * :class:`Date` for datetime and datetime range values
 * .class:`Money` for currency values
 
-All concrete :class:`TypeEngine` subclasses are designed in a backend-agnostic way. 
+All concrete :class:`TypeEngine` subclasses are designed in a backend-agnostic way.
 This allows to define datatypes without the Notion specific details.
 The Notion type system is thus treated as an SQL dialect.
 Subclasses of :class:`TypeEngine` are used to define the datatype of table columns.
@@ -39,7 +39,7 @@ Usage::
 
     # define an integer SQL datatype
     int_dt = Integer()
-    
+
     # get bind and result processors
     bind = int_dt.bind_processor()
     result = int_dt.result_processor()
@@ -54,7 +54,7 @@ Usage::
     # define a string SQL datatype
     str_dt = String(is_title=True)
 
-    # get bind and result processors    
+    # get bind and result processors
     bind = int_dt.bind_processor()
     result = int_dt.result_processor()
 
@@ -97,7 +97,7 @@ class TypeEngine(Protocol):
 
     .. versionchanged:: 0.11.0
         The class is runtime checkable.
-    
+
     .. versionchanged:: 0.8.0
         :class:`TypeEngine` now defines a new processor API for processing filter values.
         Notion requires this additional processor API as filter values used in queries
@@ -137,13 +137,13 @@ class TypeEngine(Protocol):
 
         This method enforces two invariants:
 
-            1. Each subclass of :class:`TypeEngine` **must** assign a value ``.supports_valueless_cells`` 
-            
-            2. Each subclass intended to support valueless cells (``.supports_valueless_cells = True``) **must** 
+            1. Each subclass of :class:`TypeEngine` **must** assign a value ``.supports_valueless_cells``
+
+            2. Each subclass intended to support valueless cells (``.supports_valueless_cells = True``) **must**
             support the operator ``IS_NOT_EMPTY``. This is required by the ``!=`` repair (#383)
 
         Raises:
-            TypeError: If ``.supports_valueless_cells`` is not defined or 
+            TypeError: If ``.supports_valueless_cells`` is not defined or
                 if ``.supports_valueless_cells = True``, but ``IS_NOT_EMPTY`` is not in ``.supported_ops``.
 
         .. versionadded:: 0.13.0
@@ -171,9 +171,9 @@ class TypeEngine(Protocol):
 
     def result_processor(self) -> Optional[Callable[[Any], Any]]:
         """SQL/Notion → Python (process values after fetching).
-        
+
         Provide a result processor function.
-        It expects Notion objects as dictionaries: ``{"type": property["type"]}``, where ``property`` is 
+        It expects Notion objects as dictionaries: ``{"type": property["type"]}``, where ``property`` is
         one of the keys in the object's "properties" dictionary.
 
         .. versionchanged:: 0.11.0
@@ -184,17 +184,17 @@ class TypeEngine(Protocol):
 
         """
         return None
-    
+
     def filter_value_processor(self) -> Optional[Callable[[Any], Any]]:
-        return None 
+        return None
 
     def get_col_spec(self) -> str:
         """Return a string for the SQL-like type name."""
         raise NotImplementedError
-    
+
     def get_notion_spec(self) -> dict:
         """Return a dictionary used for creating database properties in the JSON payload.
-        
+
         The default implementation returns a dictionary as follows:
 
         .. code-block:: python
@@ -216,7 +216,7 @@ class TypeEngine(Protocol):
         return {
             self.get_col_spec(): {}
         }
-    
+
     @property
     def python_type(self) -> Any:
         """Return the Python type object expected to be returned
@@ -234,14 +234,14 @@ class TypeEngine(Protocol):
         .. versionadded:: 0.9.0
         """
         return object
-    
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         """ Return the DBAPI type code corresponding to this type engine instance."""
         raise NotImplementedError
 
     def __repr__(self):
         return self.__class__.__name__
-    
+
     def _raise_if_val_not_dict(self, value: dict) -> NoReturn:
         if not isinstance(value, dict):
             raise ValueError(
@@ -252,13 +252,13 @@ class TypeEngine(Protocol):
     def _is_valueless_cell(self, value: dict) -> bool:
         """Enable result processors to return the Notion valid value None if the cell is valueless."""
 
-        if value is None:   
+        if value is None:
             return True                 # absent cell
 
         self._raise_if_val_not_dict(value)
 
         return value[self.get_col_spec()] is None       # present, but holds no value (null)
-    
+
 _NumericType: TypeAlias = Union[int, Decimal]
 """Type alias for numeric datatypes. It is not part of the public API."""
 
@@ -266,16 +266,16 @@ _DateTimeRangeType: TypeAlias = Union[tuple[datetime, datetime], datetime]
 """Type alias for datetime datatypes. It is not part of the publich API."""
 
 Currency = Literal['dollar', 'euro', 'franc', 'krona', 'pound', 'yuan']
-"""Literal alias for the currently supported currencies. 
+"""Literal alias for the currently supported currencies.
 These are the same literal strings as defined by Notion.
 """
-    
+
 class Number(TypeEngine):
     """Notion-specific number type. Can represent integer, decimal, percent, or currency.
-    
+
     .. versionchanged:: 0.9.0
         Add value normalization to dict for more robust result processing.
-    
+
     .. versionadded:: 0.7.0
     """
 
@@ -305,7 +305,7 @@ class Number(TypeEngine):
 
     def get_col_spec(self):
         return 'number'
-    
+
     def get_notion_spec(self):
         return {
             self.get_col_spec(): {
@@ -317,14 +317,14 @@ class Number(TypeEngine):
         def process(value: Optional[Union[_NumericType, str]]) -> Optional[dict]:
             if value is None:
                 return {self.get_col_spec(): None}
-            
+
             return {
-                self.get_col_spec(): 
-                float(value) if isinstance(value, Decimal) 
+                self.get_col_spec():
+                float(value) if isinstance(value, Decimal)
                 else value
             }
         return process
-    
+
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[_NumericType]:
             if self._is_valueless_cell(value):
@@ -332,7 +332,7 @@ class Number(TypeEngine):
 
             num_value = value.get(self.get_col_spec())
             if isinstance(num_value, Decimal):
-                num_value = float(num_value)            
+                num_value = float(num_value)
 
             return Decimal(num_value) if isinstance(num_value, float) else int(num_value)
         return process
@@ -341,14 +341,14 @@ class Number(TypeEngine):
         kwarg = []
         if self.format:
             kwarg.append('format')
-        
+
         return "Number(%s)" % ", ".join(
             ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
         )
 
 class Integer(Number):
     """Covenient type engine for Notion "number" objetcs with format = "number".
-    
+
     .. versionadded:: 0.7.0
     """
 
@@ -360,13 +360,13 @@ class Integer(Number):
     @property
     def python_type(self) -> Any:
         return int
-    
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.NUMBER
 
 class Numeric(Number):
     """Convenient type engine for Notion "number" objects with format ="number_with_commas".
-    
+
     .. versionadded:: 0.7.0
     """
 
@@ -376,10 +376,10 @@ class Numeric(Number):
     @property
     def python_type(self) -> Any:
         return Decimal
-    
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.NUMBER_WITH_COMMAS
-    
+
 class Float(Number):
     """Convenient type engine to represent average results.
 
@@ -398,15 +398,15 @@ class Float(Number):
             if self._is_valueless_cell(value):
                 return None
             return float(value.get(self.get_col_spec()))
-        
+
         return process
-        
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.NUMBER_FLOAT
 
 class Money(Number):
     """Convenient type engine for Notion "number" objects handling currencies.
-    
+
     .. versionadded:: 0.7.0
     """
     def __init__(self, currency: Currency):
@@ -415,16 +415,16 @@ class Money(Number):
     @property
     def python_type(self) -> Any:
         return Decimal
-    
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         if self.format == "dollar":
             return DBAPITypeCode.NUMBER_DOLLAR
-        
+
         raise NotImplementedError(f"Number format '{self.format}' not supported in this version.")
 
 class String(TypeEngine):
     """Textual type for Notion title and rich text properties.
-    
+
     Usage:
         >>> # create a title property
         >>> title_txt = String(is_title=True)
@@ -438,7 +438,7 @@ class String(TypeEngine):
 
     .. versionchanged:: 0.9.0
         Add value normalization to dict for more robust result processing.
-    
+
     .. versionadded:: 0.7.0
     """
 
@@ -446,7 +446,7 @@ class String(TypeEngine):
     supported_ops = MappingProxyType({
         Operator.EQ: "equals",
         Operator.NE: "does_not_equal",
-        Operator.IN: "contains", 
+        Operator.IN: "contains",
         Operator.NOT_IN: "does_not_contain",
         Operator.ENDSWITH: "ends_with",
         Operator.STARTSWITH: "starts_with",
@@ -455,7 +455,7 @@ class String(TypeEngine):
     })
 
     supports_valueless_cells = False
- 
+
     def __init__(self, is_title: bool = False):
         self.is_title = is_title
         """``True`` if it is a "title", ``False`` if it is a "richt_text"."""
@@ -466,33 +466,33 @@ class String(TypeEngine):
                 return None
             return {self.get_col_spec(): [{'text': {'content': str(value)}}]}
         return process
-        
+
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[str]:
             if self._is_valueless_cell(value):
                 return None
-            
+
             # Notion rich_text is a list of text objects → extract 'text'
             return rich_text_to_plain_text(value[self.get_col_spec()])
-        
+
         return process
 
     def get_col_spec(self):
         return "title" if self.is_title else "rich_text"
-    
+
     def __repr__(self) -> str:
         kwarg = []
         if self.is_title:
             kwarg.append('is_title')
-        
+
         return "String(%s)" % ", ".join(
             ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
         )
-    
+
     @property
     def python_type(self) -> Any:
         return str
-    
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.TITLE if self.is_title else DBAPITypeCode.RICH_TEXT
 
@@ -501,7 +501,7 @@ class Boolean(TypeEngine):
 
     .. versionchanged:: 0.9.0
         Add value normalization to dict for more robust result processing.
-    
+
     .. versionadded:: 0.7.0
     """
     comparator_factory = BooleanComparator
@@ -524,20 +524,20 @@ class Boolean(TypeEngine):
                 return {self.get_col_spec(): value}
             return {self.get_col_spec(): bool(value)}
         return process
-    
+
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[bool]:
             if self._is_valueless_cell(value):
                 return None
 
             return value.get(self.get_col_spec())
-            
+
         return process
-    
+
     @property
     def python_type(self) -> Any:
         return bool
-    
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.CHECKBOX
 
@@ -581,9 +581,9 @@ def _parse_timezone(tz_name: str):
         return ZoneInfo(tz_name)
     except (ZoneInfoNotFoundError, ValueError) as e:
         raise ArgumentError(f"Invalid IANA timezone: '{tz_name}' for DateTimeRange") from e
-    
+
 def _detect_date_only(
-        start: Union[date, datetime, str], 
+        start: Union[date, datetime, str],
         end: Union[date, datetime, str]
 ) -> bool:
     def is_date_like(v: Union[date, datetime, str]):
@@ -601,8 +601,8 @@ class DateTimeRange:
     """Python domain object for Notion date types.
 
     This class provides a convenient Python type to natively represent Notion date types.
-    It fully supports dates (start only), intervals (start and end), and time zones. 
-    
+    It fully supports dates (start only), intervals (start and end), and time zones.
+
     .. versionadded:: 0.9.0
     """
     def __init__(
@@ -615,7 +615,7 @@ class DateTimeRange:
     ) -> None:
 
         # -----------------------------------------
-        # Detect intent BEFORE normalization: 
+        # Detect intent BEFORE normalization:
         # is it a date or a datetime
         # -----------------------------------------
         self._is_date_only = _detect_date_only(start_datetime, end_datetime)
@@ -645,11 +645,11 @@ class DateTimeRange:
 
         if self.end is not None and self.end < self.start:
             raise ValueError("End datetime must be >= start datetime")
-        
+
         if self._is_date_only and self.timezone is not None:
             raise ValueError(
                 "Date-only values cannot have a timezone"
-            )        
+            )
 
     # -----------------------------------------
     # JSON constructor
@@ -663,7 +663,7 @@ class DateTimeRange:
         is_date_only: bool
     ) -> DateTimeRange:
         """Trusted internal constructor.
-        
+
         This internal constructor is exclusively used by :meth:`DateTimeRange.from_json`.
         It trusts Notion to ensure wellformedness of date objects.
         Therefore, **no validation is done**.
@@ -679,7 +679,7 @@ class DateTimeRange:
         obj._validate_invariants()
 
         return obj
-    
+
     @classmethod
     def from_json(cls, value: Dict[str, Any]) -> DateTimeRange:
         """
@@ -725,7 +725,7 @@ class DateTimeRange:
             if end_dt:
                 end_dt = end_dt.replace(tzinfo=timezone)
 
-        return cls._from_parsed(start_dt, end_dt, timezone, is_date_only)    
+        return cls._from_parsed(start_dt, end_dt, timezone, is_date_only)
 
     def to_json(self) -> dict:
         def serialize(dt: Optional[datetime]) -> Optional[str]:
@@ -830,7 +830,7 @@ class DateTimeRange:
         def fmt(dt: datetime) -> str:
             if dt is None:
                 return "None"
-                       
+
             return dt.strftime(DEFAULT_DATETIME_FORMAT)
 
         if self.end:
@@ -840,7 +840,7 @@ class DateTimeRange:
 
 class Date(TypeEngine):
     """Convenient type engine class for "date" objects.
-    
+
     .. versionadded:: 0.8.0
         Operators supported by this type engine.
 
@@ -865,7 +865,7 @@ class Date(TypeEngine):
 
             if isinstance(value, str) and value.startswith(':'):
                 return {self.get_col_spec(): value}
-            
+
             try:
                 dtr = value if isinstance(value, DateTimeRange) else DateTimeRange(value)
             except Exception as e:
@@ -875,14 +875,14 @@ class Date(TypeEngine):
                 ) from e
 
             return dtr.to_json()
-        
+
         return process
 
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[DateTimeRange]:
             if self._is_valueless_cell(value):
                 return None
-            
+
             return DateTimeRange.from_json(value)
 
         return process
@@ -910,8 +910,8 @@ class Date(TypeEngine):
                 raise ValueError(
                     f"{self.get_col_spec()} filter does not accept date ranges; "
                     "use a single value (start only)"
-                )            
-            
+                )
+
             # -----------------------------------------
             # Extract start date (Notion filter semantics)
             # -----------------------------------------
@@ -949,7 +949,7 @@ class Date(TypeEngine):
     @property
     def python_type(self) -> Any:
         return tuple
-    
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.DATE
 
@@ -959,7 +959,7 @@ class Relation(TypeEngine):
     This class represents a Notion "relation" object and it enables to model inter-table links.
     It is used by the construct FOREIGN KEY.
 
-    .. versionadded:: 0.11.0    
+    .. versionadded:: 0.11.0
     """
 
     comparator_factory = RelationComparator
@@ -974,18 +974,18 @@ class Relation(TypeEngine):
 
     def get_col_spec(self) -> str:
         return "relation"
-    
+
     def get_notion_spec(self) -> dict:
         return {"relation": {"single_property": {}}}
-    
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.RELATION
-        
+
     def bind_processor(self):
         def process(value: Union[list[str], None]) -> Optional[dict]:
             if value is None:
                 return None
-            
+
             return {
                 self.get_col_spec(): [
                     {
@@ -994,18 +994,18 @@ class Relation(TypeEngine):
                     for page_id in value
                 ]
             }
-        
+
         return process
-    
+
     def result_processor(self):
         def process(value: Optional[dict]) -> Optional[list[str]]:
             if self._is_valueless_cell(value):
                 return None
-            
+
             return [d["id"] for d in value["relation"]]
-        
+
         return process
-        
+
 
 class UUID(TypeEngine):
     """Base type engine class for UUID ids.
@@ -1013,7 +1013,7 @@ class UUID(TypeEngine):
     .. versionchanged:: 0.9.0
         :meth:`bind_processor` raises :exc:`normlite.exceptions.InvalidRequestError`:
         Object ids are in Notion **read-only** properties.
-    
+
     .. versionadded:: 0.7.0
     """
 
@@ -1037,10 +1037,10 @@ class UUID(TypeEngine):
     @property
     def python_type(self) -> Any:
         return str
-    
+
 class PropertyId(TypeEngine):
     """Type engine class for property identifiers.
-    
+
     .. versionadded:: 0.8.0
         This solves the issue of generating the description for pages that were created or updated.
         See issue `#136 <https://github.com/giant0791/normlite/issues/136>`.
@@ -1057,18 +1057,18 @@ class PropertyId(TypeEngine):
         def process(value: Optional[str]) -> Optional[str]:
             if value is None:
                 return None
-            return value      
+            return value
         return process
 
     def get_col_spec(self):
         raise NotImplementedError('Column spec is not supported for this type engine subclass.')
-  
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.PROPERTY_ID
 
 class ObjectId(UUID):
     """Special UUID type representing Notion's "id" property.
-    
+
     .. versionadded:: 0.7.0
     """
     comparator_factory = ObjectIdComparator
@@ -1077,7 +1077,7 @@ class ObjectId(UUID):
 
     def get_col_spec(self):
         raise NotImplementedError('Column spec is not supported for this type engine subclass.')
-  
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.ID
 
@@ -1087,13 +1087,13 @@ class ArchivalFlag(Boolean):
     .. versionchanged:: 0.9.0
         This version support provision of the DBAPI type code for full integration into result-set
         schema information.
-    
+
     .. versionadded:: 0.7.0
     """
 
     def get_col_spec(self):
         raise NotImplementedError('Column spec is not supported for this type engine subclass.')
-    
+
     def bind_processor(self):
         raise InvalidRequestError(
             "Cannot bind values to system-managed preperties 'is_archived' or 'is_deleted' columns."
@@ -1105,13 +1105,13 @@ class ArchivalFlag(Boolean):
                 return None
             return bool(value)
         return process
-    
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.ARCHIVAL_FLAG
 
 class TimeStampStringISO8601(TypeEngine):
     """Special type representing Notion "created_time" and "last_edited_time" keys.
-    
+
     .. versionadded:: 0.9.0
     """
 
@@ -1121,7 +1121,7 @@ class TimeStampStringISO8601(TypeEngine):
 
     def get_col_spec(self):
         raise NotImplementedError('Column spec is not supported for this type engine subclass.')
-    
+
     def _validate_iso8601(self, value: str) -> None:
         """Validate ISO 8601 compatibility."""
         try:
@@ -1149,13 +1149,13 @@ class TimeStampStringISO8601(TypeEngine):
 
             self._validate_iso8601(value)
             return value
-        
+
         return process
 
     @property
     def python_type(self) -> Any:
         return str
-    
+
     def get_dbapi_type(self) -> DBAPITypeCode:
         return DBAPITypeCode.TIMESTAMP
 

@@ -103,7 +103,7 @@ def test_compile_drop_table_no_database_id_raises(students: Table, engine: Engin
 
     with pytest.raises(CompileError, match='neither created or reflected.'):
         _ = stmt.compile(engine._sql_compiler)
-        
+
 def test_compile_drop_table_operation(students: Table, engine: Engine):
     students._sys_columns["object_id"]._value = "12345678-9090-0606-1111-123456789012"
     stmt = DropTable(students)
@@ -119,7 +119,7 @@ def test_compile_drop_table_payload(students: Table, engine: Engine):
     compiled = stmt.compile(engine._sql_compiler)
     as_dict = compiled.as_dict()
     payload = as_dict['payload']
-    
+
     assert 'in_trash' in compiled._execution_binds
 
     in_trash_param: BindParameter = compiled._execution_binds['in_trash']

@@ -43,7 +43,7 @@ def test_insert_rowcount(
             stmt = insert(students).values(**values)
             results.append(connection.execute(stmt))
 
-    total_rows_inserted = sum([r.rowcount for r in results])     
+    total_rows_inserted = sum([r.rowcount for r in results])
 
     assert total_rows_inserted == 5
     assert results[0].rowcount == 1
@@ -66,7 +66,7 @@ def test_no_returning_no_returning_implicit_returns_none_pk(
 
 def test_no_returning_returning_implicit_false_returns_pks_only(
     engine: Engine,
-    students: Table        
+    students: Table
 ):
     # create the table
     students.create(bind=engine, checkfirst=True)
@@ -86,7 +86,7 @@ def test_no_returning_returning_implicit_false_returns_pks_only(
 
 def test_returning_returning_implicit_false_returns_all_cols_specified(
     engine: Engine,
-    students: Table        
+    students: Table
 ):
     # create the table
     students.create(bind=engine, checkfirst=True)
@@ -107,7 +107,7 @@ def test_returning_returning_implicit_false_returns_all_cols_specified(
 
 def test_returning_includes_object_id_explicitly_only(
     engine: Engine,
-    students: Table        
+    students: Table
 ):
     # create the table
     students.create(bind=engine, checkfirst=True)
@@ -129,7 +129,7 @@ def test_returning_includes_object_id_explicitly_only(
 
 def test_returning_does_not_include_object_id_by_default(
     engine: Engine,
-    students: Table        
+    students: Table
 ):
     # create the table
     students.create(bind=engine, checkfirst=True)
@@ -153,7 +153,7 @@ def test_returning_does_not_include_object_id_by_default(
 
 def test_returning_all_cols(
     engine: Engine,
-    students: Table        
+    students: Table
 ):
     # create the table
     students.create(bind=engine, checkfirst=True)
@@ -169,15 +169,15 @@ def test_returning_all_cols(
 
     row = assert_single_row(result)
     columns = [
-        "object_id", 
-        "is_archived", 
-        "is_deleted", 
-        "created_at", 
-        "name", 
-        "id", 
+        "object_id",
+        "is_archived",
+        "is_deleted",
+        "created_at",
+        "name",
+        "id",
         "is_active",
         "start_on",
-        "grade",    
+        "grade",
     ]
 
     assert_columns(row, columns)
@@ -194,7 +194,7 @@ def test_bulk_insert_with_exec_params(engine: Engine, students: Table):
             generate_values()
         ]
         result_insert = connection.execute(stmt, parameters=params)
-        
+
     assert result_insert.rowcount == 2
 
 def test_bulk_insert_with_values(engine: Engine, students: Table):
@@ -206,7 +206,7 @@ def test_bulk_insert_with_values(engine: Engine, students: Table):
     )
     with engine.connect() as connection:
         result_insert = connection.execute(stmt)
-        
+
     assert result_insert.rowcount == 2
 
 def test_bulk_insert_with_exec_params_returning(engine: Engine, students: Table):

@@ -18,20 +18,20 @@
 
 """
 This example shows how to add rows to a table using a bulk insert.
-It uses an in-memory client. 
+It uses an in-memory client.
 """
 
 
 from normlite import (
-    create_engine, 
-    insert, 
+    create_engine,
+    insert,
     select,
-    Table, 
+    Table,
     Column,
-    String, 
+    String,
     Date,
     DateTimeRange,
-    Integer, 
+    Integer,
     MetaData,
 )
 
@@ -63,7 +63,7 @@ with engine.connect() as connection:
         parameters=[
             {"name": "project_x", "start": DateTimeRange(start_datetime="2022-01-01"), "duration": 32},
             {"name": "project alpha", "start": DateTimeRange(start_datetime="2023-02-01"), "duration": 64},
-            {"name": "project_beta", "start": DateTimeRange(start_datetime="2025-06-01"), "duration": 128},            
+            {"name": "project_beta", "start": DateTimeRange(start_datetime="2025-06-01"), "duration": 128},
         ]
     )
     rows = result.all()

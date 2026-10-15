@@ -28,20 +28,20 @@ from normlite.sql.type_api import Float, Integer, Number, Numeric, TypeEngine
 
 class _FuncNameSpace:
     """Function namespace exposed as :attr:`func` to users.
-    
+
     .. versionadded:: 0.12.0
     """
     def count(self, column: Optional[Column] = None) -> Count:
         """Count column values for rows belonging to the column's parent table.
 
         Args:
-            column (Column): Column to count values on. 
+            column (Column): Column to count values on.
 
         Returns:
             Count: A new instance of :class:`Count`.
         """
         return Count(column)
-    
+
     def sum(self, column: Column) -> Sum:
         """Sums column values for rows belonging to the column's parent table
 
@@ -55,7 +55,7 @@ class _FuncNameSpace:
             Sum: A new instance of :class:`Sum`
         """
         return Sum(column)
-    
+
     def avg(self, column: Column) -> Avg:
         """Averages column values for rows belonging to the column's parent table
 
@@ -108,10 +108,10 @@ class Count(FunctionElement):
 
     def __init__(self, column: Optional[Column] = None) -> None:
         super().__init__("count", column)
-    
+
     def _infer_return_type(self, column: Column) -> Optional[TypeEngine]:
         return Integer()
-    
+
 class Sum(FunctionElement):
     __visit_name__ = "sum"
 
@@ -127,7 +127,7 @@ class Avg(FunctionElement):
 
     def __init__(self, column: Column):
         self._raise_if_is_not_instance(column.type_, Number, "avg")
-        super().__init__("avg", column)    
+        super().__init__("avg", column)
 
     def _infer_return_type(self, column: Column) -> Optional[TypeEngine]:
         return Float()

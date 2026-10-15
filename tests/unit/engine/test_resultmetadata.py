@@ -7,8 +7,8 @@ from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
 
 
 # -------------------------------------------------------------
-# Important Pytest Constraint: 
-# Fixtures like row_description cannot be used inside 
+# Important Pytest Constraint:
+# Fixtures like row_description cannot be used inside
 # parametrize directly.
 # -------------------------------------------------------------
 ROW_DESCRIPTION = (

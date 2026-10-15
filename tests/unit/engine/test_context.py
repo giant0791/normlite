@@ -355,13 +355,13 @@ def test_execution_options_precedence(engine, students, students_db):
 
 def test_result_idempotent(engine, students, students_db):
     result, ctx = run_context(
-        engine, 
-        insert(students), 
+        engine,
+        insert(students),
         params={
-            "name": "Alice", 
-            "id": 123456, 
-            "is_active": True, 
-            "start_on": date(1999,1,1), 
+            "name": "Alice",
+            "id": 123456,
+            "is_active": True,
+            "start_on": date(1999,1,1),
             "grade": "B"
         }
     )

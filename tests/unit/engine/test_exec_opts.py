@@ -39,11 +39,11 @@ def test_engine_execution_options_are_used_as_defaults(engine: Engine, students:
 
 def test_connection_execution_options_overrides_engine(engine: Engine, students: Table):
     """Connection-level overrides engine options.
-    
+
     Invariant tested
         - Connection overrides engine defaults
         - Engine options remain unchanged
-    
+
     """
     db_id = create_students_db(engine)
     attach_table_oid(students, db_id)
@@ -59,7 +59,7 @@ def test_connection_execution_options_overrides_engine(engine: Engine, students:
 
 def test_statement_execution_options_overrides_connection(engine: Engine, students: Table):
     """Statement-level execution options override connection.
-    
+
     Invariant tested
         - Statement options override both engine and connection
     """
@@ -79,7 +79,7 @@ def test_statement_execution_options_overrides_connection(engine: Engine, studen
 
 def test_execute_time_execution_options_have_highest_precedence(engine: Engine, students: Table):
     """execute()-time options override everything.
-    
+
     Invariant tested
         - execute(..., execution_options=...) wins over all others
     """
@@ -97,7 +97,7 @@ def test_execute_time_execution_options_have_highest_precedence(engine: Engine, 
 
 def test_execution_options_are_merged_not_replaced(engine: Engine, students: Table):
     """Partial override does not erase unrelated options.
-    
+
     Invariant tested
         - Resolution is a merge, not a replacement
     """
@@ -132,7 +132,7 @@ def test_execution_options_are_immutable_in_context(engine: Engine, students: Ta
 
 def test_execution_options_are_isolated_per_execution(engine: Engine, students: Table):
     """Execution options do not leak between executions
-    
+
     Invariant tested
         - Statement-level options do not persist across executions
     """
@@ -150,11 +150,11 @@ def test_execution_options_are_isolated_per_execution(engine: Engine, students: 
         assert ctx1.execution_options.get("page_size") == 10
         assert ctx2.execution_options.get("page_size") == 100
 
-@pytest.mark.parametrize('option', 
+@pytest.mark.parametrize('option',
     [
         {"isolation_level": "AUTOCOMMIT"},
         {"compiled_cache": {"some_cache": []}},
-    ], 
+    ],
     ids=lambda opt: list(opt.keys())[0]
 )
 def test_setting_option_at_wrong_level_raises(option: dict, engine: Engine, students: Table):

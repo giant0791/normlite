@@ -28,7 +28,7 @@ class BaseProxyClient(ABC):
         Must raise ProxyError on failure.
         """
         raise NotImplementedError
-    
+
     @abstractmethod
     def begin(self) -> requests.Response:
         """Begin a new transaction.
@@ -37,7 +37,7 @@ class BaseProxyClient(ABC):
             requests.Response: The returned response object.
         """
         raise NotImplementedError
-    
+
     @abstractmethod
     def insert(self, tx_id: str, payload: dict) -> requests.Response:
         """Add an insert operation to the specified transaction.
@@ -49,7 +49,7 @@ class BaseProxyClient(ABC):
             payload (dict): The payload of the insert operation.
 
         Returns:
-            requests.Response: The returned response object. 
+            requests.Response: The returned response object.
         """
 
     @abstractmethod

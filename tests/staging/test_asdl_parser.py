@@ -8,11 +8,11 @@ def test_asdl_select_statement():
     asdl_def = """
         module sql {
             stmt = SelectStmt(columns: column*, from_table: identifier, where: expr?, order_by: order_item*, limit: int?)
-            
+
             column = Column(name: identifier, alias: identifier?)
-            
+
             order_item = OrderItem(expr: expr, direction: order_dir)
-            
+
             expr = BinaryOp(left: expr, op: operator, right: expr)
                 | Identifier(name: identifier)
                 | Literal(value: constant)
@@ -27,12 +27,12 @@ def test_asdl_select_statement():
         }
     """
 
-    # 2. Define a sample SELECT statement to 
+    # 2. Define a sample SELECT statement to
     sql_sample = """
-        SELECT id, name AS username 
-        FROM users 
-        WHERE id > 0 AND status = 'active' 
-        ORDER BY name ASC 
+        SELECT id, name AS username
+        FROM users
+        WHERE id > 0 AND status = 'active'
+        ORDER BY name ASC
         LIMIT 10
     """
 

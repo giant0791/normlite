@@ -7,7 +7,7 @@ from datetime import datetime
 from unittest.mock import patch
 import itertools
 
-from normlite.notion_sdk.client import FileBasedNotionClient, InMemoryNotionClient, NotionError  
+from normlite.notion_sdk.client import FileBasedNotionClient, InMemoryNotionClient, NotionError
 
 @pytest.fixture
 def fresh_client():
@@ -115,7 +115,7 @@ def test_update_page(fresh_client):
         'parent': {'type': 'page_id', 'page_id': '11111111-1111-1111-1111-111111111111'},
         'properties': {
             'Name': {'title': [{'text': {'content': 'Page 1'}}]}
-        }        
+        }
     })
     page_id = new_page.get('id')
     assert page_id
@@ -125,8 +125,8 @@ def test_update_page(fresh_client):
         'data': {'archived': True}
     })
 
-    assert updated_page['archived'] 
-    assert fresh_client._get(page_id) == updated_page 
+    assert updated_page['archived']
+    assert fresh_client._get(page_id) == updated_page
 
 def test_store_isolated_between_instances():
     InMemoryNotionClient._store = {"store": []}
@@ -147,7 +147,7 @@ def test_store_isolated_between_instances():
     # To truly isolate, one should call `_create_store([])` in the second client
     client2._create_store([])
     assert client2._store_len() == 1  # Only info_schema after reset
-    
+
 # ============== Tests for FileBasedNotionClient =========================
 
 @patch("normlite.notion_sdk.client.uuid.uuid4")
@@ -241,13 +241,13 @@ def test_dump_and_load_symmetry(mock_datetime, mock_uuid4, tmp_path, fixed_datet
 
         - You're mocking uuid.uuid4() with a finite list of 4 UUIDs, passed as mock_uuid4.side_effect = fixed_uuids
 
-        - But when re-entering the context manager (with FileBasedNotionClient(...)), it tries to 
+        - But when re-entering the context manager (with FileBasedNotionClient(...)), it tries to
           create the information_schema page again, which also calls uuid.uuid4() internally
 
-        - That causes the UUID mock to run out of values → StopIteration    
+        - That causes the UUID mock to run out of values → StopIteration
 
     Adding an additional mocked id in the affected fixture resolves the issue.
-    Here, you decided to avoid hardcoding limits and added the fixed_uuid_generator fixture, which 
+    Here, you decided to avoid hardcoding limits and added the fixed_uuid_generator fixture, which
     provides an infinite generator.
     This way uuid4() never runs out.
     """

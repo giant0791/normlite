@@ -114,7 +114,7 @@ _OPERATORS = {
     "relation.is_empty":          lambda a, _: not a,
     "relation.is_not_empty":      lambda a, _: bool(a),
     "relation.contains":          lambda a, b: bool(a) and b in [i["id"] for i in a],
-    "relation.does_not_contain":  lambda a, b: not a or b not in [i["id"] for i in a],    
+    "relation.does_not_contain":  lambda a, b: not a or b not in [i["id"] for i in a],
 }
 
 _PRESENCE_TESTS = {"is_empty", "is_not_empty"}
@@ -122,7 +122,7 @@ _PRESENCE_TESTS = {"is_empty", "is_not_empty"}
 # these must reach a determinate verdict on a NULL cell
 
 _COMPARISONS = {
-    key.split(".", 1)[1] 
+    key.split(".", 1)[1]
     for key in _OPERATORS
 } - _PRESENCE_TESTS
 # set of comparison operators: when comparing with None value they all return UNKNOWN
@@ -136,8 +136,8 @@ PageProperties = dict[str, dict]
 PageMap = dict["Table", PageProperties]
 
 def eval3(
-    predicate: ColumnElement, 
-    page_or_pagemap: Union[PageProperties, PageMap], 
+    predicate: ColumnElement,
+    page_or_pagemap: Union[PageProperties, PageMap],
     schema: dict = None
 ) -> Ternary:
     if isinstance(predicate, UnaryExpression):
@@ -158,7 +158,7 @@ def eval3(
         prop_val = page.get(predicate.column.name)
         if prop_val is None and op not in _ABSENT_AWARE:
             # guard against cells shape: {"a": None}
-            # Indistinguishable from absent key {"b": ...} 
+            # Indistinguishable from absent key {"b": ...}
             # the absent key case needs the schema argument
             return UNKNOWN
 

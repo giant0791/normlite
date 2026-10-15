@@ -19,7 +19,7 @@
 Provide constants and definitions for the PEP 249 DBAPI compliant ``normlite`` implementation.
 
 .. versionadded:: 0.8.0
- 
+
 """
 from enum import StrEnum
 
@@ -29,7 +29,7 @@ class DBAPITypeCode(StrEnum):
 
     .. versionchanged:: 0.12.0
         :attr:`NUMBER_FLOAT` added to support ``func.avg()`` to return float values.
-    
+
     .. versionadded:: 0.8.0
         With this enum the module :mod:`dbapi2.py` is more PEP 249 compliant.
     """

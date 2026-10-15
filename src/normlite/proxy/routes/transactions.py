@@ -37,13 +37,13 @@ def commit_transaction(tx_id):
         return jsonify(
             {
                 "error": {
-                    "code": "txn_not_found", 
+                    "code": "txn_not_found",
                     "message": f"Transaction: {tx_id} not found"
                 }
             }
         ), 404
     try:
-        tx.commit() 
+        tx.commit()
         return jsonify(
             {
                 "transaction_id": tx_id,
@@ -51,7 +51,7 @@ def commit_transaction(tx_id):
                 "data": tx.results
             }
         ), 200
-    
+
     except Exception as e:
         return jsonify(
             {
@@ -72,7 +72,7 @@ def rollback_transaction(tx_id):
         return jsonify(
             {
                 "error": {
-                    "code": "txn_not_found", 
+                    "code": "txn_not_found",
                     "message": f"Transaction: {tx_id} not found"
                 }
             }

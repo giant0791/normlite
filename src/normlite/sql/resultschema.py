@@ -25,9 +25,9 @@
 
     * "id" - string (UUIDv4), unique identifier of the page.
     * "created_time" - Python datetime normalized string from ISO 8601 ("+Z" replaced by "+0:00"),
-      date and time when this page was created. 
+      date and time when this page was created.
     * "last_edited_time" - Python datetime normalized string from ISO 8601 ("+Z" replaced by "+0:00"),
-      date and time when this page was updated. 
+      date and time when this page was updated.
     * "archived" - boolean, backward compatible alias for "in_trash".
     * "in_trash" - boolean, whether the page has been trashed.
 
@@ -166,10 +166,10 @@ class SchemaInfo:
             )
 
         return cls(tuple(result_columns))
-    
+
     @classmethod
     def from_join(
-        cls, 
+        cls,
         left: Table,
         right: Table,
         *entities: Column
@@ -206,10 +206,10 @@ class SchemaInfo:
             for rc in entities
         ]
         return SchemaInfo(result_cols)
-    
+
     @classmethod
     def from_aggregate(
-        cls, 
+        cls,
         *entities: FunctionElement
     ) -> SchemaInfo:
         disambiguate_names: dict[FunctionElement, str] = {}
@@ -247,17 +247,17 @@ class SchemaInfo:
         ]
 
         return SchemaInfo(result_cols)
-    
+
     @classmethod
     def from_join_sides(
-        cls, 
-        left: Table, 
-        right: Table, 
-        projection: Optional[ReadOnlyColumnCollection], 
+        cls,
+        left: Table,
+        right: Table,
+        projection: Optional[ReadOnlyColumnCollection],
         onclause: Column
     ) -> tuple[SchemaInfo, SchemaInfo]:
         """Construct the schema info objects for the JOIN left and right side
-        
+
         .. versionadded:: 0.13.0
         """
         # ``projection`` is None only for low-level callers that mean "project
@@ -291,10 +291,10 @@ class SchemaInfo:
 
         return (left_schema, right_schema)
 
-        
+
     def as_sequence(self) -> Sequence[tuple]:
         """Provide the description for DBAPI cursors.
-        
+
         This method is the official API for :class:`SchemaInfo`.
         """
         entries = []
@@ -302,7 +302,7 @@ class SchemaInfo:
         for col in self.columns:
             entry = (
                 col.name,
-                col.type_code,      
+                col.type_code,
                 None,                        # display_size
                 None,                        # internal_size
                 None,                        # precision
@@ -334,7 +334,7 @@ class SchemaInfo:
             return self._index_map[name]
         except KeyError:
             raise NoSuchColumnError(f"Column: '{name}'")
-        
+
     def column_getter(self, name: str) -> Callable[[Sequence[Any]], Any]:
         idx = self.column_index(name)
 
@@ -342,14 +342,14 @@ class SchemaInfo:
             return row[idx]
 
         return getter
-    
+
     def __contains__(self, key: str) -> bool:
         if not isinstance(key, str):
             raise ArgumentError(
                 "__contains__ requires a string argument"
             )
-        
+
         if key not in self._index_map:
             return False
-        
+
         return True

@@ -27,9 +27,9 @@ from normlite.notiondbapi.page_iterator import JsonPageSource, PageIterator
 from normlite.notiondbapi.resultset import ResultSet
 
 DBAPIParamStyle = Literal[
-    'qmark',     
-    'numeric',   
-    'named',     
+    'qmark',
+    'numeric',
+    'named',
     'format',
     'pyformat'
 ]
@@ -45,14 +45,14 @@ type DBAPIErrorHandlerType = Callable[[Connection, Cursor, Type[BaseException], 
  """
 
 def _default_errorhandler(
-    connection: Connection, 
-    cursor: Cursor, 
+    connection: Connection,
+    cursor: Cursor,
     errorclass: Type[BaseException],
     errorvalue: BaseException
 ) -> None:
-                          
+
     """Default PEP 249 error handler.
-    
+
     The default error handler simply raises the ``errorvalue``.
 
     .. versionadded:: 0.11.0
@@ -63,7 +63,7 @@ def _default_errorhandler(
 class Error(Exception):
     """Base class of all other error exceptions.
 
-    It can be used this to catch all errors with one single ``except`` statement. 
+    It can be used this to catch all errors with one single ``except`` statement.
     """
     pass
 
@@ -74,7 +74,7 @@ class InterfaceError(Error):
     """
 
 class DatabaseError(Error):
-    """Exception raised for errors that are related to the database. 
+    """Exception raised for errors that are related to the database.
     """
 
 class InternalError(Error):
@@ -83,24 +83,24 @@ class InternalError(Error):
     For example, the cursor is not valid anymore, an unexpected object has been returned by
     the underlying database driver (i.e. the Notion API).
    """
-    
+
 class OperationalError(DatabaseError):
-    """Exception raised for errors that are related to the database’s operation and not necessarily under 
+    """Exception raised for errors that are related to the database’s operation and not necessarily under
     the control of the programmer.
 
-    Example situations are an unexpected disconnect occurs, the data source name is not found, 
-    a transaction could not be processed, a memory allocation error occurred during processing, etc. 
+    Example situations are an unexpected disconnect occurs, the data source name is not found,
+    a transaction could not be processed, a memory allocation error occurred during processing, etc.
 
     .. versionadded:: 0.7.0
 
     """
 
 class ProgrammingError(DatabaseError):
-    """Exception raised for errors that are related to the database’s operation and not necessarily under 
+    """Exception raised for errors that are related to the database’s operation and not necessarily under
     the control of the programmer.
 
-    Example situations are an unexpected disconnect occurs, the data source name is not found, 
-    a transaction could not be processed, a memory allocation error occurred during processing, etc. 
+    Example situations are an unexpected disconnect occurs, the data source name is not found,
+    a transaction could not be processed, a memory allocation error occurred during processing, etc.
 
     .. versionadded:: 0.8.0
 
@@ -116,7 +116,7 @@ _desc_mapper: dict[str, str] = {
 
 class _Description:
     """Internal DBAPI representation of cursor.description.
-    
+
     .. versionadded:: 0.9.0
     """
 
@@ -130,7 +130,7 @@ class _Description:
 
 class Cursor:
     """Provide database base cursor functionalty according to the DBAPI 2.0 specification (PEP 249).
-    
+
     Note:
         the :class:`Cursor` does not support transaction awareness. Use :class:`CompositeCursor` for fully
         DBAPI 2.0 compliant cursor.
@@ -144,10 +144,10 @@ class Cursor:
 
     _errorhandler: DBAPIErrorHandlerType
     """Read/write attribute which references an error handler to call in case an error condition is met.
-    
+
     .. versionadded:: 0.11.0
     """
-    
+
     def __init__(self, connection: Connection) -> None:
         self._connection = connection
         """The DBAPI connection this cursor refers to.
@@ -166,56 +166,56 @@ class Cursor:
 
         self._result_sets: list[ResultSet] = []
         """The result sets returned by bulk operations.
-        
+
         .. versionadded:: 0.9.0
         """
-        
+
         self._result_index: int = 0
         """The current result set to be consumed in the result sets sequence.
-        
+
         .. versionadded:: 0.9.0
         """
-        
+
         self._result_set = None
         """The result set returned by the last :meth:`.execute()`. It is set by :meth:`._parse_result_set()`
-        
+
         ..version-removed:: 0.9.0
             Outdated internal attribute. This will be removed in the next version.
         """
-        
+
         self._paramstyle: DBAPIParamStyle = 'named'
         """The default parameter style applied."""
 
         self._description: Sequence[tuple] = None
         """Provide information describing one result column.
-        
-        This attribute is set by the :meth:`normlite.engine.context.ExecutionContext.pre_exec` via the :meth:`_inject_description` 
+
+        This attribute is set by the :meth:`normlite.engine.context.ExecutionContext.pre_exec` via the :meth:`_inject_description`
         if the operation to be executed is a DML constrcut. For DML statements the table involved is the authoritative source of truth
         for the schema (i.e. description).
 
         .. versionchanged:: 0.9.0
             In this version, the :attr:`_description` is now used to buffer the description until the
             :meth:`_parse_result_set` is called. This method now uses the new :class:`normlite.notiondbapi.resultset.ResultSet`
-            to do the parsing of the Notion returned object. The new class for the result set takes care to 
-            either return the injected description, in the DML case, or to construct the description from the retrieved database, 
-            in the DDL case. 
+            to do the parsing of the Notion returned object. The new class for the result set takes care to
+            either return the injected description, in the DML case, or to construct the description from the retrieved database,
+            in the DDL case.
 
         """
 
         self._closed = False
         """Whether this cursor is closed. Always ``False`` after initialitation."""
-        
+
         self.arraysize = 1
-        """The number of rows to fetch at a time with :meth:`fetchmany`. 
-        
+        """The number of rows to fetch at a time with :meth:`fetchmany`.
+
         It defaults to 1 meaning to fetch a single row at a time.
-        
+
         .. versionadded:: 0.9.0
         """
 
         self._batch_source = None
         """JSON page adapter for lazy fetching of batches of pages.
-        
+
         .. versionadded:: 0.13.0
         """
 
@@ -233,7 +233,7 @@ class Cursor:
     @property
     def errorhandler(self) -> DBAPIErrorHandlerType:
         return self._errorhandler or self._connection.errorhandler
-    
+
     @errorhandler.setter
     def errorhandler(self, fn: DBAPIErrorHandlerType) -> None:
         self._errorhandler = fn
@@ -243,14 +243,14 @@ class Cursor:
         """Provide access to current result set."""
         if not self._result_sets:
             return None
-        return self._result_sets[self._result_index]    
+        return self._result_sets[self._result_index]
 
     @property
     def description(self) -> Optional[Sequence[tuple]]:
         """Provide the cursor description.
-        
-        This read-only attribute is a sequence of 7-item sequences.   
-        
+
+        This read-only attribute is a sequence of 7-item sequences.
+
         Each of these sequences contains information describing one result column:
 
         * ``name``: The column name.
@@ -258,47 +258,47 @@ class Cursor:
         * ``type_code``: The type code used to map the Notion to the Python type system. Currently, it is just a string.
 
         * ``display_size``: Not used. Always ``None``.
-        
+
         * ``internal_size``: Not used. Always ``None``.
 
         * ``precision``: Not used. Always ``None``.
-        
+
         * ``scale``: Not used. Always ``None``.
 
         * ``null_ok``: Not used. Always ``None``.
 
-        This attribute will be ``None`` for operations that do not return rows or if the cursor has not had an operation invoked via the 
+        This attribute will be ``None`` for operations that do not return rows or if the cursor has not had an operation invoked via the
         :meth:`execute()` or :meth:`executemany()` methods yet.
         """
         rs = self._current_result_set
         if rs is not None:
             return rs.description
-    
+
         return None
-    
+
     @property
     def closed(self) -> bool:
         """``True`` if the cursor is closed.
-        
+
         .. admonition:: DBAPI extension
             :class: note
 
             The closed attribute is a normlite extension to the DBAPI 2.0.
 
         .. versionadded:: 0.9.0
-            
+
         """
         return self._closed
-    
+
     @property
     def rowcount(self) -> int:
-        """This read-only attribute specifies the number of rows that 
+        """This read-only attribute specifies the number of rows that
            the last :meth:`.execute` / :meth:`executemany` produced.
 
         .. important::
             This version supports non paginated results. Thus, the :attr:`rowcount` is *always*
             equal to the rows contained in the current result set.
-            It supports result streaming (paginated results): the :attr:`rowcount` remains -1 
+            It supports result streaming (paginated results): the :attr:`rowcount` remains -1
             *until all pages have been retrieved*. Once this condition is fulfilled, :attr:`rowcount`
             will provide the sum of all retrieved pages.
             For example, let's assume the query being executed returns 100 rows. Notion returns batches
@@ -306,8 +306,8 @@ class Cursor:
             been retrieved.
 
         Returns:
-            int: Number of rows. `-1` if in case no :meth:`.execute()` has been performed 
-                 on the cursor or the rowcount of the last operation cannot be 
+            int: Number of rows. `-1` if in case no :meth:`.execute()` has been performed
+                 on the cursor or the rowcount of the last operation cannot be
                  determined by the interface.
 
         .. versionchanged:: 0.13.0
@@ -315,28 +315,28 @@ class Cursor:
 
         .. versionchanged:: 0.11.0
             This version adds support for row counting when result streaming (lazy page fetching) is active.
-        
+
         .. versionchanged:: 0.9.0
             This version adds support for row counting in case of multiple result sets
         """
         if not self._result_sets:
             return -1
-        
+
         if self._batch_source is not None and not self._source_exhausted:
             # result streaming ongoing: total is unknown until every page is pulled
             return -1
-        
+
         # sum of all result sets in the cursor
         return sum(len(rs) for rs in self._result_sets)
-        
+
     @property
     def lastrowid(self) -> Optional[int]:
         """This read-only attribute provides the rowid of the last modified row.
 
-        Most Notion API calls return an object with an id, which is used as rowid. 
+        Most Notion API calls return an object with an id, which is used as rowid.
         If the operation does not set a rowid, this attribute is set to ``None``.
         In case of bulk execution, it returns the rowid of the last modified row
-        belonging to the current result set. 
+        belonging to the current result set.
 
         .. admonition:: DBAPI extension
             :class: note
@@ -346,10 +346,10 @@ class Cursor:
             ``normlite`` considers inserted/updated/deleted rows as modified rows.
             This means that :attr:`.lastrowid` returns non ``None`` values after INSERT/UPDATE/DELETE statements.
 
-            ``normlite`` also defines semantics of ::attr::`.lastrowid` in case the last executed 
+            ``normlite`` also defines semantics of ::attr::`.lastrowid` in case the last executed
             statement modified more than one row, e.g. when using multi-row INSERT/UPDATE/DELETE statements.
-            
-            :attr:`.lastrowid` returns a 128-bit integer representation of the object id, which can be 
+
+            :attr:`.lastrowid` returns a 128-bit integer representation of the object id, which can be
             used to directly access Notion objects.
 
         Example:
@@ -358,7 +358,7 @@ class Cursor:
             680dee41-b447-451d-9d36-c6eaff13fb46
 
         Returns:
-            Optional[int]: A 128-bit integer representing the UUID object id or `None`. 
+            Optional[int]: A 128-bit integer representing the UUID object id or `None`.
 
         .. versionchanged:: 0.9.0
             This version derives the last inserted rowid from the new attribute
@@ -367,48 +367,48 @@ class Cursor:
         """
         rs = self._current_result_set
         if rs is None:
-            return None       
-        
+            return None
+
         # extract the object UUID of the last row as 128-bit integer
         last_inserted_rowids = rs.last_inserted_rowids
         if last_inserted_rowids is None:
             # no rows modified
             return None
-        
+
         return uuid.UUID(last_inserted_rowids[-1][0]).int
-    
+
     @property
     def lastrowid_as_string(self) -> Optional[str]:
         rs = self._current_result_set
         if rs is None:
-            return None       
-        
+            return None
+
         # extract the object UUID of the last row as 128-bit integer
         last_inserted_rowids = rs.last_inserted_rowids
         if last_inserted_rowids is None:
             # no rows modified
             return None
-        
+
         return last_inserted_rowids[-1][0]
-    
+
     @property
     def _last_inserted_row_ids(self) -> Optional[list[tuple]]:
         """Return all row ids of the last inserted rows as flattened out list.
-        
+
         .. versionadded:: 0.9.0
         """
         all_ids = []
         for rs in self._result_sets:
             if rs.last_inserted_rowids is not None:
                 all_ids.extend(rs.last_inserted_rowids)
-        
+
         return all_ids
-        
+
     @property
     def paramstyle(self) -> DBAPIParamStyle:
-        """String constant stating the type of parameter marker formatting expected by the interface. 
-            
-        
+        """String constant stating the type of parameter marker formatting expected by the interface.
+
+
         Supported values are:
             ``named``: Named mark style, e.g. ``WHERE name=:name``
 
@@ -419,9 +419,9 @@ class Cursor:
             DBAPIParamStyle: The paramstyle currently in use.
         """
         return self._paramstyle
-    
+
     def _inject_description(
-        self, 
+        self,
         schema_entries: tuple[tuple, ...],
     ) -> None:
         self._description = schema_entries
@@ -437,7 +437,7 @@ class Cursor:
         """Parse the JSON object returned by the command execution and add it to the current result set.
 
         .. versionchanged:: 0.9.0
-            This method now fully supports multiple result sets and it has been renamed from 
+            This method now fully supports multiple result sets and it has been renamed from
             `_parse_result_set()`.
         """
         self._check_closed()
@@ -468,7 +468,7 @@ class Cursor:
             This version uses the new redesigned iterator based :class:`normlite.notiondbapi.resultset.ResultSet`
             class.
             Additionally, it supports bulk executions.
-            
+
         .. versionchanged:: 0.5.0
             Calling this method on a closed cursor raises the :exc:`Error`.
 
@@ -482,11 +482,11 @@ class Cursor:
                 'or no call was issued yet '
                 'or you are attempting to fetch from an empty result set. '
                 'Hint: .rowcount is 0 if .execute*() did not produce any result set '
-                'or -1 if no call was issued yet.' 
+                'or -1 if no call was issued yet.'
             )
 
         return self
-    
+
     def _try_fetch_next(self) -> Optional[tuple]:
         batch = self._next_batch()
         if not batch:                     # None *or* empty: nothing to hand back
@@ -507,8 +507,8 @@ class Cursor:
 
         This method returns the next row or ``None`` when no more data is available.
 
-        Note:    
-            The current implementation guarantees that a call to this method will only move 
+        Note:
+            The current implementation guarantees that a call to this method will only move
             the associated cursor forward by one row.
 
         Raises:
@@ -535,36 +535,36 @@ class Cursor:
                 'or no call was issued yet '
                 'or you are attempting to fetch from an empty result set. '
                 'Hint: .rowcount is 0 if .execute*() did not produce any result set '
-                'or -1 if no call was issued yet.' 
+                'or -1 if no call was issued yet.'
             )
 
         try:
             return next(rs)
-        
+
         except StopIteration:
             # buffer exhausted, try fetching next page
             return self._try_fetch_next()
-        
+
         except Exception as e:
             # something went wrong during fetching, re-raise as DBAPI error
             _, exc = self._translate_notion_error(e)
             raise exc
 
     def fetchall(self) -> List[tuple]:
-        """Fetch all rows of this query result. 
-        
-        This method returns all the remaining rows contained in this query result as a sequence of sequences 
-        (e.g. a list of tuples). 
+        """Fetch all rows of this query result.
+
+        This method returns all the remaining rows contained in this query result as a sequence of sequences
+        (e.g. a list of tuples).
         Please refer to :mod:`notiondbapi` for a detailed description of how Notion JSON objects are
         parsed and cross-compiled into Python ``tuple`` objects.
 
         Important:
             After a call to the :meth:`.fetchall()` the result set is exausted (empty). Any subsequent call
-            to this method returns an empty sequence. 
+            to this method returns an empty sequence.
 
         .. versionchanged:: 0.9.0
             This version uses the refactored result set. It raises :exc:`ProgrammingError` as sqlite3.
-            Additionally, it supports bulk executions.   
+            Additionally, it supports bulk executions.
 
         .. versionchanged:: 0.5.0
             Calling this method on a closed cursor raises the :exc:`Error`.
@@ -588,20 +588,20 @@ class Cursor:
                 'or no call was issued yet '
                 'or you are attempting to fetch from an empty result set. '
                 'Hint: .rowcount is 0 if .execute*() did not produce any result set '
-                'or -1 if no call was issued yet.' 
+                'or -1 if no call was issued yet.'
             )
 
         self._drain_pages(rs)
         return list(rs)
-    
+
     def fetchmany(self, size: Optional[int]=None) -> list[tuple]:
-        """Fetch the next set of rows of a query result, returning a sequence of sequences (e.g. a list of tuples). 
-        
+        """Fetch the next set of rows of a query result, returning a sequence of sequences (e.g. a list of tuples).
+
         An empty sequence is returned when no more rows are available.
-        The number of rows to fetch per call is specified by the parameter. 
-        If it is not given, the cursor’s :attr:`arraysize` determines the number of rows to be fetched. 
-        The method tries to fetch as many rows as indicated by the size parameter. 
-        If this is not possible due to the specified number of rows not being available, 
+        The number of rows to fetch per call is specified by the parameter.
+        If it is not given, the cursor’s :attr:`arraysize` determines the number of rows to be fetched.
+        The method tries to fetch as many rows as indicated by the size parameter.
+        If this is not possible due to the specified number of rows not being available,
         fewer rows may be returned.
 
         Args:
@@ -617,8 +617,8 @@ class Cursor:
         .. versionadded:: 0.9.0
             This version provides a highly optimized implementation fully leveraging the iterator
             design of the class :class:`normlite.notiondbapi.resultset.ResultSet`.
-            The core optimization delegating the fetch loop to :func:`itertools.islice`, which uses the Python runtime's 
-            highly optimized C code and reduces the overhead of the Python interpreter for every row fetched. 
+            The core optimization delegating the fetch loop to :func:`itertools.islice`, which uses the Python runtime's
+            highly optimized C code and reduces the overhead of the Python interpreter for every row fetched.
             Additionally, it supports bulk executions.
         """
         self._check_closed()
@@ -631,7 +631,7 @@ class Cursor:
                 'or no call was issued yet '
                 'or you are attempting to fetch from an empty result set. '
                 'Hint: .rowcount is 0 if .execute*() did not produce any result set '
-                'or -1 if no call was issued yet.' 
+                'or -1 if no call was issued yet.'
             )
 
         n = self.arraysize if size is None else size
@@ -647,10 +647,10 @@ class Cursor:
                 result.append(row)
 
         return result
-    
+
     def execute(
-        self, 
-        operation: dict, 
+        self,
+        operation: dict,
         parameters: DBAPIExecuteParameters,
         *,
         stream_results=False,
@@ -659,19 +659,19 @@ class Cursor:
         """Prepare and execute a database operation (query or command).
 
         Parameters may be provided as a mapping and will be bound to variables in the operation.
-        In Notion, the use of placeholders for variable is redundant, since the properties to 
+        In Notion, the use of placeholders for variable is redundant, since the properties to
         which the values are to be bound are known by name.
         In the current implementation, the parameter style implemented in the cursor is:
         `named`.
-        The :meth:`execute` methods implements a return interface to enable concatenating 
+        The :meth:`execute` methods implements a return interface to enable concatenating
         calls on :class:`Cursor` methods.
-        This method supports Notion paginated results. It sets an internal page iterator which is then used 
+        This method supports Notion paginated results. It sets an internal page iterator which is then used
         for lazy fetching of result pages.
 
         Important:
             :meth:`.execute` stores the executed command result(s) in the internal
             result set. Always call this method prior to :meth:`Cursor.fetchone` and :meth:`Cursor.fetchall`,
-            otherwise an :exc:`InterfaceError` error is raised. 
+            otherwise an :exc:`InterfaceError` error is raised.
 
         .. versionchanged:: 0.11.0
             :meth:`Cursor.execute` now supports paginated results.
@@ -689,7 +689,7 @@ class Cursor:
             >>> parameters = {
             >>>     'payload': {
             >>>         'properties': {
-            >>>             'id': {'number': ':id'},       
+            >>>             'id': {'number': ':id'},
             >>>             'name': {'title': [{'text': {'content': ':name'}}]},
             >>>             'grade': {'rich_text': [{'text': {'content': ':grade'}}]}
             >>>         },
@@ -718,11 +718,11 @@ class Cursor:
             DatabaseError: If the backend returns a malformed result object.
             OperationalError: If the backend flags an authorization failure or is temporarily unavailable (e.g. rate limited).
 
-       
+
         Returns:
             Self: This :class:`Cursor` instance.
         """
-        
+
         if self._closed:
             raise Error(
                 'This cursor is closed. '
@@ -747,19 +747,19 @@ class Cursor:
                 parameters.get('path_params'),
                 parameters.get('query_params'),
                 payload,
-            ) 
+            )
 
         object_ = {}
         is_streaming = stream_results or yield_per is not None
         self._reset_results()
         page_iter = PageIterator(page_fetcher=page_fetcher, page_size=page_size)
-        
-        try:            
+
+        try:
             # fetch the first page
             # construct a temporary result set to handle mid-drain error translation:
             # all-or-nothing result
             object_ = next(page_iter)
-            rs = ResultSet.from_json(self._description, notion_obj=object_) 
+            rs = ResultSet.from_json(self._description, notion_obj=object_)
 
             self._batch_source = JsonPageSource(
                 page_iter, self._description, self._translate_notion_error
@@ -767,23 +767,23 @@ class Cursor:
             self._source_exhausted = page_iter.exhausted
 
             if is_streaming:
-                # fetch pages lazily using the yield_per as page_size 
-                self._result_sets.append(rs)  
+                # fetch pages lazily using the yield_per as page_size
+                self._result_sets.append(rs)
                 return self
-           
+
             # retrieve remaining pages eargerly
-            while (batch := self._next_batch()) is not None:           
+            while (batch := self._next_batch()) is not None:
                 rs.extend_rows(batch)
 
         except (KeyError, ValueError, NotionError) as e:
             _, exc = self._translate_notion_error(e)
             raise exc
 
-        self._result_sets.append(rs)  
+        self._result_sets.append(rs)
         return self
-    
+
     def executemany(self, operation: dict, parameters: Sequence[DBAPIExecuteParameters]) -> Self:
-        """Prepare a database operation (query or command) and then execute it against all parameter sequences or 
+        """Prepare a database operation (query or command) and then execute it against all parameter sequences or
         mappings found in the parameters argument.
 
         Args:
@@ -820,9 +820,9 @@ class Cursor:
                 continue            # IMPORTANT: error is handled, do not abort the loop
 
             self._append_result_set(object_)
-        
+
         return self
-    
+
     def _translate_notion_error(self, e: Exception) -> tuple[Type[Error], Error]:
         """Map an exception to a DBAPI 2.0 (errorclass, errorvalue) pair.
 
@@ -877,10 +877,10 @@ class Cursor:
         exc.__cause__ = e
         exc.__suppress_context__ = True
         return type(exc), exc
-            
+
     def nextset(self) -> bool:
         """Advance to the next available result set.
-        
+
         .. versionadded:: 0.9.0
         """
 
@@ -892,7 +892,7 @@ class Cursor:
 
     def _iter_all(self) -> Iterator[tuple]:
         """Iterate over all rows across all result sets.
-        
+
         This is a private API used by :class:`normlite.engine.cursor.CursorResult` to return all rows.
 
         .. versionadded:: 0.9.0
@@ -903,17 +903,17 @@ class Cursor:
             raise ProgrammingError(
                 "Cursor result set is empty. No execute*() call was issued."
             )
-        
+
         for rs in self._result_sets:
             if rs is self._current_result_set:
                 # the current result set may be associated to a paginated result to be drained
                 self._drain_pages(rs)
             yield from rs
-    
+
     def close(self) -> None:
         """Close the cursor now.
 
-        The cursor will be unusable from this point forward; an Error exception 
+        The cursor will be unusable from this point forward; an Error exception
         will be raised if any operation is attempted with the cursor.
 
         .. versionadded:: 0.5.0
@@ -922,7 +922,7 @@ class Cursor:
         self._description = None
         self._reset_results()
         self._closed = True
-                
+
 IsolationLevel = Literal[
     """Isolation level supported by the API."""
 
@@ -935,7 +935,7 @@ IsolationLevel = Literal[
 
 class Connection:
     """Provide database base connection functionalty according to the DBAPI 2.0 specification (PEP 249).
-    
+
     Warning:
         This class implements the "AUTOCOMMIT" (non-transactional) isolation level only. This means that its transaction-related methods like :meth:`Connection.commit()`
         and :meth:`Connection.rollback()` are not implemented.
@@ -965,13 +965,13 @@ class Connection:
     @property
     def autocommit(self) -> bool:
         """Read-only attribute to query the autocommit mode of the connection.
-        
+
         Return ``True`` if the connection is operating in autocommit (non-transactional) mode.
 
         Note:
             :class:`BaseConnection` implements the autocommit mode only, so the read-only attribute always returns ``True``.
             Setting the autocommit mode by writing to the attribute is not supported as it is deprecated according to PEP 249.
-        
+
         """
         return self._isolation_level == 'AUTOCOMMIT'
 
@@ -982,28 +982,28 @@ class Connection:
             Cursor: The new cursor object using this connection.
 
         .. versionchanged:: 0.9.0
-            All code related to composite cursor is removed.    
+            All code related to composite cursor is removed.
 
         .. versionchanged:: 0.7.0
 
         """
- 
+
         # IMPORTANT: The DBAPI connection must always procure a new cursor because this has a per-operation lifecyle
         return Cursor(self)
-        
+
     def _begin_transaction(self) -> None:
         """Begin a new transaction."""
 
     def _in_transaction(self) -> bool:
         """True if the connection has already initiated a transaction.
-        
+
         This method is used by the cursor to determin whether to begin a new transaction or not.
         """
         return True
 
     def _execute_in_transaction(self, operation: dict, parameters: Optional[DBAPIExecuteParameters] = None) -> None:
         """Execute the operation in the context of the opened transaction.
-        
+
         Args:
             operation (dict): A dictionary containing the Notion API request to be executed.
             parameters (DBAPIExecuteParameters): A dictionary containing the payload for the Notion API request
@@ -1013,7 +1013,7 @@ class Connection:
             InternalError: If the operation is not supported or not recognized.
 
         .. versionadded:: 0.7.0
-        
+
         """
         self.cursor().execute(operation, parameters)
 

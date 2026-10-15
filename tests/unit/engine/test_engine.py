@@ -24,15 +24,15 @@ Think of it as a file system residing on the cloud.
 
 information_schema: Top Notion page in the workspace where all table metadata are stored.
 
-tables: Notion database for storing all table metadata in the store. 
+tables: Notion database for storing all table metadata in the store.
 The tables schema is as follows:
   - table_name: name of a database table
-  - table_catalog: name of the database to which the table belongs. 
+  - table_catalog: name of the database to which the table belongs.
     A table catalog is a Notion page at the top of the workspace
-  - table_id: Notion object id of the Notion database corresponding to the table 
+  - table_id: Notion object id of the Notion database corresponding to the table
 
-Database: A database is a Notion top page. All tables belonging to this database are 
-Notion databases contained in this page. 
+Database: A database is a Notion top page. All tables belonging to this database are
+Notion databases contained in this page.
 
 Create a new database (new Notion page)
 1. Search for a Notion page with the database name
@@ -67,7 +67,7 @@ def test_parse_uri_for_file_integration():
     assert uri.kind == 'simulated'
     assert uri.mode == 'file'
     assert uri.path == '/path/to/my/test-integration.db'    # leading '/' is crucial, this is an absolute path
-    assert uri.file == 'test-integration.db'   
+    assert uri.file == 'test-integration.db'
 
 def test_parse_uri_for_internal_integration(int_env: Environment):
     uri: NotionURI = _parse_uri(
@@ -96,7 +96,7 @@ def test_user_tables_page_created(engine: Engine):
 def test_information_schema_page_created(engine: Engine):
     existing = engine._client._get_by_title('information_schema', 'page')
     assert len(existing['results']) == 1
-    
+
     info_schema_page = existing['results'][0]
     assert get_title(info_schema_page) == 'information_schema'
 
@@ -150,8 +150,8 @@ def test_engine_inspect_has_table_user(engine: Engine, inspector: Inspector):
 
 def test_has_table_returns_false_if_table_not_in_tables(engine: Engine, inspector: Inspector):
     create_students_db(engine)
-    
-    assert not inspector.has_table("courses") 
+
+    assert not inspector.has_table("courses")
 
 def test_get_oid_returns_valid_uuid(engine: Engine, inspector: Inspector):
     create_students_db(engine)
@@ -166,7 +166,7 @@ def test_engine_inspect_has_table_dropped_user_table(engine: Engine, inspector: 
     create_students_db(engine)
     students = Table('students', MetaData(), autoload_with=engine)
     students.drop(engine)
-    
+
     assert not inspector.has_table('students')
 
 def test_is_table_dropped_by_str(engine: Engine, inspector: Inspector):
@@ -174,7 +174,7 @@ def test_is_table_dropped_by_str(engine: Engine, inspector: Inspector):
 
     assert not inspector.is_dropped("students")
 
-def test_is_table_dropped_by_table(engine: Engine, inspector: Inspector):    
+def test_is_table_dropped_by_table(engine: Engine, inspector: Inspector):
     create_students_db(engine)
     students = Table('students', MetaData(), autoload_with=engine)
     students.drop(engine)
@@ -205,7 +205,7 @@ def test_engine_inspector_reflect_user_table(engine: Engine, inspector: Inspecto
     assert 'id' in students.c
     assert isinstance(students.c.id.type_, Number)
     assert students.c.id.type_.format == 'number'
-    
+
     assert 'name' in students.c
     assert isinstance (students.c.name.type_, String)
     assert students.c.name.type_.is_title
@@ -216,7 +216,7 @@ def test_engine_inspector_reflect_user_table(engine: Engine, inspector: Inspecto
 
     assert 'is_active' in students.c
     assert isinstance(students.c.is_active.type_, Boolean)
-        
+
 # -----------------------------------------------
 # Engine disposal
 # -----------------------------------------------

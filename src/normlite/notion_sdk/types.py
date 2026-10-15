@@ -1,4 +1,4 @@
-# notion_sdk/client.py 
+# notion_sdk/client.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
- 
+
 from datetime import datetime
 import pdb
 from typing import Optional, TypedDict

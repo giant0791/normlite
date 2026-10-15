@@ -11,7 +11,7 @@ def is_valid_isodt(dt_str: str) -> bool:
         datetime.fromisoformat(dt_str)
     except:
         return False
-    
+
     return True
 
 def is_valid_uuid(uuid_str: str) -> bool:
@@ -19,7 +19,7 @@ def is_valid_uuid(uuid_str: str) -> bool:
         uuid_obj = uuid.UUID(uuid_str, version=4)
     except:
         return False
-    
+
     return True
 
 @pytest.fixture
@@ -50,7 +50,7 @@ def file_path() -> str:
 @pytest.fixture
 def filebased_client(file_path: str):
     with FileBasedNotionClient(file_path) as client:
-        yield client 
+        yield client
 
 def test_add_private_method(inmem_client: InMemoryNotionClient):
     payload = dict()
@@ -81,7 +81,7 @@ def _compare_property_ids(obj: dict, other: dict) -> bool:
     otherkeys = list(otherprops.keys())
     if pkeys != otherkeys:
         return False
-    
+
     pids = {'id': props[key]['id'] for key in pkeys}
     otherids = {'id': otherprops[key]['id'] for key in otherkeys}
 
@@ -122,7 +122,7 @@ def test_add_page_to_database(inmem_client: InMemoryNotionClient):
     }
     new_db_obj = inmem_client.databases_create(payload=db_payload)
     assert new_db_obj['parent']['page_id'] == inmem_client.ischema_page_id
-    assert not new_db_obj['archived'] 
+    assert not new_db_obj['archived']
     assert not new_db_obj['in_trash']
     property_keys = [k for k in new_db_obj['properties'].keys()]
     assert property_keys == ['Name', 'Description']

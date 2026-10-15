@@ -35,7 +35,7 @@ assert len(result.returned_primary_key_rows) == 3
 ### Bulk insert via execution parameters
 ``` python
 stmt = insert(students)
-result = connection.execute(stmt, 
+result = connection.execute(stmt,
     [
         {"name": "Galileo Galilei", "id": 1, "grade": "A"},
         {"name": "Isaac Newton", "id": 2, "grade": "B"},
@@ -77,7 +77,7 @@ print(result.all())
 ## Design Breakdown
 ### Key Insights
 #### 1 - Bulk insert is a two-phase operation if `.returning` is specified, with two `executemany()` DBAPI calls.
-The first phase is an `ExecutionStyle.EXECUTEMANY` pages.create operation: 
+The first phase is an `ExecutionStyle.EXECUTEMANY` pages.create operation:
 > Inserting multiple parameters requires specifying a list of payloads. This means, the "payload" argument is a list of dictionaries.
 
 Example:
@@ -109,17 +109,17 @@ Example:
         },
     ]
 }
-``` 
+```
 
 The second phase is as for single parameters inserts, so it's again an `ExecutionStyle.EXECUTEMANY` pages.retrieve operation.
 
 #### 2 - How values are processed in `.values()`
 ``` python
 stmt = insert(students).values(
-    name="Galileo Galilei", 
-    id= 1, 
-    is_active= False, 
-    start_on="1600-01-01", 
+    name="Galileo Galilei",
+    id= 1,
+    is_active= False,
+    start_on="1600-01-01",
     grade="A",
 )
 
@@ -129,19 +129,19 @@ compiled = stmt.compile(nc)
 >>> stmt._values
 mappingproxy(
     {
-        'name': BindParameter(key='name', value='Galileo Galilei', role=<_BindRole.COLUMN_VALUE: 2>), 
-        'id': BindParameter(key='id', value=1, role=<_BindRole.COLUMN_VALUE: 2>), 
-        'is_active': BindParameter(key='is_active', role=<_BindRole.COLUMN_VALUE: 2>), 
-        'start_on': BindParameter(key='start_on', value='1600-01-01', role=<_BindRole.COLUMN_VALUE: 2>), 
+        'name': BindParameter(key='name', value='Galileo Galilei', role=<_BindRole.COLUMN_VALUE: 2>),
+        'id': BindParameter(key='id', value=1, role=<_BindRole.COLUMN_VALUE: 2>),
+        'is_active': BindParameter(key='is_active', role=<_BindRole.COLUMN_VALUE: 2>),
+        'start_on': BindParameter(key='start_on', value='1600-01-01', role=<_BindRole.COLUMN_VALUE: 2>),
         'grade': BindParameter(key='grade', value='A', role=<_BindRole.COLUMN_VALUE: 2>)
         }
 )
 
 >>> compiled.as_dict()
 {
-    'operation': {'endpoint': 'pages', 'request': 'create'}, 
+    'operation': {'endpoint': 'pages', 'request': 'create'},
     'payload': {
-        'parent': {'type': 'database_id', 'database_id': ':database_id'}, 
+        'parent': {'type': 'database_id', 'database_id': ':database_id'},
         'properties': {'name': ':name', 'id': ':id', 'is_active': ':is_active', 'start_on': ':start_on', 'grade': ':grade'
         }
     }
@@ -149,20 +149,20 @@ mappingproxy(
 
 >>> compiled.params
 {
-    'database_id': BindParameter(key='database_id', role=<_BindRole.DBAPI_PARAM: 4>), 
-    'name': BindParameter(key='name', value='Galileo Galilei', role=<_BindRole.COLUMN_VALUE: 2>), 
-    'id': BindParameter(key='id', value=1, role=<_BindRole.COLUMN_VALUE: 2>), 
-    'is_active': BindParameter(key='is_active', role=<_BindRole.COLUMN_VALUE: 2>), 
-    'start_on': BindParameter(key='start_on', value='1600-01-01', role=<_BindRole.COLUMN_VALUE: 2>), 
+    'database_id': BindParameter(key='database_id', role=<_BindRole.DBAPI_PARAM: 4>),
+    'name': BindParameter(key='name', value='Galileo Galilei', role=<_BindRole.COLUMN_VALUE: 2>),
+    'id': BindParameter(key='id', value=1, role=<_BindRole.COLUMN_VALUE: 2>),
+    'is_active': BindParameter(key='is_active', role=<_BindRole.COLUMN_VALUE: 2>),
+    'start_on': BindParameter(key='start_on', value='1600-01-01', role=<_BindRole.COLUMN_VALUE: 2>),
     'grade': BindParameter(key='grade', value='A', role=<_BindRole.COLUMN_VALUE: 2>)
 }
 ```
-1. `.values` stores a dict associating column names to bound values through bind parameters 
+1. `.values` stores a dict associating column names to bound values through bind parameters
 2. The compiled dict is a template
 3. `.params` delivers the values bound to the template bind parameters
 
 ### `sql`
-Extend the `Compiled` class to handle multiple parameters for bulk inserts. 
+Extend the `Compiled` class to handle multiple parameters for bulk inserts.
 
 * How do you shape the `.compiled` dictionary?
 * Is `._execution_binds` affected?
@@ -171,12 +171,12 @@ Extend the `Compiled` class to handle multiple parameters for bulk inserts.
 Extend `NotionCompiler.visit_insert()` to compile a multi-parameters compiled dictionary.
 
 * Where does the compiler get the list of dictionaries? From `._values` or do you need to add a new attribute `.multi_values`?
-* How are the bind parameters handled? 
+* How are the bind parameters handled?
 * Is the current `NotionCompiler.__compile_insert_update_values()` method still usable (e.g., cycling thorugh the multiple values?)
 * Does the compiler have to set a flag to signal this is a multi-parameter bulk insert?
 
 Extend `ValuesBase.values()` to handle list of dictionaries and tuples.
-* Where do you store the list of dictionaries? In `._values` or do you need to add a new attribute `._multi_values`? 
+* Where do you store the list of dictionaries? In `._values` or do you need to add a new attribute `._multi_values`?
 * Do you need to introduce a `._supports_multi_parameters` class attribute or is it better to have kind of `._has_multi_parameters` style attribute?
 * What are the advantages of having dedicated multi-parameters attributes?
 
@@ -565,7 +565,7 @@ Because:
 |                 |                         | for returning           |
 
 
-## How `ExecutionContext.parameters` materializes the DBAPI parameters 
+## How `ExecutionContext.parameters` materializes the DBAPI parameters
 
 ### `.pre_exec()` resolves bindings either as a list of dictionaries or as a dictionary
 The _resolve_parameters() returns either a dictionary of bind parameters or a list of dictionary of bind parameters
@@ -593,7 +593,7 @@ def parameters(self) -> Union[dict, list[dict]]:
         RuntimeError("EXECUTE and EXCUTEMANY require DBAPI 'payload' parameter to be a dictionary")
 
     ...
-``` 
+```
 
 
 ### Bind resolution and payload rendering
@@ -618,7 +618,7 @@ if 'payload' in self.compiled_dict:
 > Why we need a separate `Connection._execute_insert_many()` method?
 
 The bulk insert is a two step operation:
-1. it uses the context `._cursor` to execute the operation `{"endpoing": "pages", "request": "create"}` on a multi-payload to insert all the rows. 
+1. it uses the context `._cursor` to execute the operation `{"endpoing": "pages", "request": "create"}` on a multi-payload to insert all the rows.
     Thus, it requires a `Cursor.executemany()` call
 2. if returning, then it uses the `._staged_result_cursor` to store the result of the query to retrieve the newly inserted rows
 

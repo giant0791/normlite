@@ -7,7 +7,7 @@ from normlite.sql.schema import Table
 
 
 def bootstrap_client(
-    client: AbstractNotionClient, 
+    client: AbstractNotionClient,
 ) -> str:
     """
     Bootstrap a client in the mocked Notion backend.
@@ -172,7 +172,7 @@ def populate_students(
         )
 
 def populate_database(
-    client: AbstractNotionClient, 
+    client: AbstractNotionClient,
     database_id: str,
     n: int = 10,
     *,
@@ -192,4 +192,3 @@ def populate_database(
                 },
             }
         )
-    

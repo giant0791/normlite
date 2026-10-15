@@ -17,7 +17,7 @@ from normlite.sql.schema import Column, MetaData, Table
 def generate_iso_string(include_time: bool = True) -> str:
     """
     Generates a random ISO 8601 string.
-    
+
     :param include_time: If True, returns a full datetime string (YYYY-MM-DDTHH:MM:SS).
                          If False, returns a date-only string (YYYY-MM-DD).
     """
@@ -27,7 +27,7 @@ def generate_iso_string(include_time: bool = True) -> str:
     else:
         # Generates a random date object and converts to ISO string
         return fake.date().isoformat() if hasattr(fake.date(), 'isoformat') else str(fake.date())
-    
+
 class CoverageCounter:
     def __init__(self):
         self._counts = defaultdict(int)
@@ -113,7 +113,7 @@ class CoverageRegistry:
         DBAPITypeCode.NUMBER_WITH_COMMAS,
     }
 
-    ALL_COL_TYPES = TYPES | COL_TYPES 
+    ALL_COL_TYPES = TYPES | COL_TYPES
 
     OPERATORS = {
         "title": {
@@ -188,7 +188,7 @@ class ReferenceGenerator:
             schema[name] = {"type": typ}
 
         return schema
-    
+
     def gen_table(self, min_cols=1, max_cols=6) -> Table:
         cols = []
         n = self.rng.randint(min_cols, max_cols)
@@ -202,29 +202,29 @@ class ReferenceGenerator:
                     primary_key=(i == 0)
                 )
             )
-        
+
         safe_uuid = self.faker.uuid4().replace("-", "_")
         table = Table(f'table_{safe_uuid}', self.metadata, *cols)
         return table
-    
+
     def _gen_bindparam_value(self, typ: str) -> Any:
         value_obj = self._gen_property_value(typ)
         val = None
         if typ == 'date':
             start = value_obj.get('start')
-            return start if start is not None else None                   
+            return start if start is not None else None
 
         elif typ in ('number_with_commas', 'dollar',):
             val = value_obj['number']
-        
+
         elif typ in ('title', 'rich_text',):
-            val = value_obj[typ][0]['text']['content'] 
+            val = value_obj[typ][0]['text']['content']
 
         else:
             val = value_obj[typ]
 
         return val
-    
+
     def gen_binary_expr(self, columns: Sequence[Column]) -> BinaryExpression:
         col = self.rng.choice(columns)
         typ = col.type_.get_col_spec()
@@ -235,9 +235,9 @@ class ReferenceGenerator:
             column=col,
             operator=op,
             value=BindParameter(
-                key=None, 
+                key=None,
                 value=self._gen_bindparam_value(typ)        # IMPORTANT: This must mimic the coerce_to_bindparam() behavior
-            )      
+            )
         )
 
     def gen_expr(
@@ -280,19 +280,19 @@ class ReferenceGenerator:
         )
 
         return expr, max(left_depth, right_depth) + 1
-    
+
     def gen_ast(self, min_cols=1, max_cols=16, max_depth=4) -> tuple[Table, ColumnElement, int]:
         table = self.gen_table(min_cols, max_cols)
         columns = table.get_user_defined_colums()
-        
+
         # bias toward extrem depth
         if self.rng.random() < 0.6:
             max_depth = self.rng.randint(20, 60)
-        
+
 
         expr, exdepth = self.gen_expr(columns, depth=0, max_depth=max_depth)
         return table, expr, exdepth
-            
+
     def gen_page(self, schema: dict) -> dict:
         properties = {}
 
@@ -333,7 +333,7 @@ class ReferenceGenerator:
                     max_value=9999.999
                 )
             }
-        
+
         if typ == "dollar":
             return {
                 "type": "number",
@@ -499,12 +499,12 @@ class ExpressionGenerator:
         DBAPITypeCode.NUMBER_WITH_COMMAS,
     }
 
-    ALL_COL_TYPES = TYPES | COL_TYPES 
+    ALL_COL_TYPES = TYPES | COL_TYPES
 
     def __init__(
-        self, 
+        self,
         seed: int | None = None,
-        bool_style: str = 'function' 
+        bool_style: str = 'function'
     ):
         self.rng = random.Random(seed)
         self.faker = Faker()
@@ -513,7 +513,7 @@ class ExpressionGenerator:
 
         if bool_style not in ['function', 'operator']:
             raise ValueError(f'Unsupported bool_style value: {bool_style}')
-        
+
         self.bool_style = bool_style
         self.metadata = MetaData()
 
@@ -534,7 +534,7 @@ class ExpressionGenerator:
 
         if not table:
             raise ValueError("generate() requires a Table object")
-        
+
         columns = [col for col in table.columns if col.name not in SpecialColumns.values()]
         return self._gen_expr(columns, max_depth)
 
@@ -551,10 +551,10 @@ class ExpressionGenerator:
                     primary_key=(i == 0)
                 )
             )
-        
+
         table = Table(f'table_{self.faker.uuid4()}', self.metadata, *cols)
         return table
- 
+
     def gen_column_expr(self, column: Column) -> str:
         """
         Generate a valid Python expression string for a single Column.
@@ -603,8 +603,8 @@ class ExpressionGenerator:
             expr = self._gen_expr(columns, depth - 1)
             if self.bool_style == "operator":
                 return f"(~({expr}))"
-            return f"not_({expr})"        
-    
+            return f"not_({expr})"
+
         left = self._gen_expr(columns, depth - 1)
         right = self._gen_expr(columns, depth - 1)
 

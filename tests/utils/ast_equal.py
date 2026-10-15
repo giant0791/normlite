@@ -24,7 +24,7 @@ def ast_equal(a: ColumnElement, b: ColumnElement) -> bool:
     This is for round-trip tests needed.
 
     .. note::
-        Two ASTs are equal if and only if they are structurally equivalent representations of the same query, 
+        Two ASTs are equal if and only if they are structurally equivalent representations of the same query,
         independent of object identity and construction path.
 
     Args:
