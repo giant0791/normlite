@@ -296,10 +296,11 @@ def test_repaired_ne_under_an_or_is_pruned_to_a_legal_depth(students):
     **The prune un-repairs the ``!=`` leaf, and that is correct.** ``is_not_empty``
     is dropped as a conjunct and ``number.does_not_equal`` is pushed bare -- a
     SUPERSET of SQL's ``!=`` (#384, ADR-0022), so the filter weakens and never
-    narrows. The division of labour is the point: the repair (``e26d7af``) exists
-    for the DML path, which has no recheck and where over-matching destroys rows.
-    On a SELECT the recheck re-narrows, so a nesting level spent on exactness
-    buys nothing and costs the 400. Repair and prune compose rather than fight.
+    narrows. The division of labour is the point: the repair (``e26d7af``) makes
+    the push exact, so Notion returns fewer rows. It was written for the DML path,
+    which had no recheck then. SELECT, DELETE and UPDATE now all recheck (#412,
+    #413), so a nesting level spent on exactness buys nothing and costs the 400.
+    Repair and prune compose rather than fight. DML prunes too (#417).
     The bind numbering is contiguous here only because ``is_not_empty`` is built
     literally and registers no param; the sibling reds DO have holes, correctly.
 

@@ -1,18 +1,15 @@
 from datetime import date
 
-import re
-
 import pytest
 
-from normlite.exceptions import CompileError
-from normlite.sql.compiler import (
-    _FILTER_MAX_DEPTH_EXCEEDED,
-)
+from normlite.sql.compiler import _depth
 from normlite.sql.dml import delete, insert, select
 from normlite.sql.elements import not_
+from normlite.sql.schema import Column, MetaData, Table
+from normlite.sql.type_api import Boolean, Integer, String
 
 from tests.utils.execution import run_execute
-from tests.utils.spies import QueryParamsRecordingClient
+from tests.utils.spies import QueryParamsRecordingClient, QueryPayloadRecordingClient
 from tests.utils.db_helpers import (
     create_students_db,
     attach_table_oid,
@@ -305,95 +302,47 @@ def test_delete_by_a_not_equal_where_keeps_a_valueless_row(engine, prepared_stud
     assert_rowcount(result, 10)
 
 
-def test_delete_refuses_a_where_it_cannot_push_within_the_nesting_cap(
-    engine, prepared_students
+def test_delete_prunes_a_where_that_the_ne_repair_makes_too_deep(
+    engine, prepared_students, monkeypatch
 ):
-    """A DML WHERE whose filter measures 3 must raise, never prune (#383).
+    """A DELETE WHERE that measures 3 through the ``!=`` repair executes (#417).
 
-    Third sibling of the two refusal tests above, and the one that does NOT
-    turn on a ``not``. Every term of::
+    Every term of::
 
         WHERE name='name_0' AND (id != 1 OR grade='A')
 
-    has a Notion filter form, so no term is dropped. What is wrong here is
-    not a missing term but the SHAPE of what the terms emit -- the leaf
-    repair (``e26d7af``) makes ``id != 1`` a level-1 compound, the fold's
-    splice cannot absorb it under an ``or``, and the root ``and`` puts the
-    result at depth 3. The Notion API caps compound nesting at 2, so this is
-    an HTTP 400. Only the EMITTED dict knows that number, so no check on the
-    WHERE expression can answer this question before emission.
+    has a Notion filter form. The SHAPE of the emitted filter is the problem.
+    The leaf repair (``e26d7af``) makes ``id != 1`` a level-1 compound. The
+    fold cannot splice it under an ``or``, and the root ``and`` puts it at
+    depth 3. The Notion API caps nesting at 2.
 
-    **What this test refuses is a statement that currently returns the RIGHT
-    answer.** Measured on this tree: ``name_0`` has ``id == 0`` and
-    ``grade == "A"``, so SQL deletes exactly that one row, and today the
-    in-memory client accepts the depth-3 filter and archives exactly that one
-    row -- ``rowcount`` 1, ids 1..9 surviving. The fake has no nesting cap, so
-    the bug is invisible here and fatal in production. Refusing a legal DELETE
-    is the cost of raise-or-nothing: DELETE has no recheck (#397), so pruning
-    the filter to fit the cap -- sound on SELECT, where ADR-0022 re-narrows over
-    raw cells, and pinned there by
-    ``test_compiler_axioms.test_repaired_ne_under_an_or_is_pruned_to_a_legal_depth``
-    -- would archive rows this WHERE excludes. A refusal costs a rewrite; a
-    prune costs rows.
+    Before #417 DELETE refused this WHERE (#383). DELETE now rechecks its WHERE
+    (#412), so it prunes the filter to a legal superset and the recheck decides.
 
-    The survivor assertion is not redundant with the raise: it fails a gate that
-    fires *after* :meth:`Delete._setup_execution` has staged the ``pages.update``
-    archives. Emit-then-measure moves the decision later than the existing gate,
-    which is exactly the window in which that mistake is available.
+    ``test_a_too_deep_delete_deletes_exactly_the_rows_sql_selects`` covers a
+    WHERE whose own shape is too deep. This test covers the second route to
+    depth 3: the ``!=`` repair. SQL selects ``name_0`` only.
     """
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
     stmt = delete(prepared_students).where(
         (prepared_students.c.name == "name_0")
         & ((prepared_students.c.id != 1) | (prepared_students.c.grade == "A"))
     )
 
-    with pytest.raises(CompileError, match=re.escape(_FILTER_MAX_DEPTH_EXCEEDED)):
-        run_execute(engine, stmt)
+    result = run_execute(engine, stmt)
 
-    with engine.connect() as conn:
-        survivors = conn.execute(select(prepared_students.c.id)).all()
-
-    assert sorted(row.id for row in survivors) == list(range(10))
-
-
-def test_delete_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap(
-    engine, prepared_students
-):
-    """A DML WHERE nested ``and -> or -> and`` must raise, never prune (#383).
-
-    The sibling above reaches depth 3 only through the ``!=`` repair
-    (``e26d7af``): revert the repair and that test loses its reason to raise.
-    This test does not depend on the repair. No leaf is a ``!=``::
-
-        WHERE name='name_0' AND (id=1 OR (grade='A' AND is_active IS TRUE))
-
-    Every term has a Notion filter form, so ``_is_pushable`` admits it.
-    The operators alternate, so the fold has no same-operator child to splice.
-    The emitted filter is ``{and: [leaf, {or: [leaf, {and: [leaf, leaf]}]}]}``:
-    root ``and`` at level 1, ``or`` at level 2, inner ``and`` at level 3. The
-    Notion API caps nesting at 2, so production answers HTTP 400. The in-memory
-    client has no cap and would archive ``name_0`` -- the one row SQL selects.
-
-    The survivor assertion fails a gate that raises after the archives are
-    staged.
-    """
-    stmt = delete(prepared_students).where(
-        (prepared_students.c.name == "name_0")
-        & (
-            (prepared_students.c.id == 1)
-            | (
-                (prepared_students.c.grade == "A")
-                & prepared_students.c.is_active.is_(True)
-            )
-        )
+    assert spy.payloads_seen
+    assert all(_depth(p.get("filter")) <= 2 for p in spy.payloads_seen), (
+        f"filters pushed to the client exceed Notion's 2-level cap: {spy.payloads_seen}"
     )
-
-    with pytest.raises(CompileError, match=re.escape(_FILTER_MAX_DEPTH_EXCEEDED)):
-        run_execute(engine, stmt)
+    assert_rowcount(result, 1)
 
     with engine.connect() as conn:
         survivors = conn.execute(select(prepared_students.c.id)).all()
 
-    assert sorted(row.id for row in survivors) == list(range(10))
+    assert sorted(row.id for row in survivors) == list(range(1, 10))
 
 
 def test_delete_by_is_empty_deletes_only_the_valueless_row(engine, prepared_students):
@@ -762,3 +711,73 @@ def test_delete_returning_gives_only_the_trashed_rows(engine, prepared_students)
     # Assert: one RETURNING row for each trashed row, and no other row.
     assert sorted(row.name for row in rows) == ["Bee", "name_1"]
     assert_rowcount(result, 2)
+
+
+def test_a_too_deep_delete_deletes_exactly_the_rows_sql_selects(engine, monkeypatch):
+    """A DELETE whose WHERE exceeds the depth cap executes and archives SQL's rows (#417).
+
+    The WHERE nests ``and -> or -> and``. No leaf is a ``!=``::
+
+        WHERE id < 1000 AND (grade = 'Z' OR (id > 5 AND is_active))
+
+    The emitted filter measures 3. The Notion API caps nesting at 2.
+
+    Two assertions, and each one fails a different wrong answer:
+
+    * every filter that reaches the client measures 2 or less. The in-memory
+      client has no cap, so only this assertion sees an HTTP 400;
+    * the table keeps exactly the rows that SQL does not select.
+
+    ``Xavier`` is the discriminator. A legal push can admit him (id > 5), and
+    the WHERE excludes him (not active). He must survive. ``Zeta`` is the
+    control: the WHERE selects her through ``grade = 'Z'`` alone, so she must go.
+    """
+    metadata = MetaData()
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+        Column("is_active", Boolean()),
+        Column("grade", String()),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        # name_0..name_5 are excluded (id <= 5); name_6..name_9 are selected.
+        for i in range(10):
+            connection.execute(insert(students).values(
+                name=f"name_{i}", id=i, is_active=True, grade="A",
+            ))
+        connection.execute(insert(students).values(
+            name="Xavier", id=7, is_active=False, grade="Y",
+        ))
+        connection.execute(insert(students).values(
+            name="Zeta", id=0, is_active=False, grade="Z",
+        ))
+
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    run_execute(
+        engine,
+        delete(students).where(
+            (students.c.id < 1000)
+            & (
+                (students.c.grade == "Z")
+                | ((students.c.id > 5) & (students.c.is_active == True))
+            )
+        ),
+    )
+
+    assert spy.payloads_seen, "the DELETE must query the data source"
+    assert all(_depth(p.get("filter")) <= 2 for p in spy.payloads_seen), (
+        f"filters pushed to the client exceed Notion's 2-level cap: {spy.payloads_seen}"
+    )
+
+    with engine.connect() as connection:
+        survivors = connection.execute(select(students.c.name)).all()
+
+    assert {row.name for row in survivors} == {
+        "name_0", "name_1", "name_2", "name_3", "name_4", "name_5", "Xavier",
+    }
