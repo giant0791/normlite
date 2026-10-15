@@ -160,8 +160,13 @@ def run_context(engine, stmt, params=None, execution_options=None) -> tuple[Curs
         connection._execute_query_plan(ctx)
     elif ctx.execution_style == ExecutionStyle.EXECUTE:
         engine.do_execute(cursor, ctx.operation, ctx.parameters)
-    else:
-        engine.do_executemany(cursor, ctx.bulk_operation, ctx.bulk_parameters)
+    elif ctx.execution_style == ExecutionStyle.INSERTMANYVALUES:
+        # No caller sends a multi-row INSERT yet. Copy the dispatch of
+        # Connection._execute_insert_many when the first one does.
+        raise NotImplementedError(
+            "run_context does not dispatch INSERTMANYVALUES: "
+            "copy Connection._execute_insert_many first"
+        )
 
     ctx.post_exec()
     ctx.invoked_stmt._finalize_execution(ctx)
@@ -234,6 +239,25 @@ def test_a_leftover_bind_raises_unless_the_recheck_consumes_it(role, rechecked, 
 
     expectation = pytest.raises(ArgumentError, match="param_0") if raises else nullcontext()
     with expectation:
+        ExecutionContext._assert_all_params_consumed(ctx, [{"param_0": leftover}])
+
+
+def test_an_update_leftover_filter_bind_raises_without_a_recheck():
+    # UPDATE refuses execution-time parameters (context.py), so the pipeline
+    # cannot leave a key behind. The guard is driven directly, as in
+    # test_a_leftover_bind_raises_unless_the_recheck_consumes_it. A filter
+    # bind with no recheck reaches no evaluator: UPDATE must raise as the
+    # other statements do.
+    leftover = BindParameter("param_0", "orphan")
+    leftover.role = _BindRole.COLUMN_FILTER
+    ctx = SimpleNamespace(
+        invoked_stmt=SimpleNamespace(is_update=True),
+        compiled=SimpleNamespace(
+            planning_context=SimpleNamespace(recheck_where=None)
+        ),
+    )
+
+    with pytest.raises(ArgumentError, match="param_0"):
         ExecutionContext._assert_all_params_consumed(ctx, [{"param_0": leftover}])
 
 

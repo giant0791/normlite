@@ -4,11 +4,10 @@ This document describes how `Insert`, `Update` and `Delete` specialise the commo
 ([advanced-guide-execution-pipeline.md](advanced-guide-execution-pipeline.md)) and where their
 behaviour diverges.
 
-> **Transition — [ADR-0023](adr/0023-dml-executes-through-the-query-plan.md).**
-> DELETE and UPDATE move from **Two-Phase Execution** to the **Query plan**, with a
-> **ModifyTable** Operator at the root. DELETE moved in #411. UPDATE moves in #413.
-> The Update section below still describes Two-Phase Execution. The Delete section describes
-> the plan-driven design.
+> **[ADR-0023](adr/0023-dml-executes-through-the-query-plan.md).**
+> DELETE and UPDATE execute through the **Query plan**, with a **ModifyTable** Operator at the
+> root. DELETE moved in #411. UPDATE moved in #413. **Two-Phase Execution** and
+> `ExecutionStyle.EXECUTEMANY` are deleted.
 
 ---
 
@@ -89,65 +88,6 @@ The RETURNING data is therefore a **post-fetch**: a separate `pages.retrieve` pe
 
 ---
 
-## Update instantiation
-
-> **Retiring — [ADR-0023](adr/0023-dml-executes-through-the-query-plan.md).** This section is
-> true until #413. Then Update runs through the Query plan like Delete (see below), and
-> `ExecutionStyle.EXECUTEMANY` and `Connection._execute_many` are deleted.
-
-### Compile (`visit_update`)
-
-Produces a `compiled_dict` with **two payload keys** — a filter payload for the query phase and a
-separate VALUES template for the update phase:
-
-```python
-{
-  "operation":      {"endpoint": "databases", "request": "query"},
-  "path_params":    {"database_id": ":database_id"},
-  "payload":        {"page_size": 100, "in_trash": False, "filter": {...}},  # where-clause
-  "update_payload": {"col_name": ":col_name", ...}                           # values template
-}
-```
-
-`update_payload` is unique to Update — no other DML construct emits it.  
-Missing `.values()` is a hard `CompileError` at compile time (unlike Insert).
-
-### `pre_exec` — deferred params
-
-Because `compiled_dict` now has two roles for parameters (filter params consumed by the
-`databases.query` payload, values params deferred to `_setup_execution`), `pre_exec` populates
-`ctx.resolved_params` with the values `BindParameter` objects **without consuming them**.
-`_assert_all_params_consumed` is skipped for `is_update` statements for this reason.
-
-### `_setup_execution` — two-phase execution (API call inside setup)
-
-Unlike Insert, `_setup_execution` fires the **first Notion API call** directly:
-
-```
-1. do_execute(databases.query, filter_payload)   ← collect matching pages
-2. for each page:
-       bind update_payload template with ctx.resolved_params
-       append {path_params: {page_id: ...}, payload: {properties: ...}} to bulk_params
-3. stage:
-       ctx._staged_result_cursor = result_cursor (stamped with SchemaInfo)
-       ctx.bulk_operation  = {"endpoint": "pages", "request": "update"}
-       ctx.bulk_parameters = bulk_params
-```
-
-The dispatch step therefore calls `_execute_many`, which fires the pre-built `bulk_parameters`:
-
-```
-databases.query  →  collect page_ids  →  pages.update (×N per matching row)
-```
-
-### `_finalize_execution` — RETURNING from response
-
-`pages.update` returns the full Notion page in its response.  
-No post-fetch is needed. When `.returning()` is declared, `_finalize_execution` simply routes
-`_staged_result_cursor` (which already holds the `pages.update` responses) to `CursorResult`.
-
----
-
 ## Delete instantiation (Query plan)
 
 > **[ADR-0023](adr/0023-dml-executes-through-the-query-plan.md), built in #411.**
@@ -155,8 +95,8 @@ No post-fetch is needed. When `.returning()` is declared, `_finalize_execution` 
 ### Why Delete uses the Query plan
 
 [ADR-0022](adr/0022-lossy-pushdown-and-the-recheck.md) re-checks every WHERE conjunct
-client-side. The recheck lives in the `Filter` Operator. Two-Phase Execution has no `Filter`, so
-`SELECT ... WHERE p` and `DELETE ... WHERE p` can select different rows (#397).
+client-side. The recheck lives in the `Filter` Operator. Two-Phase Execution had no `Filter`, so
+`SELECT ... WHERE p` and `DELETE ... WHERE p` could select different rows (#397).
 A Delete therefore runs through a Query plan.
 
 ### Compile (`visit_delete`)
@@ -216,41 +156,83 @@ RETURNING columns.
 ### `_finalize_execution` — result interpretation only
 
 - No RETURNING: the hook soft-closes the cursor. `rowcount` stays available.
-- Implicit returning: the hook reads the `object_id` column of the rows.
-  It does not read `Cursor._last_inserted_row_ids`. The plan path never fills it.
+- Implicit returning: the hook reads `Cursor._last_inserted_row_ids`. The `ResultSet` takes
+  the `object_id` at column 0 of the rows.
 
-`_staged_result_cursor` routing goes away for Delete.
+Delete does not use `_staged_result_cursor`. Only Insert uses it.
+
+---
+
+## Update instantiation (Query plan)
+
+> **[ADR-0023](adr/0023-dml-executes-through-the-query-plan.md), built in #413.**
+
+Update runs the same plan as Delete: `ModifyTable → [Filter] → Scan`.
+This section gives only the differences.
+
+### Compile (`visit_update`)
+
+The compiler emits:
+
+- the filter payload for the `Scan`, from the shared WHERE visitor;
+- `update_operation`: the write operation `pages.update`;
+- `update_params`: the write payload template `{"payload": {"properties": {"col": ":col"}}}`.
+  Each value is a bind placeholder.
+
+Missing `.values()` is a `CompileError` at compile time (unlike Insert).
+
+`visit_update` still refuses a WHERE term that it cannot push (NOT, `== None`, `!= None`).
+#413 removes this refusal and adds the lax `_is_pushable` gate, as `visit_delete` has.
+
+### `pre_exec` — the VALUES binds
+
+`_determine_execution_style` returns `EXECUTEQUERYPLAN` for every Update.
+
+`pre_exec` keeps the VALUES binds in `ctx.resolved_params`. The Planner reads them to bind the
+write payload template once. `_assert_all_params_consumed` accepts two kinds of leftover bind:
+
+- a VALUES bind (`COLUMN_VALUE`) of an Update: the Planner consumes it;
+- a filter bind (`COLUMN_FILTER`): the `Filter` consumes it, if the WHERE is rechecked.
+
+`parameters=` raises `ArgumentError` (v1).
+
+### Scan columns
+
+With a WHERE, the `Scan` fetches only the properties that the WHERE reads, as for Delete.
+Without a WHERE, the title-only rule applies to Delete only. The Update `Scan` sends no
+`filter_properties` and Notion returns all properties.
+
+### Hooks
+
+`_setup_execution` is a no-op. `_finalize_execution` does the same as for Delete.
 
 ---
 
 ## Insert vs Update — summary
 
-The Update column describes Two-Phase Execution. It is retiring (ADR-0023, #413).
-
 | Aspect | Insert | Update |
 |--------|--------|--------|
 | **Notion write call** | `pages.create` | `pages.update` |
-| **Execution style** | `EXECUTE` or `INSERTMANYVALUES` | always `EXECUTEMANY` |
-| **Two-phase execution** | No | Yes — `databases.query` then `pages.update` |
-| **`compiled_dict` shape** | `operation` + `payload` | `operation` + `path_params` + `payload` + `update_payload` |
-| **`update_payload` key** | Absent | Present — VALUES template, bound in `_setup_execution` |
-| **`pre_exec` param handling** | Fully consumes resolved params into `payload` | Populates `resolved_params` but does **not** consume them (deferred to `_setup_execution`) |
-| **`_setup_execution` fires an API call** | No (pre-wires RETURNING cursor only) | Yes (`databases.query`) |
-| **RETURNING data source** | Post-fetch: separate `pages.retrieve` per row | Free: `pages.update` response carries the full page |
+| **Execution style** | `EXECUTE` or `INSERTMANYVALUES` | always `EXECUTEQUERYPLAN` |
+| **Who finds the rows** | No search — the values give the rows | `Scan` sends `databases.query`, `Filter` rechecks the WHERE |
+| **Who sends the write** | Engine dispatch (`_execute_single` / `_execute_insert_many`) | `ModifyTable.open()` |
+| **`compiled_dict` shape** | `operation` + `payload` | `operation` + `path_params` + `payload` + `update_operation` + `update_params` |
+| **`pre_exec` param handling** | Fully consumes resolved params into `payload` | Keeps the VALUES binds in `resolved_params` for the Planner |
+| **`_setup_execution`** | Pre-wires the RETURNING cursor only | No-op |
+| **RETURNING data source** | Post-fetch: separate `pages.retrieve` per row | Free: rows of `ModifyTable`, from the `pages.update` responses |
 | **Partial `.values()`** | Not allowed — all user columns required | Allowed — unspecified columns are left unchanged |
 | **Missing `.values()`** | Deferred to `pre_exec` (can be supplied via `parameters=`) | Hard `CompileError` at compile time |
 | **Bulk support** | Yes — `INSERTMANYVALUES` via `.values([...])` or `parameters=[...]` | No — `parameters=` raises `ArgumentError` (v1) |
 
 ---
 
-## Update (Two-Phase) vs Delete (Query plan) — summary
+## Update vs Delete — summary
 
-| Aspect | Update (until #413) | Delete (ADR-0023, #411) |
-|--------|---------------------|-------------------------|
-| **Execution style** | `EXECUTEMANY` | `EXECUTEQUERYPLAN` |
-| **Who sends `databases.query`** | `_setup_execution` (SQL layer) | `Scan`, driven by the engine |
-| **WHERE recheck** | None | `Filter` |
-| **Who sends `pages.update`** | `_execute_many` | `ModifyTable.open()` |
-| **Write payload** | `update_payload`, bound in `_setup_execution` | Template from the compiler, bound once by the Planner |
-| **RETURNING data source** | `pages.update` responses, through `_staged_result_cursor` | `pages.update` responses, as rows of `ModifyTable` |
-| **Implicit returning** | `Cursor._last_inserted_row_ids` | `object_id` column of the rows |
+Both run `ModifyTable → [Filter] → Scan` (ADR-0023). They differ only here:
+
+| Aspect | Update (#413) | Delete (#411) |
+|--------|---------------|---------------|
+| **Write payload template** | `update_params`: `{"payload": {"properties": ...}}`, the `.values()` as bind placeholders | `delete_params`: `{"payload": {"in_trash": True}}`, no bind |
+| **Planner binding** | Binds the template from `resolved_params` | Binding returns the template unchanged |
+| **Scan with no WHERE** | Fetches all properties | Fetches the title only (#410) |
+| **Unpushable WHERE term** | Refused at compile time (until the rest of #413) | Lax `_is_pushable` gate, then the `Filter` rechecks |

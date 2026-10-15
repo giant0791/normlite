@@ -6,11 +6,13 @@ execution pipeline and keep the :class:`ExecutionContext` afterwards, which
 the connection's dispatch on ``ctx.execution_style`` — and a duplicate only
 stays honest while it covers the same styles.
 
-It does not: it knows ``EXECUTE`` and treats *everything else* as
+It did not: it knew ``EXECUTE`` and treated *everything else* as
 ``EXECUTEMANY``. ``ExecutionStyle.EXECUTEQUERYPLAN`` (#364, joins and
-aggregates) therefore falls into the ``else`` and calls ``do_executemany`` with
-a ``None`` ``bulk_operation``. The gap is latent only because no ``run_context``
-caller has yet passed a join or an aggregate.
+aggregates) therefore fell into the ``else`` and called ``do_executemany`` with
+a ``None`` ``bulk_operation``. The gap was latent only because no ``run_context``
+caller had yet passed a join or an aggregate. ``EXECUTEMANY`` is deleted (#413);
+the harness now names every style, and ``INSERTMANYVALUES`` raises until a
+caller needs it.
 
 This matters beyond tidiness: #384 / C2 step 2b routes *plain* ``SELECT``s
 through the planner, at which point most existing ``run_context`` callers hit

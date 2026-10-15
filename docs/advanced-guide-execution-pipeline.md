@@ -61,7 +61,6 @@ Key methods:
 Connection.execute()
 Connection._execute_context()
 Connection._execute_single()
-Connection._execute_many()
 Connection._execute_insert_many()
 Connection._execute_query_plan()
 ```
@@ -189,14 +188,13 @@ Statement-specific preparation.
 
 This stage may raise `ProgrammingError`.
 
-#### Plan-driven statements (Select, Delete)
+#### Plan-driven statements (Select, Delete, Update)
 
 `_setup_execution()` is a no-op. The statement sends no request here.
 The engine drives the Query plan in Step 6.
 
-> **Delete — [ADR-0023](adr/0023-dml-executes-through-the-query-plan.md), built in #411.**
-> `Delete` executes through the Query plan (`ModifyTable -> [Filter] -> Scan`).
-> `Update` keeps **Two-Phase Execution** until #413.
+> **[ADR-0023](adr/0023-dml-executes-through-the-query-plan.md), built in #411 and #413.**
+> `Delete` and `Update` execute through the Query plan (`ModifyTable -> [Filter] -> Scan`).
 
 ------------------------------------------------------------------------
 
@@ -206,10 +204,9 @@ The engine drives the Query plan in Step 6.
 
 | Execution style    | Method                   | Statements                         | Notion requests                       |
 | ------------------ | ------------------------ | ---------------------------------- | ------------------------------------- |
-| `EXECUTEQUERYPLAN` | `_execute_query_plan()`  | Select, Delete (ADR-0023)          | Sent by the Operators of the plan     |
+| `EXECUTEQUERYPLAN` | `_execute_query_plan()`  | Select, Delete, Update (ADR-0023)  | Sent by the Operators of the plan     |
 | `EXECUTE`          | `_execute_single()`      | Single-row Insert, DDL             | `engine.do_execute()`, one request    |
 | `INSERTMANYVALUES` | `_execute_insert_many()` | Bulk Insert                        | `engine.do_executemany()`, N requests |
-| `EXECUTEMANY`      | `_execute_many()`        | Update (retiring, ADR-0023, #413)  | `engine.do_executemany()` with the `bulk_*` attributes |
 
 #### `EXECUTEQUERYPLAN`
 
@@ -264,7 +261,7 @@ No semantic interpretation yet.
 Semantic reconstruction phase.
 
 For `Select` this hook is a no-op: the Operators already built the result rows.
-For `Delete` (ADR-0023) it only interprets the result: it soft-closes the cursor when
+For `Delete` and `Update` (ADR-0023) it only interprets the result: it soft-closes the cursor when
 there is no RETURNING, and it reads implicit returning from the `object_id` column.
 
 #### DML Example (Insert)
@@ -396,7 +393,7 @@ CursorResult
    ([ADR-0020](adr/0020-execution-layering-sql-builds-engine-drives.md)).
    The dependency direction is ENGINE → SQL, ENGINE → DBAPI, SQL → DBAPI. Nobody calls upward.
    The SQL layer gives the engine a Query plan (data). The engine drives it.
-   A hook that sends a Notion request (`Update._setup_execution()` today) violates this rule.
+   A hook that sends a Notion request violates this rule.
 
 ------------------------------------------------------------------------
 

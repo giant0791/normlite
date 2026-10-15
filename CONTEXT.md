@@ -114,11 +114,12 @@ students.c.title)`) is an **error**, while the same bare name from two different
 
 ### DML Statement
 One of `Insert`, `Delete`, `Update`, `Select` — the four DML constructs. Each produces a compiled
-payload and follows the two-phase or single-phase execution pipeline below.
+payload and follows the execution pipeline below.
 
 ### Compiler (NotionCompiler)
 Translates a DML/DDL AST into a `compiled_dict` — a JSON-like dict with keys `operation`,
-`path_params`, `payload`, and (for UPDATE) `update_payload`. Named placeholders (`:param`) are
+`path_params`, `payload`, and (for DELETE / UPDATE) `<kind>_operation` and `<kind>_params`, the
+write operation and the write payload template for **ModifyTable**. Named placeholders (`:param`) are
 resolved at execution time by `ExecutionContext`.
 
 `visit_select` additionally emits `query_params` and — on the join path — `joins`,
@@ -196,15 +197,17 @@ tree, not a pipeline, and most of its nodes block. Do not call the plan a "pipel
 
 Two execution styles exist for DML:
 - **Single-phase** (`EXECUTE`, `INSERTMANYVALUES`): one or many `pages.create` calls driven by parameters.
-- **Two-phase** (`EXECUTEMANY`): a `databases.query` to find matching pages, then a bulk operation
-  (`pages.update`) on each result. Used by `Delete` and `Update`.
+  Used by `Insert`.
+- **Query plan** (`EXECUTEQUERYPLAN`): `ModifyTable → [Filter] → Scan`. Used by `Delete` and
+  `Update` ([[adr-0023-dml-executes-through-the-query-plan]]).
 
 ### Two-Phase Execution
-> **Retiring** ([[adr-0023-dml-executes-through-the-query-plan]], Proposed): DELETE leaves it in
-> #411 and UPDATE in #413, when `EXECUTEMANY` and `Connection._execute_many` are deleted. Both then
-> run through the Query plan with **ModifyTable** at the root, so the WHERE gets its recheck.
+> **Retired** ([[adr-0023-dml-executes-through-the-query-plan]], Accepted): DELETE left it in
+> #411 and UPDATE in #413. `EXECUTEMANY` and `Connection._execute_many` are deleted. Both
+> statements run through the Query plan with **ModifyTable** at the root, so the WHERE gets its
+> recheck. The entry stays for the history.
 
-The pattern used by `Delete` and `Update`:
+The old pattern used by `Delete` and `Update`:
 1. `_setup_execution` calls `databases.query` (with optional filter from `.where()`) to collect
    the Notion page IDs of affected rows.
 2. `_execute_many` calls `pages.update` on each collected page ID via `do_executemany`.
@@ -222,7 +225,7 @@ Parent of `ValuesBase` and `Delete`.
 Declared via `.returning(*cols)`. Triggers a post-execution fetch of the affected pages:
 - `Insert`: fires `pages.retrieve` calls after `pages.create` (post-fetch pattern).
 - `Delete` / `Update`: the `pages.update` response is the full Notion page — no separate retrieve
-  needed. `_finalize_execution` routes to `_staged_result_cursor`.
+  needed. **ModifyTable** yields the RETURNING rows from these responses.
 
 ### implicit_returning
 An execution option (`implicit_returning=True`). When set without an explicit `.returning()` call,
@@ -231,16 +234,19 @@ the object IDs of affected rows are collected into
 `Update`.
 
 ### update_payload
-A key emitted into `compiled_dict` exclusively by `visit_update`. Holds the VALUES template
-(`{"name": ":name", "grade": ":grade"}`) for the `pages.update` properties payload. Distinct from
-`payload` (the `databases.query` filter). Bound in `Update._setup_execution` using
-`context.resolved_params`.
+> **Retired** in #413. `visit_update` emits `update_operation` and `update_params` instead. The
+> Planner binds `update_params` from `context.resolved_params`.
+
+A key emitted into `compiled_dict` exclusively by `visit_update`. Held the VALUES template
+(`{"name": ":name", "grade": ":grade"}`) for the `pages.update` properties payload. Bound in
+`Update._setup_execution`.
 
 ### resolved_params
 An `ExecutionContext` attribute populated during `pre_exec`. Holds the `BindParameter` objects that
 remain after the query filter params have been consumed by `_bind_params`. For `Update`, this
-carries the column VALUES params deferred to `_setup_execution`. The `_assert_all_params_consumed`
-guard is skipped for `is_update` statements.
+carries the column VALUES params. The Planner reads them to bind the **ModifyTable** write payload
+template. `_assert_all_params_consumed` accepts a leftover VALUES bind of an `Update` (the Planner
+consumes it) and a leftover filter bind when the WHERE is rechecked (the `Filter` consumes it).
 
 ### Relation
 A normlite `Relation` is a **stateless** `TypeEngine` subclass for a column that stores links to
@@ -890,7 +896,7 @@ Filed separately (orthogonal, no new pressure from the plan): `_compiler_state` 
 stack**, resolving the §Compiler entry points trap structurally.
 
 ### Query plan
-> **Extended by [[adr-0023-dml-executes-through-the-query-plan]] (Proposed):** a plan also executes
+> **Extended by [[adr-0023-dml-executes-through-the-query-plan]] (Accepted):** a plan also executes
 > DELETE (#411) and UPDATE (#413), with **ModifyTable** at the root.
 
 A **tree of Operators** that computes a SELECT's rows. Built by the **Planner** from the
@@ -1045,7 +1051,8 @@ its own writes: a page trashed or changed mid-scan would shift Notion's paginati
 problem — skipped rows on DELETE, skipped or repeated rows on UPDATE).
 
 ### ModifyTable
-> **DECIDED, not yet built** (#411 for DELETE, #413 for UPDATE).
+> **Built** in #411 for DELETE and #413 for UPDATE
+> ([[adr-0023-dml-executes-through-the-query-plan]]).
 
 The **Operator** that applies a DELETE or UPDATE to every row its child yields, and that blocks
 until its child is drained. One operator serves both statements: the statement supplies the

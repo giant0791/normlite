@@ -872,15 +872,15 @@ class Planner:
     def plan(self) -> VolcanoOperator:
         """Build the operator tree for the invoked SELECT/DELETE statement.
 
-        The following shapes are produced, and every SELECT/DELETE takes one of them:
+        The following shapes are produced, and every SELECT/DELETE/UPDATE takes one of them:
 
         * aggregate -- ``Scan -> Aggregate``
         * plain select -- ``Scan -> [Filter] -> Project``, the ``Scan`` widened to fetch
           whatever the recheck reads and ``Project`` trimming it back off
         * join -- ``(Scan, Scan) -> HashJoin -> [Filter] -> [Sort]``
-        * delete -- ``Scan -> [Filter]``, the ``Scan`` widened to fetch
-          whatever the recheck reads. A DELETE with no WHERE clause lowers the retrieval cost
-          by fetching the title column only.
+        * delete/update -- ``Scan -> [Filter]``, the ``Scan`` widened to fetch
+          whatever the recheck reads. A DELETE/UPDATE with no WHERE clause lowers
+          the retrieval cost by fetching the title column only.
 
         Only the first join of the statement is planned; chaining ``.join()``
         silently drops the rest.
@@ -889,21 +889,27 @@ class Planner:
             VolcanoOperator: The root of the plan, ready to be opened.
 
         Raises:
-            InvalidRequestError: If the invoked statement is not a SELECT or a DELETE.
+            InvalidRequestError: If the invoked statement is neither a SELECT nor a DELETE
+                nor an UPDATE.
 
         .. versionchanged:: 0.14.0
-            Plan DELETE statements.
+            Plan DELETE and UPDATE statements.
 
         .. versionadded:: 0.13.0
         """
         invoked_stmt = self._exec_ctx.invoked_stmt
         ctx: ExecutionContext = self._exec_ctx
         stmt_table = invoked_stmt.get_table()
+        is_planner_executable = (
+            invoked_stmt.is_select or
+            invoked_stmt.is_delete or
+            invoked_stmt.is_update
+        )
 
-        if not invoked_stmt.is_select and not invoked_stmt.is_delete:
+        if not is_planner_executable:
             raise InvalidRequestError(
-                f"Query planner builds plans for SELECT/DELETE statements only. "
-                f"The invoked statement is not a SELECT or DELETE ({type(invoked_stmt).__name__})"
+                f"Query planner builds plans for SELECT/DELETE/UPDATE statements only. "
+                f"The invoked statement is neither a SELECT nor DELETE nor UPDATE ({type(invoked_stmt).__name__})"
             )
 
         recheck_where = ctx.compiled.planning_context.recheck_where
@@ -920,8 +926,12 @@ class Planner:
 
         yield_per = ctx.execution_options.get("yield_per")
 
-        if invoked_stmt.is_delete or (invoked_stmt.is_select and not invoked_stmt._joins):
-            # DELETE or plain SELECT statement (without JOIN)
+        if (
+            invoked_stmt.is_delete or
+            invoked_stmt.is_update or
+            (invoked_stmt.is_select and not invoked_stmt._joins)
+        ):
+            # DELETE/UPDATE or plain SELECT statement (without JOIN)
             execution_names: list[str] = list(ctx.compiled.fetch_columns())
             scan_params = dict(ctx.parameters)
 
@@ -955,11 +965,12 @@ class Planner:
                     # the cells the recheck has to read.
                     narrows = True
 
-            elif invoked_stmt.is_delete:
-                # DELETE with no WHERE clause reads no property, but an empty
-                # filter_properties means "all properties" to Notion. Fetch the
-                # title only: every Notion data source has one. A list, because
-                # a Table declared without a title gives [] (no narrowing).
+            elif invoked_stmt.is_delete or invoked_stmt.is_update:
+                # DELETE/UPDATE with no WHERE clause reads no property,
+                # but an empty filter_properties means "all properties"
+                # to Notion. Fetch the title only: every Notion data source
+                # has one. A list, because a Table declared without a title
+                # gives [] (no narrowing).
                 title_cols = [
                     c.name
                     for c in stmt_table.uc
@@ -987,14 +998,14 @@ class Planner:
                 ]
 
             # no projected_names: SELECT result_columns are a subset of fetch_columns,
-            # and DELETE RETURNING reads the write response, never the Scan (ADR-0023)
+            # and DELETE/UPDATE RETURNING read the write response, never the Scan (ADR-0023)
             schema = SchemaInfo.from_table(
                 stmt_table,
                 execution_names=execution_names,
             )
 
             if not invoked_stmt.is_select:
-                # DELETE and (later) UPDATE shall never stream
+                # DELETE and UPDATE shall never stream
                 yield_per = None
 
             scan = Scan(
@@ -1019,9 +1030,8 @@ class Planner:
                     tables=[stmt_table]
                 )
 
-            if invoked_stmt.is_delete:
-                # DELETE: add the ModifyTable operator and return the plan without projection
-
+            if invoked_stmt.is_delete or invoked_stmt.is_update:
+                # DELETE/UPDATE: add the ModifyTable operator and return the plan without projection
                 # ModifyTable needs the RETURNING schema because it mutates (pages.update)
                 # the rows
                 implicit_names = []
@@ -1034,10 +1044,17 @@ class Planner:
                     execution_names=implicit_names,
                     projected_names=returning
                 )
+                kind = "delete" if invoked_stmt.is_delete else "update"
+
+                # DELETE has resolved_params = None
+                actual_values = dict(ctx.resolved_params or {})
+
                 return ModifyTable(
                     plan,
-                    ctx.compiled_dict["delete_operation"],
-                    ctx.compiled_dict["delete_params"],
+                    ctx.compiled_dict[f"{kind}_operation"],
+
+                    # binding is required for UPDATE, for DELETE the binding just returns the template
+                    ctx._bind_params(ctx.compiled_dict[f"{kind}_params"], actual_values),
                     schema=returning_schema
                 )
 

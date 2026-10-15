@@ -8,7 +8,7 @@ from normlite.engine.base import _distill_params
 from normlite.exceptions import InvalidRequestError
 from normlite.engine.context import ExecutionContext
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
-from normlite.sql.dml import delete, select
+from normlite.sql.dml import delete, select, update
 from normlite.sql.elements import or_
 from normlite.sql.functions import func
 from normlite.sql.queryplan import (
@@ -1367,3 +1367,48 @@ def test_a_delete_plan_reads_the_targeted_pages_in_one_request_even_with_yield_p
 
     # Assert: one request for all five rows, not one request per two rows.
     assert counting.query_calls == 1
+
+
+def test_running_the_plan_for_an_update_changes_exactly_the_targeted_pages(engine, students):
+    # ADR-0023: UPDATE executes through the Query plan, as DELETE does.
+    # Running the plan that the Planner builds for an UPDATE changes the
+    # pages that the WHERE selects, and no other page.
+    #
+    # Arrange: three rows with ids 0, 1, 2, all with grade "A", and an
+    # UPDATE whose WHERE keeps ids 0 and 2.
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    compiled = (
+        update(students)
+        .values(grade="Z")
+        .where(students.c.id != 1)
+        .compile(engine._sql_compiler)
+    )
+    connection = engine.raw_connection()
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=connection.cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    # Act: plan the UPDATE and run it to exhaustion.
+    plan = Planner(ctx).plan()
+    plan.open(connection)
+    while plan.next() is not None:
+        pass
+    plan.close()
+
+    # Assert: ids 0 and 2 have the new grade; id 1 keeps the old one.
+    with engine.connect() as conn:
+        grade_by_id = {
+            row.id: row.grade
+            for row in conn.execute(select(students.c.id, students.c.grade))
+        }
+
+    assert grade_by_id == {0: "Z", 1: "A", 2: "Z"}

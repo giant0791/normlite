@@ -588,7 +588,7 @@ def test_folding_zero_clauses_yields_no_filter():
     """No surviving clause must fold to a FALSY dict, never to ``{op: []}`` (#383).
 
     Called directly, deliberately. No caller can reach this input today: the scan
-    path is gated upstream by :func:`_is_pushable`, whose lax **and** is ``any()``
+    path is gated upstream by :func:`_is_pushable`, whose **and** is ``any()``
     and whose **or** is ``all()``, so an admitted node always leaves at least one
     survivor for the comprehension; the join path pre-checks its own list. That
     coincidence is what the caller's docstring argues, and it is temporary --
@@ -636,12 +636,8 @@ def test_nested_ands_are_spliced():
     indistinguishable -- and turns ``(P AND Q) OR R`` into ``P OR Q OR R``. That is
     reachable through an ordinary compile today, because
     :class:`BooleanClauseList`'s constructor flattens only SAME-operator children, so an
-    ``or`` keeps its ``and`` child and that child emits a compound. On ``SELECT`` the
-    weakened predicate survives as a superset that ``recheck_where`` re-narrows, but DML
-    has no recheck and every leaf here is pushable, so the ``_all_terms_pushable`` gate
-    admits it: measured on this tree,
-    ``DELETE WHERE (name='name_0' AND grade='Z') OR id > 8`` destroyed a row it had to
-    keep. The three ``and`` cases cannot see that; only varying ``op`` can.
+    ``or`` keeps its ``and`` child and that child emits a compound. On ``SELECT/DELETE/UPDATE``
+    the weakened predicate survives as a superset that ``recheck_where`` re-narrows.
 
     Positions are asserted on both sides because the merged children land WHERE THEIR
     WRAPPER WAS, not appended at the end. ``test_compiler_differential`` compares emitted

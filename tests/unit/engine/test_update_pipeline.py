@@ -1,16 +1,15 @@
 import re
+from datetime import date
 
 import pytest
 
 from normlite.exceptions import ArgumentError, CompileError
-from normlite.sql.compiler import (
-    _FILTER_MAX_DEPTH_EXCEEDED,
-    _UNPUSHABLE_FILTER_TERM,
-)
-from normlite.sql.dml import update, select
+from normlite.sql.compiler import _FILTER_MAX_DEPTH_EXCEEDED
+from normlite.sql.dml import insert, update, select
 from normlite.sql.elements import not_
 
 from tests.utils.execution import run_execute
+from tests.utils.spies import QueryParamsRecordingClient
 from tests.utils.db_helpers import (
     create_students_db,
     attach_table_oid,
@@ -182,44 +181,6 @@ def test_update_parameters_raises_argument_error(engine, prepared_students):
             conn.execute(stmt, {"grade": "X"})
 
 
-# ── 10. A WHERE with no exact Notion filter is refused (#383) ────────────────
-
-def test_update_with_a_negated_conjunct_is_refused_and_writes_nothing(
-    engine, prepared_students
-):
-    """An UPDATE WHERE that cannot be pushed EXACTLY must raise, never prune (#383).
-
-    The UPDATE twin of
-    ``test_delete_pipeline.test_delete_with_a_negated_conjunct_is_refused_and_deletes_nothing``.
-    Every populated row has ``grade == "A"``, so ``id == 1 AND NOT grade == "A"``
-    is false for all ten rows, and SQL updates nothing.
-
-    ``not`` has no Notion filter form. UPDATE has no recheck (#397), so the
-    pushed filter IS the decision. A filter that drops the negated conjunct
-    reads ``id == 1`` and writes ``grade = 'Z'`` into ``name_1``.
-
-    The refusal can have one reason only: the unpushable term. The WHERE has
-    two leaves under one ``and``, so its filter cannot exceed the nesting cap.
-
-    The grade assertion is not redundant with the raise. It fails a gate that
-    raises after the ``pages.update`` writes are staged.
-    """
-    stmt = (
-        update(prepared_students)
-        .values(grade="Z")
-        .where(
-            (prepared_students.c.id == 1)
-            & not_(prepared_students.c.grade == "A")
-        )
-    )
-
-    with pytest.raises(CompileError, match=re.escape(_UNPUSHABLE_FILTER_TERM)):
-        run_execute(engine, stmt)
-
-    rows = select_all(engine, prepared_students)
-    assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
-
-
 def test_update_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap(
     engine, prepared_students
 ):
@@ -267,32 +228,251 @@ def test_update_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap(
     assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
 
 
-def test_update_by_an_empty_string_comparison_is_refused_with_a_true_reason(
+def test_update_by_an_empty_string_comparison_changes_only_the_blank_row(
     engine, prepared_students
 ):
-    """An UPDATE refusal must name the reason it refuses (#382).
+    """The recheck decides ``grade == ""``, not Notion (#382, #413).
 
     Measured against the live API (``Notion-Version: 2026-03-11``): Notion
-    IGNORES ``rich_text.equals ""`` and returns every row. UPDATE has no
-    recheck (#397), so against real Notion this WHERE writes ``grade = 'Z'``
-    into every row.
+    IGNORES ``rich_text.equals ""`` and returns every row. So the
+    compiler does not push this leaf. No filter goes to Notion, the scan reads
+    every row, and the recheck decides.
 
-    The refusal must name the empty-string literal. ``grade == ""`` is neither
-    a negated term nor a ``None`` comparison, so a reason that names only those
-    is false for this WHERE, and a user who reads a false reason cannot fix it.
+    Two-way cast:
 
-    The grade assertion fails a gate that raises after the ``pages.update``
-    writes are staged.
+    * the ten ``name_i`` rows have ``grade == "A"``. UPDATE leaves them unchanged;
+    * ``Blank`` has an empty grade. The WHERE is true, so it changes to "Z".
+
+    An UPDATE that trusts the unfiltered Scan changes all eleven rows,
+    so this test can tell the two behaviors apart.
     """
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Blank", id=100, is_active=True,
+            start_on=date(1600, 1, 1), grade="",
+        ))
+
+    update_stmt = (
+        update(prepared_students)
+        .where(prepared_students.c.grade == "")
+        .values(grade="Z")
+        .returning(prepared_students.c.name)
+    )
+    result = run_execute(engine, update_stmt)
+
+    assert [row.name for row in result] == ["Blank"]
+    assert_rowcount(result, 1)
+
+    rows = select_all(engine, prepared_students)
+    assert sorted((r.name, r.grade) for r in rows) == sorted(
+        [("Blank", "Z")] + [(f"name_{i}", "A") for i in range(10)]
+    )
+
+
+def test_update_asks_notion_only_for_the_properties_its_where_reads(
+    engine, prepared_students, monkeypatch
+):
+    # Arrange: ten rows with ids 0..9, and an UPDATE whose WHERE reads only
+    # `id`. A spy at the Notion boundary records the query params of every
+    # `data_sources.query` request that the UPDATE sends.
+    spy = QueryParamsRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
     stmt = (
         update(prepared_students)
         .values(grade="Z")
-        .where(prepared_students.c.grade == "")
+        .where(prepared_students.c.id != 1)
     )
 
-    with pytest.raises(CompileError, match=r"(?i)empty[- ]string"):
-        run_execute(engine, stmt)
+    # Act: run the UPDATE through the public API.
+    result = run_execute(engine, stmt)
+
+    # Assert: the UPDATE changes nine rows, and every query to Notion asks
+    # for the `id` property only. `object_id` never goes into
+    # filter_properties (ADR-0006).
+    assert_rowcount(result, 9)
+    assert spy.query_params_seen
+    for query_params in spy.query_params_seen:
+        assert query_params is not None
+        assert query_params.get("filter_properties") == ["id"]
+
+
+def test_update_with_no_where_asks_notion_only_for_the_title(
+    engine, prepared_students, monkeypatch
+):
+    # Arrange: ten rows, and an UPDATE with no WHERE. The UPDATE reads no
+    # property, but Notion cannot return zero properties: an empty
+    # filter_properties means "all properties". The title is the one property
+    # that every Notion data source has. In `students`, the title column is
+    # `name`. A spy at the Notion boundary records the query params of every
+    # `data_sources.query` request that the UPDATE sends.
+    spy = QueryParamsRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    stmt = update(prepared_students).values(grade="Z")
+
+    # Act: run the UPDATE through the public API.
+    result = run_execute(engine, stmt)
+
+    # Assert: the UPDATE changes all ten rows, and every query to Notion asks
+    # for the title property only, by its column name. `object_id` never goes
+    # into filter_properties (ADR-0006).
+    assert_rowcount(result, 10)
+    assert spy.query_params_seen
+    for query_params in spy.query_params_seen:
+        assert query_params is not None
+        assert query_params.get("filter_properties") == ["name"]
+
+
+def test_update_with_a_negated_conjunct_changes_exactly_what_select_returns(
+    engine, prepared_students
+):
+    # Arrange: ten rows with ids 0..9 and grade "A". The WHERE keeps ids 0
+    # and 2 only. Each statement gets a new WHERE object: compiling an
+    # expression assigns roles to its binds, so one object cannot go into
+    # two statements (#421).
+    def where():
+        return (prepared_students.c.id < 3) & not_(prepared_students.c.id == 1)
+
+    with engine.connect() as conn:
+        selected = conn.execute(select(prepared_students.c.id).where(where())).all()
+
+    # Act
+    result = run_execute(
+        engine, update(prepared_students).values(grade="Z").where(where())
+    )
+
+    # Assert: UPDATE changes the SELECT's rows, and no other row.
+    assert sorted(row.id for row in selected) == [0, 2]
+    assert_rowcount(result, 2)
 
     rows = select_all(engine, prepared_students)
-    assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
+    assert sorted((r.id, r.grade) for r in rows) == [
+        (i, "Z" if i in (0, 2) else "A") for i in range(10)
+    ]
 
+
+def test_update_by_a_not_equal_where_leaves_a_valueless_row_unchanged(
+    engine, prepared_students
+):
+    """``id != 1`` must not change a row whose ``id`` has no value (#384, #413).
+
+    SQL answers ``NULL != 1`` with UNKNOWN, and the WHERE drops UNKNOWN.
+    Notion's ``number.does_not_equal`` matches an empty cell. The UPDATE twin
+    of ``test_delete_pipeline.test_delete_by_a_not_equal_where_keeps_a_valueless_row``.
+
+    Three-way cast:
+
+    * ``name_0`` and ``name_2..9`` are valued and unequal to 1. They change to "Z".
+    * ``name_1`` is valued and equal to 1. The WHERE is false, so it stays "A".
+    * ``Nullius`` has a valueless ``id``. The WHERE is UNKNOWN, so it stays "A".
+    """
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Nullius", id=None, is_active=True,
+            start_on=date(1600, 1, 1), grade="A",
+        ))
+
+    result = run_execute(
+        engine,
+        update(prepared_students).values(grade="Z").where(prepared_students.c.id != 1),
+    )
+
+    assert_rowcount(result, 9)
+
+    # Names, not ids: ``Nullius`` has no id, and sorting None against ints raises.
+    rows = select_all(engine, prepared_students)
+    assert sorted((r.name, r.grade) for r in rows) == sorted(
+        [("Nullius", "A"), ("name_1", "A")]
+        + [(f"name_{i}", "Z") for i in range(10) if i != 1]
+    )
+
+
+def test_update_returning_gives_only_the_changed_rows(engine, prepared_students):
+    # Arrange: ten rows with ids 0..9 and grade "A". Notion gets ``id < 3``
+    # and returns ids 0, 1 and 2. The WHERE keeps ids 0 and 2 only.
+    # ``name`` is not in the WHERE.
+    stmt = (
+        update(prepared_students)
+        .values(grade="Z")
+        .where((prepared_students.c.id < 3) & not_(prepared_students.c.id == 1))
+        .returning(prepared_students.c.name, prepared_students.c.grade)
+    )
+
+    # Act
+    result = run_execute(engine, stmt)
+    rows = result.all()
+
+    # Assert: one RETURNING row for each changed row, with the new grade.
+    assert sorted((row.name, row.grade) for row in rows) == [
+        ("name_0", "Z"),
+        ("name_2", "Z"),
+    ]
+    assert_rowcount(result, 2)
+
+
+def test_update_by_an_equal_none_comparison_executes_and_changes_nothing(
+    engine, prepared_students
+):
+    """``id == None`` executes and is UNKNOWN for every row, so UPDATE changes nothing (#413).
+
+    Before #413, UPDATE refused a ``None`` literal with a ``CompileError``. The
+    UPDATE twin of
+    ``test_delete_pipeline.test_delete_by_an_equal_none_comparison_executes_and_trashes_nothing``.
+
+    Two-way cast, so both kinds of cell are covered:
+
+    * the ten ``name_i`` rows have a valued ``id``;
+    * ``Nullius`` has a valueless ``id``. In SQL, ``NULL = NULL`` is UNKNOWN
+      too, so UPDATE does not change it.
+    """
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Nullius", id=None, is_active=True,
+            start_on=date(1600, 1, 1), grade="A",
+        ))
+
+    result = run_execute(
+        engine,
+        update(prepared_students).values(grade="Z").where(prepared_students.c.id == None),
+    )
+
+    assert_rowcount(result, 0)
+
+    rows = select_all(engine, prepared_students)
+    assert sorted((r.name, r.grade) for r in rows) == sorted(
+        [("Nullius", "A")] + [(f"name_{i}", "A") for i in range(10)]
+    )
+
+
+def test_update_by_an_or_with_a_negated_arm_changes_exactly_what_select_returns(
+    engine, prepared_students
+):
+    # Arrange: ten rows with ids 0..9 and grade "A", plus Bee with grade "B".
+    # The WHERE keeps name_1 (id == 1) and Bee (grade is not "A").
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Bee", id=50, is_active=True,
+            start_on=date(1600, 1, 1), grade="B",
+        ))
+
+    def where():
+        return (prepared_students.c.id == 1) | not_(prepared_students.c.grade == "A")
+
+    with engine.connect() as conn:
+        selected = conn.execute(select(prepared_students.c.name).where(where())).all()
+
+    # Act
+    result = run_execute(
+        engine, update(prepared_students).values(is_active=False).where(where())
+    )
+
+    # Assert: UPDATE changes the SELECT's rows, and no other row.
+    assert sorted(row.name for row in selected) == ["Bee", "name_1"]
+    assert_rowcount(result, 2)
+
+    rows = select_all(engine, prepared_students)
+    assert sorted((r.name, r.is_active) for r in rows) == sorted(
+        [("Bee", False), ("name_1", False)]
+        + [(f"name_{i}", True) for i in range(10) if i != 1]
+    )

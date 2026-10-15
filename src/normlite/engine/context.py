@@ -64,6 +64,10 @@ if TYPE_CHECKING:
 class ExecutionStyle(Enum):
     """Define the execution style for a context.
 
+    .. versionchanged:: 0.14.0
+        ``EXECUTEMANY`` retired. DELETE and UPDATE, with or without RETURNING, execute
+        as ``EXECUTEQUERYPLAN`` (ADR-0023).
+
     .. versionadded:: 0.8.0
     """
 
@@ -71,16 +75,6 @@ class ExecutionStyle(Enum):
     """A single operation is executed.
 
     It indicates cursor.execute() will be used.
-
-    .. versionchanged:: 0.9.0
-    """
-
-    EXECUTEMANY = auto()
-    """Multiple operations are executed on a query result.
-
-    It indicates that cursor.execute() will be used.
-    This execution style is used for DELETE/UPDATE statements where the execution loop is
-    driven by the query results.
 
     .. versionchanged:: 0.9.0
     """
@@ -302,7 +296,14 @@ class ExecutionContext:
     """
 
     _staged_result_cursor: Optional[DBAPICursor]
-    """The cursor used internally to route results after pre-fetch/post-fetching.
+    """The cursor that holds the RETURNING rows of INSERT ... RETURNING.
+
+    ``Insert._setup_execution`` stamps the RETURNING description on it. The post-fetch
+    ``pages.retrieve`` operations write their result sets into it. It stays separate from
+    :attr:`_cursor`, which holds the ``pages.create`` result sets.
+
+    .. versionchanged:: 0.14.0
+        Only INSERT ... RETURNING uses it. DELETE and UPDATE execute through the query plan.
 
     .. versionadded:: 0.9.0
     """
@@ -364,23 +365,19 @@ class ExecutionContext:
         return self._result_cursor or self._cursor
 
     def _get_exec_cursor(self) -> DBAPICursor:
-        """Return the execution cursor to be used in the pipeline.
+        """Return the cursor that executes the dispatched DBAPI operation.
 
         This method is a private API that only :class:`normlite.engine.base.Connection` may use.
-        It hides the implementaion details related to which cursor shall be used to execute the DBAPI operation.
-        The cursor is crucial because it holds the result set(s). Different cursors are created,
-        depending on the statement being executed.
-        For ``EXECUTE`` and ``INSERTMANYVALUES`` style statements (e.g., SELECT or bulk inserts), the :attr:`_cursor` is used to execute the operation
-        and to hold the corresponding result set.
-        For ``EXECUTEMANY`` style statements (e.g., DELETE/UPDATE/INSERT...RETURNING), the :attr:`_staged_result_cursor`
-        is used to execute the operation and to hold the corresponding result set.
+        The :attr:`_cursor` executes the operation and holds its result set(s).
+
+        .. versionchanged:: 0.14.0
+            Always return :attr:`_cursor`. DELETE and UPDATE execute through the query plan
+            (ADR-0023). Only INSERT ... RETURNING uses :attr:`_staged_result_cursor`, and the
+            INSERT hook sends its ``pages.retrieve`` operations to it directly.
 
         .. versionadded:: 0.9.0
         """
-        if self.execution_style in (ExecutionStyle.EXECUTE, ExecutionStyle.INSERTMANYVALUES):
-            return self._cursor
-
-        return self._staged_result_cursor
+        return self._cursor
 
     def _determine_execution_style(self) -> ExecutionStyle:
         if len(self.distilled_params) > 1:
@@ -393,15 +390,13 @@ class ExecutionContext:
         if stmt.is_insert and stmt._has_multi_parameters:
             return ExecutionStyle.INSERTMANYVALUES
 
-        # update with single parameters
-        if stmt.is_update:
-            return ExecutionStyle.EXECUTEMANY
-
         # REFACTORED: SELECT statements are now always query plan driven
         # (see #384, routing is inside C2)
         # REFACTORED: DELETE statements are also always query plan driven
         # (see #411, ADR-0023)
-        if stmt.is_select or stmt.is_delete:
+        # REFACTORED: UPDATE statements are also always query plan driven
+        # (see #413, ADR-0023)
+        if stmt.is_select or stmt.is_delete or stmt.is_update:
             return ExecutionStyle.EXECUTEQUERYPLAN
 
         # select or insert without returning
@@ -533,31 +528,33 @@ class ExecutionContext:
         self._cursor._inject_description(schema.as_sequence())
 
     def _assert_all_params_consumed(self, resolved_params: list[dict[str, BindParameter]]):
-        if self.invoked_stmt.is_update:
-            return
-
         from normlite.sql.elements import _BindRole
 
-        # A pruned filter (#383) leaves the binds of the leaves it removed unpopped.
-        # They are not unused: `recheck_where` holds the whole predicate and `eval3`
-        # reads each value off the AST's own BindParameter, so the RECHECK consumes
-        # them -- a second consumer, exactly as UPDATE's SET clause is.
+        # A bind left in the parameter set after the payload bind is an orphan,
+        # unless a later consumer reads it. Two consumers exist:
         #
-        # This holds for SELECT and DELETE: both execute through the plan, and
-        # the plan rechecks `recheck_where` (#412). UPDATE holds its WHERE too
-        # (#409), but nothing consumes it until #413. The skip is still safe:
-        # DML never prunes (its depth gate raises), and an unpushable leaf is
-        # never dispatched, so it registers no bind. A DML filter therefore
-        # leaves no orphan. Do NOT let a DML statement prune unless its plan
-        # rechecks `recheck_where`: this skip would then hide the orphans.
+        # 1. The recheck reads COLUMN_FILTER binds. A pruned filter (#383) leaves
+        #    the binds of the removed leaves unpopped. `recheck_where` holds the
+        #    whole predicate, and `eval3` reads each value from the AST's own
+        #    BindParameter. SELECT, DELETE and UPDATE all recheck through the
+        #    plan (#412, #413). This exemption trusts the Planner: it must place
+        #    a Filter for every `recheck_where`, or this check hides the orphans.
+        # 2. The Planner reads UPDATE's COLUMN_VALUE binds. It binds the SET
+        #    template from `resolved_params` after pre_exec (ADR-0023). This
+        #    does not depend on a WHERE. INSERT has no such consumer: an INSERT
+        #    value that nobody writes is data loss.
         rechecked = self.compiled.planning_context.recheck_where is not None
+        planner_binds_values = self.invoked_stmt.is_update
+
+        def has_consumer(bp: BindParameter) -> bool:
+            if bp.role is _BindRole.COLUMN_FILTER:
+                return rechecked
+            if bp.role is _BindRole.COLUMN_VALUE:
+                return planner_binds_values
+            return False
 
         for i, param_set in enumerate(resolved_params):
-            orphans = [
-                key
-                for key, bp in param_set.items()
-                if not (rechecked and bp.role is _BindRole.COLUMN_FILTER)
-            ]
+            orphans = [key for key, bp in param_set.items() if not has_consumer(bp)]
             if orphans:
                 raise ArgumentError(
                     f"Unused bind parameters in parameter set {i}: "

@@ -21,12 +21,12 @@ def prepared_students(engine, students):
 
 # ── 1. execution_style ────────────────────────────────────────────────────────
 
-def test_update_execution_style_is_executemany(engine, prepared_students):
+def test_update_execution_style_is_executequeryplan(engine, prepared_students):
     stmt = update(prepared_students).values(name='Newton')
 
     _, ctx = run_context(engine, stmt)
 
-    assert ctx.execution_style == ExecutionStyle.EXECUTEMANY
+    assert ctx.execution_style == ExecutionStyle.EXECUTEQUERYPLAN
 
 
 # ── 2. resolved_params holds VALUES bind params ───────────────────────────────
@@ -56,19 +56,3 @@ def test_update_payload_has_only_filter_after_pre_exec(engine, prepared_students
     assert 'name' not in str(ctx.payload)
     # filter payload must contain the query structure
     assert 'filter' in ctx.payload
-
-
-# ── debug: bulk_parameters ────────────────────────────────────────────────────
-
-def test_update_bulk_parameters_structure(engine, prepared_students):
-    stmt = update(prepared_students).values(grade='Z')
-
-    _, ctx = run_context(engine, stmt)
-
-    assert ctx.bulk_parameters is not None
-    assert len(ctx.bulk_parameters) == 5
-    first = ctx.bulk_parameters[0]
-    assert 'path_params' in first
-    assert 'payload' in first
-    assert 'properties' in first['payload']
-    assert 'grade' in first['payload']['properties']

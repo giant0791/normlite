@@ -42,10 +42,9 @@ _NOTION_MAX_FILTER_DEPTH = 2
 
 # Private refusal reasons for the aggregate SELECT, DELETE and UPDATE.
 # The two refusal helpers below use these strings, and the tests match on them.
-# They are REMOVED, not relaxed. Only UPDATE still refuses an unpushable term: #413
-# removes that. The depth refusal goes for DML with #417, for the aggregate with #399.
+# They are REMOVED, not relaxed. The depth refusal goes for DML with #417,
+# for the aggregate with #399.
 _FILTER_MAX_DEPTH_EXCEEDED = "It exceeds Notion filter max depth"
-_UNPUSHABLE_FILTER_TERM = "Notion filter syntax cannot express negated terms, null comparison values or empty-string text values"
 
 #: The Notion operation that writes one page. ``ModifyTable`` sends it once per row.
 ROWS_UPDATE = {"endpoint": "pages", "request": "update"}
@@ -54,13 +53,13 @@ ROWS_UPDATE = {"endpoint": "pages", "request": "update"}
 # The compiler calls them to refuse a WHERE clause that Notion cannot evaluate exactly
 # AND that no client-side recheck corrects.
 # They are REMOVED with the last refusing statement: #413 and #417 for DML, #399 for the aggregate.
-# DELETE stays a _RefusingStmt for the depth refusal only (#417).
+# DELETE and UPDATE stay a _RefusingStmt for the depth refusal only (#417).
 # The helpers add the periods and select the consequence by the _RefusingStmt key.
 _RefusingStmt = Literal["An aggregate SELECT", "UPDATE", "DELETE"]
 
 _NO_RECHECK_CONSEQUENCE: dict[_RefusingStmt, str] = {
     "DELETE": "DELETE does not prune a too-deep filter yet (#417)",
-    "UPDATE": "UPDATE bypasses the query plan, so its WHERE has no recheck (#397)",
+    "UPDATE": "UPDATE does not prune a too-deep filter yet (#417)",
     "An aggregate SELECT": "The aggregate would reduce rows this WHERE excludes (#399)",
 }
 
@@ -90,30 +89,6 @@ def _raise_if_filter_max_depth_exceeded(
     if _depth(filter_obj) > _NOTION_MAX_FILTER_DEPTH:
         raise CompileError(
             f"{stmt} cannot compile this WHERE clause: {_FILTER_MAX_DEPTH_EXCEEDED}. {_NO_RECHECK_CONSEQUENCE[stmt]}. {remedy}."
-        )
-
-
-def _raise_if_filter_term_unpushable(
-    stmt: _RefusingStmt,
-    where_expression: ColumnElement,
-    remedy: str,
-) -> None:
-    """Refuse ``where_expression`` if the emitted filter would drop a term.
-
-    Args:
-        stmt: The refusing statement. It selects the consequence in the message.
-        where_expression: The WHERE expression, before emission.
-        remedy: What the user can do instead. The caller supplies it.
-
-    Raises:
-        CompileError: If :func:`_all_terms_pushable` returns ``False``. The
-            message holds ``_UNPUSHABLE_FILTER_TERM``.
-
-    .. versionadded:: 0.13.0
-    """
-    if not _all_terms_pushable(where_expression):
-        raise CompileError(
-            f"{stmt} refuses this WHERE clause: {_UNPUSHABLE_FILTER_TERM}. {_NO_RECHECK_CONSEQUENCE[stmt]}. {remedy}."
         )
 
 def compile_residual_sorts(residual_sorts: OrderByClause) -> list[dict]:
@@ -172,26 +147,21 @@ def _get_expression_parent_tables(expression: ClauseElement) -> Set[Table]:
 
     return {c.parent for c in _get_expression_columns(expression)}
 
-def _is_pushable(node: ColumnElement, strict: bool = False) -> bool:
+def _is_pushable(node: ColumnElement) -> bool:
     """``True`` if the node is pushable into the Notion API filter.
 
     Helper that implements the following rule:
         - **leaf** - pushable, unless it compares a ``None`` literal under ``==`` or ``!=``,
           or a text (``title`` / ``rich_text``) column with the empty-string literal ``""``.
         - **not** - never pushable.
-        - **and** - lax: drop unpushable children, push the survivors.
-          strict: any unpushable child makes the whole **and** unpushable.
+        - **and** - drop unpushable children, push the survivors.
         - **or** - if any child is unpushable, the whole or is unpushable. Push nothing for it.
 
     Args:
         node: The WHERE subtree to judge.
-        strict: Selects which question is asked of the WHOLE subtree, not just of
-            ``node``, and is therefore carried down every recursive call. ``False``
-            (the default, used by ``SELECT``) asks *"can anything be pushed?"*;
-            ``True`` (used by the DML gate) asks *"can EVERYTHING be pushed?"*.
 
     Returns:
-        ``True`` if the node is pushable under the requested mode.
+        ``True`` if the node is pushable.
 
     Raises:
         NotImplementedError: If the node is not a recognized WHERE node type. Falling
@@ -199,18 +169,12 @@ def _is_pushable(node: ColumnElement, strict: bool = False) -> bool:
             be dispatched and emitted as a filter.
 
     .. note::
-        **Why two modes exist.** The two operators are asymmetric only under **and**,
-        and the asymmetry is not stylistic. Dropping a conjunct WEAKENS the filter, so
-        the backend returns a SUPERSET of the answer. On the ``SELECT`` path that is
-        sound, because the push never decides -- the client-side recheck does
-        (ADR-0022) -- so lax is correct there. ``DELETE`` has a recheck too (#412).
-        ``UPDATE`` has no recheck yet (#413): the pushed filter IS the decision, and
-        a dropped conjunct is a row mutated that the WHERE excludes. Hence strict.
-
-        **or** applies ``all()`` in both modes, but ``strict`` still has to reach it:
-        the mode selects the question put to the CHILDREN, and an **and** nested under
-        an **or** must be judged in the caller's mode. A recursive call that omits
-        ``strict`` silently reverts the whole subtree below it to lax.
+        **Why and and or differ.** Dropping a conjunct WEAKENS the filter, so the
+        backend returns a SUPERSET of the answer. That is sound, because the push
+        never decides -- the client-side recheck does (ADR-0022). ``SELECT``,
+        ``DELETE`` (#412) and ``UPDATE`` (#413) all recheck their WHERE. Dropping a
+        disjunct NARROWS the filter, so the backend loses rows that no recheck
+        can bring back. Hence an **or** pushes all its children or none.
 
     .. seealso::
 
@@ -218,6 +182,7 @@ def _is_pushable(node: ColumnElement, strict: bool = False) -> bool:
 
     .. versionchanged:: 0.14.0
         A leaf with a comparison against the empty-string text literal ``""`` is unpushable (#382).
+        Removed ``strict``: every statement rechecks its WHERE, so no DML gate uses it (#413).
 
     .. versionchanged:: 0.13.0
         Added ``strict`` for the DML gate.
@@ -239,65 +204,12 @@ def _is_pushable(node: ColumnElement, strict: bool = False) -> bool:
 
     if isinstance(node, BooleanClauseList):
         if node.operator == "and":
-            if strict:
-                return all(_is_pushable(c, strict=strict) for c in node.clauses)
-
-            return any(_is_pushable(c, strict=strict) for c in node.clauses)
+            return any(_is_pushable(c) for c in node.clauses)
 
         if node.operator == "or":
-            return all(_is_pushable(c, strict=strict) for c in node.clauses)
+            return all(_is_pushable(c) for c in node.clauses)
 
     raise NotImplementedError(f"Unknown or unsupported expression node: '{type(node).__name__}'")
-
-def _all_terms_pushable(node: ColumnElement) -> bool:
-    """``True`` only if EVERY term in ``node`` is pushable.
-
-    The gate condition for a ``DELETE``/``UPDATE`` WHERE clause. Where
-    :func:`_is_pushable` in its default (lax) mode admits an **and** with a single
-    pushable child -- because ``SELECT`` may drop the rest and let the recheck decide
-    (ADR-0022) -- this admits it only if no child would be dropped at all. On the DML
-    path a dropped conjunct is not a weakened hint, it is a deleted or overwritten row.
-
-    .. warning::
-        ``True`` does NOT mean the pushed filter is EXACTLY equivalent to the WHERE.
-        It means no term is *discarded*. A term may still be pushed as a Notion filter
-        that over-matches, because Notion's negative operators are the boolean
-        complement over a domain that INCLUDES the empty cell, while SQL's evaluate to
-        UNKNOWN against NULL and the WHERE policy drops them.
-
-        The ``!=`` instance of that is **closed**: ``id != 1`` used to emit a bare
-        ``number.does_not_equal``, which also matched a valueless ``id``, so
-        ``DELETE WHERE id != 1`` passed this gate and still removed a row SQL keeps
-        (#384, ADR-0022). :meth:`NotionCompiler.visit_binary_expression` now conjoins
-        ``is_not_empty`` onto that leaf and the push is exact (#383).
-
-        ``NOT IN`` is **exact**, measured against the live API (2026-10-04,
-        ``src/tools/notion_probe.py``). It emits ``does_not_contain``, and Notion
-        matches every ``[]`` cell, for both ``title`` and ``relation``. SQL and
-        eval3 also say TRUE there: ``[]`` is a PRESENT value, not a valueless
-        cell (CONTEXT.md, "Raw cell <-> decoded NULL"), and Notion stores no
-        valueless text or relation cell. So no repair applies. Measure every new
-        negative operator the same way: reasoning by analogy across Notion's
-        types has been wrong here before (ADR-0019).
-
-    Args:
-        node: The WHERE expression of the DML statement.
-
-    Returns:
-        ``True`` if no term of ``node`` would be dropped when the filter is emitted.
-
-    .. seealso::
-
-        Issue `normlite pushes filter constructs the Notion API rejects with HTTP 400 <https://github.com/giant0791/normlite/issues/383>`_.
-
-        Issue `DELETE/UPDATE bypass the query plan, so their WHERE has no recheck <https://github.com/giant0791/normlite/issues/397>`_,
-        which retires this gate by giving DML a recheck. DELETE no longer calls it
-        (#412). UPDATE stops in #413, and then this gate is REMOVED, not relaxed.
-
-    .. versionadded:: 0.13.0
-    """
-
-    return _is_pushable(node, strict=True)
 
 def _depth(node: Any) -> int:
     """Count nested compound objects, the root compound being level 1.
@@ -1414,27 +1326,26 @@ class NotionCompiler(SQLCompiler):
             path_params['data_source_id'] = f':{db_id_key}'
 
         if update._whereclause.has_expression():
-            where_expression = update._whereclause.expression
-            _raise_if_filter_term_unpushable(
-                stmt="UPDATE",
-                where_expression=where_expression,
-                remedy="Express the condition without NOT, replace \"== None\" / \"!= None\" with is_empty() / is_not_empty() (they also match empty cells), or SELECT the rows first and update them by object_id",
-            )
-            self.planning_context.recheck_where = where_expression
-            payload['filter'] = update._whereclause._compiler_dispatch(
-                self,
-                stmt="UPDATE",
-                remedy="SELECT the rows first and update them by object_id"
-            )
+            expression = update._whereclause.expression
+            self.planning_context.recheck_where = expression
+            if _is_pushable(expression):
+                # compile the UPDATE's WHERE clause if the expression is pushable
+                payload['filter'] = update._whereclause._compiler_dispatch(
+                    self,
+                    stmt="UPDATE",
+                    remedy="SELECT the rows first and update them by object_id"
+                )
 
         with self._compiling(new_state=_CompileState.COMPILING_VALUES):
-            update_payload = self._compile_update_values(update._values)
+            # construct the update payload template containing the values as bind params
+            update_payload_template = self._compile_update_values(update._values)
 
         return {
             'operation': operation,
             'path_params': path_params,
             'payload': payload,
-            'update_payload': update_payload,
+            'update_operation': ROWS_UPDATE,
+            'update_params': {"payload": {"properties": update_payload_template}},
         }
 
     def _compile_update_values(self, values: dict) -> dict:
