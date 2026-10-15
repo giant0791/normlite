@@ -315,15 +315,13 @@ def test_delete_refuses_a_where_it_cannot_push_within_the_nesting_cap(
 
         WHERE name='name_0' AND (id != 1 OR grade='A')
 
-    has a Notion filter form, so ``_all_terms_pushable`` admits it and always
-    will: its question is "would any term be DROPPED", and none is. What is
-    wrong here is not a missing term but the SHAPE of what the terms emit -- the
-    leaf repair (``e26d7af``) makes ``id != 1`` a level-1 compound, the fold's
+    has a Notion filter form, so no term is dropped. What is wrong here is
+    not a missing term but the SHAPE of what the terms emit -- the leaf
+    repair (``e26d7af``) makes ``id != 1`` a level-1 compound, the fold's
     splice cannot absorb it under an ``or``, and the root ``and`` puts the
-    result at depth 3. The Notion API caps compound nesting at 2, so this is an
-    HTTP 400. Only the EMITTED dict knows that number, which is why the gate
-    cannot answer this question before emission the way it answers the other
-    two.
+    result at depth 3. The Notion API caps compound nesting at 2, so this is
+    an HTTP 400. Only the EMITTED dict knows that number, so no check on the
+    WHERE expression can answer this question before emission.
 
     **What this test refuses is a statement that currently returns the RIGHT
     answer.** Measured on this tree: ``name_0`` has ``id == 0`` and
@@ -368,7 +366,7 @@ def test_delete_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap(
 
         WHERE name='name_0' AND (id=1 OR (grade='A' AND is_active IS TRUE))
 
-    Every term has a Notion filter form, so ``_all_terms_pushable`` admits it.
+    Every term has a Notion filter form, so ``_is_pushable`` admits it.
     The operators alternate, so the fold has no same-operator child to splice.
     The emitted filter is ``{and: [leaf, {or: [leaf, {and: [leaf, leaf]}]}]}``:
     root ``and`` at level 1, ``or`` at level 2, inner ``and`` at level 3. The

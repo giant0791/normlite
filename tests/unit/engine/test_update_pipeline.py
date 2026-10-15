@@ -1,13 +1,11 @@
 import re
+from datetime import date
 
 import pytest
 
 from normlite.exceptions import ArgumentError, CompileError
-from normlite.sql.compiler import (
-    _FILTER_MAX_DEPTH_EXCEEDED,
-    _UNPUSHABLE_FILTER_TERM,
-)
-from normlite.sql.dml import update, select
+from normlite.sql.compiler import _FILTER_MAX_DEPTH_EXCEEDED
+from normlite.sql.dml import insert, update, select
 from normlite.sql.elements import not_
 
 from tests.utils.execution import run_execute
@@ -183,44 +181,6 @@ def test_update_parameters_raises_argument_error(engine, prepared_students):
             conn.execute(stmt, {"grade": "X"})
 
 
-# ── 10. A WHERE with no exact Notion filter is refused (#383) ────────────────
-
-def test_update_with_a_negated_conjunct_is_refused_and_writes_nothing(
-    engine, prepared_students
-):
-    """An UPDATE WHERE that cannot be pushed EXACTLY must raise, never prune (#383).
-
-    The UPDATE twin of
-    ``test_delete_pipeline.test_delete_with_a_negated_conjunct_is_refused_and_deletes_nothing``.
-    Every populated row has ``grade == "A"``, so ``id == 1 AND NOT grade == "A"``
-    is false for all ten rows, and SQL updates nothing.
-
-    ``not`` has no Notion filter form. UPDATE has no recheck (#397), so the
-    pushed filter IS the decision. A filter that drops the negated conjunct
-    reads ``id == 1`` and writes ``grade = 'Z'`` into ``name_1``.
-
-    The refusal can have one reason only: the unpushable term. The WHERE has
-    two leaves under one ``and``, so its filter cannot exceed the nesting cap.
-
-    The grade assertion is not redundant with the raise. It fails a gate that
-    raises after the ``pages.update`` writes are staged.
-    """
-    stmt = (
-        update(prepared_students)
-        .values(grade="Z")
-        .where(
-            (prepared_students.c.id == 1)
-            & not_(prepared_students.c.grade == "A")
-        )
-    )
-
-    with pytest.raises(CompileError, match=re.escape(_UNPUSHABLE_FILTER_TERM)):
-        run_execute(engine, stmt)
-
-    rows = select_all(engine, prepared_students)
-    assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
-
-
 def test_update_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap(
     engine, prepared_students
 ):
@@ -268,35 +228,45 @@ def test_update_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap(
     assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
 
 
-def test_update_by_an_empty_string_comparison_is_refused_with_a_true_reason(
+def test_update_by_an_empty_string_comparison_changes_only_the_blank_row(
     engine, prepared_students
 ):
-    """An UPDATE refusal must name the reason it refuses (#382).
+    """The recheck decides ``grade == ""``, not Notion (#382, #413).
 
     Measured against the live API (``Notion-Version: 2026-03-11``): Notion
-    IGNORES ``rich_text.equals ""`` and returns every row. UPDATE has no
-    recheck (#397), so against real Notion this WHERE writes ``grade = 'Z'``
-    into every row.
+    IGNORES ``rich_text.equals ""`` and returns every row. So the
+    compiler does not push this leaf. No filter goes to Notion, the scan reads
+    every row, and the recheck decides.
 
-    The refusal must name the empty-string literal. ``grade == ""`` is neither
-    a negated term nor a ``None`` comparison, so a reason that names only those
-    is false for this WHERE, and a user who reads a false reason cannot fix it.
+    Two-way cast:
 
-    The grade assertion fails a gate that raises after the ``pages.update``
-    writes are staged.
+    * the ten ``name_i`` rows have ``grade == "A"``. UPDATE leaves them unchanged;
+    * ``Blank`` has an empty grade. The WHERE is true, so it changes to "Z".
+
+    An UPDATE that trusts the unfiltered Scan changes all eleven rows,
+    so this test can tell the two behaviors apart.
     """
-    stmt = (
-        update(prepared_students)
-        .values(grade="Z")
-        .where(prepared_students.c.grade == "")
-    )
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Blank", id=100, is_active=True,
+            start_on=date(1600, 1, 1), grade="",
+        ))
 
-    with pytest.raises(CompileError, match=r"(?i)empty[- ]string"):
-        run_execute(engine, stmt)
+    update_stmt = (
+        update(prepared_students)
+        .where(prepared_students.c.grade == "")
+        .values(grade="Z")
+        .returning(prepared_students.c.name)
+    )
+    result = run_execute(engine, update_stmt)
+
+    assert [row.name for row in result] == ["Blank"]
+    assert_rowcount(result, 1)
 
     rows = select_all(engine, prepared_students)
-    assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
-
+    assert sorted((r.name, r.grade) for r in rows) == sorted(
+        [("Blank", "Z")] + [(f"name_{i}", "A") for i in range(10)]
+    )
 
 
 def test_update_asks_notion_only_for_the_properties_its_where_reads(
@@ -352,3 +322,31 @@ def test_update_with_no_where_asks_notion_only_for_the_title(
     for query_params in spy.query_params_seen:
         assert query_params is not None
         assert query_params.get("filter_properties") == ["name"]
+
+
+def test_update_with_a_negated_conjunct_changes_exactly_what_select_returns(
+    engine, prepared_students
+):
+    # Arrange: ten rows with ids 0..9 and grade "A". The WHERE keeps ids 0
+    # and 2 only. Each statement gets a new WHERE object: compiling an
+    # expression assigns roles to its binds, so one object cannot go into
+    # two statements (#421).
+    def where():
+        return (prepared_students.c.id < 3) & not_(prepared_students.c.id == 1)
+
+    with engine.connect() as conn:
+        selected = conn.execute(select(prepared_students.c.id).where(where())).all()
+
+    # Act
+    result = run_execute(
+        engine, update(prepared_students).values(grade="Z").where(where())
+    )
+
+    # Assert: UPDATE changes the SELECT's rows, and no other row.
+    assert sorted(row.id for row in selected) == [0, 2]
+    assert_rowcount(result, 2)
+
+    rows = select_all(engine, prepared_students)
+    assert sorted((r.id, r.grade) for r in rows) == [
+        (i, "Z" if i in (0, 2) else "A") for i in range(10)
+    ]
