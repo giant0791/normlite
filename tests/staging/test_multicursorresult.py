@@ -226,29 +226,29 @@ def data() -> List[dict]:
         "next_cursor": None,
         "has_more": False,
         "type": "page_or_database",
-        "page_or_database": {}      
+        "page_or_database": {}
     })
     return data
-    
+
 class CompositeCursorResult(CursorResult):
     """Prototype"""
     def __init__(self, cursors: Sequence[Cursor]):
-        self._cursors: List[Cursor] = list(cursors) 
+        self._cursors: List[Cursor] = list(cursors)
         self._current_cursor_index = 0
         self._current_cursor = self._cursors[self._current_cursor_index]
 
 class NewCursorResult:
     """Prototype for new and refactored CursorResult class with composite cursor feature."""
 
-    # TODO: 
+    # TODO:
     # DECIDE: Composition over inheritance?
     # THINK: CursorResultBase or better just Result in case of composition?
     # --------------------------------------------------------------------------------------
     # 1. Put current CursorResult implementation into CursorResultBase
     # 2. Refactor CursorResult as subclass of CursorResultBase and use this implementation
-    # 3. Add CursorResultBase.close() and CursorResult.close() methods 
+    # 3. Add CursorResultBase.close() and CursorResult.close() methods
     # --------------------------------------------------------------------------------------
-    
+
     def __init__(self, dbapi_cursor: CompositeCursor):
         self._dbapi_cursor = dbapi_cursor
         self._current_result = CursorResult(self._dbapi_cursor._current_cursor)
@@ -264,20 +264,20 @@ class NewCursorResult:
             # update the current cursor result
             self._current_result = CursorResult(self._dbapi_cursor._current_cursor)
             return True
-        
+
         # all result sets depleted
         # TODO: add self.close()
         return False
-    
+
     def one(self) -> Row:
         return self._current_result.one()
-    
+
     def all(self) -> Sequence[Row]:
         return self._current_result.all()
 
 def test_fetch_from_compositecursor(proxy_client: FlaskClient, client: AbstractNotionClient, data: List[dict]):
     conn = Connection(proxy_client, client)
-    
+
     # sketch implementation for the Connection.commit()
     # Connection.commit() builds a composite cursor
     conn._create_cursors(data)

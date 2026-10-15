@@ -1,4 +1,4 @@
-# normlite/engine/base.py 
+# normlite/engine/base.py
 # Copyright (C) 2025 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-"""Establish the foundational engine layer for connecting to Notion or 
+"""Establish the foundational engine layer for connecting to Notion or
 simulated integrations (:memory:, file-based).
 
 Here a quick example of how to use :class:`Engine` and :class:`Connection`.
@@ -29,7 +29,7 @@ Here a quick example of how to use :class:`Engine` and :class:`Connection`.
 
     # create the engine to interact with Notion (use in-memory client version)
     engine: Engine = create_engine('normlite///:memory')
-    
+
     # create database schema
     metadata = MetaData()
     students = Table(
@@ -61,7 +61,7 @@ Here a quick example of how to use :class:`Engine` and :class:`Connection`.
 
         # access data returned by the DML statement excution
         row = result.one()
-        print(f'{row[SpecialColumns.NO_ID]}')             # '680dee41-b447-451d-9d36-c6eaff13fb45'  
+        print(f'{row[SpecialColumns.NO_ID]}')             # '680dee41-b447-451d-9d36-c6eaff13fb45'
 """
 
 from __future__ import annotations
@@ -103,8 +103,8 @@ class Connection:
     .. versionadded:: 0.7.0
         This version implements the ``autocommit`` isolation level.
         The transaction management methods like :meth:`commit()` and :meth:`rollback()` have been
-        added but do nothing. 
-    
+        added but do nothing.
+
     """
 
     _execution_options: ExecutionOptions
@@ -129,8 +129,8 @@ class Connection:
         logging_token: str = ...,
         isolation_level: IsolationLevel = ..., # type: ignore
         implicit_returning: bool = False,
-        preserve_rowcount: bool = False,    
-        preserve_rowid: bool = False,     
+        preserve_rowcount: bool = False,
+        preserve_rowid: bool = False,
         stream_results: bool = False,
         yield_per: Optional[int] = None,
         **opts: Any
@@ -143,7 +143,7 @@ class Connection:
 
     def execution_options(self, **opts: Any) -> Connection:
         """Update the execution options **in-place** returning the same connection's instance.
-        
+
         .. versionadded:: 0.8.0
         """
 
@@ -152,19 +152,19 @@ class Connection:
 
     def get_execution_options(self) -> ExecutionOptions:
         """Return the execution options that will take effect during execution.
-        
+
         .. versionadded:: 0.8.0
 
         .. seealso::
-        
+
             :py:meth:`Engine.execution_options`
 
         """
         return self._execution_options
 
     def execute(
-            self, 
-            stmt: Executable, 
+            self,
+            stmt: Executable,
             parameters: Optional[_CoreAnyExecuteParams] = None,
             *,
             execution_options: Mapping[str, Any] = None
@@ -173,11 +173,11 @@ class Connection:
 
         Currently the isolation level autocommit is supported only. Hence, all calls to this method
         return a result object. For DDL statements, ``result.returns_rows`` yields ``False``.
- 
+
         Args:
             stmt (Executable): The statement to execute.
             parameters (Optional[d_CoreAnyExecuteParams]): An optional mapping or sequence of mappings containing the parameters to be
-                bound to the SQL statement.   
+                bound to the SQL statement.
             execution_options (Mapping[str, Any]): Optional per-statement execution options. Defaults to ``None``.
 
         Returns:
@@ -194,19 +194,19 @@ class Connection:
         .. versionadded:: 0.7.0
 
         """
-        
+
         # delegate to statement execution trigger
         if not stmt.supports_execution:
             raise ObjectNotExecutableError(stmt)
-    
+
         exec_method = stmt._execute_on_connection(
-            self, 
-            parameters, 
+            self,
+            parameters,
             execution_options=execution_options
         )
-        
+
         return exec_method
-    
+
     def _execute_context(
             self,
             elem: Executable,
@@ -220,7 +220,7 @@ class Connection:
         compiled = elem.compile(compiler)
 
         # 2. distill parameters
-        distilled_params = _distill_params(parameters)  
+        distilled_params = _distill_params(parameters)
 
         # 3. create the execution context
         ctx = ExecutionContext(
@@ -237,37 +237,37 @@ class Connection:
         elem = ctx.invoked_stmt
 
         # 5. statement prepares execution
-        elem._setup_execution(ctx)      
+        elem._setup_execution(ctx)
 
         if ctx.execution_style == ExecutionStyle.EXECUTEQUERYPLAN:
             self._execute_query_plan(ctx)
 
         elif ctx.execution_style == ExecutionStyle.EXECUTE:
             self._execute_single(ctx)
-        
+
         elif ctx.execution_style == ExecutionStyle.INSERTMANYVALUES:
             self._execute_insert_many(ctx)
 
         else:
             raise NotImplementedError(f"'{ctx.execution_style}' execution style not supported.")
-        
+
         # 7. the execution is mechanically complete before semantic interpretation begins
         #    make lastrowid, rowcount, etc. available to the result
         ctx.post_exec()
 
         # 8. result interpretation
         #    semantic reconstruction / reflection for DDL statements
-        elem._finalize_execution(ctx)   
+        elem._finalize_execution(ctx)
 
         return ctx.setup_cursor_result()
 
     def _execute_single(self, context: ExecutionContext) -> None:
         elem = context.invoked_stmt
-        
+
         # 6. side effects happen (HTTP)
         self._engine.do_execute(
-            context._get_exec_cursor(), 
-            context.operation, 
+            context._get_exec_cursor(),
+            context.operation,
             context.parameters,
             streamable=elem.is_select,      # stream_results, yield_per options considered for SELECT statements only
             execution_options=context.execution_options
@@ -279,8 +279,8 @@ class Connection:
         # 6. side effects happen (HTTP)
         #    insert_many expects a multi-payload in parameters
         self._engine.do_executemany(
-            context._get_exec_cursor(), 
-            context.operation, 
+            context._get_exec_cursor(),
+            context.operation,
             context.parameters
         )
 
@@ -324,10 +324,10 @@ class Connection:
     def _resolve_execution_options(self, stmt_execution_options: ExecutionOptions) -> ExecutionOptions:
         """Resolve the connection's execution options with the statement's ones."""
         pass
-    
+
     def commit(self) -> None:
         """Commit the transaction currently in progress.
-        
+
         Note:
             Work in progress. This method currently does nothing.
         """
@@ -335,7 +335,7 @@ class Connection:
 
     def rollback(self) -> None:
         """Rollback the transaction currently in progress.
-        
+
         Note:
             Work in progress. This method currently does nothing.
         """
@@ -343,14 +343,14 @@ class Connection:
 
     def __enter__(self) -> Connection:
         return self
-    
+
     def __exit__(self, type_: Any, value: Any, traceback: Any) -> None:
         pass
 
 @dataclass
 class NotionAuthURI:
     """Provide a helper data structure to hold URI schema elements for an internal or external Notion integration.
-    
+
     Warning:
         Experimental code! Do not use!
     """
@@ -366,15 +366,15 @@ class NotionSimulatedURI:
     """Provide an a helper data structure to hold URI schema elements for test integrations."""
     kind: Literal["simulated"]
     """The kind of the integration."""
-    
+
     mode: Literal["memory", "file"]
     """The mode the integration."""
 
-    path: Optional[str] = None 
+    path: Optional[str] = None
     """The path to the database file (``None`` for in-memory integrations)."""
-    
+
     file: Optional[str] = None
-    """The database file name (``None`` for in-memory integrations).""" 
+    """The database file name (``None`` for in-memory integrations)."""
 
 NotionURI: TypeAlias = Union[NotionAuthURI, NotionSimulatedURI]
 """Type for the URI."""
@@ -438,7 +438,7 @@ def create_engine(
 ) -> Engine:
     """Create a new engine proxy object to connect and interact to the Notion integration denoted by the supplied URI.
 
-    This is a factory function to create :class:``Engine`` proxy object based on the parameters 
+    This is a factory function to create :class:``Engine`` proxy object based on the parameters
     specified in the supplied URI.
 
     .. code-block:: python
@@ -451,7 +451,7 @@ def create_engine(
 
         engine: Engine = create_engine(
             f'normlite+auth://internal?token={NOTION_TOKEN}&version={NOTION_VERSION}'
-        )  
+        )
 
     Args:
         uri (str): The URI denoting the integration to connect to.
@@ -467,7 +467,7 @@ class Engine:
     An :class:`Engine` object is instantiated by the factory :func:`create_engine()`.
 
     Examples of possible future extensions:
-    
+
         >>> # create a proxy object to a :memory: integration
         >>> engine = create_engine('normlite::///:memory:')
 
@@ -486,8 +486,8 @@ class Engine:
     """Engine's execution options."""
 
     def __init__(
-            self, uri: 
-            NotionURI, 
+            self, uri:
+            NotionURI,
             *,
             execution_options: Optional[ExecutionOptions] = None,
             **kwargs: Any) -> None:
@@ -509,7 +509,7 @@ class Engine:
 
         self._user_database_name: Optional[str] = kwargs.get("user_database_name")
         """The database name.
-        
+
         For simulated URIs, ``memory`` if mode is memory, the file name without extension if mode is file.
         For :class:`NotionAuthURI`, the name in the keyword argument user_database_name.
 
@@ -519,17 +519,17 @@ class Engine:
 
         self._read_only: bool = kwargs.get("read_only", False)
         """Whether the integration's store is read_only.
-        
+
         It applies to file based Notion simulated clients.
 
         .. versionadded:: 0.11.0
         """
         if self._read_only and uri.mode == "memory":
             raise ArgumentError("read_only is only valid for file-based URIs")
-        
+
         self._database: Optional[str] = None
         """The database name.
-        
+
         .. deprecated:: 0.8.0
 
             This will be removed in the next version.
@@ -542,17 +542,17 @@ class Engine:
 
         self._client = None
         """The Notion client this engine interacts with."""
- 
+
         self._catalog = None
         """The information schema system catalog.
-        
+
         .. versionadded:: 0.8.0
         """
 
         self._is_disposed: bool = False
         """Whether this engine has been previously disposed.
-        
-        
+
+
         .. versionadded:: 0.11.0
         """
 
@@ -561,13 +561,13 @@ class Engine:
 
         self._dbapi_connection = DBAPIConnection(self._client)
         """The underlying DBAPI connetion.
-        
+
         .. versionadded:: 0.7.0
         """
 
         self._sql_compiler = NotionCompiler()
         """The SQL compiler.
-        
+
         .. versionadded:: 0.7.0
         """
 
@@ -593,7 +593,7 @@ class Engine:
 
     def execution_options(self, **opts: Any) -> Engine:
         """Update the execution options **in-place** returning the same engine's instance.
-        
+
         .. versionadded:: 0.8.0
         """
 
@@ -602,7 +602,7 @@ class Engine:
 
     def get_execution_options(self) -> ExecutionOptions:
         """Return the execution options that will take effect during execution.
-        
+
         .. versionadded:: 0.8.0
 
         .. seealso::
@@ -610,10 +610,10 @@ class Engine:
             :meth:`Engine.execution_options`
         """
         return self._execution_options
-    
+
     def dispose(self) -> None:
         """Dispose this engine and closes the underlying client.
-        
+
         Public API for engine disposal.
 
         A disposed engine raises :exc:`normlite.execeptions.InvalidRequestError` if
@@ -624,7 +624,7 @@ class Engine:
         """
         if self._is_disposed:
             return
-        
+
         try:
             self._client.close()
         finally:
@@ -633,11 +633,11 @@ class Engine:
     @property
     def _tables_id(self) -> str:
         """Database id for the Notion database tables.
-        
+
         .. versionadded:: 0.8.0
         """
         return self._catalog._tables_id
-    
+
     @property
     def _user_tables_page_id(self) -> str:
         """Page id of the parent page of all databases created in the integration.
@@ -649,9 +649,9 @@ class Engine:
     @property
     def disposed(self) -> bool:
         """Provide disposal status for this engine.
-        
+
         This is the public API to inspect the disposal status of an engine.
-        
+
 
         .. versionadded:: 0.11.0
         """
@@ -672,7 +672,7 @@ class Engine:
             self._user_database_name = self._user_database_name or "memory"
         else:
             self._client = FileBasedNotionClient(
-                uri.path, 
+                uri.path,
                 read_only=self._read_only
             )
             self._database = Path(uri.file).stem
@@ -693,7 +693,7 @@ class Engine:
     def _bootstrap_catalog(self) -> None:
         # 1. create the system catalog
         self._catalog = SystemCatalog(
-            self._client, 
+            self._client,
             self._user_database_name,
             self._root_page_id,
             self._user_database_name
@@ -772,7 +772,7 @@ class Engine:
             created_time=created_time,
             if_not_exists=if_not_exists,
         )
-    
+
     def require_table_metadata(
         self,
         table_name: str,
@@ -797,7 +797,7 @@ class Engine:
             )
 
         return entry
-    
+
     def drop_table_metadata_by_page_id(
         self,
         page_id: str,
@@ -812,7 +812,7 @@ class Engine:
             page_id=page_id,
             dropped=True,
         )
-        
+
     def drop_table_metadata(
         self,
         table_name: str,
@@ -836,7 +836,7 @@ class Engine:
         Args:
             page_id (str): Page id of the system tables catalog entry.
 
-        Raises: 
+        Raises:
             ProgrammingError: If the page_id is stale.
 
         Returns:
@@ -845,7 +845,7 @@ class Engine:
         return self._catalog.set_dropped_by_page_id(
             page_id=page_id,
             dropped=False,
-        )    
+        )
 
     def restore_table_metadata(
             self,
@@ -900,7 +900,7 @@ class Engine:
             table_name,
             table_catalog=table_catalog or self._user_database_name,
         )
-    
+
     def restore_table(
         self,
         table_name: str,
@@ -962,7 +962,7 @@ class Engine:
             Self: This instance as required by the context manager protocol.
         """
         return self
-    
+
     def __exit__(
         self,
         exc_type: Optional[Type[BaseException]],
@@ -977,12 +977,12 @@ class Engine:
         """Return an inspector object.
 
         Factory method to procure :class:`Inspector` objects.
-        
+
         .. versionadded:: 0.7.0
 
         """
         return Inspector(self)
-    
+
     def connect(self) -> Connection:
         """Procure a new :class:`Connection` object.
 
@@ -1011,7 +1011,7 @@ class Engine:
             raise InvalidRequestError("Engine has been disposed")
 
         return self._dbapi_connection
-    
+
     #----------------------------------------------------
     # Execution context management methods
     #----------------------------------------------------
@@ -1035,10 +1035,10 @@ class Engine:
             # explicitly requested results to be streamed
             stream_results = execution_options.get("stream_results") if execution_options else None
             yield_per = execution_options.get("yield_per") if execution_options else None
-        
+
         cursor.execute(
-            operation, 
-            parameters, 
+            operation,
+            parameters,
             stream_results=stream_results,
             yield_per=yield_per
         )
@@ -1055,11 +1055,11 @@ class Engine:
 class Inspector:
     """Provide facilities for inspecting database objects.
 
-    The :class:`Inspector` acts as a proxy for to the classes inspection facilities, 
+    The :class:`Inspector` acts as a proxy for to the classes inspection facilities,
     providing a consitent interface.
 
     .. versionadded:: 0.7.0
-    
+
     """
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
@@ -1069,13 +1069,13 @@ class Inspector:
         """Return ``True`` if the specified table name exists in the database being inspected.
 
         This method queries the INFORMATION_SCHEMA.tables database to check existence of the
-        requested table and returns ``True`` only if the found table has not been dropped. 
+        requested table and returns ``True`` only if the found table has not been dropped.
 
         .. note:
             This method can be used to query **user defined tables** only.
 
         .. versionchanged:: 0.8.0
-            This method uses the new :meth:`Engine.get_table_state()` API to retrieve the 
+            This method uses the new :meth:`Engine.get_table_state()` API to retrieve the
             table lifecycle state.
 
         .. versionadded:: 0.7.0
@@ -1085,25 +1085,25 @@ class Inspector:
             table_name (str): The name of the table to search for.
 
         Returns:
-            bool: ``True`` if the table state is :attr:`normlite.engine.reflection.TableState.ACTIVE`, ``False`` otherwise. 
+            bool: ``True`` if the table state is :attr:`normlite.engine.reflection.TableState.ACTIVE`, ``False`` otherwise.
         """
         state = self._engine.get_table_state(
             table_name=table_name,
             table_catalog=self._engine._user_database_name
         )
         return state is TableState.ACTIVE
-    
+
     def reflect_table(self, table: Table) -> None:
         table._autoload(bind=self._engine)
-            
+
     def get_oid(self, has_id: HasIdentifier) -> str:
         """Return the Notion object id for the supplied table.
 
         This method takes a :py:class:`normlite.sql.schema.HasIdentifier` object and returns
         the Notion identifier associated with the Notion object.
-        
+
         .. code-block:: python
-        
+
             # reflect the Notion database into a Table object
             inspector = engine.inspect()
             metadata = MetaData()
@@ -1129,7 +1129,7 @@ class Inspector:
 
     def is_dropped(self, table: Union[Table, str]) -> bool:
         """``True`` if table state is :attr:`normlite.engine.systemcatalog.TableState.DROPPED`.
-        
+
         .. versionadded:: 0.9.0
         """
         from normlite.sql.schema import Table
@@ -1138,7 +1138,7 @@ class Inspector:
             name = table.name if isinstance(table, Table) else table
             state = self._engine.get_table_state(name)
             return state is TableState.DROPPED
-        
+
         raise ArgumentError(
             f"Table or str argument expected, got '{table.__class__.__name__}' instead."
         )

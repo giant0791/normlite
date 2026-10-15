@@ -19,21 +19,21 @@
 """
 This example shows how to create a new table and insert rows.
 It illustrates the returning behavior of the INSERT statement.
-It uses an in-memory client. 
+It uses an in-memory client.
 """
 from datetime import date
 
 from normlite import (
-    create_engine, 
+    create_engine,
     insert,
-    update, 
+    update,
     select,
-    Table, 
+    Table,
     Column,
-    String, 
-    Integer, 
-    Boolean, 
-    Date, 
+    String,
+    Integer,
+    Boolean,
+    Date,
     MetaData,
     ExecutionOptions,
     CursorResult
@@ -42,7 +42,7 @@ from normlite import (
 # create bind to in-memory database
 engine = create_engine('normlite:///:memory:')
 engine.execution_options(
-    preserve_rowcount=True, 
+    preserve_rowcount=True,
     preserve_rowid=False,
     isolation_level="AUTOCOMMIT",
     implicit_returning=False,
@@ -106,4 +106,4 @@ with engine.connect() as connection:
 
     for row in result.all():
         print(row)
-    
+

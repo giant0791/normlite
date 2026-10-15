@@ -49,7 +49,7 @@ def bootstrap(client: InMemoryNotionClient):
             },
         },
     )
-    
+
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
@@ -93,7 +93,7 @@ def test_init_without_auto_load_does_not_touch_store(tmp_path):
     client = FileBasedNotionClient(path, auto_load=False)
 
     # invariant: _store is always empty after init if auto_load is False
-    assert client._store == {}     
+    assert client._store == {}
     assert path.exists()
 
 

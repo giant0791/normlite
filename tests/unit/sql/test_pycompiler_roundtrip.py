@@ -49,7 +49,7 @@ def test_exprgen_exec_function_style():
     result = exec_expression(expr_src, namespace)
 
     assert isinstance(result, ColumnElement)
-    
+
 def test_exprgen_exec_operator_style():
     """Basic execution (operator style)."""
     gen = ExpressionGenerator(seed=11, bool_style="operator")

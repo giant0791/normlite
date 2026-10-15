@@ -33,22 +33,22 @@ from normlite.sql import select
 from normlite.sql import delete
 from normlite.sql import update
 from normlite.sql import Update
-from normlite.sql import Column 
-from normlite.sql import Table 
+from normlite.sql import Column
+from normlite.sql import Table
 from normlite.sql import MetaData
-from normlite.sql import Constraint 
+from normlite.sql import Constraint
 from normlite.sql import PrimaryKeyConstraint
 from normlite.sql import ForeignKeyConstraint
 from normlite.sql import ForeignKey
 from normlite.sql import TypeEngine
-from normlite.sql import Currency 
-from normlite.sql import Number 
-from normlite.sql import Integer 
-from normlite.sql import Numeric 
-from normlite.sql import Money 
-from normlite.sql import String 
-from normlite.sql import Boolean 
-from normlite.sql import Date 
+from normlite.sql import Currency
+from normlite.sql import Number
+from normlite.sql import Integer
+from normlite.sql import Numeric
+from normlite.sql import Money
+from normlite.sql import String
+from normlite.sql import Boolean
+from normlite.sql import Date
 from normlite.sql import ReflectedColumnInfo
 from normlite.sql import ReflectedTableInfo
 from normlite.sql import DateTimeRange
@@ -119,7 +119,7 @@ __all__ = [
     "MultipleResultsFound",
     "DuplicateColumnError",
     "ArgumentError",
-    "InvalidRequestError", 
+    "InvalidRequestError",
     "UnsupportedCompilationError",
     "ResourceClosedError",
     "CompileError",

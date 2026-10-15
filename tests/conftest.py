@@ -65,7 +65,7 @@ def insert_values() -> dict:
 def engine() -> Engine:
     engine = create_engine("normlite:///:memory:")
     engine.execution_options(
-        preserve_rowcount=True, 
+        preserve_rowcount=True,
         preserve_rowid=False,
         isolation_level="AUTOCOMMIT",
         implicit_returning=False,
@@ -90,7 +90,7 @@ def api_key() -> str:
 @pytest.fixture(scope="session")
 def ischema_page_id() -> str:
     # This is a fake page id for the info schema page, read the real one from an env variable.
-    # Remember that as of today, the Notion API only supports creating pages into 
+    # Remember that as of today, the Notion API only supports creating pages into
     # **existing** pages.
     return '680dee41-b447-451d-9d36-c6eaff13fb46'
 
@@ -104,7 +104,7 @@ def json_fixtures():
     fixture_path = Path(__file__).parent / "fixtures.json"
     with fixture_path.open() as f:
         return json.load(f)
-    
+
 
 # =================================================================
 # Helper accessor methods

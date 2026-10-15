@@ -48,7 +48,7 @@ def insert(tx_id):
         )
         return jsonify(
             {
-                'state': transaction_manager.active_txs[tx_id].state.name, 
+                'state': transaction_manager.active_txs[tx_id].state.name,
                 'transaction_id': tx_id
             }
         ), 202

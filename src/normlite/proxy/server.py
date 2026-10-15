@@ -25,7 +25,7 @@
         This is part of the exploration. Prototype code, not ready for production.
 
     .. versionadded:: 0.6.0
-    
+
 """
 
 from flask import Flask

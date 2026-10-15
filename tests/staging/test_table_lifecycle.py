@@ -41,17 +41,17 @@ class TableStateProxy:
     def is_active(self) -> Optional[bool]:
         self._raise_if_uninitialized()
         return self._state is TableState.ACTIVE
-    
+
     @property
     def is_dropped(self) -> Optional[bool]:
         self._raise_if_uninitialized()
         return self._state is TableState.DROPPED
-    
+
     @property
     def is_orphaned(self) -> Optional[bool]:
         self._raise_if_uninitialized()
         return self._state is TableState.ORPHANED
-    
+
 
 def create(self: Table, bind: Engine, checkfirst: bool = False) -> None:
     catalog = bind._user_database_name
@@ -98,7 +98,7 @@ def create(self: Table, bind: Engine, checkfirst: bool = False) -> None:
     # ------------------------
     # MISSING → physical CREATE
     # ------------------------
-        
+
     # IMPORTANT: The user tables page id **must** be set prior to executing
     # the CreateTable statement.
     self._db_parent_id = bind._user_tables_page_id
@@ -109,7 +109,7 @@ def create(self: Table, bind: Engine, checkfirst: bool = False) -> None:
         }
 
         _ = connection.execute(
-            ddl_stmt, 
+            ddl_stmt,
             execution_options=execution_options
         )
 

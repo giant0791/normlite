@@ -60,12 +60,12 @@ def test_differential_random_dryrun():
                     print("FILTER:", filt)
                     print("REFERENCE:", ref)
                     print("PRODUCTION:", prod)
-                    break       
+                    break
 
 @pytest.mark.skip(reason="Very long test, skipped by default")
 def test_differential_random_massive():
     """Massive differential test reference vs production filter evaluation.
-    
+
     .. attention::
         This test evaluates 1M randomly generated expression.
         It takes hours.
@@ -131,13 +131,13 @@ def describe(counters):
     full_counts = Counter()
     for c in counters:
         full_counts.update(c)
-    
+
     if not full_counts:
         return None
 
     # 2. Total observations across all categories
     n_total = sum(full_counts.values())
-    
+
     # 3. Identify the most frequent category (the Mode)
     # most_common(1) returns a list like [('rich_text', 338)]
     top_item, top_freq = full_counts.most_common(1)[0]

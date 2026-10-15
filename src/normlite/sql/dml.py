@@ -65,19 +65,19 @@ class HasTable(Protocol):
 
 class ExecutableClauseElement(Executable):
     """Specialized executable for DML statements
-    
+
     This class is the base of all DML constructs.
 
     .. versionadded:: 0.8.0
     """
-    
+
     is_ddl = False
 
     def _execute_on_connection(
-            self, 
-            connection: Connection, 
+            self,
+            connection: Connection,
             params: Optional[_CoreAnyExecuteParams],
-            *, 
+            *,
             execution_options: Optional[dict] = None
     ) -> CursorResult:
 
@@ -86,11 +86,11 @@ class ExecutableClauseElement(Executable):
         merged_execution_options = stmt_opts | call_opts
 
         return connection._execute_context(
-            self, 
-            params, 
+            self,
+            params,
             execution_options=merged_execution_options
         )
-    
+
 class UpdateBase(HasTable, ExecutableClauseElement):
     """Base for all DML statements.
 
@@ -139,7 +139,7 @@ class UpdateBase(HasTable, ExecutableClauseElement):
                 raise ArgumentError(
                     f"Column: '{col.name}' does not belong to table: '{self._table.name}'"
                 )
-            
+
             seen.add(key)
             existing.append(col)
 
@@ -161,26 +161,26 @@ class ValuesBase(UpdateBase):
     """The immutable mapping holding the template.
 
     This attributes holds the template to bind the values stored in :attr:`_single_parameters` at runtime.
-    
+
     .. versionchanged:: 0.9.0
         This attributes holds a mapping containing bind parameters instead of plain values.
     """
 
     _has_multi_parameters: Optional[bool] = False
     """``True`` if the VALUES clause provides multiple parameters.
-    
+
     .. versionadded:: 0.9.0
     """
 
     _single_parameters: Optional[Mapping[str, Any]] = None
     """The values for single parameters as a mapping.
-    
+
     .. versionadded:: 0.9.0
     """
 
     _multi_parameters: Optional[Sequence[Mapping[str, Any]]] = None
     """The values for multiple parameters as a sequence of mappings.
-    
+
     .. versionadded:: 0.9.0
     """
 
@@ -208,9 +208,9 @@ class ValuesBase(UpdateBase):
 
         self._values = MappingProxyType(existing_values)
         self._single_parameters = existing_params
-    
+
     def _process_multi_values(
-        self, 
+        self,
         rows: Sequence[Mapping[str, Any]]
     ) -> None:
 
@@ -257,8 +257,8 @@ class ValuesBase(UpdateBase):
 
     @generative
     def values(
-        self, 
-        *args: Union[dict, Sequence[Mapping[str, Any]]], 
+        self,
+        *args: Union[dict, Sequence[Mapping[str, Any]]],
         **kwargs: Any
     ) -> Self:
         """Provide the ``VALUES`` clause to specify the values to be inserted in the new row.
@@ -275,8 +275,8 @@ class ValuesBase(UpdateBase):
 
         Raises:
             ArgumentError: If both positional and keyword arguments are passes, or
-                if not enough values are supplied for all columns, or if values are passed 
-                with a class that is neither a dictionary not a tuple. 
+                if not enough values are supplied for all columns, or if values are passed
+                with a class that is neither a dictionary not a tuple.
 
         Returns:
             Self: This instance for generative usage.
@@ -303,7 +303,7 @@ class ValuesBase(UpdateBase):
                 raise ArgumentError(
                     "values() accepts at most one positional argument"
                 )
-            
+
             if isinstance(arg, collections_abc.Sequence) and not isinstance(arg, (str, bytes)):
                 # it is a sequence: determine if it is a sequence of dictionary
                 if arg and isinstance(arg[0], dict):
@@ -318,7 +318,7 @@ class ValuesBase(UpdateBase):
                     raise ArgumentError(
                         "values() accepts sequence of dictionaries only for bulk inserts"
                     )
-            
+
             if isinstance(arg, dict):
                 # values({"name": "...", })
                 self._process_single_values(arg)
@@ -334,7 +334,7 @@ class ValuesBase(UpdateBase):
                     f"Expected {len(columns)} values, got {len(arg)}"
                 )
 
-            arg = {c.name: value for c, value in zip(columns, arg)}            
+            arg = {c.name: value for c, value in zip(columns, arg)}
             new_values = arg
         else:
             # kwarg single parameter case
@@ -346,7 +346,7 @@ class ValuesBase(UpdateBase):
         # no return: @generative returns the copy
 
 class Insert(ValuesBase):
-    """Provide the SQL ``INSERT`` node to create a new row in the specified table. 
+    """Provide the SQL ``INSERT`` node to create a new row in the specified table.
 
     This class provide a generative implementation of the SQL ``INSERT`` node to be executed on a
     :class:`normlite.connection.Connection`.
@@ -371,9 +371,9 @@ class Insert(ValuesBase):
         The :class:`Insert` has always by default the Notion specific columns as ``RETURNING`` clause.
         That is, the :class:`normlite.CursorResult` methods of an insert statement always returns rows with the
         columns corresponding to the Notion specific ones.
-        You specify the :meth:`Insert.returning()` to get additional columns in the rows returned by the 
+        You specify the :meth:`Insert.returning()` to get additional columns in the rows returned by the
         :class:`normlite.CursorResult` methods.
-    
+
     Note:
         The :class:`Insert`  can also be constructed without specifying the values.
         In this case, the parameters passed in the :meth:`normlite.connection.Connection.execute()` are bound
@@ -382,12 +382,12 @@ class Insert(ValuesBase):
     .. versionchanged:: 0.8.0
         New base class
 
-    .. versionchanged:: 0.7.0 
+    .. versionchanged:: 0.7.0
         The old construct has been completely redesigned and refactored.
         Now, the new class provides all features of the SQL ``INSERT`` statement.
 
     """
-    
+
     is_insert = True
     __visit_name__ = 'insert'
 
@@ -396,12 +396,12 @@ class Insert(ValuesBase):
 
     def get_table_columns(self) -> ReadOnlyColumnCollection:
         return self._table.columns
-        
+
     def _setup_execution(self, context: ExecutionContext) -> None:
         # setup only if returning is declared
         if not self._returning:
             return
-        
+
         # 1. prepare result cursor (but don’t assign yet)
         result_cursor = context.connection._engine.raw_connection().cursor()
 
@@ -410,7 +410,7 @@ class Insert(ValuesBase):
             execution_names=None,
             projected_names=context.compiled.result_columns()
         )
-        
+
         result_cursor._inject_description(fetch_schema.as_sequence())
 
         # 2. stage it
@@ -422,30 +422,30 @@ class Insert(ValuesBase):
             "request": "retrieve"
         }
 
-        # parameters will be filled in _finalize_execution()    
+        # parameters will be filled in _finalize_execution()
 
     def _handle_dbapi_error(
-        self, 
-        exc: Error, 
+        self,
+        exc: Error,
         context: ExecutionContext
     ) -> Optional[NoReturn]:
-        
+
         # all DBAPI errors propagate
         raise
 
     def _finalize_execution(self, context: ExecutionContext) -> None:
         if self._returning:
-            self._post_fetch_inserted_row(context)    
+            self._post_fetch_inserted_row(context)
             context._returned_primary_keys_rows = None
             return
-        
+
         implicit_returning = context.execution_options.get("implicit_returning", False)
         if not implicit_returning:
             result = context.setup_cursor_result()
             result._soft_close()
             context._returned_primary_keys_rows = None
             return
-        
+
         if implicit_returning:
             result = context.setup_cursor_result()
             result._soft_close()
@@ -484,11 +484,11 @@ class Insert(ValuesBase):
         if self._values:
             kwarg.append('values')
 
-        
+
         return "Insert(%s)" % ", ".join(
             ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
         )
-        
+
 def insert(table: Table) -> Insert:
     """Construct an insert statement.
 
@@ -499,7 +499,7 @@ def insert(table: Table) -> Insert:
         Now, it uses the :class:`normlite.sql.schema.Table` as table object.
 
     Returns:
-        Insert: A new insert statement for this table. 
+        Insert: A new insert statement for this table.
     """
     return Insert(table)
 
@@ -511,7 +511,7 @@ class HasExpression(Protocol):
 
 class WhereClause(HasExpression, ColumnElement):
     """Base class for DML statements that have a where-clause.
-    
+
     .. versionadded:: 0.8.0
     """
 
@@ -523,15 +523,15 @@ class WhereClause(HasExpression, ColumnElement):
 
     def has_expression(self) -> bool:
         """Explicit test on expression availability to avoid :exc:`TypeError`.
-        
-        Users of the :class:`WhereClause` shall test for presence of an expression 
+
+        Users of the :class:`WhereClause` shall test for presence of an expression
         by invoking this method and not simply ...
         This safely bypasses Python thruthiness invocation, which otherwise raises
         a :exc:`TyperError`.
 
         .. seealso::
-            :meth:`normlite.sql.elements.ColumnElement.__bool__` 
-                This method is overloaded to forbid Python truthiness.             
+            :meth:`normlite.sql.elements.ColumnElement.__bool__`
+                This method is overloaded to forbid Python truthiness.
 
         Returns:
             bool: ``True`` if :attr:`expression` is not ``None``.
@@ -548,22 +548,22 @@ class WhereClause(HasExpression, ColumnElement):
                 clauses=[self.expression, expr]
             )
         )
-    
+
 class OrderByClause(HasExpression, ClauseElement):
     __visit_name__ = 'order_by_clause'
 
-    def __init__(self, clauses: tuple[ColumnElement, ...] = ()):      
+    def __init__(self, clauses: tuple[ColumnElement, ...] = ()):
         self.clauses = clauses
 
     def add(self, *clauses: ColumnElement) -> OrderByClause:
         return OrderByClause(self.clauses + clauses)
-    
+
     def has_expression(self) -> bool:
         return self.clauses != ()
 
 class Select(HasTable, ExecutableClauseElement):
     __visit_name__ = 'select'
-    
+
     is_select = True
 
     _projection: tuple[Column, ...]
@@ -575,19 +575,19 @@ class Select(HasTable, ExecutableClauseElement):
 
     _right: Optional[Table] = None
     """Optional right table if a JOIN-clause is added.
-    
+
     .. versionadded:: 0.11.0
     """
 
     _raw_columns: tuple[FunctionElement, ...]
     """Optional list of functions supplied as synthentic columns.
-    
+
     .. versionadded:: 0.12.0
     """
 
     _is_aggregate: bool = False
     """``True`` if this SELECT statement is an aggregate.
-    
+
     .. versionadded:: 0.12.0
     """
 
@@ -621,22 +621,22 @@ class Select(HasTable, ExecutableClauseElement):
             # (hidden system column, ADR-0017) so no per-projection filter is needed
             self._projection = tuple(self._table.c)
             return
-        
+
         if len(entities) == 2:
             if isinstance(entities[0], Table) and isinstance(entities[1], Table):
                 # select columns from multiple tables: join case
                 self._table = entities[0]
                 self._right = entities[1]
                 self._projection = [*self._table.uc, *self._right.uc]
-                return 
-            
+                return
+
         # check whether it is an aggregate
         is_aggregate = all(isinstance(entity, FunctionElement) for entity in entities)
         if is_aggregate:
             self._is_aggregate = True
             self._raw_columns = tuple(entities)
             # anchor from the first aggregate carrying an operand column; a pure
-            # COUNT(*) has none, so leave it unresolved for .select_from() 
+            # COUNT(*) has none, so leave it unresolved for .select_from()
             self._table = next(
                 (e.column.parent for e in entities if e.column is not None),
                 None,
@@ -679,7 +679,7 @@ class Select(HasTable, ExecutableClauseElement):
         for col in columns:
             if (
                 col.name not in table_columns
-                and 
+                and
                 self._right is not None
                 and
                 col.name not in self._right.columns
@@ -702,7 +702,7 @@ class Select(HasTable, ExecutableClauseElement):
 
         Args:
             table (Table): The table the function shall operate on
-        
+
         Raises:
             ArgumentError: If it is called on a non aggregate select.
 
@@ -717,7 +717,7 @@ class Select(HasTable, ExecutableClauseElement):
             )
         self._table = table
         # generative returns a copy
-    
+
     @generative
     def where(self, expr: ColumnElement) -> Self:
         self._whereclause = self._whereclause.where(expr)
@@ -735,9 +735,9 @@ class Select(HasTable, ExecutableClauseElement):
 
         self._order_by = self._order_by.add(*clauses)
         # returning self is already encapsulated into the generative decorator
-    
+
     def _create_join(
-        self, onclause: ColumnExpressionArgument, 
+        self, onclause: ColumnExpressionArgument,
         isouter: bool = False
     ) -> Join:
         if isinstance(onclause, Table):
@@ -767,10 +767,10 @@ class Select(HasTable, ExecutableClauseElement):
                     f"join() onclause must be a BinaryExpression with a Relation column, got '{inner_col.name}' "
                     f"(type: {type(inner_col.type_).__name__})"
                 )
-    
+
             if inner_col.parent is not self._table:
                 message = f"""
-                    join() onclause must a BinaryExpression and its column '{inner_col.name}' 
+                    join() onclause must a BinaryExpression and its column '{inner_col.name}'
                     must belong to left table '{self._table.name}',
                     got column '{inner_col.name}' on table '{inner_col.parent.name}'
                 """
@@ -781,42 +781,42 @@ class Select(HasTable, ExecutableClauseElement):
                         f"join() onclause must be a Relation column, got '{onclause.name}' "
                         f"(type: {type(onclause.type_).__name__})"
                     )
-        
+
             if onclause.parent is not self._table:
                 message = f"""
                     join() onclause must belong to left table '{self._table.name}',
                     got column '{onclause.name}' on table '{onclause.parent.name}'
                 """
                 raise ArgumentError(message)
-        
-        else: 
+
+        else:
             raise ArgumentError(
                 f"join() onclause must be a Column "
                 f"or BinaryExpression, got {type(onclause).__name__}"
             )
 
-        return Join(self._table, self._right, onclause, isouter)    
+        return Join(self._table, self._right, onclause, isouter)
 
     @generative
     def join(self, onclause: ColumnExpressionArgument) -> Self:
         # mutate-vs-rebind: here you create a new tuple
         self._joins = (*self._joins, self._create_join(onclause))
         # returning self is already encapsulated into the generative decorator
-    
+
     @generative
     def outerjoin(self, onclause: ColumnExpressionArgument) -> Self:
         # mutate-vs-rebind: here you create a new tuple
         self._joins = (*self._joins, self._create_join(onclause, isouter=True))
         # returning self is already encapsulated into the generative decorator
-    
+
     def _setup_execution(self, context: ExecutionContext) -> None:
         # It's a no-op for select
         pass
 
-    def _finalize_execution(self, context: ExecutionContext) -> None:       
+    def _finalize_execution(self, context: ExecutionContext) -> None:
         # no-op after issue #362, see Aggregate volcano operator
         pass
-    
+
 def select(*entities: Union[Table, Column]) -> Select:
     return Select(*entities)
 
@@ -834,7 +834,7 @@ class Delete(UpdateBase):
     def where(self, expr: ColumnElement) -> Self:
         self._whereclause = self._whereclause.where(expr)
         # returning self is already encapsulated into the generative decorator
-    
+
     def _setup_execution(self, context: ExecutionContext) -> None:
         # no-op: DELETE executes through the query plan (ADR-0023)
         pass
@@ -851,7 +851,7 @@ class Delete(UpdateBase):
             result._soft_close()
             context._returned_primary_keys_rows = None
             return
-        
+
         if implicit_returning:
             result = context.setup_cursor_result()
             result._soft_close()
@@ -902,11 +902,11 @@ def update(table: Table) -> Update:
 
 class Join(ClauseElement):
     """Represent a ``JOIN`` construct between two tables.
-    
+
     .. versionadded:: 0.11.0
     """
     __visit_name__ = "join"
-    
+
     left: Table
     """Left side of the ``JOIN``"""
 
@@ -939,7 +939,7 @@ class AggregateExecution:
     @property
     def result_schema(self) -> SchemaInfo:
         return self._result_schema
-    
+
     def reduce(self, rows: list[tuple]) -> tuple[SchemaInfo, list[tuple[Any, ...]]]:
         # **IMPORTANT** - Resolve each func to the pos of its operand column in
         # the order-preserving deduped list of operand names. This mirrors how the
@@ -954,7 +954,7 @@ class AggregateExecution:
         for func in self._raw_columns:
             if func.name not in ("count", "sum", "avg"):
                 raise NotImplementedError(f"Function '{func.name}' not supported")
-            
+
             if func.name == "count" and func.column is None:
                 # COUNT(*): count every matched row, empties included
                 synthetic_row += ({func.type_.get_col_spec(): len(rows)}, )
@@ -963,13 +963,13 @@ class AggregateExecution:
             # position of the column to apply the function on
             pos = operand_order.index(func.column.name)
             synthetic_row += (self._compute_func_result(pos, func, rows), )
-                    
+
         return self._result_schema, [synthetic_row]
-    
+
     def _compute_func_result(
-        self, 
+        self,
         pos: int,
-        func: FunctionElement, 
+        func: FunctionElement,
         rows: list[tuple]
     ) -> Optional[dict]:
         # operand_typ is the column type
@@ -982,7 +982,7 @@ class AggregateExecution:
         # extract the raw values which are dictionaries {"number": ...}
         # check c.get(type) to handle present-but-NULL case: {"number": None}
         raw_values = [
-            c for r in rows 
+            c for r in rows
             if (c := r[pos]) is not None and c.get(operand_typ) is not None
         ]
 
@@ -996,7 +996,7 @@ class AggregateExecution:
                 return {
                     return_typ: sum(v[operand_typ] for v in raw_values)
                 }
-            
+
             if func.name == "avg":
                 return {
                     return_typ: sum(v[operand_typ] for v in raw_values) / len(raw_values)

@@ -19,28 +19,28 @@
 """
 This example shows how to create a new table and insert **and** delete rows.
 It illustrates how to use the DELETE statement.
-It uses an in-memory client. 
+It uses an in-memory client.
 """
 from datetime import date
 
 from normlite import (
-    create_engine, 
-    insert, 
+    create_engine,
+    insert,
     delete,
     select,
-    Table, 
+    Table,
     Column,
-    String, 
-    Integer, 
-    Boolean, 
-    Date, 
+    String,
+    Integer,
+    Boolean,
+    Date,
     MetaData
 )
 
 # create bind to in-memory database
 engine = create_engine('normlite:///:memory:')
 engine.execution_options(
-    preserve_rowcount=True, 
+    preserve_rowcount=True,
     preserve_rowid=False,
     isolation_level="AUTOCOMMIT",
     implicit_returning=False,
@@ -74,7 +74,7 @@ with engine.connect() as connection:
     )
 
     rowcount = result.rowcount
-    row_fmt = " rows" if rowcount > 1 else " row" 
+    row_fmt = " rows" if rowcount > 1 else " row"
     print(f"Inserted {result.rowcount}{row_fmt}: ")
     for oid in result.returned_primary_keys_rows:
         print(oid)
@@ -88,7 +88,7 @@ with engine.connect() as connection:
     result = connection.execute(stmt)
 
     rowcount = result.rowcount
-    row_fmt = " rows" if rowcount > 1 else " row" 
+    row_fmt = " rows" if rowcount > 1 else " row"
     print(f"\nDeleted {result.rowcount}{row_fmt}:")
     for row in result.all():
         print(row)
@@ -97,7 +97,7 @@ with engine.connect() as connection:
     result = connection.execute(stmt)
 
     rowcount = result.rowcount
-    row_fmt = " rows" if rowcount > 1 else " row" 
+    row_fmt = " rows" if rowcount > 1 else " row"
     print(f"\nRemaining {result.rowcount}{row_fmt}:")
     for row in result.all():
         print(row)

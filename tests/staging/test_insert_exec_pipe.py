@@ -68,7 +68,7 @@ def setup_context(
     compiled = elem.compile(compiler)
 
     # 2. distill parameters
-    distilled_params = _distill_params(parameters)  
+    distilled_params = _distill_params(parameters)
 
     # 3. create the execution context
     ctx = ExecutionContext(
@@ -100,7 +100,7 @@ def test_no_returning_no_returning_implicit_returns_none_pk(
 
 def test_no_returning_true_returning_implicit_returns_pks_only(
     engine: Engine,
-    students: Table        
+    students: Table
 ):
     # create the table
     students.create(bind=engine, checkfirst=True)
@@ -121,7 +121,7 @@ def test_no_returning_true_returning_implicit_returns_pks_only(
 
 def test_returning_false_returning_implicit_returns_all_cols_specified(
     engine: Engine,
-    students: Table        
+    students: Table
 ):
     # create the table
     students.create(bind=engine, checkfirst=True)
@@ -143,7 +143,7 @@ def test_returning_false_returning_implicit_returns_all_cols_specified(
 
 def test_returning_includes_object_id_explicitly_only(
     engine: Engine,
-    students: Table        
+    students: Table
 ):
     # create the table
     students.create(bind=engine, checkfirst=True)
@@ -168,7 +168,7 @@ def test_returning_includes_object_id_explicitly_only(
 
 def test_returning_does_not_include_object_id_by_default(
     engine: Engine,
-    students: Table        
+    students: Table
 ):
     # create the table
     students.create(bind=engine, checkfirst=True)

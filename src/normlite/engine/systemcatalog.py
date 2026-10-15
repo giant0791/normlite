@@ -1,4 +1,4 @@
-# normlite/engine/systemcatalog.py 
+# normlite/engine/systemcatalog.py
 # Copyright (C) 2026 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.
@@ -20,7 +20,7 @@
 
 The information schema consists of a set of views that contain information about the Notion objects
 defined in the current database.
-The primary view is the Notion database object "tables". This object stores all the SQL tables created in 
+The primary view is the Notion database object "tables". This object stores all the SQL tables created in
 the current database.
 
 .. versionadded:: 0.8.0
@@ -47,31 +47,31 @@ class SystemTablesEntry:
     created_time: Optional[str]
 
     @classmethod
-    def from_dict(cls, page_obj: dict) -> SystemTablesEntry:       
+    def from_dict(cls, page_obj: dict) -> SystemTablesEntry:
         name = get_title_property_value(
             get_property(
-                page_obj, 
+                page_obj,
                 'table_name'
-            )            
+            )
         )
 
         catalog = get_rich_text_property_value(
             get_property(
-                page_obj, 
+                page_obj,
                 'table_catalog'
             )
         )
 
         schema = get_rich_text_property_value(
             get_property(
-                page_obj, 
+                page_obj,
                 'table_schema'
             )
         )
 
         table_id = get_rich_text_property_value(
             get_property(
-                page_obj, 
+                page_obj,
                 'table_id'
             )
         )
@@ -99,12 +99,12 @@ class SystemTablesEntry:
             is_dropped=is_dropped,
             table_dsid=table_dsid,
             created_time=created_time
-        )   
+        )
 
 
 class TableState(Enum):
     """Lifecycle states for :class:`normlite.sql.schema.Table` objects.
-    
+
     A *table* in normlite is represented by **two coupled backend objects**:
 
         1. A **system catalog page** (sys tables)
@@ -117,7 +117,7 @@ class TableState(Enum):
 
     MISSING   = "missing"
     """The table has never existed in this catalog.
-    
+
     **Backend reality**
 
         * no sys_tables row
@@ -134,10 +134,10 @@ class TableState(Enum):
     * fresh catalog
     * typo in table name
     """
-    
+
     ACTIVE    = "active"
     """The table exists and is usable.
-    
+
     **Backend reality**
 
         * sys_tables page exists
@@ -150,10 +150,10 @@ class TableState(Enum):
         * CREATE → error unless `checkfirst=True`
         * DROP → transitions to DROPPED
     """
-   
+
     DROPPED   = "dropped"
     """The table is logically dropped but recoverable.
-    
+
     **Backend reality**
 
         * sys_tables row exists
@@ -170,7 +170,7 @@ class TableState(Enum):
 
     This is the **Notion-native soft-delete state**.
     """
-    
+
     ORPHANED  = "orphaned"
     """Catalog and backend are inconsistent.
 
@@ -193,14 +193,14 @@ class TableState(Enum):
 
 class SystemCatalog:
     """Provide service API to manage the system tables data structure.
-    
+
     .. seealso::
 
         :doc:`Working with Databases <user-guide-working-with-databases>` for an overview on what data structures
         ``normlite`` uses to manage table metadata in a Notion integration.
-    
+
     .. versionadded:: 0.8.0
-    
+
     """
     def __init__(
         self,
@@ -268,7 +268,7 @@ class SystemCatalog:
             Optional[SystemTablesEntry]: The sys catalog entry datastructure for the found table.
 
         .. versionchanged:: 0.12.0
-            This version is upgraded to new client's data source oriented API 
+            This version is upgraded to new client's data source oriented API
         """
 
         catalog = table_catalog or self._default_catalog
@@ -304,7 +304,7 @@ class SystemCatalog:
             )
 
         return SystemTablesEntry.from_dict(results[0]) if results else None
-    
+
     def find_sys_tables_row_by_table_dsid(
         self,
         table_dsid: str
@@ -316,16 +316,16 @@ class SystemCatalog:
 
         Raises:
             InternalError: If more than one table found.
-                    
+
         Returns:
             Optional[SystemTablesEntry]: The sys catalog entry datastructure for the found table.
 
 
         .. versionchanged:: 0.12.0
             This version is upgraded to new client's data source oriented API.
-            It supersedes ``find_sys_tables_row_by_table_id`` 
+            It supersedes ``find_sys_tables_row_by_table_id``
 
-        .. versionadded:: 0.11.0 
+        .. versionadded:: 0.11.0
         """
         response = self._client.data_sources_query(
             path_params={
@@ -373,8 +373,8 @@ class SystemCatalog:
         )
 
     def get_or_create_sys_tables_row(
-        self, 
-        table_name: str, 
+        self,
+        table_name: str,
         table_schema: Optional[str] = 'not_used',
         *,
         table_catalog: str,
@@ -389,7 +389,7 @@ class SystemCatalog:
         table name was not found.
 
         .. versionchanged:: 0.12.0
-            Seed new "is_dropped" property instead of removed "in_trash".    
+            Seed new "is_dropped" property instead of removed "in_trash".
             Seed new "table_dsid" property to store the data_source_id.
             Seed new "created_time" property to store database's created time.
 
@@ -495,7 +495,7 @@ class SystemCatalog:
 
         .. versionchanged:: 0.12.0
             Replace "in_trash" use with dedicated schema property "is_dropped".
-       
+
         .. versionadded:: 0.8.0
 
         Args:
@@ -553,17 +553,17 @@ class SystemCatalog:
             table_id=table_id,
             if_not_exists=True,
         )
-    
+
     # -------------------------------------------------
     # Find-or-create helpers
     # -------------------------------------------------
 
     def _get_or_create_page(self, parent_id: str, name: str) -> str:
- 
+
         page = self._client.find_child_page(parent_id, name)
         if page:
             return page["id"]
-        
+
         page = self._client._add(
             "page",
             {
@@ -633,7 +633,7 @@ class SystemCatalog:
                 f"'{table_name}' found"
             )
 
-        return results[0] if results else None        
+        return results[0] if results else None
 
     def get_table_state(
         self,
@@ -687,7 +687,7 @@ class SystemCatalog:
         if not sys_in_trash and not db_in_trash:
             return TableState.ACTIVE
 
-        if sys_in_trash and db_in_trash:    
+        if sys_in_trash and db_in_trash:
             return TableState.DROPPED
 
         # mismatch

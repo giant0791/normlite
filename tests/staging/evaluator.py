@@ -74,7 +74,7 @@ def reference_eval(page: dict, filt: dict) -> bool:
 
         if op == "is_not_empty":
             return page_date is not None
-        
+
         # binary operators
         filter_date = normalize_filter_date(val)
 

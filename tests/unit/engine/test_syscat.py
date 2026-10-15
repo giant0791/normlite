@@ -342,7 +342,7 @@ def test_repair_missing_without_database_id_raises(syscat):
 # ===========================================================
 
 def test_state_missing_when_no_sys_and_no_db(
-        engine: Engine, 
+        engine: Engine,
         syscat: SystemCatalog
     ):
     state = syscat.get_table_state(
@@ -368,7 +368,7 @@ def test_state_orphaned_when_db_exists_but_no_sys(
 def test_state_orphaned_when_sys_exists_but_db_missing(
     engine: Engine,
     syscat: SystemCatalog
-):        
+):
     db_id = create_students_db(engine)["id"]
 
     # simulate manual deletion of database
@@ -443,7 +443,7 @@ def test_state_dropped_when_both_trashed(
     )
 
     syscat.set_dropped_by_page_id(
-        page_id=entry.sys_tables_page_id, 
+        page_id=entry.sys_tables_page_id,
         dropped=True
     )
 
@@ -492,7 +492,7 @@ def test_state_orphaned_when_sys_trashed_but_db_active(
         page_id=entry.sys_tables_page_id,
         dropped=True
     )
-    
+
     assert syscat.get_table_state(
         "students",
         table_catalog=engine._user_database_name
@@ -537,8 +537,8 @@ def _seed_tables_container(client, root):
             "table_dsid": {"rich_text": {}},
             "is_dropped": {"checkbox": {}},
             "created_time": {"rich_text": {}},
-        }}, 
-    })      
+        }},
+    })
     return container["id"], container["data_sources"][0]["id"]
 
 def test_find_sys_tables_row_queries_the_data_source():
@@ -546,7 +546,7 @@ def test_find_sys_tables_row_queries_the_data_source():
     client._ensure_root()
     root = client._ROOT_PAGE_ID_
     tables_db_id, tables_ds_id = _seed_tables_container(client, root)
-        
+
     # a catalog self-row parented to the DATA SOURCE (2025-09-03 shape)
     page = client.pages_create(payload={
         "parent": {"type": "data_source_id", "data_source_id": tables_ds_id},
@@ -560,7 +560,7 @@ def test_find_sys_tables_row_queries_the_data_source():
             "created_time": {"rich_text": [{"text": {"content": "1999-12-31"}}]},
         },
     })
-    
+
     catalog = SystemCatalog(client, "memory", root, "memory")
     catalog._tables_id = tables_db_id
     catalog._tables_dsid = tables_ds_id   # cached at bootstrap from the databases.create response
@@ -652,7 +652,7 @@ def test_ensure_sys_tables_row_parents_new_row_to_the_data_source():
     client._ensure_root()
     root = client._ROOT_PAGE_ID_
     tables_db_id, tables_ds_id = _seed_tables_container(client, root)
-    
+
     catalog = SystemCatalog(client, "memory", root, "memory")
     catalog._tables_id = tables_db_id
     catalog._tables_dsid = tables_ds_id
@@ -662,7 +662,7 @@ def test_ensure_sys_tables_row_parents_new_row_to_the_data_source():
         table_catalog="memory",
         table_id="deadbeef-dead-beef-dead-beefdeadbeef",
     )
-    
+
     # created, and round-trips through the (data-source) find path
     assert entry.sys_tables_page_id is not None
     found = catalog.find_sys_tables_row("students", table_catalog="memory")

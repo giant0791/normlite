@@ -19,7 +19,7 @@
 
 The sql package defines the basic components for parsing and constructing DML/DDL constructs.
 The primary "entry point" into SQL parsing is the :func:`normlite.sql.sql.text` constructor.
-For DDL schema primitives, the :class:`normlite.sql.schema.Table` and its executable counter-part :class:`normlite.sql.ddl.CreateTable` 
+For DDL schema primitives, the :class:`normlite.sql.schema.Table` and its executable counter-part :class:`normlite.sql.ddl.CreateTable`
 are the building blocks to create Notion databases.
 For DML statements, the main "entry point" is the :func:`normlite.sql.dml.insert` constructor.
 
@@ -35,24 +35,24 @@ from .dml import select
 from .dml import delete
 from .dml import update
 from .dml import Update
-from .schema import Column 
-from .schema import Table 
+from .schema import Column
+from .schema import Table
 from .schema import MetaData
-from .schema import Constraint 
+from .schema import Constraint
 from .schema import PrimaryKeyConstraint
 from .schema import ForeignKeyConstraint
 from .schema import ForeignKey
 from .reflection import ReflectedColumnInfo
 from .reflection import ReflectedTableInfo
 from .type_api import TypeEngine
-from .type_api import Currency 
-from .type_api import Number 
-from .type_api import Integer 
-from .type_api import Numeric 
-from .type_api import Money 
-from .type_api import String 
-from .type_api import Boolean 
-from .type_api import Date 
+from .type_api import Currency
+from .type_api import Number
+from .type_api import Integer
+from .type_api import Numeric
+from .type_api import Money
+from .type_api import String
+from .type_api import Boolean
+from .type_api import Date
 from .type_api import DateTimeRange
 from .type_api import Relation
 

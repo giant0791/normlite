@@ -38,7 +38,7 @@ class Transaction:
 
 class SupportsTransactions(Protocol):
     """Mixin for transactional operation support.
-    
+
     .. versionadded:: 0.9.0
     """
     supports_transactions: bool
@@ -74,7 +74,7 @@ class TransactionalInMemoryNotionClient(
             )
 
         return txn
-    
+
     def _execute_in_txn_overlay(self, txn: Transaction, fn):
         """
         Execute a superclass write operation into a temporary store,
@@ -98,8 +98,8 @@ class TransactionalInMemoryNotionClient(
 
         finally:
             # restore real store
-            self._store = original_store    
-    
+            self._store = original_store
+
     # ------------------------
     # TRANSACTIONS ENDPOINT
     # ------------------------

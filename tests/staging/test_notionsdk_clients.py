@@ -97,7 +97,7 @@ def for_page_queries(client: InMemoryNotionClient, page_payloads: list[dict]) ->
 
 def test_client_store_correctly_initialized(fresh_client: InMemoryNotionClient, paccessor):
     root_page_id = InMemoryNotionClient._ROOT_PAGE_ID_
-    
+
     assert fresh_client._store_len() == 1
     assert paccessor.get_page_title(fresh_client._get_by_id(root_page_id)) == InMemoryNotionClient._ROOT_PAGE_TITLE_
 
@@ -140,7 +140,7 @@ def test_client_pages_create(client: InMemoryNotionClient, page_payload: dict):
     page_created = client.pages_create(page_payload)
 
     # the store contains the database (pre-filled in) and the new page
-    assert client._store_len() == 2 + 1            
+    assert client._store_len() == 2 + 1
     assert page_created['id'] == client._store[page_created['id']].get('id')
 
 def test_client_pages_retrieve(client: InMemoryNotionClient, page_payload: dict):
@@ -173,13 +173,13 @@ def test_client_pages_create_no_id_in_body(client: InMemoryNotionClient, page_pa
     bad_payload['parent'].pop('database_id')
 
     with pytest.raises(NotionError, match='body.parent.database_id should be defined'):
-        _ = client.pages_create(bad_payload) 
+        _ = client.pages_create(bad_payload)
 
 def test_client_pages_create_could_not_find_database(fresh_client: InMemoryNotionClient, page_payload: dict):
     not_found_id = page_payload['parent']['database_id']
     error_message = f'Could not find database with ID: {not_found_id}'
     with pytest.raises(NotionError, match=error_message):
-        _ = fresh_client.pages_create(page_payload) 
+        _ = fresh_client.pages_create(page_payload)
 
 def test_client_pages_retrieve_invalid_url(client: InMemoryNotionClient):
     with pytest.raises(NotionError, match='Invalid request URL'):
@@ -210,7 +210,7 @@ def test_client_pages_update_validation_error(client: InMemoryNotionClient, page
         _ = client.pages_update({
             'page_id': page_id,
         })
-        
+
 # =================================================================
 # Endpoint: databases, happy path
 # =================================================================
@@ -218,7 +218,7 @@ def test_client_databases_create(fresh_client: InMemoryNotionClient, database_pa
     database_created = fresh_client.databases_create(database_payload)
     prop_objects = database_created['properties'].values()
     generated_prop_ids = [prop_id for prop_id in prop_objects]
-    
+
     assert fresh_client._store_len() == 1 + 1
     assert database_created['id'] == list(fresh_client._store.keys())[-1]
     assert all(generated_prop_ids)
@@ -226,7 +226,7 @@ def test_client_databases_create(fresh_client: InMemoryNotionClient, database_pa
 def test_client_databases_retrieve(client: InMemoryNotionClient, database_payload: dict):
     database_created = client.databases_create(database_payload)
     database_retrieved = client.databases_retrieve({'database_id': database_created.get('id')})
-    
+
     # the store contains the database (pre-filled in) and the newly created page
     assert client._store_len() == 2 + 1
     assert database_retrieved == client._store[database_created['id']]
@@ -239,13 +239,13 @@ def test_client_databases_create_no_id_in_body(client: InMemoryNotionClient, dat
     bad_payload['parent'].pop('page_id')
 
     with pytest.raises(NotionError, match='body.parent.page_id should be defined'):
-        _ = client.databases_create(bad_payload) 
+        _ = client.databases_create(bad_payload)
 
 def test_client_databases_create_could_not_find_database(fresh_client: InMemoryNotionClient, page_payload: dict):
     not_found_id = page_payload['parent']['database_id']
     error_message = f'Could not find database with ID: {not_found_id}'
     with pytest.raises(NotionError, match=error_message):
-        _ = fresh_client.pages_create(page_payload) 
+        _ = fresh_client.pages_create(page_payload)
 
 def test_client_databases_retrieve_invalid_url(client: InMemoryNotionClient):
     with pytest.raises(NotionError, match='Invalid request URL'):

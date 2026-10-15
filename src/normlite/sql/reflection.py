@@ -32,7 +32,7 @@ class ReflectedColumnInfo(NamedTuple):
     value: Optional[Any]
     is_system: bool
     """``True`` if the column is a system column.
-    
+
     .. versionadded:: 0.9.0
         See refactoring in issue [#202](https://github.com/giant0791/normlite/issues/202)
     """
@@ -52,15 +52,15 @@ class ReflectedTableInfo:
             self._columns[self._colmap[SpecialColumns.NO_TITLE]].value
         )
         return table_name
-    
+
     @property
     def id(self) -> str:
         return self._columns[self._colmap[SpecialColumns.NO_ID]].value
-    
+
     @property
     def dsid(self) -> str:
         return self._columns[self._colmap[SpecialColumns.NO_DSID]].value
-    
+
     @property
     def created_time(self) -> Optional[str]:
         return self._columns[self._colmap[SpecialColumns.NO_CREATED_TIME]].value
@@ -68,23 +68,23 @@ class ReflectedTableInfo:
     @property
     def archived(self) -> Optional[True]:
         return self._columns[self._colmap[SpecialColumns.NO_ARCHIVED]].value
-    
+
     @property
     def in_trash(self) -> Optional[True]:
         return self._columns[self._colmap[SpecialColumns.NO_IN_TRASH]].value
-    
+
     def get_user_columns(self) -> Sequence[ReflectedColumnInfo]:
         return [rc for rc in self._columns if not rc.is_system]
-    
+
     def get_sys_columns(self) -> Sequence[ReflectedColumnInfo]:
         return [rc for rc in self._columns if rc.is_system]
-        
+
     def get_columns(self) -> Sequence[ReflectedColumnInfo]:
         return self._columns
-    
+
     def get_reflectable_cols(self) -> Sequence[ReflectedColumnInfo]:
         return [
-            col 
+            col
             for col in self._columns
             if col.name != SpecialColumns.NO_TITLE
         ]
@@ -95,7 +95,7 @@ class ReflectedTableInfo:
             return [rc.name for rc in self._columns]
         else:
             return [rc.name for rc in self._columns if not rc.is_system]
-        
+
     @classmethod
     def from_tuples(cls, cols_as_tuples: Sequence[tuple]) -> ReflectedTableInfo:
         """
@@ -191,15 +191,15 @@ class ReflectedTableInfo:
                     is_system=False
                 )
             )
-        
+
         return cls(cols)
-    
+
     def merge_with(self, rti: ReflectedTableInfo) -> None:
         """Merge in-place with the provided reflected table info."""
-        
+
         # construct the new merged list of columns
         merged = [*self._columns, *rti._columns]
-        
+
         # reconstruct the colmap
         self._colmap = {
             rc.name: index
@@ -207,6 +207,6 @@ class ReflectedTableInfo:
         }
 
         self._columns = merged
-    
+
 
 

@@ -1,4 +1,4 @@
-# tools/build_notion_store.py 
+# tools/build_notion_store.py
 # Copyright (C) 2026 Gianmarco Antonini
 #
 # This module is part of normlite and is released under the GNU Affero General Public License.

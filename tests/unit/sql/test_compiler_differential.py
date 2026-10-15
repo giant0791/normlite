@@ -58,11 +58,11 @@ def is_iso_format(date_val: dict) -> bool:
         return True
     except ValueError:
         return False
-    
+
 # ------------------------------------------------------------------
 # ASTGenerator bootstrap tests
 # ------------------------------------------------------------------
-    
+
 def walk_ast(expr: ColumnElement):
     yield expr
     if isinstance(expr, BinaryExpression):
@@ -93,7 +93,7 @@ def test_astgen_structure():
 
 def test_astgen_operator_legality():
     """Operator legality.
-    
+
     Ensures no invalid operator strings leak in.
     """
     gen = ASTGenerator(seed=3)
@@ -128,7 +128,7 @@ def test_gen_table():
     MAX_COLS = 32
     gen = ASTGenerator(seed=3)
     table: Table = gen._gen_table(max_cols=MAX_COLS)
-    
+
     assert table.name.startswith('table_')
     assert len(table.uc) <= MAX_COLS
     # not all columns comply to the generation naming scheme: special columns are added behind the scenes

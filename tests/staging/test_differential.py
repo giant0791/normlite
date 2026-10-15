@@ -69,7 +69,7 @@ def test_differential_random_massive():
 
     print(f'\nSchema property types stats: \n  {pretty_print(describe(counters))}')
 
-        
+
 
 def debug_schema(schema):
     return Counter(spec["type"] for spec in schema.values())
@@ -86,13 +86,13 @@ def describe(counters):
     full_counts = Counter()
     for c in counters:
         full_counts.update(c)
-    
+
     if not full_counts:
         return None
 
     # 2. Total observations across all categories
     n_total = sum(full_counts.values())
-    
+
     # 3. Identify the most frequent category (the Mode)
     # most_common(1) returns a list like [('rich_text', 338)]
     top_item, top_freq = full_counts.most_common(1)[0]

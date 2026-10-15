@@ -23,15 +23,15 @@ from normlite.exceptions import ResourceClosedError
 
 class _CursorColMapRecType(NamedTuple):
     """Helper record data structure to store column metadata.
-    
-    This class provides a description record to enable value and type conversions between DBAPI 2.0 rows and 
+
+    This class provides a description record to enable value and type conversions between DBAPI 2.0 rows and
     higher level class:`Row` objects.
 
     .. versionremoved:: 0.8.0
         The refactored :class:`_CursorColMapRecType` does not store the column ids anymore.
         These are delivered in the row data returned by the :class:`normlite.notiondbapi.dbapi2.Cursor` fetcher methods.
-    
-    .. versionchanged:: 0.7.0 
+
+    .. versionchanged:: 0.7.0
         This version adds support column identifiers.
 
     .. versionadded:: 0.5.0
@@ -39,7 +39,7 @@ class _CursorColMapRecType(NamedTuple):
     """
     column_name: str
     """The name of the column."""
-    
+
     index: int
     """The column position in the description (first column --> index = 0)."""
 
@@ -59,7 +59,7 @@ class _NoCursorResultMetadata:
             'This result object does not return rows or schemas. '
             'It has been automatically closed.'
         )
-    
+
     @property
     def keys(self) -> Sequence[str]:
         self._raise_error()
@@ -76,41 +76,41 @@ class _NoCursorResultMetadata:
 _NO_CURSOR_RESULT_METADATA = _NoCursorResultMetadata()
 
 class CursorResultMetaData(_NoCursorResultMetadata):
-    """Provide helper metadata structures to access row data from low level 
+    """Provide helper metadata structures to access row data from low level
     :class:`normlite.notionbdapi.dbapi2.Cursor` DBAPI 2.0.
 
     .. versionchanged:: 0.8.0
-        This version now provides full support for constructing and accessing :class:`Row` objects with a subset of columns 
+        This version now provides full support for constructing and accessing :class:`Row` objects with a subset of columns
         as specified by the argument ``result_columns``.
-        
+
         .. seealso::
-            
+
             :mod:`normlite.notiondbapi.compiler` module
                 Documentation explaining how retrieved Notion database objects are compiled.
 
-    .. versionchanged:: 0.7.0 
+    .. versionchanged:: 0.7.0
         This version supports column identifiers.
-    
+
     .. versionadded:: 0.5.0
 
     """
-    
+
     returns_row = True
     """The associated cursor returns rows (e.g. ``SELECT`` statement)."""
 
     def __init__(
-            self, 
-            desc: Sequence[tuple], 
+            self,
+            desc: Sequence[tuple],
             is_ddl: bool,
         ):
         self._full_map: _ColMapType = dict()
         """Mapping between column name and its description record :class:`_CursorColMapRecType` as described by the DBAPI description"""
-        
+
         self._colmap: _ColMapType = dict()
         """Mapping representing the projected view on :attr:`_full_map` considering the result columns.
-        
+
         .. versionadded: 0.8.0
-            The projection map stores DBAPI indexes as :attr:`_full_map`, thus it guarantees index correctness by construction. 
+            The projection map stores DBAPI indexes as :attr:`_full_map`, thus it guarantees index correctness by construction.
         """
 
         self._is_ddl = is_ddl
@@ -121,20 +121,20 @@ class CursorResultMetaData(_NoCursorResultMetadata):
 
         self._key_to_index: Mapping[str, int] = dict()
         """Mapping between column name and its positional index."""
-       
+
         self._key_to_index = {
             key: rec.index
             for key, rec in self._colmap.items()
-        } 
-        
+        }
+
         self._index_for_key: Mapping[int, str] = dict()
         """Mapping between column positional index and its name."""
-        
+
         self._index_for_key = {
             rec.index: key
             for key, rec in self._colmap.items()
         }
- 
+
         self._keys: Sequence[str] = [key for key in self._colmap.keys()]
         """A sequence containing all the column names."""
 
@@ -147,12 +147,12 @@ class CursorResultMetaData(_NoCursorResultMetadata):
     def key_to_index(self) -> Mapping[str, int]:
         """Provide the mapping between column name and its positional index."""
         return self._key_to_index
-    
+
     @property
     def index_for_key(self) -> Mapping[int, str]:
         """Provide the mapping beween the positional index of a column and its name."""
         return self._index_for_key
-    
+
     @property
     def is_ddl(self) -> bool:
         """``True`` if the result comes from execution of a DDL statement."""

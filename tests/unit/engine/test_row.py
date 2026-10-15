@@ -52,7 +52,7 @@ def table_rows(engine: Engine, students: Table) -> list[Row]:
     table_metadata = CursorResultMetaData(rs.description, is_ddl=True)
     rows = [Row(table_metadata, row_data) for row_data in rs]
 
-    return rows    
+    return rows
 
 # ---------------------------------------
 # Constructions tests
@@ -63,7 +63,7 @@ def test_row_can_construct_from_page_metadata(row: Row):
     sys_colnames = {"object_id", "is_archived", "is_deleted", "created_at"}
     all_colnames = sys_colnames.union(usr_colnames)
     colnames = set(row.keys())
-    
+
     assert usr_colnames.issubset(colnames)
     assert sys_colnames.issubset(colnames)
     assert all_colnames == colnames
@@ -136,7 +136,7 @@ def test_access_to_col_val_by_key_for_row(row: Row):
 
 def test_access_column_by_key_for_table(table_rows: list[Row]):
     all_colnames = {"column_name", "column_type", "column_id", "metadata", "is_system"}
-    first = table_rows[0]    
+    first = table_rows[0]
 
     # test all columns
     for key in all_colnames:
@@ -147,7 +147,7 @@ def test_access_column_by_key_for_table(table_rows: list[Row]):
 
 def test_column_by_index_for_row(row: Row):
     columns = len(list(row.keys()))
-    
+
     for idx in range(columns):
         try:
             _ = row[idx]
@@ -184,7 +184,7 @@ def test_access_column_by_attribute_for_row():
 
 def test_wrong_key_raises(row: Row):
     with pytest.raises(KeyError):
-        _ = row["does_not_exists"]   
+        _ = row["does_not_exists"]
 
 def test_wrong_index_raises(row: Row):
     with pytest.raises(IndexError):

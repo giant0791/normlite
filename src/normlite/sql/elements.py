@@ -40,8 +40,8 @@ class ColumnElement(ClauseElement):
     """``True`` if this :class:`ColumnElement` object represents a primary key."""
 
     def __invert__(self):
-        return UnaryExpression("not", self)    
-    
+        return UnaryExpression("not", self)
+
     def __and__(self, other):
         if not isinstance(other, ColumnElement):
             return NotImplemented
@@ -51,7 +51,7 @@ class ColumnElement(ClauseElement):
         if not isinstance(other, ColumnElement):
             return NotImplemented
         return BooleanClauseList("or", [self, other])
-        
+
     def __bool__(self):
         """Forbid Python truthiness.
 
@@ -88,9 +88,9 @@ class BinaryExpression(ColumnElement):
     __visit_name__ = 'binary_expression'
 
     def __init__(
-            self, 
-            column: ColumnElement, 
-            operator: Operator, 
+            self,
+            column: ColumnElement,
+            operator: Operator,
             value: Any
     ):
         self.column = column              # Column
@@ -168,10 +168,10 @@ class ColumnOperators:
 
     def __lt__(self, other):
         return self.operate(Operator.LT, other)
-    
+
     def __ge__(self, other):
         return self.operate(Operator.GE, other)
-    
+
     def __le__(self, other):
         return self.operate(Operator.LE, other)
 
@@ -198,25 +198,25 @@ class ColumnOperators:
 
     def after(self, other):
         return self.operate(Operator.AFTER, other)
-    
+
     def is_(self, other):
         return self.operate(Operator.EQ, other)
-    
+
     def is_not(self, other):
         return self.operate(Operator.NE, other)
-    
+
     def contains(self, other):
         return self.operate(Operator.CONTAINS, other)
-    
+
     def does_not_contain(self, other):
         return self.operate(Operator.DOES_NOT_CONTAIN, other)
-    
+
     def asc(self) -> ModifierExpression:
         return self.comparator.modify(Modifier.ORDER_BY, direction='asc')
-    
+
     def desc(self) -> ModifierExpression:
         return self.comparator.modify(Modifier.ORDER_BY, direction='desc')
-    
+
 def and_(*clauses: ColumnElement) -> BooleanClauseList:
     """Produce a conjunction of expressions joined by ``AND``.
 
@@ -225,19 +225,19 @@ def and_(*clauses: ColumnElement) -> BooleanClauseList:
     ..code:: python
         stmt = select(students).where(
             and_(
-                students.c.balance.is_empty(), 
+                students.c.balance.is_empty(),
                 students.c.grade > Decimal('996.56')
             )
         )
 
-    The :func:`and_` conjunction is also available using the Python ``&`` operator. 
+    The :func:`and_` conjunction is also available using the Python ``&`` operator.
     Note that compound expressions need to be parenthesized in order to function with Python operator precedence behavior.
 
     ..code:: python
         stmt = select(students).where(
             (students.c.balance.is_empty()) & (students.c.grade > Decimal('996.56'))
         )
-        
+
     Raises:
         ValueError: If less than two ``clauses`` are provided provided.
 
@@ -260,19 +260,19 @@ def or_(*clauses: ColumnElement) -> BooleanClauseList:
     ..code:: python
         stmt = select(students).where(
             or_(
-                students.c.balance.is_empty(), 
+                students.c.balance.is_empty(),
                 students.c.grade > Decimal('996.56')
             )
         )
 
-    The :func:`and_` conjunction is also available using the Python ``|`` operator. 
+    The :func:`and_` conjunction is also available using the Python ``|`` operator.
     Note that compound expressions need to be parenthesized in order to function with Python operator precedence behavior.
 
     ..code:: python
         stmt = select(students).where(
             (students.c.balance.is_empty()) | (students.c.grade > Decimal('996.56'))
         )
-        
+
     Raises:
         ValueError: If less than two ``clauses`` are provided provided.
 
@@ -331,10 +331,10 @@ class Comparator:
                     """
                 )
             return OrderByExpression(
-                self.expr, 
+                self.expr,
                 'ascending' if direction == 'asc' else 'descending'
             )
-            
+
         raise TypeError(f"Unsupported modifier: {modifier}")
 
 class ObjectIdComparator(Comparator):
@@ -372,10 +372,10 @@ class _BindRole(Enum):
 
 class BindParameter(ColumnElement):
     def __init__(
-        self, 
-        key: Optional[str], 
-        value: Any =_NoArg.NO_ARG, 
-        callable_: Optional[Callable[[], Any]] = None, 
+        self,
+        key: Optional[str],
+        value: Any =_NoArg.NO_ARG,
+        callable_: Optional[Callable[[], Any]] = None,
         type_: Optional[TypeEngine]=None,
    ):
         self.key = key if key else None
@@ -387,7 +387,7 @@ class BindParameter(ColumnElement):
     @property
     def effective_value(self):
         return self.callable_() if self.callable_ else self.value
-    
+
     def __repr__(self) -> str:
         kwarg = []
         if self.key:
@@ -395,14 +395,14 @@ class BindParameter(ColumnElement):
 
         if self.value:
             kwarg.append('value')
-        
+
         kwarg.append('role')
 
-        
+
         return "BindParameter(%s)" % ", ".join(
             ["%s=%s" % (k, repr(getattr(self, k))) for k in kwarg]
         )
-    
+
 
 def coerce_to_bindparam(value: Any, type_: TypeEngine) -> BindParameter:
     if isinstance(value, BindParameter):

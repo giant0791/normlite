@@ -27,30 +27,30 @@ from normlite.notion_sdk.client import AbstractNotionClient
 
 class Operation(Protocol):
     """Interface for change requests that process data in the context of a transaction.
-    
+
     Change requests follow a well-defined protocol to accomplish their task of modifying data in a consistent way.
     Each operation must define:
 
-        * :meth:`stage()`: These are the pre-commit activities to validate data prior to committing them. 
-        
+        * :meth:`stage()`: These are the pre-commit activities to validate data prior to committing them.
+
         * :meth:`do_commit()`: All activities to commit data to the database.
 
         * :meth:`do_rollback()`: All activities to revert changes committed prior to this failed change.
 
     """
-        
+
     def stage(self) -> None:
         """Stage and validate the data to be committed."""
-        
+
     def do_commit(self) -> None:
         """Perform the commit activities associated with this operation."""
-        
+
     def do_rollback(self) -> None:
         """Perform the rollback activities associated to this operation."""
 
     def get_result(self) -> dict:
         """Return the result of the last executed :class:`Operation.do_commit()` or :class:`Operation.do_rollback()`."""
-    
+
 class StagedInsert(Operation):
     """Operation to create a new page in a Notion database."""
     def __init__(self, notion: AbstractNotionClient, page_payload: dict, tx_id: str):
@@ -82,7 +82,7 @@ class StagedInsert(Operation):
 
     def get_result(self) -> dict:
         return self._result
-    
+
 class StagedSelect(Operation):
     """Operation to query the database."""
     def __init__(self, notion: AbstractNotionClient, payload: dict, tx_id: str):
@@ -94,7 +94,7 @@ class StagedSelect(Operation):
     def stage(self) -> None:
         if 'database_id' not in self.payload or 'filter' not in self.payload:
             raise ValueError('Missing database id or filters or both.')
-        
+
     def do_commit(self) -> None:
         self._result = self.notion('databases', 'query', self.payload)
 
@@ -104,7 +104,7 @@ class StagedSelect(Operation):
 
     def get_result(self) -> dict:
         return self._result
-    
+
 class StagedCreateTable(Operation):
     """Operation to create a new table."""
 
@@ -118,13 +118,13 @@ class StagedCreateTable(Operation):
     def stage(self):
         if 'parent' not in self.payload:
             raise ValueError(f'Missing parent object in payload: {self.payload}')
-        
+
         if 'page_id' not in self.payload.get('parent'):
             raise ValueError(f'Missing page_id in parent object: {self.payload.get('parent')}')
-        
+
         if 'properties' not in self.payload:
             raise ValueError(f'Missing properties object in payload: {self.payload}')
-        
+
     def do_commit(self) -> None:
         self._result = self.notion('database', 'create', self.payload)
         self.database_id = self._result.get('id')
@@ -133,5 +133,5 @@ class StagedCreateTable(Operation):
         if self.database_id:
             # Only rollback if commit actually happened
             self.notion('')
-        
-            
+
+

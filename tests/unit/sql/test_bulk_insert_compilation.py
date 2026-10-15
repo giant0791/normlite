@@ -19,12 +19,12 @@ from tests.utils.db_helpers import attach_table_oid
 @pytest.fixture
 def single_dict_params() -> dict:
     return dict(
-        name="Galileo Galilei", 
-        id= 1, 
-        is_active= False, 
-        start_on="1600-01-01", 
+        name="Galileo Galilei",
+        id= 1,
+        is_active= False,
+        start_on="1600-01-01",
         grade="A",
-    )    
+    )
 
 @pytest.fixture
 def single_tuple_params() -> tuple:
@@ -40,12 +40,12 @@ def multi_params() -> list[dict]:
     for i in range(5):
         mp.append(
             dict(
-                name=f"name_{i}", 
-                id=i, 
-                is_active= True, 
-                start_on=f"160{i}-01-01", 
+                name=f"name_{i}",
+                id=i,
+                is_active= True,
+                start_on=f"160{i}-01-01",
                 grade="A",
-            )               
+            )
         )
     return mp
 
@@ -67,7 +67,7 @@ def compile_stmt(stmt) -> Compiled:
 # -------------------------------------------------
 # Process single values tests
 # -------------------------------------------------
-    
+
 def test_process_single_dict_values(students: Table, single_dict_params: dict):
     stmt = insert(students).values(**single_dict_params)
 
@@ -121,7 +121,7 @@ def test_process_empty_seq_as_multi_raises(students: Table):
         _ = insert(students).values([])
 
 def test_mixing_multi_and_single_raises(
-    students: Table, 
+    students: Table,
     single_dict_params: dict,
     single_tuple_params: tuple,
     single_list_params: list,
@@ -148,7 +148,7 @@ def test_mixing_multi_and_single_raises(
         )
 
 def test_mixing_single_and_multi_raises(
-    students: Table, 
+    students: Table,
     single_dict_params: dict,
     single_tuple_params: tuple,
     single_list_params: list,
@@ -186,7 +186,7 @@ def test_missing_values_in_bulk_insert_raises(students: Table):
 
 def test_insert_sets_single_values_correctly(table: Table):
     """Test the key transformation of the late binding refactor:
-    
+
     from:
         _values = {col → BindParameter(value=...)}
 
@@ -303,18 +303,18 @@ def test_compile_multi_values_sets_template_and_multi_params(table):
 # --------------------------------------------------------
 
 class MockExecContext(ExecutionContext):
-    def __init__(self, 
+    def __init__(self,
         engine: Engine,
-        compiled: Compiled, 
+        compiled: Compiled,
         distilled_params: _CoreMultiExecuteParams
     ):
         connection = engine.connect()
         cursor = engine._dbapi_connection.cursor()
         super().__init__(
             engine,
-            connection, 
+            connection,
             cursor,
-            compiled, 
+            compiled,
             distilled_params
         )
 
@@ -377,7 +377,7 @@ def test_missing_values_in_bulk_insert_params_raises(engine: Engine, table: Tabl
     nc = NotionCompiler()
     compiled = stmt.compile(nc)
     ctx = MockExecContext(engine, compiled, distilled_params)
-    
+
     with pytest.raises(StatementError) as exc:
         ctx.pre_exec()
 

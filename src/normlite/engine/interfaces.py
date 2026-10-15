@@ -29,62 +29,62 @@ IsolationLevel = Literal[
     "REPEATABLE READ",
     "READ COMMITTED",
     "READ UNCOMMITTED",
-    "AUTOCOMMIT", 
+    "AUTOCOMMIT",
 ]
 """"AUTOCOMMIT" is currently the only supported isolation level."""
 
 class ExecutionOptions(TypedDict, total=False):
     """Options for configuring the execution pipeline.
-    
+
     .. versionadded:: 0.8.0
-    
+
     """
 
     compiled_cache: Optional[CompiledCacheType]
     """Cache to re-use statement compilation object.
-    
-    .. warning:: 
-        
+
+    .. warning::
+
         Not supported yet. This option will be used in a later version.
     """
-    
+
     logging_token: str
     """Token for finer granular logging.
-    
-    .. warning:: 
+
+    .. warning::
         Not supported yet. This option will be used in a later version.
     """
-    
+
     isolation_level: IsolationLevel
     """Isolation level for transactions.
-    
+
     .. Hint::
 
         Currently, "AUTOCOMMIT" supported only.
     """
 
     preserve_rowcount: bool
-    """When True, the ``cursor.rowcount`` attribute will be unconditionally memoized within the result and made available via the 
-    :attr:`normlite.engine.cursor.CursorResult.rowcount` attribute. 
-    
-    Normally, this attribute is only preserved for UPDATE and DELETE statements. 
+    """When True, the ``cursor.rowcount`` attribute will be unconditionally memoized within the result and made available via the
+    :attr:`normlite.engine.cursor.CursorResult.rowcount` attribute.
+
+    Normally, this attribute is only preserved for UPDATE and DELETE statements.
     Using this option, the DBAPIs rowcount value can be accessed for other kinds of statements such as INSERT and SELECT.
 
     .. seealso::
-        
-        See :attr:`normlite.engine.cursor.CursorResult.rowcount` for notes regarding the behavior of 
+
+        See :attr:`normlite.engine.cursor.CursorResult.rowcount` for notes regarding the behavior of
         this attribute.
 
     .. versionadded:: 0.9.0
     """
 
     implicit_returning: Optional[bool]
-    """When True, the ``cursor.returned_primary_keys`` attribute will be unconditionally memoized within 
+    """When True, the ``cursor.returned_primary_keys`` attribute will be unconditionally memoized within
     the result and made available via the :attr:`normlite.engine.cursor.CursorResult.returned_primary_keys` attribute.
 
     .. seealso::
 
-        See :attr:`normlite.engine.cursor.CursorResult.returned_primary_keys` for notes regarding 
+        See :attr:`normlite.engine.cursor.CursorResult.returned_primary_keys` for notes regarding
         the behavior of this attribute.
 
     .. versionadded:: 0.9.0
@@ -92,9 +92,9 @@ class ExecutionOptions(TypedDict, total=False):
 
     stream_results: Optional[bool]
     """Indicate that results should be “streamed” and not pre-buffered, if possible.
-    
-    The usage is usually combined with setting a fixed number of rows to be fetched in batches, 
-    to allow for efficient iteration of database rows while at the same time not loading 
+
+    The usage is usually combined with setting a fixed number of rows to be fetched in batches,
+    to allow for efficient iteration of database rows while at the same time not loading
     all result rows into memory at once.
 
     .. seealso::
@@ -106,7 +106,7 @@ class ExecutionOptions(TypedDict, total=False):
 
     yield_per: Optional[int]
     """Configure the row-fetching strategy to fetch yield_per rows at a time.
-    
+
     The :attr:`yield_per` option simultaneously set the :attr:`stream_results` to ``True``.
 
     .. versionadded:: 0.11.0
@@ -128,11 +128,11 @@ def _distill_params(
 
     Parameter distillation is a _normalization_  _step_ that ensures that the
     execution pipeline sees exactly **one shape**.
-    
+
     - None -> [{}]
-    
+
     - Mapping -> [mapping]
-    
+
     - Sequence[Mapping] -> sequence (executemany)
 
     .. versionadded:: 0.8.0
@@ -142,7 +142,7 @@ def _distill_params(
 
     Raises:
         TypeError: if parameters are not of an expected shape.
-    
+
     Returns:
         _CoreMultiExecuteParams: Either a mapping or a sequence of mappings
     """

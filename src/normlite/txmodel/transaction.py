@@ -18,9 +18,9 @@
 
 """Provide transaction management for Notion integrations.
 
-This module adds transaction management to Notion integrations. It enables multiple clients to 
+This module adds transaction management to Notion integrations. It enables multiple clients to
 concurrently perform changes while maintaining atomicity, consistency, isolation and durability.
-It achieves this by implementing shared and exclusive locking mechanisms and isolation levels. 
+It achieves this by implementing shared and exclusive locking mechanisms and isolation levels.
 
 Warning:
     This module is at a very early stage of proof-of-concept. Do not use it yet!
@@ -45,35 +45,35 @@ LockMode = Literal["read", "write"]
 
 class TransactionState(Enum):
     """Provide a transition state ``enum`` to describe the possible states of a transaction."""
-    
+
     ACTIVE = auto()
-    """It is the first stage of any transaction when it has begun to execute. 
+    """It is the first stage of any transaction when it has begun to execute.
     The execution of the transaction takes place in this state.
     """
 
     PARTIALLY_COMMITTED = auto()
-    """The transaction has finished its final operation, 
+    """The transaction has finished its final operation,
     but the changes are still not saved to the database."""
-    
+
     COMMITTED = auto()
-    """All the transaction-related operations have been executed successfully, i.e. data is saved 
-    into the database after the required manipulations in this state. 
+    """All the transaction-related operations have been executed successfully, i.e. data is saved
+    into the database after the required manipulations in this state.
     This marks the successful completion of a transaction.
     """
-    
+
     FAILED = auto()
-    """If any of the transaction-related operations cause an error during the active or 
-    partially committed state, further execution of the transaction is stopped and 
-    it is brought into a failed state. 
+    """If any of the transaction-related operations cause an error during the active or
+    partially committed state, further execution of the transaction is stopped and
+    it is brought into a failed state.
     """
-    
+
     ABORTED = auto()
     """When the transaction is failed, it will attempt to either rollback the transaction
     in order to keep the database consistent. Upon successfull completion of the rollback,
     the transaction enters the aborted state.
 
     .. versionadded:: 0.6.0
-        
+
     """
 
 class AcquireLockFailed(Exception):
@@ -107,30 +107,30 @@ class LockManager:
             # no locks held on the requested resource, lock it
             self.locks[oid].append((tid, mode))
             return
-        
+
         if mode == 'read':
             # tid is attempting to acquire a read lock
             if all(m == 'read' for _, m in current):
-                # all locks being held for the requested oid are read locks, 
+                # all locks being held for the requested oid are read locks,
                 # add the new txn to the list
                 self.locks[oid].append((tid, mode))
                 return
-            
+
             # there is one txn holding a write lock, attempt to acquire lock failed
             raise AcquireLockFailed(
                 f'Attempt to acquire read lock on locked resource: {oid}, current loc: {current[0][1]} '
                 f'(transaction: {current[0][0]}).'
             )
-        
+
         if mode == 'write':
             # tid is attempting to acquire a write lock
             if len(current) == 1 and current[0][0] == tid:
-                # IMPORTANT: 
+                # IMPORTANT:
                 # Only the txn holding the read-lock on the requested resource is allowed to
                 # upgrade it to an exclusive write-lock.
                 self.locks[oid] = [(tid, 'write')]
                 return
-            
+
             # another txn is holding the exclusive write lock, attempt faild
             raise AcquireLockFailed(
                 f'Attempt to acquire write lock on locked resource: {oid}, current loc: {current[0][1]} '
@@ -153,20 +153,20 @@ class LockManager:
                 del self.locks[resource_id]
 
 class Transaction:
-    """Provide a context to holds a list of change operations, their lock requirements, 
+    """Provide a context to holds a list of change operations, their lock requirements,
     and rollback logic.
 
     Warning:
         Initial implementation. UNSTABLE.
 
     .. versionadded:: 0.6.0
-    
+
     """
 
     def __init__(self, tid: str, lock_manager: LockManager):
         self.tid = tid
         """The unique transaction identifier (UUIDv4)."""
-        
+
         self.lock_manager = lock_manager
         """The lock manager to ensure locking mechanisms."""
 
@@ -179,14 +179,14 @@ class Transaction:
 
         self.rollback_errors: list[dict[str, str]] = []
         """A list of error context information for a failed rollback.
-        
+
         .. versionadded:: 0.7.0
 
         """
 
         self.results: list[dict[str, Any]] = []
         """A list of containing all results of the operations executed in the context of this transaction.
-        
+
         .. versionadded:: 0.7.0
 
         """
@@ -199,7 +199,7 @@ class Transaction:
     ) -> None:
         """Add a change request in the context of this transactions.
 
-        Transactions track the list of changes they have to perform.   
+        Transactions track the list of changes they have to perform.
 
         Args:
             resource_id (str): The resource id subject of the change.
@@ -211,8 +211,8 @@ class Transaction:
         self.lock_manager.acquire(resource_id, self.tid, mode)
 
         # lock acquired as requested (no AcquireLockFailed execption raised)
-        self.operations.append((resource_id, mode, operation))    
-    
+        self.operations.append((resource_id, mode, operation))
+
     def commit(self) -> None:
         """Commit the transaction.
 
@@ -229,11 +229,11 @@ class Transaction:
                 op.stage()
                 commit_ops.append(op)
 
-            # all operations are successfully staged, but 
+            # all operations are successfully staged, but
             # the changes are still not saved to the database.
             self.state = TransactionState.PARTIALLY_COMMITTED
 
-            # commit the staged operations one-by-one                
+            # commit the staged operations one-by-one
             for commit_op in commit_ops:
                 commit_op.do_commit()
                 self.results.append(dict(commit_op.get_result()))           # deep copy via dict() constructor of the result to avoid modifications by do_rollback() in case of failed commit
@@ -250,7 +250,7 @@ class Transaction:
 
             # Try automatic rollback to guarantee atomicity only if something has been already committed
             # If a stage phase fails, not commit operations are tried, so nothing has been committed at all
-            if len(commit_ops) > 0:                   
+            if len(commit_ops) > 0:
                 try:
                     self.rollback()
                 except Exception as rb_exc:
@@ -276,7 +276,7 @@ class Transaction:
             raise TransactionError(
                 'Attempting to rollback a transaction in aborted state.'
             )
-        
+
         for _, _, rollback_op in reversed(self.operations):
             try:
                 rollback_op.do_rollback()
@@ -306,12 +306,12 @@ class Transaction:
 
 class TransactionManager:
     """Procure and coordinate transactions, lock acquisition, and lifecycle (start/commit/rollback).
-    
+
     Warning:
         Initial implementation, UNSTABLE.
 
     .. versionadded:: 0.6.0
-    
+
     """
 
     def __init__(self):
@@ -334,6 +334,5 @@ class TransactionManager:
         tx = Transaction(tid, self.lock_manager)
         self.active_txs[tid] = tx
         return tx
-        
 
-    
+
