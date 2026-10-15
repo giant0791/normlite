@@ -4,8 +4,8 @@ The parity suite runs each predicate shape over one cast with valueless cells.
 SELECT gives the reference ``object_id`` set. Each DML statement must touch
 exactly that set.
 
-Every shape stays within the filter depth limit. A too-deep filter still
-raises for DML (#417).
+Every parity shape stays within the filter depth limit. A too-deep WHERE is
+pruned (#417). The last test covers a prune that leaves nothing to push.
 """
 from datetime import date
 
@@ -19,6 +19,7 @@ from tests.utils.db_helpers import (
     attach_table_oid,
     populate_students,
 )
+from tests.utils.spies import QueryPayloadRecordingClient
 
 
 @pytest.fixture
@@ -97,3 +98,51 @@ def test_update_changes_exactly_the_rows_select_returns(engine, cast, shape):
     )
     assert changed == selected
     assert inactive == selected
+
+
+# Each builder makes a DML statement for one WHERE, with RETURNING object_id.
+DML_STATEMENTS = {
+    "delete": lambda t, where: delete(t).where(where).returning(t.c.object_id),
+    "update": lambda t, where: (
+        update(t).values(is_active=False).where(where).returning(t.c.object_id)
+    ),
+}
+
+
+@pytest.mark.parametrize("build", DML_STATEMENTS.values(), ids=DML_STATEMENTS.keys())
+def test_a_dml_where_that_prunes_to_nothing_pushes_no_filter(
+    engine, cast, build, monkeypatch
+):
+    """A too-deep WHERE whose prune leaves nothing sends no filter (#417).
+
+    The WHERE nests ``or -> and -> or``::
+
+        WHERE ((id = 1 OR id = 2) AND (grade = 'A' OR grade = 'B')) OR name = 'Bee'
+
+    The two inner ``or`` compounds sit at level 3, under an ``and``. The prune
+    drops both, the ``and`` is left with nothing, and the root ``or`` cannot
+    absorb an empty child. Nothing remains to push.
+
+    The statement must send NO ``filter`` key, not an empty one. The in-memory
+    client accepts ``"filter": {}``, so only the payload shows the difference.
+    The recheck then decides: SQL selects ``name_1``, ``name_2`` and ``Bee``.
+    """
+    def where():
+        return (
+            ((cast.c.id == 1) | (cast.c.id == 2))
+            & ((cast.c.grade == "A") | (cast.c.grade == "B"))
+        ) | (cast.c.name == "Bee")
+
+    selected = object_ids(engine, select(cast.c.object_id).where(where()))
+
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    touched = object_ids(engine, build(cast, where()))
+
+    assert spy.payloads_seen, "the DML statement must query the data source"
+    assert all("filter" not in p for p in spy.payloads_seen), (
+        f"a WHERE pruned to nothing must push no filter: {spy.payloads_seen}"
+    )
+    assert len(selected) == 3
+    assert touched == selected

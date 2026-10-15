@@ -40,26 +40,22 @@ if TYPE_CHECKING:
 
 _NOTION_MAX_FILTER_DEPTH = 2
 
-# Private refusal reasons for the aggregate SELECT, DELETE and UPDATE.
-# The two refusal helpers below use these strings, and the tests match on them.
-# They are REMOVED, not relaxed. The depth refusal goes for DML with #417,
-# for the aggregate with #399.
+# Private refusal reason for the aggregate SELECT.
+# The refusal helper below uses this string, and the tests match on it.
+# It is REMOVED, not relaxed, with #399. DELETE and UPDATE prune instead (#417).
 _FILTER_MAX_DEPTH_EXCEEDED = "It exceeds Notion filter max depth"
 
 #: The Notion operation that writes one page. ``ModifyTable`` sends it once per row.
 ROWS_UPDATE = {"endpoint": "pages", "request": "update"}
 
-# Refusal helpers.
-# The compiler calls them to refuse a WHERE clause that Notion cannot evaluate exactly
+# Refusal helper.
+# The compiler calls it to refuse a WHERE clause that Notion cannot evaluate exactly
 # AND that no client-side recheck corrects.
-# They are REMOVED with the last refusing statement: #413 and #417 for DML, #399 for the aggregate.
-# DELETE and UPDATE stay a _RefusingStmt for the depth refusal only (#417).
-# The helpers add the periods and select the consequence by the _RefusingStmt key.
-_RefusingStmt = Literal["An aggregate SELECT", "UPDATE", "DELETE"]
+# The aggregate SELECT is the last refusing statement. The helper goes with #399.
+# The helper adds the periods and selects the consequence by the _RefusingStmt key.
+_RefusingStmt = Literal["An aggregate SELECT"]
 
 _NO_RECHECK_CONSEQUENCE: dict[_RefusingStmt, str] = {
-    "DELETE": "DELETE does not prune a too-deep filter yet (#417)",
-    "UPDATE": "UPDATE does not prune a too-deep filter yet (#417)",
     "An aggregate SELECT": "The aggregate would reduce rows this WHERE excludes (#399)",
 }
 
@@ -71,8 +67,9 @@ def _raise_if_filter_max_depth_exceeded(
 ) -> None:
     """Refuse ``filter_obj`` if it nests deeper than Notion accepts.
 
-    Only a path with no recheck calls this. A plain ``SELECT`` prunes instead
-    (:func:`_prune`), because its recheck restores the rows the prune admits.
+    Only a path with no recheck calls this. A plain ``SELECT``, ``DELETE`` and
+    ``UPDATE`` prune instead (:func:`_prune`), because their recheck removes the
+    extra rows that the prune admits.
 
     Args:
         stmt: The refusing statement. It selects the consequence in the message.
@@ -248,7 +245,8 @@ def _prune(node: Any, parent_op: Optional[str] = None, level: int = 1) -> Any:
 
     Both rules make the filter WEAKER, so the pushed filter returns a
     superset of the answer. Only a path with a recheck may call this
-    (ADR-0022). DML and the aggregate refuse instead.
+    (ADR-0022). A plain SELECT, DELETE and UPDATE prune. The aggregate
+    refuses instead (#399).
 
     Preconditions (the caller must guarantee both; ``_prune`` does not check them):
 
@@ -290,6 +288,9 @@ def _prune(node: Any, parent_op: Optional[str] = None, level: int = 1) -> Any:
 
         :func:`_normalize_filter`, which establishes both preconditions, and
         :func:`_depth`, which the call sites use to decide whether to prune.
+
+    .. versionchanged:: 0.14.0
+        DELETE and UPDATE prune too (#417).
 
     .. versionadded:: 0.13.0
     """
@@ -1183,48 +1184,35 @@ class NotionCompiler(SQLCompiler):
 
         return compiled_dict
 
-    def visit_where_clause(
-        self,
-        where_clause: WhereClause,
-        *,
-        stmt: str,
-        remedy: str
-    ) -> dict:
+    def visit_where_clause(self, where_clause: WhereClause) -> dict:
         """Compile the WHERE clause of a DELETE/UPDATE statement.
 
         This method returns the compiled where clause as filter object.
+        If the Notion nesting cap is exceeded, a pruned filter object is returned.
 
         The caller must ensure the DML statement has a WHERE clause before calling
         this method via :meth:`normlite.sql.dml.WhereClause.has_expression`.
 
         .. attention::
-            Excess depth raises. This is DML policy. SELECT prunes instead and
-            must not dispatch through this method (#416).
+            The prune is sound only because the recheck decides the answer (ADR-0022).
+            The caller sets ``recheck_where`` BEFORE it dispatches the WHERE clause.
+            ``_prune`` removes leaves after they registered their binds. The recheck
+            consumes these binds, so ``_assert_all_params_consumed`` does not report them.
 
         .. attention::
-            This method does not set ``recheck_where``. The caller sets it before it dispatches the WHERE clause.
-            The pushed filter can be lossy, so the planner keeps the full predicate for the recheck (ADR-0022).
-            Only ``_prune`` creates orphan binds. An unpushable leaf is never dispatched, so it registers no bind.
-            When ``recheck_where`` is set, ``_assert_all_params_consumed`` does not report filter binds,
-            because the recheck consumes them. Do **not** let a DML statement prune unless its plan rechecks
-            ``recheck_where``: that check would then hide the orphans.
+            The prune can leave nothing, and then this method returns ``{}``.
+            The caller must not put an empty filter in the payload: ``payload['filter']``
+            must be ABSENT. The scan then fetches every row, and the recheck decides.
 
         .. seealso::
             :meth:`normlite.engine.context.ExecutionContext._assert_all_params_consumed`
 
         Args:
             where_clause (WhereClause): The object containing the DML's WHERE clause.
-            stmt (str): The DML statement the WHERE clause belongs to.
-                Either ``"DELETE"`` or ``"UPDATE"``.
-            remedy (str): A string explaining what to do if the expression depth is exceeded.
-
-        Raises:
-            CompileError: If ``_depth(filter_obj)`` exceeds
-                ``_NOTION_MAX_FILTER_DEPTH``. The message holds
-                ``_FILTER_MAX_DEPTH_EXCEEDED``.
 
         Returns:
-            dict: The WHERE clause as Notion filter object.
+            dict: The WHERE clause as a Notion filter object, pruned to Notion's
+                nesting cap. ``{}`` if the prune leaves nothing to push.
 
         .. versionadded:: 0.14.0
         """
@@ -1234,13 +1222,8 @@ class NotionCompiler(SQLCompiler):
             # emit the JSON code for the filter object of the query
             # in the COMPILING_WHERE context
             filter_obj = expression._compiler_dispatch(self)
-            _raise_if_filter_max_depth_exceeded(
-                stmt=stmt,
-                filter_obj=filter_obj,
-                remedy=remedy,
-            )
 
-        return filter_obj
+        return _prune(filter_obj)
 
     def visit_delete(self, delete: Delete):
         self._compiler_state.is_delete = delete.is_delete
@@ -1277,11 +1260,9 @@ class NotionCompiler(SQLCompiler):
             self.planning_context.recheck_where = expression
             if _is_pushable(expression):
                 # compile the DELETE's WHERE clause if the expression is pushable
-                payload['filter'] = delete._whereclause._compiler_dispatch(
-                    self,
-                    stmt="DELETE",
-                    remedy="SELECT the rows first and delete them by object_id"
-                )
+                pruned = delete._whereclause._compiler_dispatch(self)
+                if pruned:
+                    payload['filter'] = pruned
 
         compiled_dict = {
             'operation': operation,
@@ -1330,11 +1311,9 @@ class NotionCompiler(SQLCompiler):
             self.planning_context.recheck_where = expression
             if _is_pushable(expression):
                 # compile the UPDATE's WHERE clause if the expression is pushable
-                payload['filter'] = update._whereclause._compiler_dispatch(
-                    self,
-                    stmt="UPDATE",
-                    remedy="SELECT the rows first and update them by object_id"
-                )
+                pruned = update._whereclause._compiler_dispatch(self)
+                if pruned:
+                    payload['filter'] = pruned
 
         with self._compiling(new_state=_CompileState.COMPILING_VALUES):
             # construct the update payload template containing the values as bind params
@@ -1372,9 +1351,11 @@ class NotionCompiler(SQLCompiler):
             INCLUDES the valueless cell: ``does_not_equal`` matches "not x OR valueless",
             whereas SQL's ``<>`` against NULL is UNKNOWN and the WHERE policy drops it.
             Conjoining ``is_not_empty`` removes the valueless cell from the match set,
-            which makes this push EXACT rather than merely a sound superset. That
-            matters most on the DML path, where nothing rechecks the pushed filter
-            (ADR-0022) and an over-matching filter is a destroyed row.
+            which makes this push EXACT rather than merely a sound superset.
+            Correctness does not depend on it: SELECT, DELETE and UPDATE all recheck
+            their WHERE (ADR-0022, #412, #413), so the recheck drops the valueless cell.
+            The repair makes Notion return fewer rows. When the repaired leaf makes the
+            filter too deep, the prune removes the ``is_not_empty`` again (#417).
 
             The guard is a **classification, not a capability check**: it reads
             :attr:`~normlite.sql.type_api.TypeEngine.supports_valueless_cells`, which

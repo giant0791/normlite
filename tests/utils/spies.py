@@ -41,3 +41,25 @@ class PagesUpdateRecordingClient:
 
     def __getattr__(self, name):
         return getattr(self._wrapped, name)
+
+
+class QueryPayloadRecordingClient:
+    """Transparent proxy that records the ``payload`` of every
+    ``data_sources.query`` request.
+
+    A test reads the pushed ``filter`` from the payload that reaches Notion.
+    The in-memory client has no nesting cap, so only the payload shows a
+    filter that the real API rejects.
+    """
+
+    def __init__(self, wrapped):
+        self._wrapped = wrapped
+        self.payloads_seen = []
+
+    def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
+        if endpoint == "data_sources" and request == "query":
+            self.payloads_seen.append(payload)
+        return self._wrapped(endpoint, request, path_params, query_params, payload)
+
+    def __getattr__(self, name):
+        return getattr(self._wrapped, name)

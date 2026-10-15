@@ -1,15 +1,14 @@
-import re
 from datetime import date
 
 import pytest
 
-from normlite.exceptions import ArgumentError, CompileError
-from normlite.sql.compiler import _FILTER_MAX_DEPTH_EXCEEDED
+from normlite.exceptions import ArgumentError
+from normlite.sql.compiler import _depth
 from normlite.sql.dml import insert, update, select
 from normlite.sql.elements import not_
 
 from tests.utils.execution import run_execute
-from tests.utils.spies import QueryParamsRecordingClient
+from tests.utils.spies import QueryParamsRecordingClient, QueryPayloadRecordingClient
 from tests.utils.db_helpers import (
     create_students_db,
     attach_table_oid,
@@ -181,31 +180,31 @@ def test_update_parameters_raises_argument_error(engine, prepared_students):
             conn.execute(stmt, {"grade": "X"})
 
 
-def test_update_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap(
-    engine, prepared_students
+def test_a_too_deep_update_updates_exactly_the_rows_sql_selects(
+    engine, prepared_students, monkeypatch
 ):
-    """An UPDATE WHERE nested ``and -> or -> and`` must raise, never prune (#383).
+    """An UPDATE WHERE nested ``and -> or -> and`` executes (#417).
 
     The UPDATE twin of
-    ``test_delete_pipeline.test_delete_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap``.
+    ``test_delete_pipeline.test_a_too_deep_delete_deletes_exactly_the_rows_sql_selects``.
     No leaf is a ``!=``, so the depth does not depend on the ``!=`` repair::
 
         WHERE name='name_0' AND (id=1 OR (grade='A' AND is_active IS TRUE))
 
-    Every term has a Notion filter form, so the refusal can have one reason
-    only: the depth. The operators alternate, so the fold has nothing to
-    splice. The emitted filter is ``{and: [leaf, {or: [leaf, {and: [leaf,
-    leaf]}]}]}``: depth 3. The Notion API caps nesting at 2, so production
-    answers HTTP 400. The in-memory client has no cap and would write
-    ``grade = 'Z'`` into ``name_0``, the one row SQL selects.
+    The operators alternate, so the fold has nothing to splice. The emitted
+    filter is ``{and: [leaf, {or: [leaf, {and: [leaf, leaf]}]}]}``: depth 3.
+    The Notion API caps nesting at 2.
 
-    UPDATE has no recheck (#397), so it may not prune the filter to fit the
-    cap. A pruned filter is a superset and would write rows this WHERE
-    excludes.
+    Before #417 UPDATE refused this WHERE (#383). UPDATE now rechecks its WHERE
+    (#413), so it prunes the filter to a legal superset and the recheck
+    decides. SQL selects ``name_0`` only.
 
-    The grade assertion is not redundant with the raise. It fails a gate that
-    raises after the ``pages.update`` writes are staged.
+    GREEN when written: the prune for DELETE also made UPDATE prune, because
+    both dispatch through ``visit_where_clause``. This test guards UPDATE.
     """
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
     stmt = (
         update(prepared_students)
         .values(grade="Z")
@@ -221,11 +220,18 @@ def test_update_refuses_a_where_whose_own_shape_exceeds_the_nesting_cap(
         )
     )
 
-    with pytest.raises(CompileError, match=re.escape(_FILTER_MAX_DEPTH_EXCEEDED)):
-        run_execute(engine, stmt)
+    result = run_execute(engine, stmt)
+
+    assert spy.payloads_seen
+    assert all(_depth(p.get("filter")) <= 2 for p in spy.payloads_seen), (
+        f"filters pushed to the client exceed Notion's 2-level cap: {spy.payloads_seen}"
+    )
+    assert_rowcount(result, 1)
 
     rows = select_all(engine, prepared_students)
-    assert sorted((r.id, r.grade) for r in rows) == [(i, "A") for i in range(10)]
+    assert sorted((r.id, r.grade) for r in rows) == [(0, "Z")] + [
+        (i, "A") for i in range(1, 10)
+    ]
 
 
 def test_update_by_an_empty_string_comparison_changes_only_the_blank_row(

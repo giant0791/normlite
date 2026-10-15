@@ -2,7 +2,7 @@ import uuid
 import pytest
 
 from normlite.exceptions import CompileError
-from normlite.sql.compiler import ROWS_UPDATE, NotionCompiler
+from normlite.sql.compiler import ROWS_UPDATE, NotionCompiler, _depth
 from normlite.sql.dml import delete, select, update
 from normlite.sql.elements import BooleanClauseList
 from normlite.sql.schema import Column, MetaData, Table
@@ -244,36 +244,29 @@ def test_update_holds_its_where_for_recheck_as_select_does(students, db_id):
 
 
 @pytest.mark.parametrize(
-    "build, stmt, remedy",
+    "build",
     [
-        (
-            lambda t, w: delete(t).where(w),
-            "DELETE",
-            "SELECT the rows first and delete them by object_id.",
-        ),
-        (
-            lambda t, w: update(t).values(grade="Z").where(w),
-            "UPDATE",
-            "SELECT the rows first and update them by object_id.",
-        ),
+        lambda t, w: delete(t).where(w),
+        lambda t, w: update(t).values(grade="Z").where(w),
     ],
     ids=["delete", "update"],
 )
-def test_a_too_deep_dml_where_names_its_own_statement_and_remedy(
-    students, db_id, build, stmt, remedy
+def test_a_too_deep_dml_where_compiles_to_a_legal_filter_and_keeps_the_whole_where(
+    students, db_id, build
 ):
     # Arrange
-    # and -> or -> and: depth 3, over the Notion cap of 2. DML raises, never prunes.
+    # and -> or -> and: depth 3, over the Notion cap of 2 (#417).
     too_deep = (students.c.name == "name_0") & (
         (students.c.id == 1)
         | ((students.c.grade == "A") & students.c.is_active.is_(True))
     )
 
     # Act
-    with pytest.raises(CompileError) as exc_info:
-        build(students, too_deep).compile(NotionCompiler())
+    compiled = build(students, too_deep).compile(NotionCompiler())
 
     # Assert
-    message = str(exc_info.value)
-    assert message.startswith(f"{stmt} cannot compile this WHERE clause")
-    assert message.endswith(remedy)
+    # The pushed filter is a legal superset. The prune is sound only because
+    # the recheck holds the WHOLE WHERE and decides the answer (ADR-0022).
+    pushed = compiled.as_dict()["payload"]["filter"]
+    assert 0 < _depth(pushed) <= 2
+    assert compiled.planning_context.recheck_where is too_deep
