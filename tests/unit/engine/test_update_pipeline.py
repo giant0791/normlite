@@ -350,3 +350,129 @@ def test_update_with_a_negated_conjunct_changes_exactly_what_select_returns(
     assert sorted((r.id, r.grade) for r in rows) == [
         (i, "Z" if i in (0, 2) else "A") for i in range(10)
     ]
+
+
+def test_update_by_a_not_equal_where_leaves_a_valueless_row_unchanged(
+    engine, prepared_students
+):
+    """``id != 1`` must not change a row whose ``id`` has no value (#384, #413).
+
+    SQL answers ``NULL != 1`` with UNKNOWN, and the WHERE drops UNKNOWN.
+    Notion's ``number.does_not_equal`` matches an empty cell. The UPDATE twin
+    of ``test_delete_pipeline.test_delete_by_a_not_equal_where_keeps_a_valueless_row``.
+
+    Three-way cast:
+
+    * ``name_0`` and ``name_2..9`` are valued and unequal to 1. They change to "Z".
+    * ``name_1`` is valued and equal to 1. The WHERE is false, so it stays "A".
+    * ``Nullius`` has a valueless ``id``. The WHERE is UNKNOWN, so it stays "A".
+    """
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Nullius", id=None, is_active=True,
+            start_on=date(1600, 1, 1), grade="A",
+        ))
+
+    result = run_execute(
+        engine,
+        update(prepared_students).values(grade="Z").where(prepared_students.c.id != 1),
+    )
+
+    assert_rowcount(result, 9)
+
+    # Names, not ids: ``Nullius`` has no id, and sorting None against ints raises.
+    rows = select_all(engine, prepared_students)
+    assert sorted((r.name, r.grade) for r in rows) == sorted(
+        [("Nullius", "A"), ("name_1", "A")]
+        + [(f"name_{i}", "Z") for i in range(10) if i != 1]
+    )
+
+
+def test_update_returning_gives_only_the_changed_rows(engine, prepared_students):
+    # Arrange: ten rows with ids 0..9 and grade "A". Notion gets ``id < 3``
+    # and returns ids 0, 1 and 2. The WHERE keeps ids 0 and 2 only.
+    # ``name`` is not in the WHERE.
+    stmt = (
+        update(prepared_students)
+        .values(grade="Z")
+        .where((prepared_students.c.id < 3) & not_(prepared_students.c.id == 1))
+        .returning(prepared_students.c.name, prepared_students.c.grade)
+    )
+
+    # Act
+    result = run_execute(engine, stmt)
+    rows = result.all()
+
+    # Assert: one RETURNING row for each changed row, with the new grade.
+    assert sorted((row.name, row.grade) for row in rows) == [
+        ("name_0", "Z"),
+        ("name_2", "Z"),
+    ]
+    assert_rowcount(result, 2)
+
+
+def test_update_by_an_equal_none_comparison_executes_and_changes_nothing(
+    engine, prepared_students
+):
+    """``id == None`` executes and is UNKNOWN for every row, so UPDATE changes nothing (#413).
+
+    Before #413, UPDATE refused a ``None`` literal with a ``CompileError``. The
+    UPDATE twin of
+    ``test_delete_pipeline.test_delete_by_an_equal_none_comparison_executes_and_trashes_nothing``.
+
+    Two-way cast, so both kinds of cell are covered:
+
+    * the ten ``name_i`` rows have a valued ``id``;
+    * ``Nullius`` has a valueless ``id``. In SQL, ``NULL = NULL`` is UNKNOWN
+      too, so UPDATE does not change it.
+    """
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Nullius", id=None, is_active=True,
+            start_on=date(1600, 1, 1), grade="A",
+        ))
+
+    result = run_execute(
+        engine,
+        update(prepared_students).values(grade="Z").where(prepared_students.c.id == None),
+    )
+
+    assert_rowcount(result, 0)
+
+    rows = select_all(engine, prepared_students)
+    assert sorted((r.name, r.grade) for r in rows) == sorted(
+        [("Nullius", "A")] + [(f"name_{i}", "A") for i in range(10)]
+    )
+
+
+def test_update_by_an_or_with_a_negated_arm_changes_exactly_what_select_returns(
+    engine, prepared_students
+):
+    # Arrange: ten rows with ids 0..9 and grade "A", plus Bee with grade "B".
+    # The WHERE keeps name_1 (id == 1) and Bee (grade is not "A").
+    with engine.connect() as conn:
+        conn.execute(insert(prepared_students).values(
+            name="Bee", id=50, is_active=True,
+            start_on=date(1600, 1, 1), grade="B",
+        ))
+
+    def where():
+        return (prepared_students.c.id == 1) | not_(prepared_students.c.grade == "A")
+
+    with engine.connect() as conn:
+        selected = conn.execute(select(prepared_students.c.name).where(where())).all()
+
+    # Act
+    result = run_execute(
+        engine, update(prepared_students).values(is_active=False).where(where())
+    )
+
+    # Assert: UPDATE changes the SELECT's rows, and no other row.
+    assert sorted(row.name for row in selected) == ["Bee", "name_1"]
+    assert_rowcount(result, 2)
+
+    rows = select_all(engine, prepared_students)
+    assert sorted((r.name, r.is_active) for r in rows) == sorted(
+        [("Bee", False), ("name_1", False)]
+        + [(f"name_{i}", True) for i in range(10) if i != 1]
+    )
