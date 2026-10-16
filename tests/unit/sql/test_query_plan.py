@@ -8,7 +8,7 @@ from normlite.engine.base import _distill_params
 from normlite.exceptions import InvalidRequestError
 from normlite.engine.context import ExecutionContext
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
-from normlite.sql.dml import delete, select, update
+from normlite.sql.dml import delete, insert, select, update
 from normlite.sql.elements import or_
 from normlite.sql.functions import func
 from normlite.sql.queryplan import (
@@ -1412,3 +1412,158 @@ def test_running_the_plan_for_an_update_changes_exactly_the_targeted_pages(engin
         }
 
     assert grade_by_id == {0: "Z", 1: "A", 2: "Z"}
+
+
+@pytest.mark.parametrize(
+    ("make_stmt", "expected_shape"),
+    [
+        (lambda s, c: select(func.sum(s.c.id)), "AGGREGATE"),
+        (lambda s, c: select(s).where(s.c.id > 1), "SELECT"),
+        (lambda s, c: select(s, c).join(s.c.enrolled_in), "JOIN"),
+        (lambda s, c: delete(s).where(s.c.id > 1), "MODIFY"),
+        (lambda s, c: update(s).values(id=7).where(s.c.id > 1), "MODIFY"),
+    ],
+    ids=["aggregate", "select", "join", "delete", "update"],
+)
+def test_the_planner_names_the_plan_shape_of_every_statement_it_plans(
+    engine, make_stmt, expected_shape
+):
+    # #425: Planner.plan builds four shapes, but no shape has a name. The
+    # INSERT ADR must extend the Planner, so it needs one name per shape.
+    # DELETE and UPDATE take the same shape: both write the rows the scan
+    # finds (ADR-0023).
+    from normlite.sql.queryplan import _PlanShape
+
+    # Arrange: one schema that every statement kind can use.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    compiled = make_stmt(students, courses).compile(engine._sql_compiler)
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=engine.raw_connection().cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    # Act
+    shape = Planner(ctx)._get_shape()
+
+    # Assert
+    assert shape is _PlanShape[expected_shape]
+
+
+def test_the_planner_refuses_a_statement_that_has_no_plan_shape(engine):
+    # #425: the Planner plans SELECT, DELETE and UPDATE only. Any other
+    # statement has no plan shape, so the Planner must refuse it. It must
+    # not build a plan for a shape that the statement does not have.
+    # Today INSERT is the statement with no plan shape.
+    metadata = MetaData()
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+    )
+    metadata.create_all(engine)
+
+    compiled = (
+        insert(students)
+        .values(name="Ada", id=1)
+        .compile(engine._sql_compiler)
+    )
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=engine.raw_connection().cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={},
+    )
+    ctx.pre_exec()
+
+    with pytest.raises(InvalidRequestError, match="Insert"):
+        Planner(ctx).plan()
+
+
+def test_a_join_plan_reads_each_side_in_one_request_even_with_yield_per(engine):
+    # #425: join Scans do not stream. HashJoin hashes the left rows by
+    # `object_id`, so it drains both sides before it emits a row. `yield_per`
+    # cannot cascade through it, and the planner must not hand it to either
+    # Scan. The observable is the number of `data_sources.query` requests that
+    # reach Notion: five left rows and one right row fit in one default page
+    # each, so the join costs exactly two requests.
+    #
+    # MUTATION-PROVEN: `yield_per` on the left Scan -> `assert 4 == 2`
+    # (three left pages of two rows, plus one right page).
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        course_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Astronomy")
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        for n in range(5):
+            connection.execute(
+                insert(students).values(name=f"student {n}", enrolled_in=[course_oid])
+            )
+
+    # Seeding is done; only the join below is counted.
+    stmt = select(students, courses).join(students.c.enrolled_in)
+    compiled = stmt.compile(engine._sql_compiler)
+    counting = _PageCountingClient(engine._client)
+    connection = DBAPIConnection(counting)
+    ctx = ExecutionContext(
+        engine,
+        engine.connect(),
+        cursor=connection.cursor(),
+        compiled=compiled,
+        distilled_params=_distill_params(None),
+        execution_options={"yield_per": 2},
+    )
+    ctx.pre_exec()
+
+    # Act: plan the join and run it to exhaustion.
+    plan = Planner(ctx).plan()
+    plan.open(connection)
+    rows = []
+    while (batch := plan.next()) is not None:
+        rows.extend(batch)
+    plan.close()
+
+    # Assert: every student pairs with the course, and each side cost one
+    # request -- not one left request per two rows.
+    assert len(rows) == 5
+    assert counting.query_calls == 2

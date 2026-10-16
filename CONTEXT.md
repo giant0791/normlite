@@ -947,6 +947,21 @@ three-valued evaluator reads the AST directly, deleting both the bridge and `_Fi
 > since #384 / ADR-0022 is *every* WHERE conjunct and is named `recheck_where`.
 > See §Pushdown / Recheck / Residual.
 
+### Plan shape
+The **class of Query plan** the **Planner** builds for a statement. There are four shapes, and
+every planned statement takes exactly one:
+
+- **aggregate** — `Scan → Aggregate`. No recheck `Filter`.
+- **select** (plain, no join) — `Scan → [Filter] → Project`. The only shape whose `Scan` streams
+  (`yield_per`).
+- **join** — `(Scan, Scan) → HashJoin → [Filter] → [Sort]`. The join Scans do not stream.
+- **modify** (DELETE/UPDATE) — `Scan → [Filter] → ModifyTable`. DML never streams.
+
+One classify step (`Planner._get_shape()`) is the only reader of the statement-kind flags
+(`is_select`, `is_delete`, `is_update`, `_joins`, `_is_aggregate`). It refuses a statement that has
+no shape (e.g. INSERT). `Planner.plan()` maps each shape to one builder method. The names are
+planner-internal (`_PlanShape`), on purpose (#425). _Avoid_: "plan kind", "plan type".
+
 ### PlanningContext
 The **messenger carrying compile-time decisions to run time** — the **recheck** WHERE
 (`recheck_where`) and the **residual** sorts (`residual_sorts`), both as **AST**, plus the join
