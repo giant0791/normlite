@@ -25,9 +25,13 @@ merges, :class:`Filter` re-checks the WHERE, :class:`Sort` orders,
 :class:`Aggregate` reduces and :class:`Project` trims. :class:`Planner` builds
 the tree from the compiled statement.
 
+.. versionchanged:: 0.14.0
+    :meth:`Planner.plan` split into one builder per plan shape (refactor #425)
+
 .. versionadded:: 0.13.0
 """
 
+from enum import Enum, auto
 from typing import Any, Callable, Optional, Protocol, Sequence, Union, runtime_checkable
 
 from normlite._constants import SpecialColumns
@@ -41,6 +45,19 @@ from normlite.sql.functions import FunctionElement
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
 from normlite.sql.schema import Column, Table
 from normlite.sql.type_api import String
+
+
+class _PlanShape(Enum):
+    """Provide a classification for the multiple shapes handled by the planner.
+
+    .. important::
+        This is a module private class.
+        It's intended for usage with the planner exclusively.
+    """
+    AGGREGATE = auto()
+    JOIN = auto()
+    MODIFY = auto()
+    SELECT = auto()
 
 #: Notion's maximum (and default) result page size. A ``Scan`` pulls the store
 #: one Notion page at a time, so this is the operator's batch granularity.
@@ -858,7 +875,7 @@ class Planner:
     .. versionadded:: 0.13.0
     """
 
-    _exec_ctx: ExecutionContext
+    _ctx: ExecutionContext
 
     def __init__(self, ctx: ExecutionContext) -> None:
         """Construct a planner for one already compiled statement.
@@ -867,212 +884,56 @@ class Planner:
             ctx (ExecutionContext): Carries the invoked statement, the compiled
                 operation and its planning context.
         """
-        self._exec_ctx = ctx
+        self._ctx = ctx
+        self._invoked_stmt = self._ctx.invoked_stmt
+        self._stmt_table = self._invoked_stmt.get_table()
 
-    def plan(self) -> VolcanoOperator:
-        """Build the operator tree for the invoked SELECT/DELETE statement.
+    def _get_shape(self) -> _PlanShape:
+        """Classify the current execution context and provide the shape for the plan."""
 
-        The following shapes are produced, and every SELECT/DELETE/UPDATE takes one of them:
+        if self._invoked_stmt.is_select and self._invoked_stmt._is_aggregate:
+            return _PlanShape.AGGREGATE
 
-        * aggregate -- ``Scan -> Aggregate``
-        * plain select -- ``Scan -> [Filter] -> Project``, the ``Scan`` widened to fetch
-          whatever the recheck reads and ``Project`` trimming it back off
-        * join -- ``(Scan, Scan) -> HashJoin -> [Filter] -> [Sort]``
-        * delete/update -- ``Scan -> [Filter]``, the ``Scan`` widened to fetch
-          whatever the recheck reads. A DELETE/UPDATE with no WHERE clause lowers
-          the retrieval cost by fetching the title column only.
+        if self._invoked_stmt.is_select and not self._invoked_stmt._joins:
+            return _PlanShape.SELECT
 
-        Only the first join of the statement is planned; chaining ``.join()``
-        silently drops the rest.
+        if self._invoked_stmt.is_delete or self._invoked_stmt.is_update:
+            return _PlanShape.MODIFY
 
-        Returns:
-            VolcanoOperator: The root of the plan, ready to be opened.
+        if self._invoked_stmt.is_select and self._invoked_stmt._joins:
+            return _PlanShape.JOIN
 
-        Raises:
-            InvalidRequestError: If the invoked statement is neither a SELECT nor a DELETE
-                nor an UPDATE.
-
-        .. versionchanged:: 0.14.0
-            Plan DELETE and UPDATE statements.
-
-        .. versionadded:: 0.13.0
-        """
-        invoked_stmt = self._exec_ctx.invoked_stmt
-        ctx: ExecutionContext = self._exec_ctx
-        stmt_table = invoked_stmt.get_table()
-        is_planner_executable = (
-            invoked_stmt.is_select or
-            invoked_stmt.is_delete or
-            invoked_stmt.is_update
+        raise InvalidRequestError(
+            f"Query planner builds plans for SELECT/DELETE/UPDATE statements only. "
+            f"The invoked statement is neither a SELECT nor DELETE nor UPDATE ({type(self._invoked_stmt).__name__})"
         )
 
-        if not is_planner_executable:
-            raise InvalidRequestError(
-                f"Query planner builds plans for SELECT/DELETE/UPDATE statements only. "
-                f"The invoked statement is neither a SELECT nor DELETE nor UPDATE ({type(invoked_stmt).__name__})"
-            )
+    def _plan_aggregate(self) -> VolcanoOperator:
+        # SELECT aggregate: create a simple scan operator
 
-        recheck_where = ctx.compiled.planning_context.recheck_where
+        schema = SchemaInfo.from_table(
+            self._stmt_table,
+            execution_names=self._ctx.compiled.fetch_columns(),
+            projected_names=self._ctx.compiled.result_columns(),
+        )
+        scan = Scan(self._ctx.operation, self._ctx.parameters, schema=schema)
+        return Aggregate(scan, self._invoked_stmt._raw_columns)
 
-        if invoked_stmt.is_select and invoked_stmt._is_aggregate:
-            # SELECT aggregate: create a simple scan operator
-            schema = SchemaInfo.from_table(
-                stmt_table,
-                execution_names=ctx.compiled.fetch_columns(),
-                projected_names=ctx.compiled.result_columns(),
-            )
-            scan = Scan(ctx.operation, ctx.parameters, schema=schema)
-            return Aggregate(scan, invoked_stmt._raw_columns)
-
-        yield_per = ctx.execution_options.get("yield_per")
-
-        if (
-            invoked_stmt.is_delete or
-            invoked_stmt.is_update or
-            (invoked_stmt.is_select and not invoked_stmt._joins)
-        ):
-            # DELETE/UPDATE or plain SELECT statement (without JOIN)
-            execution_names: list[str] = list(ctx.compiled.fetch_columns())
-            scan_params = dict(ctx.parameters)
-
-            # True when the plan fetches a different set of properties than the
-            # compiler asked for, and so must send its own filter_properties.
-            narrows = False
-
-            if recheck_where is not None:
-                # A predicate reads a SET of columns, not one: a compound WHERE
-                # folds into a BooleanClauseList and every leaf contributes its
-                # own. Widen PER COLUMN -- asking whether ANY predicate column
-                # is already fetched answers the wrong question and leaves a
-                # partially-overlapping predicate short of the one it misses,
-                # which costs UNKNOWN on every row and returns nothing.
-                #
-                # sorted() because _get_expression_columns returns a set, whose
-                # iteration order varies per process; without it the Scan's
-                # schema and filter_properties are a different permutation on
-                # every run.
-                where_cols = sorted(
-                    {c.name for c in _get_expression_columns(recheck_where)}
-                )
-                missing = [n for n in where_cols if n not in execution_names]
-
-                if missing:
-                    # append behind fetch_columns(), which stays authoritative
-                    # for the columns the statement already asked for
-                    execution_names.extend(missing)
-
-                    # widen filter_properties to match, or Notion never returns
-                    # the cells the recheck has to read.
-                    narrows = True
-
-            elif invoked_stmt.is_delete or invoked_stmt.is_update:
-                # DELETE/UPDATE with no WHERE clause reads no property,
-                # but an empty filter_properties means "all properties"
-                # to Notion. Fetch the title only: every Notion data source
-                # has one. A list, because a Table declared without a title
-                # gives [] (no narrowing).
-                title_cols = [
-                    c.name
-                    for c in stmt_table.uc
-                    if isinstance(c.type_, String) and c.type_.is_title
-                ]
-                execution_names.extend(title_cols)
-                narrows = True
-
-            if narrows:
-                # Gated on `narrows`, and that gate is load-bearing: the
-                # compiler emits query_params only `if query_params`, so a
-                # statement the plan does not narrow may carry no key at all.
-                # Writing one regardless would send filter_properties for
-                # shapes the compiler deliberately left unnarrowed.
-                #
-                # Copy before writing: scan_params is a shallow copy, so its
-                # query_params is still the compiled statement's dict.
-                scan_params["query_params"] = dict(scan_params.get("query_params") or {})
-
-                # specials must never ride into filter_properties (ADR-0006)
-                scan_params["query_params"]["filter_properties"] = [
-                    name
-                    for name in execution_names
-                    if name not in SpecialColumns
-                ]
-
-            # no projected_names: SELECT result_columns are a subset of fetch_columns,
-            # and DELETE/UPDATE RETURNING read the write response, never the Scan (ADR-0023)
-            schema = SchemaInfo.from_table(
-                stmt_table,
-                execution_names=execution_names,
-            )
-
-            if not invoked_stmt.is_select:
-                # DELETE and UPDATE shall never stream
-                yield_per = None
-
-            scan = Scan(
-                ctx.operation,
-                scan_params,
-                schema=schema,
-                # the operator above this Scan can consume batch-by-batch only if it's not DELETE
-                yield_per=yield_per
-            )
-            plan = scan
-
-            if recheck_where is not None:
-                # The recheck (ADR-0022): a pushed conjunct is a HINT, never the answer.
-                # Notion's filter is a lossy probe -- `does_not_equal` keeping a valueless
-                # cell (#384) is the one divergence measured today, not the reason this is
-                # unconditional. Re-apply every held conjunct over raw cells; the recheck
-                # decides.
-                plan = Filter(
-                    source=scan,
-                    schema=schema,
-                    filter=recheck_where,
-                    tables=[stmt_table]
-                )
-
-            if invoked_stmt.is_delete or invoked_stmt.is_update:
-                # DELETE/UPDATE: add the ModifyTable operator and return the plan without projection
-                # ModifyTable needs the RETURNING schema because it mutates (pages.update)
-                # the rows
-                implicit_names = []
-                returning = ctx.compiled.result_columns()
-                if not returning:
-                    implicit_names = [SpecialColumns.NO_ID]
-
-                returning_schema = SchemaInfo.from_table(
-                    stmt_table,
-                    execution_names=implicit_names,
-                    projected_names=returning
-                )
-                kind = "delete" if invoked_stmt.is_delete else "update"
-
-                # DELETE has resolved_params = None
-                actual_values = dict(ctx.resolved_params or {})
-
-                return ModifyTable(
-                    plan,
-                    ctx.compiled_dict[f"{kind}_operation"],
-
-                    # binding is required for UPDATE, for DELETE the binding just returns the template
-                    ctx._bind_params(ctx.compiled_dict[f"{kind}_params"], actual_values),
-                    schema=returning_schema
-                )
-
-            # plain SELECT: put the projection at the top of the plan
-            return Project(plan, ctx.compiled.planning_context.pre_widening_fetch_columns)
+    def _plan_join(self) -> VolcanoOperator:
+        recheck_where = self._ctx.compiled.planning_context.recheck_where
 
         # SELECT with JOIN
-        join: Join = invoked_stmt._joins[0]
-        projection = list(invoked_stmt._projection)
+        join: Join = self._invoked_stmt._joins[0]
+        projection = list(self._invoked_stmt._projection)
         left_schema, right_schema = SchemaInfo.from_join_sides(
             join.left,
             join.right,
             projection,
             join.onclause
         )
-        left_child = Scan(ctx.operation, ctx.parameters, schema=left_schema)
+        left_child = Scan(self._ctx.operation, self._ctx.parameters, schema=left_schema)
         right_child = Scan(
-            ctx.operation,
+            self._ctx.operation,
             parameters={"path_params": {"data_source_id": join.right.get_data_source_id()}},
             schema=right_schema,
         )
@@ -1088,7 +949,7 @@ class Planner:
             merged_schema = SchemaInfo.from_join(
                 join.left,
                 join.right,
-                *invoked_stmt._projection,
+                *self._invoked_stmt._projection,
             )
 
             # The tables the predicate READS: one per leaf, so one for a single-sided
@@ -1111,11 +972,259 @@ class Planner:
             plan = updated
 
         # add a sort on top of the plan, if there is a ORDER BY-clause on the right table
-        residual_sorts = ctx.compiled.planning_context.residual_sorts
+        residual_sorts = self._ctx.compiled.planning_context.residual_sorts
         if residual_sorts is not None:
             sorts = compile_residual_sorts(residual_sorts)
-            merged_schema = SchemaInfo.from_join(join.left, join.right, *invoked_stmt._projection)
+            merged_schema = SchemaInfo.from_join(join.left, join.right, *self._invoked_stmt._projection)
             plan = Sort(source=plan, schema=merged_schema, sorts=sorts, table=join.right)
 
         return plan
 
+    def _plan_select(self) -> VolcanoOperator:
+        recheck_where = self._ctx.compiled.planning_context.recheck_where
+        yield_per = self._ctx.execution_options.get("yield_per")
+        execution_names: list[str] = list(self._ctx.compiled.fetch_columns())
+        scan_params = dict(self._ctx.parameters)
+
+        # True when the plan fetches a different set of properties than the
+        # compiler asked for, and so must send its own filter_properties.
+        narrows = False
+        if recheck_where is not None:
+            # A predicate reads a SET of columns, not one: a compound WHERE
+            # folds into a BooleanClauseList and every leaf contributes its
+            # own. Widen PER COLUMN -- asking whether ANY predicate column
+            # is already fetched answers the wrong question and leaves a
+            # partially-overlapping predicate short of the one it misses,
+            # which costs UNKNOWN on every row and returns nothing.
+            #
+            # sorted() because _get_expression_columns returns a set, whose
+            # iteration order varies per process; without it the Scan's
+            # schema and filter_properties are a different permutation on
+            # every run.
+            where_cols = sorted(
+                {c.name for c in _get_expression_columns(recheck_where)}
+            )
+            missing = [n for n in where_cols if n not in execution_names]
+
+            if missing:
+                # append behind fetch_columns(), which stays authoritative
+                # for the columns the statement already asked for
+                execution_names.extend(missing)
+
+                # widen filter_properties to match, or Notion never returns
+                # the cells the recheck has to read.
+                narrows = True
+
+        if narrows:
+            # Gated on `narrows`, and that gate is load-bearing: the
+            # compiler emits query_params only `if query_params`, so a
+            # statement the plan does not narrow may carry no key at all.
+            # Writing one regardless would send filter_properties for
+            # shapes the compiler deliberately left unnarrowed.
+            #
+            # Copy before writing: scan_params is a shallow copy, so its
+            # query_params is still the compiled statement's dict.
+            scan_params["query_params"] = dict(scan_params.get("query_params") or {})
+
+            # specials must never ride into filter_properties (ADR-0006)
+            scan_params["query_params"]["filter_properties"] = [
+                name
+                for name in execution_names
+                if name not in SpecialColumns
+            ]
+
+        # no projected_names: SELECT result_columns are a subset of fetch_columns
+        schema = SchemaInfo.from_table(
+            self._stmt_table,
+            execution_names=execution_names,
+        )
+
+        scan = Scan(
+            self._ctx.operation,
+            scan_params,
+            schema=schema,
+            # the operator above this Scan can consume batch-by-batch
+            yield_per=yield_per
+        )
+        plan = scan
+
+        if recheck_where is not None:
+            # The recheck (ADR-0022): a pushed conjunct is a HINT, never the answer.
+            # Notion's filter is a lossy probe -- `does_not_equal` keeping a valueless
+            # cell (#384) is the one divergence measured today, not the reason this is
+            # unconditional. Re-apply every held conjunct over raw cells; the recheck
+            # decides.
+            plan = Filter(
+                source=scan,
+                schema=schema,
+                filter=recheck_where,
+                tables=[self._stmt_table]
+            )
+
+        # plain SELECT: put the projection at the top of the plan
+        return Project(plan, self._ctx.compiled.planning_context.pre_widening_fetch_columns)
+
+    def _plan_modify(self) -> VolcanoOperator:
+        # DELETE/UPDATE: Scan -> [Filter] -> ModifyTable
+        recheck_where = self._ctx.compiled.planning_context.recheck_where
+        execution_names: list[str] = list(self._ctx.compiled.fetch_columns())
+        scan_params = dict(self._ctx.parameters)
+
+        # True when the plan fetches a different set of properties than the
+        # compiler asked for, and so must send its own filter_properties.
+        narrows = False
+
+        if recheck_where is not None:
+            # A predicate reads a SET of columns, not one: a compound WHERE
+            # folds into a BooleanClauseList and every leaf contributes its
+            # own. Widen PER COLUMN -- asking whether ANY predicate column
+            # is already fetched answers the wrong question and leaves a
+            # partially-overlapping predicate short of the one it misses,
+            # which costs UNKNOWN on every row and returns nothing.
+            #
+            # sorted() because _get_expression_columns returns a set, whose
+            # iteration order varies per process; without it the Scan's
+            # schema and filter_properties are a different permutation on
+            # every run.
+            where_cols = sorted(
+                {c.name for c in _get_expression_columns(recheck_where)}
+            )
+            missing = [n for n in where_cols if n not in execution_names]
+
+            if missing:
+                # append behind fetch_columns(), which stays authoritative
+                # for the columns the statement already asked for
+                execution_names.extend(missing)
+
+                # widen filter_properties to match, or Notion never returns
+                # the cells the recheck has to read.
+                narrows = True
+
+        else:
+            # DELETE/UPDATE with no WHERE clause reads no property,
+            # but an empty filter_properties means "all properties"
+            # to Notion. Fetch the title only: every Notion data source
+            # has one. A list, because a Table declared without a title
+            # gives [] (no narrowing).
+            title_cols = [
+                c.name
+                for c in self._stmt_table.uc
+                if isinstance(c.type_, String) and c.type_.is_title
+            ]
+            execution_names.extend(title_cols)
+            narrows = True
+
+        if narrows:
+            # Gated on `narrows`, and that gate is load-bearing: the
+            # compiler emits query_params only `if query_params`, so a
+            # statement the plan does not narrow may carry no key at all.
+            # Writing one regardless would send filter_properties for
+            # shapes the compiler deliberately left unnarrowed.
+            #
+            # Copy before writing: scan_params is a shallow copy, so its
+            # query_params is still the compiled statement's dict.
+            scan_params["query_params"] = dict(scan_params.get("query_params") or {})
+
+            # specials must never ride into filter_properties (ADR-0006)
+            scan_params["query_params"]["filter_properties"] = [
+                name
+                for name in execution_names
+                if name not in SpecialColumns
+            ]
+
+        # no projected_names: DELETE/UPDATE RETURNING read the write response,
+        # never the Scan (ADR-0023)
+        schema = SchemaInfo.from_table(
+            self._stmt_table,
+            execution_names=execution_names,
+        )
+
+        # DELETE and UPDATE never stream: the Scan takes no yield_per
+        scan = Scan(
+            self._ctx.operation,
+            scan_params,
+            schema=schema,
+        )
+        plan = scan
+
+        if recheck_where is not None:
+            # The recheck (ADR-0022): a pushed conjunct is a HINT, never the answer.
+            # Notion's filter is a lossy probe -- `does_not_equal` keeping a valueless
+            # cell (#384) is the one divergence measured today, not the reason this is
+            # unconditional. Re-apply every held conjunct over raw cells; the recheck
+            # decides.
+            plan = Filter(
+                source=scan,
+                schema=schema,
+                filter=recheck_where,
+                tables=[self._stmt_table]
+            )
+
+        # ModifyTable needs the RETURNING schema because it mutates (pages.update)
+        # the rows; the plan has no projection on top
+        implicit_names = []
+        returning = self._ctx.compiled.result_columns()
+        if not returning:
+            implicit_names = [SpecialColumns.NO_ID]
+
+        returning_schema = SchemaInfo.from_table(
+            self._stmt_table,
+            execution_names=implicit_names,
+            projected_names=returning
+        )
+        kind = "delete" if self._invoked_stmt.is_delete else "update"
+
+        # DELETE has resolved_params = None
+        actual_values = dict(self._ctx.resolved_params or {})
+
+        return ModifyTable(
+            plan,
+            self._ctx.compiled_dict[f"{kind}_operation"],
+
+            # binding is required for UPDATE, for DELETE the binding just returns the template
+            self._ctx._bind_params(self._ctx.compiled_dict[f"{kind}_params"], actual_values),
+            schema=returning_schema
+        )
+
+    def plan(self) -> VolcanoOperator:
+        """Build the operator tree for the invoked SELECT/DELETE/UPDATE statement.
+
+        The planner classifies the statement into one plan shape and calls
+        the builder for that shape:
+
+        * aggregate -- ``Scan -> Aggregate``
+        * plain select -- ``Scan -> [Filter] -> Project``, the ``Scan`` widened to fetch
+          whatever the recheck reads and ``Project`` trimming it back off
+        * join -- ``(Scan, Scan) -> HashJoin -> [Filter] -> [Sort]``
+        * modify (DELETE/UPDATE) -- ``Scan -> [Filter] -> ModifyTable``, the ``Scan``
+          widened to fetch whatever the recheck reads. A DELETE/UPDATE with no WHERE
+          clause lowers the retrieval cost by fetching the title column only.
+
+        The shapes are deliberately asymmetric:
+
+        * The aggregate shape has no recheck ``Filter``.
+        * Only the plain select ``Scan`` streams (``yield_per``). The join Scans and
+          the modify ``Scan`` do not.
+
+        Only the first join of the statement is planned; chaining ``.join()``
+        silently drops the rest.
+
+        Returns:
+            VolcanoOperator: The root of the plan, ready to be opened.
+
+        Raises:
+            InvalidRequestError: If the invoked statement is neither a SELECT nor a DELETE
+                nor an UPDATE.
+
+        .. versionchanged:: 0.14.0
+            Plan DELETE and UPDATE statements. Dispatch to one builder per plan shape.
+
+        .. versionadded:: 0.13.0
+        """
+        builders: dict[_PlanShape, Callable[[], VolcanoOperator]] = {
+            _PlanShape.AGGREGATE: self._plan_aggregate,
+            _PlanShape.SELECT: self._plan_select,
+            _PlanShape.JOIN: self._plan_join,
+            _PlanShape.MODIFY: self._plan_modify,
+        }
+        return builders[self._get_shape()]()
