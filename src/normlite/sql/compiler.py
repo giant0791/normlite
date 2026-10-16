@@ -929,6 +929,36 @@ class NotionCompiler(SQLCompiler):
             "isouter": join.isouter
         }
 
+    def _widen_fetch_columns(self, expression: Optional[ColumnElement], query_params: dict) -> None:
+        if expression is None:
+            return
+
+        # A predicate reads a SET of columns, not one: a compound WHERE
+        # folds into a BooleanClauseList and every leaf contributes its
+        # own. Widen PER COLUMN -- asking whether ANY predicate column
+        # is already fetched answers the wrong question and leaves a
+        # partially-overlapping predicate short of the one it misses,
+        # which costs UNKNOWN on every row and returns nothing.
+        #
+        # sorted() because _get_expression_columns returns a set, whose
+        # iteration order varies per process; without it the Scan's
+        # schema and filter_properties are a different permutation on
+        # every run.
+        fetch_columns = self._compiler_state.fetch_columns
+        where_cols = sorted(
+            {c.name for c in _get_expression_columns(expression)}
+        )
+        missing = [n for n in where_cols if n not in fetch_columns]
+
+        if missing:
+            # append behind fetch_columns
+            self._compiler_state.fetch_columns = [*fetch_columns, *missing]
+            query_params['filter_properties'] = [
+                name
+                for name in self._compiler_state.fetch_columns
+                if name not in SpecialColumns
+            ]
+
     def visit_select(self, select: Select) -> dict:
         self._compiler_state.is_select = select.is_select
         self._compiler_state.stmt = select
@@ -1136,8 +1166,13 @@ class NotionCompiler(SQLCompiler):
                     # a subset of all user columns
                     query_params['filter_properties'] = self._compiler_state.result_columns
 
-        # create the snapshot:
+        # create the snapshot: pre_widening_fetch_columns holds what the user's Row needs
+        # Compiled.fetch_columns() is the widened list. "Fetch" means what the Scan operator fetches.
         self.planning_context.pre_widening_fetch_columns = list(self._compiler_state.fetch_columns)
+
+        is_plain_select = not (select._is_aggregate or select._joins)
+        if is_plain_select:
+            self._widen_fetch_columns(self.planning_context.recheck_where, query_params)
 
         if select._order_by.has_expression():
             order_by_clause = select._order_by

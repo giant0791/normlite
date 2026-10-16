@@ -589,3 +589,17 @@ def test_negated_conjunct_is_dropped_and_its_siblings_still_push(students: Table
         ]
     }
     assert compiled.planning_context.recheck_where is predicate
+
+# Behavior under test:
+# A SELECT whose WHERE reads a column that the projection does not name
+# compiles to a fetch that also asks Notion for that column.
+def test_where_column_outside_the_projection_is_fetched(students: Table):
+    # Arrange
+    stmt = select(students.c.name).where(students.c.id != 1)
+
+    # Act
+    compiled = stmt.compile(NotionCompiler())
+
+    # Assert
+    assert compiled.fetch_columns() == ['name', 'id']
+    assert compiled.as_dict()['query_params']['filter_properties'] == ['name', 'id']
