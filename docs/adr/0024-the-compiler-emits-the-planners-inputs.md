@@ -48,9 +48,15 @@ those inputs and adds only what the execution decides.**
 3. **Run-time inputs stay with the planner.** `yield_per` comes from `execution_options`, not from
    the statement, so the compiler cannot know it.
 4. **The compiler owns the Scan fetch decision.** It fetches every column the recheck reads. One
-   private compiler helper does the widening and the title-only step. It reads `recheck_where`,
-   `fetch_columns` and the table. It writes `fetch_columns` and `query_params['filter_properties']`.
+   private compiler helper does the widening. It reads `recheck_where` and `fetch_columns`. It
+   writes `fetch_columns` and `query_params['filter_properties']`, and only when it adds a column.
    `visit_select()` (plain SELECT path only), `visit_delete()` and `visit_update()` call it.
+   The title-only step is not in the helper. `visit_delete()` and `visit_update()` do it
+   themselves. The helper cannot choose it: a `select(table.c.object_id)` with no WHERE and a
+   DELETE with no WHERE give it the same inputs, but only the DELETE fetches the title. For a
+   SELECT, the projection decides the fetch, and the WHERE only adds to it. A DELETE or UPDATE
+   reads no property, so with no WHERE its fetch is empty, and Notion reads an empty
+   `filter_properties` as "all properties".
 5. **`Compiled.fetch_columns()` is the widened list.** "Fetch" means what the `Scan` fetches.
    `PlanningContext.pre_widening_fetch_columns` holds what the user's `Row` needs, and `Project`
    trims to it.
@@ -69,6 +75,9 @@ those inputs and adds only what the execution decides.**
 - **Widen in `visit_where_clause()`.** Rejected: the visitors call it only when the WHERE is
   pushable, and it returns a *pruned* filter. The widening must read the whole `recheck_where`,
   pushable or not.
+- **The helper also does the title-only step, behind a flag from the caller (e.g. `mutation=True`).**
+  Rejected: the helper gets a branch that SELECT never takes. The step belongs to the statements
+  that need it.
 - **Move only DML.** Rejected: the same rule would then live in two layers.
 - **A new name for the widened list (e.g. `scan_columns`).** Rejected: it adds a third column list
   next to `fetch_columns` and `result_columns`. ADR-0022 already says "the *pre-widening*
