@@ -122,6 +122,23 @@ Translates a DML/DDL AST into a `compiled_dict` — a JSON-like dict with keys `
 write operation and the write payload template for **ModifyTable**. Named placeholders (`:param`) are
 resolved at execution time by `ExecutionContext`.
 
+**The compiler's user is the Planner**, not the Notion client. One SQL statement runs as a
+**Query plan**: a flow of several Notion calls. The compiler emits **every input the statement
+decides**; the Planner builds the Operators from them and adds only what the execution decides
+(e.g. `yield_per`). The compiler emits **names** (`fetch_columns`, `result_columns`); the Planner
+builds the schemas. The compiler has two output channels: `compiled_dict` (JSON-like data only)
+and the **PlanningContext** (AST). See [[adr-0024-the-compiler-emits-the-planners-inputs]].
+
+**Widening**: the compiler adds the columns the **recheck** reads to `fetch_columns` and to
+`filter_properties`, so the `Scan` fetches every cell the recheck needs. `fetch_columns` is the
+widened list; `PlanningContext.pre_widening_fetch_columns` is the snapshot taken **before** the
+widening, and `Project` trims to it. A DELETE/UPDATE with no WHERE fetches the title only.
+_Avoid_: "narrowing" for this step (it adds columns).
+
+> **Target, not yet code (2026-10-16).** ADR-0024 is `Proposed`. Until #431 lands, the Planner
+> (`_plan_select()`, `_plan_modify()`) still does the widening. The join shape does not widen at
+> all (#433).
+
 `visit_select` additionally emits `query_params` and — on the join path — `joins`,
 `join_right_filter`, and `join_right_sorts`. The latter two are **Residual**s (see §Query
 Planning & Execution) that have no home in a payload and ride the `compiled_dict` as ad-hoc keys;

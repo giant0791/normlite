@@ -83,6 +83,10 @@ answer. Pushing is a transfer optimisation that never decides.**
   needs. The cost of this placement is that the planner rewrites already-compiled DBAPI parameters,
   which inverts the layering; it is confined to the widening case and left as known debt.
 
+  > **Superseded 2026-10-16 by [ADR-0024](./0024-the-compiler-emits-the-planners-inputs.md)
+  > (placement only).** The widening moves to the compiler (#431). The rule is unchanged: fetch
+  > every column the recheck reads, and `Project` trims back to `pre_widening_fetch_columns`.
+
 - **A cross-table recheck evaluates against a PAGE MAP, not a qualified-key dict.** A compound WHERE
   spanning both join sides reaches **one** `eval3` call, and `eval3`'s second argument **is a Notion
   page's `properties` object**: it does `prop.get(name)` and then `prop_val.get(type_)` against the
