@@ -603,3 +603,17 @@ def test_where_column_outside_the_projection_is_fetched(students: Table):
     # Assert
     assert compiled.fetch_columns() == ['name', 'id']
     assert compiled.as_dict()['query_params']['filter_properties'] == ['name', 'id']
+
+# Behavior under test:
+# The widening for the recheck does not reach the user's Row: the columns
+# the user sees stay the projected ones, even when the fetch grows.
+def test_where_column_outside_the_projection_does_not_reach_the_row(students: Table):
+    # Arrange
+    stmt = select(students.c.name).where(students.c.id != 1)
+
+    # Act
+    compiled = stmt.compile(NotionCompiler())
+
+    # Assert
+    assert compiled.planning_context.pre_widening_fetch_columns == ['name']
+    assert compiled.result_columns() == ['name']
