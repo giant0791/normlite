@@ -1323,7 +1323,7 @@ class NotionCompiler(SQLCompiler):
                 if isinstance(c.type_, String) and c.type_.is_title
             ]
 
-            # len(fetch_columns) always 1:
+            # len(title_columns) always 1:
             # Notion allows 1 title property per data_source
             self._compiler_state.fetch_columns.append(title_columns[0])
             query_params['filter_properties'] = title_columns

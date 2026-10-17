@@ -38,13 +38,12 @@ from normlite._constants import SpecialColumns
 from normlite.engine.context import ExecutionContext
 from normlite.exceptions import InvalidRequestError
 from normlite.notiondbapi.dbapi2 import Connection
-from normlite.sql.compiler import _get_expression_parent_tables, compile_residual_sorts, _get_expression_columns
+from normlite.sql.compiler import _get_expression_parent_tables, compile_residual_sorts
 from normlite.sql.dml import AggregateExecution, Join
 from normlite.sql.elements import ColumnElement
 from normlite.sql.functions import FunctionElement
 from normlite.sql.resultschema import ResultColumn, SchemaInfo
 from normlite.sql.schema import Column, Table
-from normlite.sql.type_api import String
 
 
 class _PlanShape(Enum):
@@ -984,54 +983,6 @@ class Planner:
         recheck_where = self._ctx.compiled.planning_context.recheck_where
         yield_per = self._ctx.execution_options.get("yield_per")
         execution_names: list[str] = list(self._ctx.compiled.fetch_columns())
-        scan_params = dict(self._ctx.parameters)
-
-        # True when the plan fetches a different set of properties than the
-        # compiler asked for, and so must send its own filter_properties.
-        narrows = False
-        if recheck_where is not None:
-            # A predicate reads a SET of columns, not one: a compound WHERE
-            # folds into a BooleanClauseList and every leaf contributes its
-            # own. Widen PER COLUMN -- asking whether ANY predicate column
-            # is already fetched answers the wrong question and leaves a
-            # partially-overlapping predicate short of the one it misses,
-            # which costs UNKNOWN on every row and returns nothing.
-            #
-            # sorted() because _get_expression_columns returns a set, whose
-            # iteration order varies per process; without it the Scan's
-            # schema and filter_properties are a different permutation on
-            # every run.
-            where_cols = sorted(
-                {c.name for c in _get_expression_columns(recheck_where)}
-            )
-            missing = [n for n in where_cols if n not in execution_names]
-
-            if missing:
-                # append behind fetch_columns(), which stays authoritative
-                # for the columns the statement already asked for
-                execution_names.extend(missing)
-
-                # widen filter_properties to match, or Notion never returns
-                # the cells the recheck has to read.
-                narrows = True
-
-        if narrows:
-            # Gated on `narrows`, and that gate is load-bearing: the
-            # compiler emits query_params only `if query_params`, so a
-            # statement the plan does not narrow may carry no key at all.
-            # Writing one regardless would send filter_properties for
-            # shapes the compiler deliberately left unnarrowed.
-            #
-            # Copy before writing: scan_params is a shallow copy, so its
-            # query_params is still the compiled statement's dict.
-            scan_params["query_params"] = dict(scan_params.get("query_params") or {})
-
-            # specials must never ride into filter_properties (ADR-0006)
-            scan_params["query_params"]["filter_properties"] = [
-                name
-                for name in execution_names
-                if name not in SpecialColumns
-            ]
 
         # no projected_names: SELECT result_columns are a subset of fetch_columns
         schema = SchemaInfo.from_table(
@@ -1041,7 +992,7 @@ class Planner:
 
         scan = Scan(
             self._ctx.operation,
-            scan_params,
+            self._ctx.parameters,
             schema=schema,
             # the operator above this Scan can consume batch-by-batch
             yield_per=yield_per
@@ -1068,55 +1019,6 @@ class Planner:
         # DELETE/UPDATE: Scan -> [Filter] -> ModifyTable
         recheck_where = self._ctx.compiled.planning_context.recheck_where
         execution_names: list[str] = list(self._ctx.compiled.fetch_columns())
-        scan_params = dict(self._ctx.parameters)
-
-        # True when the plan fetches a different set of properties than the
-        # compiler asked for, and so must send its own filter_properties.
-        narrows = False
-
-        if recheck_where is not None:
-            # A predicate reads a SET of columns, not one: a compound WHERE
-            # folds into a BooleanClauseList and every leaf contributes its
-            # own. Widen PER COLUMN -- asking whether ANY predicate column
-            # is already fetched answers the wrong question and leaves a
-            # partially-overlapping predicate short of the one it misses,
-            # which costs UNKNOWN on every row and returns nothing.
-            #
-            # sorted() because _get_expression_columns returns a set, whose
-            # iteration order varies per process; without it the Scan's
-            # schema and filter_properties are a different permutation on
-            # every run.
-            where_cols = sorted(
-                {c.name for c in _get_expression_columns(recheck_where)}
-            )
-            missing = [n for n in where_cols if n not in execution_names]
-
-            if missing:
-                # append behind fetch_columns(), which stays authoritative
-                # for the columns the statement already asked for
-                execution_names.extend(missing)
-
-                # widen filter_properties to match, or Notion never returns
-                # the cells the recheck has to read.
-                narrows = True
-
-        if narrows:
-            # Gated on `narrows`, and that gate is load-bearing: the
-            # compiler emits query_params only `if query_params`, so a
-            # statement the plan does not narrow may carry no key at all.
-            # Writing one regardless would send filter_properties for
-            # shapes the compiler deliberately left unnarrowed.
-            #
-            # Copy before writing: scan_params is a shallow copy, so its
-            # query_params is still the compiled statement's dict.
-            scan_params["query_params"] = dict(scan_params.get("query_params") or {})
-
-            # specials must never ride into filter_properties (ADR-0006)
-            scan_params["query_params"]["filter_properties"] = [
-                name
-                for name in execution_names
-                if name not in SpecialColumns
-            ]
 
         # no projected_names: DELETE/UPDATE RETURNING read the write response,
         # never the Scan (ADR-0023)
@@ -1128,7 +1030,7 @@ class Planner:
         # DELETE and UPDATE never stream: the Scan takes no yield_per
         scan = Scan(
             self._ctx.operation,
-            scan_params,
+            self._ctx.parameters,
             schema=schema,
         )
         plan = scan

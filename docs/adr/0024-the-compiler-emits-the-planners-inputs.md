@@ -1,15 +1,11 @@
 # ADR-0024: The compiler emits the planner's inputs
 
-**Status:** Proposed — supersedes the widening placement in
+**Status:** Accepted — supersedes the widening placement in
 [ADR-0022](./0022-lossy-pushdown-and-the-recheck.md) (the paragraph "The widening itself lives in
 `Planner.plan`"); builds on [ADR-0018](./0018-query-plan-operator-tree.md),
 [ADR-0020](./0020-execution-layering-sql-builds-engine-drives.md) and
 [ADR-0023](./0023-dml-executes-through-the-query-plan.md)
 **Date:** 2026-10-16
-
-> Held at `Proposed` until #431 lands: the compiler emits the widened fetch, and the Planner no
-> longer writes `query_params`. ADR-0022 records why a decision must not be marked Accepted before
-> its code exists.
 
 ---
 
