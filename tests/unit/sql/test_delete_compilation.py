@@ -222,3 +222,21 @@ def test_delete_holds_the_same_where_for_recheck_as_select(students: Table):
     # Assert
     assert compiled_select.planning_context.recheck_where is select_predicate
     assert compiled_delete.planning_context.recheck_where is delete_predicate
+
+
+# Behavior under test:
+# A DELETE fetches the columns its WHERE reads, so the recheck can
+# evaluate the predicate. Notion gets only those properties, never
+# object_id (ADR-0006).
+def test_delete_fetches_the_columns_its_where_reads(students: Table):
+    # Arrange
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    students._sys_columns["data_source_id"]._value = str(uuid.uuid4())
+    stmt = delete(students).where(students.c.id != 1)
+
+    # Act
+    compiled = stmt.compile(NotionCompiler())
+
+    # Assert
+    assert compiled.fetch_columns() == ['object_id', 'id']
+    assert compiled.as_dict()['query_params']['filter_properties'] == ['id']

@@ -1265,6 +1265,10 @@ class NotionCompiler(SQLCompiler):
         self._compiler_state.stmt = delete
 
         operation = dict(endpoint='data_sources', request='query')
+        compiled_dict = {
+            'operation': operation,
+        }
+        query_params = {}
         path_params = {}
         payload = {
             'page_size': 100,        # Notion imposed max page size
@@ -1293,19 +1297,20 @@ class NotionCompiler(SQLCompiler):
         if delete._whereclause.has_expression():
             expression = delete._whereclause.expression
             self.planning_context.recheck_where = expression
+            self._widen_fetch_columns(expression, query_params)
+            if query_params:
+                compiled_dict['query_params'] = query_params
+
             if _is_pushable(expression):
                 # compile the DELETE's WHERE clause if the expression is pushable
                 pruned = delete._whereclause._compiler_dispatch(self)
                 if pruned:
                     payload['filter'] = pruned
 
-        compiled_dict = {
-            'operation': operation,
-            'path_params': path_params,
-            'payload': payload,
-            'delete_operation': ROWS_UPDATE,
-            'delete_params': {"payload": {"in_trash": True}}
-        }
+        compiled_dict['path_params'] = path_params
+        compiled_dict['payload'] = payload
+        compiled_dict['delete_operation'] = ROWS_UPDATE
+        compiled_dict['delete_params'] = {"payload": {"in_trash": True}}
         return compiled_dict
 
     def visit_update(self, update: Update) -> dict:
@@ -1322,6 +1327,10 @@ class NotionCompiler(SQLCompiler):
         ]
 
         operation = dict(endpoint='data_sources', request='query')
+        compiled_dict = {
+            'operation': operation,
+        }
+        query_params = {}
         path_params = {}
         payload = {
             'page_size': 100,
@@ -1344,6 +1353,10 @@ class NotionCompiler(SQLCompiler):
         if update._whereclause.has_expression():
             expression = update._whereclause.expression
             self.planning_context.recheck_where = expression
+            self._widen_fetch_columns(expression, query_params)
+            if query_params:
+                compiled_dict['query_params'] = query_params
+
             if _is_pushable(expression):
                 # compile the UPDATE's WHERE clause if the expression is pushable
                 pruned = update._whereclause._compiler_dispatch(self)
@@ -1354,13 +1367,11 @@ class NotionCompiler(SQLCompiler):
             # construct the update payload template containing the values as bind params
             update_payload_template = self._compile_update_values(update._values)
 
-        return {
-            'operation': operation,
-            'path_params': path_params,
-            'payload': payload,
-            'update_operation': ROWS_UPDATE,
-            'update_params': {"payload": {"properties": update_payload_template}},
-        }
+        compiled_dict['path_params'] = path_params
+        compiled_dict['payload'] = payload
+        compiled_dict['update_operation'] = ROWS_UPDATE
+        compiled_dict['update_params'] = {"payload": {"properties": update_payload_template}}
+        return compiled_dict
 
     def _compile_update_values(self, values: dict) -> dict:
         properties = {}
