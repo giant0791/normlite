@@ -1100,20 +1100,6 @@ class Planner:
                 # the cells the recheck has to read.
                 narrows = True
 
-        else:
-            # DELETE/UPDATE with no WHERE clause reads no property,
-            # but an empty filter_properties means "all properties"
-            # to Notion. Fetch the title only: every Notion data source
-            # has one. A list, because a Table declared without a title
-            # gives [] (no narrowing).
-            title_cols = [
-                c.name
-                for c in self._stmt_table.uc
-                if isinstance(c.type_, String) and c.type_.is_title
-            ]
-            execution_names.extend(title_cols)
-            narrows = True
-
         if narrows:
             # Gated on `narrows`, and that gate is load-bearing: the
             # compiler emits query_params only `if query_params`, so a

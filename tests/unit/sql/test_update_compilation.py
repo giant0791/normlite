@@ -288,3 +288,28 @@ def test_update_fetches_the_columns_its_where_reads_but_not_the_columns_it_write
     # Assert
     assert compiled.fetch_columns() == ['object_id', 'id']
     assert compiled_dict['query_params']['filter_properties'] == ['id']
+
+
+# Behavior under test:
+# A DELETE or UPDATE with no WHERE reads no property. Notion reads an
+# empty filter_properties as "all properties", so the statement fetches
+# the title only: every Notion data source has one.
+@pytest.mark.parametrize(
+    "make_stmt",
+    [
+        pytest.param(lambda t: delete(t), id="delete"),
+        pytest.param(lambda t: update(t).values(grade='A'), id="update"),
+    ],
+)
+def test_a_dml_statement_with_no_where_fetches_only_the_title(
+    students, db_id, make_stmt
+):
+    # Arrange
+    stmt = make_stmt(students)
+
+    # Act
+    compiled, compiled_dict = compile_update(stmt)
+
+    # Assert
+    assert compiled.fetch_columns() == ['object_id', 'name']
+    assert compiled_dict['query_params']['filter_properties'] == ['name']

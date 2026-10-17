@@ -1312,6 +1312,22 @@ class NotionCompiler(SQLCompiler):
                 pruned = stmt._whereclause._compiler_dispatch(self)
                 if pruned:
                     payload['filter'] = pruned
+        else:
+            # DELETE/UPDATE with no WHERE clause reads no property,
+            # but an empty filter_properties means "all properties"
+            # to Notion. Fetch the title only: every Notion data source
+            # has one.
+            title_columns = [
+                c.name
+                for c in table.uc
+                if isinstance(c.type_, String) and c.type_.is_title
+            ]
+
+            # len(fetch_columns) always 1:
+            # Notion allows 1 title property per data_source
+            self._compiler_state.fetch_columns.append(title_columns[0])
+            query_params['filter_properties'] = title_columns
+            compiled_dict['query_params'] = query_params
 
         compiled_dict['path_params'] = path_params
         compiled_dict['payload'] = payload
