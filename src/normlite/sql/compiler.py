@@ -17,7 +17,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Literal, NoReturn, Optional, Set
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, Optional, Set, Union
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError, StatementError, UnsupportedCompilationError
@@ -1260,9 +1260,11 @@ class NotionCompiler(SQLCompiler):
 
         return _prune(filter_obj)
 
-    def visit_delete(self, delete: Delete):
-        self._compiler_state.is_delete = delete.is_delete
-        self._compiler_state.stmt = delete
+    def _pre_compile_dml(self, stmt: Union[Delete, Update]) -> dict:
+        """Compile the invariant part of UPDATE/DELETE DML statements.
+
+        The caller adds the <kind>_operation and <kind>_params keys.
+        """
 
         operation = dict(endpoint='data_sources', request='query')
         compiled_dict = {
@@ -1277,13 +1279,17 @@ class NotionCompiler(SQLCompiler):
         # select the user columns to be included in the returned rows
         self._compiler_state.result_columns = [
             col.name
-            for col in delete._returning
+            for col in stmt._returning
         ]
 
-        table = delete.get_table()
+        table = stmt.get_table()
         data_source_id = table.get_data_source_id()
         if data_source_id is None:
-            raise CompileError(f'Table: {table.name} has not been previously reflected.')
+            kind = "DELETE" if stmt.is_delete else "UPDATE"
+            raise CompileError(
+                f'Unreflected table "{table.name}" used in DML '
+                f'statement: {kind}'
+            )
 
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
@@ -1294,27 +1300,34 @@ class NotionCompiler(SQLCompiler):
             )
             path_params['data_source_id'] = f':{db_id_key}'
 
-        if delete._whereclause.has_expression():
-            expression = delete._whereclause.expression
+        if stmt._whereclause.has_expression():
+            expression = stmt._whereclause.expression
             self.planning_context.recheck_where = expression
             self._widen_fetch_columns(expression, query_params)
             if query_params:
                 compiled_dict['query_params'] = query_params
 
             if _is_pushable(expression):
-                # compile the DELETE's WHERE clause if the expression is pushable
-                pruned = delete._whereclause._compiler_dispatch(self)
+                # compile the DML's WHERE clause if the expression is pushable
+                pruned = stmt._whereclause._compiler_dispatch(self)
                 if pruned:
                     payload['filter'] = pruned
 
         compiled_dict['path_params'] = path_params
         compiled_dict['payload'] = payload
+        return compiled_dict
+
+    def visit_delete(self, delete: Delete):
+        self._compiler_state.is_delete = delete.is_delete
+        self._compiler_state.stmt = delete
+
+        compiled_dict = self._pre_compile_dml(delete)
         compiled_dict['delete_operation'] = ROWS_UPDATE
         compiled_dict['delete_params'] = {"payload": {"in_trash": True}}
         return compiled_dict
 
     def visit_update(self, update: Update) -> dict:
-        self._compiler_state.is_update = True
+        self._compiler_state.is_update = update.is_update
         self._compiler_state.stmt = update
 
         if update._values is None:
@@ -1322,53 +1335,11 @@ class NotionCompiler(SQLCompiler):
                 "update() requires .values() to be called before compilation"
             )
 
-        self._compiler_state.result_columns = [
-            col.name for col in update._returning
-        ]
-
-        operation = dict(endpoint='data_sources', request='query')
-        compiled_dict = {
-            'operation': operation,
-        }
-        query_params = {}
-        path_params = {}
-        payload = {
-            'page_size': 100,
-        }
-
-        table = update.get_table()
-        data_source_id = table.get_data_source_id()
-        if data_source_id is None:
-            raise CompileError(f'Table: {table.name} has not been previously reflected.')
-
-        with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
-            db_id_key = self._add_bindparam(
-                BindParameter(
-                    key='data_source_id',
-                    value=data_source_id
-                )
-            )
-            path_params['data_source_id'] = f':{db_id_key}'
-
-        if update._whereclause.has_expression():
-            expression = update._whereclause.expression
-            self.planning_context.recheck_where = expression
-            self._widen_fetch_columns(expression, query_params)
-            if query_params:
-                compiled_dict['query_params'] = query_params
-
-            if _is_pushable(expression):
-                # compile the UPDATE's WHERE clause if the expression is pushable
-                pruned = update._whereclause._compiler_dispatch(self)
-                if pruned:
-                    payload['filter'] = pruned
-
+        compiled_dict = self._pre_compile_dml(update)
         with self._compiling(new_state=_CompileState.COMPILING_VALUES):
             # construct the update payload template containing the values as bind params
             update_payload_template = self._compile_update_values(update._values)
 
-        compiled_dict['path_params'] = path_params
-        compiled_dict['payload'] = payload
         compiled_dict['update_operation'] = ROWS_UPDATE
         compiled_dict['update_params'] = {"payload": {"properties": update_payload_template}}
         return compiled_dict
