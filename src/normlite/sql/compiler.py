@@ -17,7 +17,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Literal, NoReturn, Optional, Set
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, Optional, Set, Union
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError, StatementError, UnsupportedCompilationError
@@ -929,6 +929,36 @@ class NotionCompiler(SQLCompiler):
             "isouter": join.isouter
         }
 
+    def _widen_fetch_columns(self, expression: Optional[ColumnElement], query_params: dict) -> None:
+        if expression is None:
+            return
+
+        # A predicate reads a SET of columns, not one: a compound WHERE
+        # folds into a BooleanClauseList and every leaf contributes its
+        # own. Widen PER COLUMN -- asking whether ANY predicate column
+        # is already fetched answers the wrong question and leaves a
+        # partially-overlapping predicate short of the one it misses,
+        # which costs UNKNOWN on every row and returns nothing.
+        #
+        # sorted() because _get_expression_columns returns a set, whose
+        # iteration order varies per process; without it the Scan's
+        # schema and filter_properties are a different permutation on
+        # every run.
+        fetch_columns = self._compiler_state.fetch_columns
+        where_cols = sorted(
+            {c.name for c in _get_expression_columns(expression)}
+        )
+        missing = [n for n in where_cols if n not in fetch_columns]
+
+        if missing:
+            # append behind fetch_columns
+            self._compiler_state.fetch_columns = [*fetch_columns, *missing]
+            query_params['filter_properties'] = [
+                name
+                for name in self._compiler_state.fetch_columns
+                if name not in SpecialColumns
+            ]
+
     def visit_select(self, select: Select) -> dict:
         self._compiler_state.is_select = select.is_select
         self._compiler_state.stmt = select
@@ -1136,8 +1166,13 @@ class NotionCompiler(SQLCompiler):
                     # a subset of all user columns
                     query_params['filter_properties'] = self._compiler_state.result_columns
 
-        # create the snapshot:
+        # create the snapshot: pre_widening_fetch_columns holds what the user's Row needs
+        # Compiled.fetch_columns() is the widened list. "Fetch" means what the Scan operator fetches.
         self.planning_context.pre_widening_fetch_columns = list(self._compiler_state.fetch_columns)
+
+        is_plain_select = not (select._is_aggregate or select._joins)
+        if is_plain_select:
+            self._widen_fetch_columns(self.planning_context.recheck_where, query_params)
 
         if select._order_by.has_expression():
             order_by_clause = select._order_by
@@ -1225,11 +1260,17 @@ class NotionCompiler(SQLCompiler):
 
         return _prune(filter_obj)
 
-    def visit_delete(self, delete: Delete):
-        self._compiler_state.is_delete = delete.is_delete
-        self._compiler_state.stmt = delete
+    def _pre_compile_dml(self, stmt: Union[Delete, Update]) -> dict:
+        """Compile the invariant part of UPDATE/DELETE DML statements.
+
+        The caller adds the <kind>_operation and <kind>_params keys.
+        """
 
         operation = dict(endpoint='data_sources', request='query')
+        compiled_dict = {
+            'operation': operation,
+        }
+        query_params = {}
         path_params = {}
         payload = {
             'page_size': 100,        # Notion imposed max page size
@@ -1238,13 +1279,17 @@ class NotionCompiler(SQLCompiler):
         # select the user columns to be included in the returned rows
         self._compiler_state.result_columns = [
             col.name
-            for col in delete._returning
+            for col in stmt._returning
         ]
 
-        table = delete.get_table()
+        table = stmt.get_table()
         data_source_id = table.get_data_source_id()
         if data_source_id is None:
-            raise CompileError(f'Table: {table.name} has not been previously reflected.')
+            kind = "DELETE" if stmt.is_delete else "UPDATE"
+            raise CompileError(
+                f'Unreflected table "{table.name}" used in DML '
+                f'statement: {kind}'
+            )
 
         with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
             db_id_key = self._add_bindparam(
@@ -1255,26 +1300,50 @@ class NotionCompiler(SQLCompiler):
             )
             path_params['data_source_id'] = f':{db_id_key}'
 
-        if delete._whereclause.has_expression():
-            expression = delete._whereclause.expression
+        if stmt._whereclause.has_expression():
+            expression = stmt._whereclause.expression
             self.planning_context.recheck_where = expression
+            self._widen_fetch_columns(expression, query_params)
+            if query_params:
+                compiled_dict['query_params'] = query_params
+
             if _is_pushable(expression):
-                # compile the DELETE's WHERE clause if the expression is pushable
-                pruned = delete._whereclause._compiler_dispatch(self)
+                # compile the DML's WHERE clause if the expression is pushable
+                pruned = stmt._whereclause._compiler_dispatch(self)
                 if pruned:
                     payload['filter'] = pruned
+        else:
+            # DELETE/UPDATE with no WHERE clause reads no property,
+            # but an empty filter_properties means "all properties"
+            # to Notion. Fetch the title only: every Notion data source
+            # has one.
+            title_columns = [
+                c.name
+                for c in table.uc
+                if isinstance(c.type_, String) and c.type_.is_title
+            ]
 
-        compiled_dict = {
-            'operation': operation,
-            'path_params': path_params,
-            'payload': payload,
-            'delete_operation': ROWS_UPDATE,
-            'delete_params': {"payload": {"in_trash": True}}
-        }
+            # len(title_columns) always 1:
+            # Notion allows 1 title property per data_source
+            self._compiler_state.fetch_columns.append(title_columns[0])
+            query_params['filter_properties'] = title_columns
+            compiled_dict['query_params'] = query_params
+
+        compiled_dict['path_params'] = path_params
+        compiled_dict['payload'] = payload
+        return compiled_dict
+
+    def visit_delete(self, delete: Delete):
+        self._compiler_state.is_delete = delete.is_delete
+        self._compiler_state.stmt = delete
+
+        compiled_dict = self._pre_compile_dml(delete)
+        compiled_dict['delete_operation'] = ROWS_UPDATE
+        compiled_dict['delete_params'] = {"payload": {"in_trash": True}}
         return compiled_dict
 
     def visit_update(self, update: Update) -> dict:
-        self._compiler_state.is_update = True
+        self._compiler_state.is_update = update.is_update
         self._compiler_state.stmt = update
 
         if update._values is None:
@@ -1282,50 +1351,14 @@ class NotionCompiler(SQLCompiler):
                 "update() requires .values() to be called before compilation"
             )
 
-        self._compiler_state.result_columns = [
-            col.name for col in update._returning
-        ]
-
-        operation = dict(endpoint='data_sources', request='query')
-        path_params = {}
-        payload = {
-            'page_size': 100,
-        }
-
-        table = update.get_table()
-        data_source_id = table.get_data_source_id()
-        if data_source_id is None:
-            raise CompileError(f'Table: {table.name} has not been previously reflected.')
-
-        with self._compiling(new_state=_CompileState.COMPILING_DBAPI_PARAM):
-            db_id_key = self._add_bindparam(
-                BindParameter(
-                    key='data_source_id',
-                    value=data_source_id
-                )
-            )
-            path_params['data_source_id'] = f':{db_id_key}'
-
-        if update._whereclause.has_expression():
-            expression = update._whereclause.expression
-            self.planning_context.recheck_where = expression
-            if _is_pushable(expression):
-                # compile the UPDATE's WHERE clause if the expression is pushable
-                pruned = update._whereclause._compiler_dispatch(self)
-                if pruned:
-                    payload['filter'] = pruned
-
+        compiled_dict = self._pre_compile_dml(update)
         with self._compiling(new_state=_CompileState.COMPILING_VALUES):
             # construct the update payload template containing the values as bind params
             update_payload_template = self._compile_update_values(update._values)
 
-        return {
-            'operation': operation,
-            'path_params': path_params,
-            'payload': payload,
-            'update_operation': ROWS_UPDATE,
-            'update_params': {"payload": {"properties": update_payload_template}},
-        }
+        compiled_dict['update_operation'] = ROWS_UPDATE
+        compiled_dict['update_params'] = {"payload": {"properties": update_payload_template}}
+        return compiled_dict
 
     def _compile_update_values(self, values: dict) -> dict:
         properties = {}

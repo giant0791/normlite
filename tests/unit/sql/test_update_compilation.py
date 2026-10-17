@@ -270,3 +270,46 @@ def test_a_too_deep_dml_where_compiles_to_a_legal_filter_and_keeps_the_whole_whe
     pushed = compiled.as_dict()["payload"]["filter"]
     assert 0 < _depth(pushed) <= 2
     assert compiled.planning_context.recheck_where is too_deep
+
+
+# Behavior under test:
+# An UPDATE fetches the columns its WHERE reads, so the recheck can
+# evaluate the predicate. A column the UPDATE only writes is not
+# fetched: the write needs no cell from Notion.
+def test_update_fetches_the_columns_its_where_reads_but_not_the_columns_it_writes(
+    students, db_id
+):
+    # Arrange
+    stmt = update(students).values(grade='A').where(students.c.id != 1)
+
+    # Act
+    compiled, compiled_dict = compile_update(stmt)
+
+    # Assert
+    assert compiled.fetch_columns() == ['object_id', 'id']
+    assert compiled_dict['query_params']['filter_properties'] == ['id']
+
+
+# Behavior under test:
+# A DELETE or UPDATE with no WHERE reads no property. Notion reads an
+# empty filter_properties as "all properties", so the statement fetches
+# the title only: every Notion data source has one.
+@pytest.mark.parametrize(
+    "make_stmt",
+    [
+        pytest.param(lambda t: delete(t), id="delete"),
+        pytest.param(lambda t: update(t).values(grade='A'), id="update"),
+    ],
+)
+def test_a_dml_statement_with_no_where_fetches_only_the_title(
+    students, db_id, make_stmt
+):
+    # Arrange
+    stmt = make_stmt(students)
+
+    # Act
+    compiled, compiled_dict = compile_update(stmt)
+
+    # Assert
+    assert compiled.fetch_columns() == ['object_id', 'name']
+    assert compiled_dict['query_params']['filter_properties'] == ['name']

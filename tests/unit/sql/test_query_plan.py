@@ -1030,7 +1030,7 @@ def test_planner_builds_a_plan_for_a_delete_that_yields_every_targeted_row(engin
     assert second is None
 
 
-def test_planner_asks_notion_only_for_the_properties_a_delete_where_reads(engine, students):
+def test_a_delete_plan_asks_notion_only_for_the_properties_its_where_reads(engine, students):
     # Arrange: three rows, and a DELETE whose WHERE reads only `id`. A spy on
     # the client records the query params of every request to Notion.
     db_id = create_students_db(engine)
@@ -1070,7 +1070,7 @@ def test_planner_asks_notion_only_for_the_properties_a_delete_where_reads(engine
         assert query_params.get("filter_properties") == ["id"]
 
 
-def test_planner_asks_notion_only_for_the_title_when_a_delete_has_no_where(engine, students):
+def test_a_delete_plan_asks_notion_only_for_the_title_when_it_has_no_where(engine, students):
     # Arrange: three rows, and a DELETE with no WHERE. The DELETE reads no
     # property, but Notion cannot return zero properties: an empty
     # filter_properties means "all properties". The title is the one property

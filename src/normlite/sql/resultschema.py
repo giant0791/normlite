@@ -119,7 +119,8 @@ class SchemaInfo:
             table (Table): The table representive the authoritative source of the schema.
             execution_names (Optional[Sequence[str]]): The ordered list of columns the statement must fetch
                 to execute: special columns (Notion key values) **and** properties. It is usually
-                ``compiled.fetch_columns()``, plus any column that the Planner adds when it widens the fetch.
+                ``compiled.fetch_columns()``. The compiler widens that list with every column the
+                recheck WHERE reads (ADR-0024), so it can hold more columns than the projection names.
                 It is not limited to special columns: ``select(students.c.name)`` fetches
                 ``['object_id', 'name']``.
             projected_names (Optional[Sequence[str]]): The ordered list of columns the user gets back in the
