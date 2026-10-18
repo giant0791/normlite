@@ -1673,3 +1673,116 @@ def test_a_join_where_on_an_unprojected_right_column_keeps_the_matching_pair(eng
 
     assert {(row.name, row.title) for row in rows} == {("Galileo Galilei", "Astronomy")}
     assert [list(row.keys()) for row in rows] == [["name", "title"]]
+
+
+def test_a_widened_column_that_shares_a_projected_name_keeps_the_bare_name(engine: Engine):
+    # #433, the collision trap. The WHERE reads `courses.name`, and the
+    # projection does not name it. The projection names `students.name`.
+    # The widened column must not make the projected `name` qualified: the
+    # user's Row still has the bare key `name`, and it holds the student.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("credits", Integer()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses).values(name="Astronomy", credits=5).returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        chemistry_oid = (
+            connection.execute(
+                insert(courses).values(name="Chemistry", credits=3).returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+
+        # Kepler is the discriminator: a joinable pair that the WHERE excludes.
+        connection.execute(
+            insert(students).values(name="Galileo Galilei", enrolled_in=[astronomy_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Johannes Kepler", enrolled_in=[chemistry_oid])
+        )
+
+        rows = connection.execute(
+            select(students.c.name, courses.c.credits)
+            .join(students.c.enrolled_in)
+            .where(courses.c.name == "Astronomy")     # RIGHT, not projected, same name as students.name
+        ).fetchall()
+
+    assert {(row.name, row.credits) for row in rows} == {("Galileo Galilei", 5)}
+    assert [list(row.keys()) for row in rows] == [["name", "credits"]]
+
+
+def test_a_widened_column_that_shares_a_projected_name_keeps_the_bare_name_under_a_right_sort(
+    engine: Engine,
+):
+    # #433, the collision trap under the residual Sort. The right ORDER BY
+    # puts a Sort under Project, so Project reads the Sort schema. The Sort
+    # schema must name the user columns as the projection does: the bare
+    # key `name` holds the student.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("credits", Integer()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        course_oids = {}
+        for course_name, credits in [("Astronomy", 5), ("Physics", 4), ("Chemistry", 3)]:
+            course_oids[course_name] = (
+                connection.execute(
+                    insert(courses)
+                    .values(name=course_name, credits=credits)
+                    .returning(courses.c.object_id)
+                )
+                .first()
+                .object_id
+            )
+
+        # Kepler is the discriminator: a joinable pair that the WHERE excludes.
+        for student_name, course_name in [
+            ("Galileo Galilei", "Astronomy"),
+            ("Isaac Newton", "Physics"),
+            ("Johannes Kepler", "Chemistry"),
+        ]:
+            connection.execute(
+                insert(students).values(name=student_name, enrolled_in=[course_oids[course_name]])
+            )
+
+        rows = connection.execute(
+            select(students.c.name, courses.c.credits)
+            .join(students.c.enrolled_in)
+            .where(courses.c.name != "Chemistry")     # RIGHT, not projected, same name as students.name
+            .order_by(courses.c.credits.asc())        # RIGHT: the residual Sort
+        ).fetchall()
+
+    assert [(row.name, row.credits) for row in rows] == [
+        ("Isaac Newton", 4),
+        ("Galileo Galilei", 5),
+    ]
+    assert [list(row.keys()) for row in rows] == [["name", "credits"]] * 2
