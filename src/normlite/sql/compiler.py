@@ -1194,6 +1194,14 @@ class NotionCompiler(SQLCompiler):
                 self._compiler_state.fetch_columns,
                 query_params
             )
+            right = select._joins[0].right
+            right_fetch = [c.name for c in projection if c.parent is right]
+            widened_right = self._widen_fetch_columns(
+                self.planning_context.recheck_where,
+                right,
+                right_fetch,
+            )
+            self.planning_context.widened_right_columns = widened_right[len(right_fetch):]
 
         if select._order_by.has_expression():
             order_by_clause = select._order_by

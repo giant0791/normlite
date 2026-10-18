@@ -927,11 +927,18 @@ class Planner:
         projection = list(self._invoked_stmt._projection)
 
         # build the widened columns collection:
-        # fetch_columns() minus pre_widening_fetch_columns
+        # left JOIN: fetch_columns() minus pre_widening_fetch_columns
+        # right JOIN: the widened right columns
         widened = [
-            join.left.c[name]
-            for name in self._ctx.compiled.fetch_columns()
-            if name not in planning_context.pre_widening_fetch_columns
+            *(
+                join.left.c[name]
+                for name in self._ctx.compiled.fetch_columns()
+                if name not in planning_context.pre_widening_fetch_columns
+            ),
+            *(
+                join.right.c[name]
+                for name in planning_context.widened_right_columns
+            )
         ]
 
         left_schema, right_schema = SchemaInfo.from_join_sides(
