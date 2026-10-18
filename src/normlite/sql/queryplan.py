@@ -919,15 +919,25 @@ class Planner:
         return Aggregate(scan, self._invoked_stmt._raw_columns)
 
     def _plan_join(self) -> VolcanoOperator:
-        recheck_where = self._ctx.compiled.planning_context.recheck_where
+        planning_context = self._ctx.compiled.planning_context
+        recheck_where = planning_context.recheck_where
 
         # SELECT with JOIN
         join: Join = self._invoked_stmt._joins[0]
         projection = list(self._invoked_stmt._projection)
+
+        # build the widened columns collection:
+        # fetch_columns() minus pre_widening_fetch_columns
+        widened = [
+            join.left.c[name]
+            for name in self._ctx.compiled.fetch_columns()
+            if name not in planning_context.pre_widening_fetch_columns
+        ]
+
         left_schema, right_schema = SchemaInfo.from_join_sides(
             join.left,
             join.right,
-            projection,
+            [*projection, *widened],
             join.onclause
         )
         left_child = Scan(self._ctx.operation, self._ctx.parameters, schema=left_schema)
@@ -940,7 +950,7 @@ class Planner:
             left_child,
             right_child,
             join,
-            projection
+            [*projection, *widened]
         )
 
         # add a filter on top of the plan, if the WHERE clause has an expression
@@ -949,6 +959,7 @@ class Planner:
                 join.left,
                 join.right,
                 *self._invoked_stmt._projection,
+                *widened
             )
 
             # The tables the predicate READS: one per leaf, so one for a single-sided
@@ -971,11 +982,18 @@ class Planner:
             plan = updated
 
         # add a sort on top of the plan, if there is a ORDER BY-clause on the right table
-        residual_sorts = self._ctx.compiled.planning_context.residual_sorts
+        residual_sorts = planning_context.residual_sorts
         if residual_sorts is not None:
             sorts = compile_residual_sorts(residual_sorts)
-            merged_schema = SchemaInfo.from_join(join.left, join.right, *self._invoked_stmt._projection)
+            merged_schema = SchemaInfo.from_join(join.left, join.right, *self._invoked_stmt._projection, *widened)
             plan = Sort(source=plan, schema=merged_schema, sorts=sorts, table=join.right)
+
+        # add a project on top, if the compiler widened:
+        # a join with nothing widened keeps today's plan exactly.
+        if widened:
+            qualified_projection = SchemaInfo.from_join(join.left, join.right, *projection).columns
+            projected = Project(plan, [c.name for c in qualified_projection])
+            plan = projected
 
         return plan
 

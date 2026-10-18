@@ -1187,6 +1187,13 @@ class NotionCompiler(SQLCompiler):
                 self._compiler_state.fetch_columns,
                 query_params
             )
+        elif select._joins and not select._is_aggregate:
+            self._compiler_state.fetch_columns = self._widen_fetch_columns(
+                self.planning_context.recheck_where,
+                select._table,
+                self._compiler_state.fetch_columns,
+                query_params
+            )
 
         if select._order_by.has_expression():
             order_by_clause = select._order_by

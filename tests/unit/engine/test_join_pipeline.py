@@ -1565,3 +1565,57 @@ def test_a_cross_side_or_where_is_answered_client_side(engine: Engine):
         ("Galileo Galilei", "Astronomy"),
         ("Johannes Kepler", "Chemistry"),
     }
+
+
+def test_a_join_where_on_an_unprojected_left_column_keeps_the_matching_pair(engine: Engine):
+    # #433, left side. The WHERE reads `grade`, and the projection does not
+    # name it. The recheck must still see the `grade` cell. The user's Row
+    # must not show it.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("credits", Integer()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("grade", Integer()),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses).values(title="Astronomy", credits=5).returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        chemistry_oid = (
+            connection.execute(
+                insert(courses).values(title="Chemistry", credits=3).returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+
+        # Kepler is the discriminator: a joinable pair that the WHERE excludes.
+        connection.execute(
+            insert(students).values(name="Galileo Galilei", grade=1, enrolled_in=[astronomy_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Johannes Kepler", grade=2, enrolled_in=[chemistry_oid])
+        )
+
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .join(students.c.enrolled_in)
+            .where(students.c.grade == 1)     # LEFT, not projected
+        ).fetchall()
+
+    assert {(row.name, row.title) for row in rows} == {("Galileo Galilei", "Astronomy")}
+    assert [list(row.keys()) for row in rows] == [["name", "title"]]
