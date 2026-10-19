@@ -175,8 +175,6 @@ class HashJoin(VolcanoOperator):
             right_child (VolcanoOperator): Supplies the right rows, scanned in full.
             join (Join): The join to execute; carries the onclause and ``isouter``.
             projection (list[Column]): The columns to emit, in projection order.
-                ``None`` emits every user column of both sides, left then right,
-                skipping ``object_id``.
             widened (Sequence[Column]): The widened columns. Defaults to an empty sequence.
         """
         self._left_child = left_child
@@ -320,50 +318,25 @@ class HashJoin(VolcanoOperator):
         """
         projection = self._projection
 
-        if projection is not None:
-            # Project in PROJECTION ORDER, exactly one value per projected
-            # column, sourced from the column's OWNING table. Ownership is
-            # decided by identity (col.parent is left), NOT by name membership:
-            # under a name collision both schemas contain the name, so name
-            # membership is ambiguous.
-            left_table = self._join.onclause.parent
-            projected = tuple()
-            for col in projection:
-                if col.parent is left_table:
-                    getter = self._left_schema.column_getter(col.name)
-                    projected += (getter(left_row),)
-                elif right_row is not None:
-                    getter = self._right_schema.column_getter(col.name)
-                    projected += (getter(right_row),)
-                else:
-                    # right-owned column with no right row (outer-join phantom)
-                    projected += (None,)
+        # Project in PROJECTION ORDER, exactly one value per projected
+        # column, sourced from the column's OWNING table. Ownership is
+        # decided by identity (col.parent is left), NOT by name membership:
+        # under a name collision both schemas contain the name, so name
+        # membership is ambiguous.
+        left_table = self._join.onclause.parent
+        projected = tuple()
+        for col in projection:
+            if col.parent is left_table:
+                getter = self._left_schema.column_getter(col.name)
+                projected += (getter(left_row),)
+            elif right_row is not None:
+                getter = self._right_schema.column_getter(col.name)
+                projected += (getter(right_row),)
+            else:
+                # right-owned column with no right row (outer-join phantom)
+                projected += (None,)
 
-            return projected
-
-        # No projection: project ALL user columns from both sides (left then
-        # right), skipping object_id. Right side is None-filled when there is no
-        # matching right row.
-        left_projected = tuple([
-            left_row[self._left_schema.column_index(lc.name)]
-            for lc in self._left_schema.columns
-            if lc.name != "object_id"
-        ])
-
-        if right_row is not None:
-            right_projected = tuple([
-                right_row[self._right_schema.column_index(rc.name)]
-                for rc in self._right_schema.columns
-                if rc.name != "object_id"
-            ])
-        else:
-            right_projected = tuple([
-                None
-                for rc in self._right_schema.columns
-                if rc.name != "object_id"
-            ])
-
-        return (*left_projected, *right_projected)
+        return projected
 
     def close(self) -> None:
         """Close both children."""
