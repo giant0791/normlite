@@ -82,7 +82,7 @@ class ResultColumn:
     so the join pipeline can select columns by identity rather than by name,
     which is exactly what collisions break (see ADR-0009). Provenance is an
     invariant set by both :meth:`SchemaInfo.from_table` and
-    :meth:`SchemaInfo.from_join`; it is excluded from equality and ``repr`` so
+    :meth:`SchemaInfo.from_join_output`; it is excluded from equality and ``repr`` so
     the DBAPI ``description`` (:meth:`SchemaInfo.as_sequence`) is unchanged.
     """
     name: str
@@ -169,10 +169,8 @@ class SchemaInfo:
         return cls(tuple(result_columns))
 
     @classmethod
-    def from_join(
+    def from_join_output(
         cls,
-        left: Table,
-        right: Table,
         *entities: Column,
         widened: Sequence[Column] = ()
     ) -> SchemaInfo:
@@ -191,8 +189,6 @@ class SchemaInfo:
         unique in the merged schema.
 
         Args:
-            left (Table): The left table of the join.
-            right (Table): The right table of the join.
             *entities (Column): The user columns, in projection order.
             widened (Sequence[Column]): The columns that the recheck reads and
                 the projection does not name. Defaults to no column.
@@ -202,6 +198,10 @@ class SchemaInfo:
 
         .. versionchanged:: 0.14.0
             Add the ``widened`` argument (#433).
+
+        .. versionchanged:: 0.14.0
+            Rename ``from_join()`` to ``from_join_output()`` and remove the
+            unused ``left`` and ``right`` arguments (#374).
         """
         fqname_by_col: dict[Column, str] = {}
 
@@ -264,7 +264,7 @@ class SchemaInfo:
                 colliding[ent.key].append(ent)
 
         # aggregates are provenance-free (table=None) so a collision can't be
-        # qualified by table like from_join; disambiguate by ordinal suffix instead
+        # qualified by table like from_join_output; disambiguate by ordinal suffix instead
         for cols in colliding.values():
             if len(cols) == 1:
                 # a unique key stays bare, no disambiguation needed
@@ -289,7 +289,7 @@ class SchemaInfo:
         return SchemaInfo(result_cols)
 
     @classmethod
-    def from_join_sides(
+    def from_join_leaves(
         cls,
         left: Table,
         right: Table,
@@ -300,6 +300,9 @@ class SchemaInfo:
 
         .. versionchanged:: 0.14.0
             ``projection`` argument cannot be ``None``, so optional removed.
+
+        .. versionchanged:: 0.14.0
+            Rename ``from_join_sides()`` to ``from_join_leaves()`` (#374).
 
         .. versionadded:: 0.13.0
         """

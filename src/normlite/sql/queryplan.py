@@ -181,13 +181,11 @@ class HashJoin(VolcanoOperator):
         self._right_child = right_child
         self._join = join
         self._projection = [*projection, *widened]
-        self._result_schema: SchemaInfo = SchemaInfo.from_join(
-            self._join.left,
-            self._join.right,
+        self._result_schema: SchemaInfo = SchemaInfo.from_join_output(
             *projection,
             widened=widened
         )
-        self._left_schema, self._right_schema = SchemaInfo.from_join_sides(
+        self._left_schema, self._right_schema = SchemaInfo.from_join_leaves(
             self._join.left,
             self._join.right,
             self._projection,
@@ -920,7 +918,7 @@ class Planner:
             )
         ]
 
-        left_schema, right_schema = SchemaInfo.from_join_sides(
+        left_schema, right_schema = SchemaInfo.from_join_leaves(
             join.left,
             join.right,
             [*projection, *widened],
@@ -970,7 +968,7 @@ class Planner:
         # add a project on top, if the compiler widened:
         # a join with nothing widened keeps today's plan exactly.
         if widened:
-            qualified_projection = SchemaInfo.from_join(join.left, join.right, *projection).columns
+            qualified_projection = SchemaInfo.from_join_output(*projection).columns
             projected = Project(plan, [c.name for c in qualified_projection])
             plan = projected
 
