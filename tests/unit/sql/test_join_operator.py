@@ -156,7 +156,7 @@ def test_hash_join_owns_the_merge_without_a_joinexecution_seam():
     # 1 made HashJoin drain both leaves, but the merge still lived in a
     # JoinExecution the operator held as `self._join_exec` and drove through the
     # dead two-phase `prepare`/`assemble` split. Step 2 folds the surviving merge
-    # (`_merge_rows` / `_project_join_row` / the `SchemaInfo.from_join` build)
+    # (`_merge_rows` / `_project_join_row` / the `SchemaInfo.from_join_output` build)
     # INTO HashJoin, so it merges with no seam object and no prepare.
     #
     # This is a structural red guarded by the merge oracle: the same
@@ -338,7 +338,7 @@ def test_filter_operator_keeps_passing_rows_and_drops_failures_and_phantoms():
     # The projection a join select carries, and the merged (joined) schema the
     # rows below are laid out under — both pure, computed without any rows.
     projection = [*students.uc, *courses.uc]
-    merged_schema = SchemaInfo.from_join(students, courses, *projection)
+    merged_schema = SchemaInfo.from_join_output(*projection)
 
     def merged_row(name, oids, title, rank) -> tuple:
         cells = [None] * len(merged_schema.columns)
@@ -426,7 +426,7 @@ def test_filter_operator_evaluates_a_residual_ast_predicate():
     )
 
     projection = [*students.uc, *courses.uc]
-    merged_schema = SchemaInfo.from_join(students, courses, *projection)
+    merged_schema = SchemaInfo.from_join_output(*projection)
 
     def merged_row(name, oids, title, rank) -> tuple:
         cells = [None] * len(merged_schema.columns)
@@ -705,7 +705,7 @@ def test_sort_operator_orders_merged_rows_by_the_residual_right_key_descending()
     )
     join = Join(students, courses, students.c.enrolled_in)
     projection = [*students.uc, *courses.uc]
-    merged_schema = SchemaInfo.from_join(join.left, join.right, *projection)
+    merged_schema = SchemaInfo.from_join_output(*projection)
 
     name_idx = merged_schema.column_index("name")
     title_idx = merged_schema.column_index("title")

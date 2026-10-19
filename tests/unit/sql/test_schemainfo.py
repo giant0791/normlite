@@ -107,8 +107,8 @@ def test_schemainfo_column_index_on_unitialized_schema_raises():
         _ = schema.column_index("fake")
 
 
-def test_from_join_sides_derives_both_leaf_schemas_from_the_join_and_projection():
-    # from_join_sides is the SINGLE home for the two-sided leaf-schema
+def test_from_join_leaves_derives_both_leaf_schemas_from_the_join_and_projection():
+    # from_join_leaves is the SINGLE home for the two-sided leaf-schema
     # derivation the Planner feeds to each Scan (#364). It must reproduce the
     # two load-bearing rules today inlined in JoinExecution.__init__
     # (dml.py:1142-1160):
@@ -133,7 +133,7 @@ def test_from_join_sides_derives_both_leaf_schemas_from_the_join_and_projection(
     # ``enrolled_in`` — so rule (2) is what makes it appear in the left schema.
     projection = [students.c.name, courses.c.title]
 
-    left_schema, right_schema = SchemaInfo.from_join_sides(join.left, join.right, projection, join.onclause)
+    left_schema, right_schema = SchemaInfo.from_join_leaves(join.left, join.right, projection, join.onclause)
 
     left_names = {c.name for c in left_schema.columns}
     right_names = {c.name for c in right_schema.columns}

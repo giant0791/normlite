@@ -209,7 +209,7 @@ def test_two_relations_to_same_target_table_raise_naming_both_columns(
 def test_projecting_same_column_twice_raises_argument_error(metadata: MetaData):
     # ADR-0009: slice 2 dropped the name-keyed ColumnCollection so duplicate
     # *names* across tables are constructable (select(a.c.title, b.c.title) is
-    # valid and gets qualified by from_join). That reopened a different hole:
+    # valid and gets qualified by from_join_output). That reopened a different hole:
     # the SAME (parent, name) projected twice would be qualified into two
     # IDENTICAL keys and silently collapse. So the same column twice is a hard
     # error -- keyed on (parent, name), not on bare name (the cross-table same
