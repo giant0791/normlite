@@ -181,7 +181,7 @@ class HashJoin(VolcanoOperator):
         self._right_child = right_child
         self._join = join
         self._projection = [*projection, *widened]
-        self._result_schema: Optional[SchemaInfo] = SchemaInfo.from_join(
+        self._result_schema: SchemaInfo = SchemaInfo.from_join(
             self._join.left,
             self._join.right,
             *projection,
@@ -196,7 +196,7 @@ class HashJoin(VolcanoOperator):
 
 
     @property
-    def result_schema(self) -> Optional[SchemaInfo]:
+    def result_schema(self) -> SchemaInfo:
         """Provide the merged schema of both join sides."""
         return self._result_schema
 
@@ -942,13 +942,6 @@ class Planner:
 
         # add a filter on top of the plan, if the WHERE clause has an expression
         if recheck_where is not None:
-            merged_schema = SchemaInfo.from_join(
-                join.left,
-                join.right,
-                *self._invoked_stmt._projection,
-                widened=widened
-            )
-
             # The tables the predicate READS: one per leaf, so one for a single-sided
             # conjunct and BOTH for a compound spanning the join.
             #
@@ -961,7 +954,7 @@ class Planner:
             predicate_tables = list(_get_expression_parent_tables(recheck_where))
             updated = Filter(
                 source=plan,
-                schema=merged_schema,
+                schema=plan.result_schema,
                 filter=recheck_where,
                 tables=predicate_tables
             )
@@ -972,8 +965,7 @@ class Planner:
         residual_sorts = planning_context.residual_sorts
         if residual_sorts is not None:
             sorts = compile_residual_sorts(residual_sorts)
-            merged_schema = SchemaInfo.from_join(join.left, join.right, *self._invoked_stmt._projection, widened=widened)
-            plan = Sort(source=plan, schema=merged_schema, sorts=sorts, table=join.right)
+            plan = Sort(source=plan, schema=plan.result_schema, sorts=sorts, table=join.right)
 
         # add a project on top, if the compiler widened:
         # a join with nothing widened keeps today's plan exactly.
