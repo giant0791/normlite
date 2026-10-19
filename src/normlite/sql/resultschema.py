@@ -173,8 +173,36 @@ class SchemaInfo:
         cls,
         left: Table,
         right: Table,
-        *entities: Column
+        *entities: Column,
+        widened: Sequence[Column] = ()
     ) -> SchemaInfo:
+        """Build the merged schema of a join row.
+
+        The schema has two parts, in row order: the user columns, then the
+        widened columns.
+
+        A user column keeps its bare name. It gets the qualified name
+        ``<table>.<column>`` only when two ``entities`` have the same name.
+        The collision check reads ``entities`` only, so a widened column never
+        changes the name of a user column in the user's ``Row``.
+
+        A widened column always gets the qualified name. It never reaches the
+        user's ``Row`` (``Project`` trims it off), so its name only has to be
+        unique in the merged schema.
+
+        Args:
+            left (Table): The left table of the join.
+            right (Table): The right table of the join.
+            *entities (Column): The user columns, in projection order.
+            widened (Sequence[Column]): The columns that the recheck reads and
+                the projection does not name. Defaults to no column.
+
+        Returns:
+            SchemaInfo: The merged schema.
+
+        .. versionchanged:: 0.14.0
+            Add the ``widened`` argument (#433).
+        """
         fqname_by_col: dict[Column, str] = {}
 
         # find colliding column names:
@@ -206,7 +234,18 @@ class SchemaInfo:
             )
             for rc in entities
         ]
-        return SchemaInfo(result_cols)
+
+        widened_cols = [
+            ResultColumn(
+                f"{c.parent.name}.{c.name}",
+                type_code=c.type_.get_dbapi_type(),
+                nullable=False,
+                table=c.parent,
+                bare_name=c.name
+            )
+            for c in widened
+        ]
+        return SchemaInfo([*result_cols, *widened_cols])
 
     @classmethod
     def from_aggregate(

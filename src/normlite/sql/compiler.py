@@ -929,9 +929,15 @@ class NotionCompiler(SQLCompiler):
             "isouter": join.isouter
         }
 
-    def _widen_fetch_columns(self, expression: Optional[ColumnElement], query_params: dict) -> None:
+    def _widen_fetch_columns(
+        self,
+        expression: Optional[ColumnElement],
+        table: Table,
+        fetch_columns: list[str],
+        query_params: Optional[dict] = None
+    ) -> list[str]:
         if expression is None:
-            return
+            return list(fetch_columns)
 
         # A predicate reads a SET of columns, not one: a compound WHERE
         # folds into a BooleanClauseList and every leaf contributes its
@@ -944,20 +950,23 @@ class NotionCompiler(SQLCompiler):
         # iteration order varies per process; without it the Scan's
         # schema and filter_properties are a different permutation on
         # every run.
-        fetch_columns = self._compiler_state.fetch_columns
+        #
+        # the predicate columns are selected only if they belong to table
         where_cols = sorted(
-            {c.name for c in _get_expression_columns(expression)}
+            {c.name for c in _get_expression_columns(expression) if c.parent is table}
         )
         missing = [n for n in where_cols if n not in fetch_columns]
 
-        if missing:
-            # append behind fetch_columns
-            self._compiler_state.fetch_columns = [*fetch_columns, *missing]
+        # append behind fetch_columns
+        widened = [*fetch_columns, *missing]
+        if missing and query_params is not None:
             query_params['filter_properties'] = [
                 name
-                for name in self._compiler_state.fetch_columns
+                for name in widened
                 if name not in SpecialColumns
             ]
+
+        return widened
 
     def visit_select(self, select: Select) -> dict:
         self._compiler_state.is_select = select.is_select
@@ -1172,7 +1181,27 @@ class NotionCompiler(SQLCompiler):
 
         is_plain_select = not (select._is_aggregate or select._joins)
         if is_plain_select:
-            self._widen_fetch_columns(self.planning_context.recheck_where, query_params)
+            self._compiler_state.fetch_columns = self._widen_fetch_columns(
+                self.planning_context.recheck_where,
+                table,
+                self._compiler_state.fetch_columns,
+                query_params
+            )
+        elif select._joins and not select._is_aggregate:
+            self._compiler_state.fetch_columns = self._widen_fetch_columns(
+                self.planning_context.recheck_where,
+                select._table,
+                self._compiler_state.fetch_columns,
+                query_params
+            )
+            right = select._joins[0].right
+            right_fetch = [c.name for c in projection if c.parent is right]
+            widened_right = self._widen_fetch_columns(
+                self.planning_context.recheck_where,
+                right,
+                right_fetch,
+            )
+            self.planning_context.widened_right_columns = widened_right[len(right_fetch):]
 
         if select._order_by.has_expression():
             order_by_clause = select._order_by
@@ -1303,7 +1332,12 @@ class NotionCompiler(SQLCompiler):
         if stmt._whereclause.has_expression():
             expression = stmt._whereclause.expression
             self.planning_context.recheck_where = expression
-            self._widen_fetch_columns(expression, query_params)
+            self._compiler_state.fetch_columns = self._widen_fetch_columns(
+                expression,
+                table,
+                self._compiler_state.fetch_columns,
+                query_params
+            )
             if query_params:
                 compiled_dict['query_params'] = query_params
 

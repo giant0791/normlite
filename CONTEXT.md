@@ -133,11 +133,11 @@ and the **PlanningContext** (AST). See [[adr-0024-the-compiler-emits-the-planner
 `filter_properties`, so the `Scan` fetches every cell the recheck needs. `fetch_columns` is the
 widened list; `PlanningContext.pre_widening_fetch_columns` is the snapshot taken **before** the
 widening, and `Project` trims to it. A DELETE/UPDATE with no WHERE fetches the title only.
+A join widens **per side** (#433). The left side widens `fetch_columns` and `filter_properties`.
+The right `Scan` sends no `filter_properties`, so the right side widens only the planner's
+schemas: the compiler writes the added right names to `PlanningContext.widened_right_columns`.
+The join adds `Project` only when a side is widened.
 _Avoid_: "narrowing" for this step (it adds columns).
-
-> **Target, not yet code (2026-10-16).** ADR-0024 is `Proposed`. Until #431 lands, the Planner
-> (`_plan_select()`, `_plan_modify()`) still does the widening. The join shape does not widen at
-> all (#433).
 
 `visit_select` additionally emits `query_params` and — on the join path — `joins`,
 `join_right_filter`, and `join_right_sorts`. The latter two are **Residual**s (see §Query

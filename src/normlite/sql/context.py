@@ -47,3 +47,13 @@ class PlanningContext:
     ``result_columns()``, which drops the specials the row still needs.
     """
 
+    widened_right_columns: list[str] = field(default_factory=list)
+    """The right columns in a JOIN the recheck reads that the projection does not name.
+
+    This field holds names only. The compiler builds it with
+    :meth:`normlite.sql.compiler.NotionCompiler._widen_fetch_columns` without ``query_params`` so
+    the right ``Scan`` sends no ``filter_properties``.
+
+    .. versionadded:: 0.14.0
+    """
+

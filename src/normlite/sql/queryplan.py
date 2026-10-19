@@ -154,6 +154,9 @@ class HashJoin(VolcanoOperator):
     operator. Only the left child carries a Notion-side filter; the right child
     is a full data-source scan (ADR-0021).
 
+    .. versionchanged:: 0.14.0
+        Add ``widened`` constructor argument.
+
     .. versionadded:: 0.13.0
     """
 
@@ -163,6 +166,7 @@ class HashJoin(VolcanoOperator):
         right_child: VolcanoOperator,
         join: Join,
         projection: list[Column],
+        widened: Sequence[Column] = (),
     ) -> None:
         """Construct a join over two already built child operators.
 
@@ -173,15 +177,17 @@ class HashJoin(VolcanoOperator):
             projection (list[Column]): The columns to emit, in projection order.
                 ``None`` emits every user column of both sides, left then right,
                 skipping ``object_id``.
+            widened (Sequence[Column]): The widened columns. Defaults to an empty sequence.
         """
         self._left_child = left_child
         self._right_child = right_child
         self._join = join
-        self._projection = projection
+        self._projection = [*projection, *widened]
         self._result_schema: Optional[SchemaInfo] = SchemaInfo.from_join(
             self._join.left,
             self._join.right,
-            *projection
+            *projection,
+            widened=widened
         )
         self._left_schema, self._right_schema = SchemaInfo.from_join_sides(
             self._join.left,
@@ -919,15 +925,32 @@ class Planner:
         return Aggregate(scan, self._invoked_stmt._raw_columns)
 
     def _plan_join(self) -> VolcanoOperator:
-        recheck_where = self._ctx.compiled.planning_context.recheck_where
+        planning_context = self._ctx.compiled.planning_context
+        recheck_where = planning_context.recheck_where
 
         # SELECT with JOIN
         join: Join = self._invoked_stmt._joins[0]
         projection = list(self._invoked_stmt._projection)
+
+        # build the widened columns collection:
+        # left JOIN: fetch_columns() minus pre_widening_fetch_columns
+        # right JOIN: the widened right columns
+        widened = [
+            *(
+                join.left.c[name]
+                for name in self._ctx.compiled.fetch_columns()
+                if name not in planning_context.pre_widening_fetch_columns
+            ),
+            *(
+                join.right.c[name]
+                for name in planning_context.widened_right_columns
+            )
+        ]
+
         left_schema, right_schema = SchemaInfo.from_join_sides(
             join.left,
             join.right,
-            projection,
+            [*projection, *widened],
             join.onclause
         )
         left_child = Scan(self._ctx.operation, self._ctx.parameters, schema=left_schema)
@@ -940,7 +963,8 @@ class Planner:
             left_child,
             right_child,
             join,
-            projection
+            projection,
+            widened=widened
         )
 
         # add a filter on top of the plan, if the WHERE clause has an expression
@@ -949,6 +973,7 @@ class Planner:
                 join.left,
                 join.right,
                 *self._invoked_stmt._projection,
+                widened=widened
             )
 
             # The tables the predicate READS: one per leaf, so one for a single-sided
@@ -971,11 +996,18 @@ class Planner:
             plan = updated
 
         # add a sort on top of the plan, if there is a ORDER BY-clause on the right table
-        residual_sorts = self._ctx.compiled.planning_context.residual_sorts
+        residual_sorts = planning_context.residual_sorts
         if residual_sorts is not None:
             sorts = compile_residual_sorts(residual_sorts)
-            merged_schema = SchemaInfo.from_join(join.left, join.right, *self._invoked_stmt._projection)
+            merged_schema = SchemaInfo.from_join(join.left, join.right, *self._invoked_stmt._projection, widened=widened)
             plan = Sort(source=plan, schema=merged_schema, sorts=sorts, table=join.right)
+
+        # add a project on top, if the compiler widened:
+        # a join with nothing widened keeps today's plan exactly.
+        if widened:
+            qualified_projection = SchemaInfo.from_join(join.left, join.right, *projection).columns
+            projected = Project(plan, [c.name for c in qualified_projection])
+            plan = projected
 
         return plan
 
