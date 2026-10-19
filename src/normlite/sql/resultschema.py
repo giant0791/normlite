@@ -293,28 +293,22 @@ class SchemaInfo:
         cls,
         left: Table,
         right: Table,
-        projection: Optional[ReadOnlyColumnCollection],
+        projection: ReadOnlyColumnCollection,
         onclause: Column
     ) -> tuple[SchemaInfo, SchemaInfo]:
         """Construct the schema info objects for the JOIN left and right side
 
+        .. versionchanged:: 0.14.0
+            ``projection`` argument cannot be ``None``, so optional removed.
+
         .. versionadded:: 0.13.0
         """
-        # ``projection`` is None only for low-level callers that mean "project
-        # everything" (e.g. JoinExecution unit tests). Fall back to all user
-        # columns of both sides so schema construction stays projection-
-        # independent in that case; the per-side filters below then split them.
-        schema_projection = (
-            projection if projection is not None
-            else (*left.uc, *right.uc)
-        )
-
         left_schema = SchemaInfo.from_table(
             left,
             execution_names=[left.c.object_id.name],
             projected_names=[
                 c.name
-                for c in schema_projection
+                for c in projection
                 if c.parent is left
             ] + [onclause.name],     # the onclause column must always be included for the join to work
         )
@@ -324,7 +318,7 @@ class SchemaInfo:
             execution_names=[right.c.object_id.name],
             projected_names=[
                 c.name
-                for c in schema_projection
+                for c in projection
                 if c.parent is right
             ]
         )
