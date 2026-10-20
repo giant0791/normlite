@@ -664,6 +664,36 @@ def test_a_failed_page_pull_during_an_eager_select_closes_the_cursor_that_querie
     assert recording.querying_cursors[0].closed
 
 
+def test_a_failed_page_pull_during_a_delete_closes_the_cursor_that_queried_notion(
+    engine: Engine,
+    students: Table,
+):
+    """Regression pin, green on arrival (#453).
+
+    Leak point A for a DELETE. A DELETE never streams, so it drains every page
+    of its Scan before it sends a write. A failure on page 2 raises inside
+    ``execute()``, so the caller gets no result to close. The caller must get
+    the mapped DBAPI error, and the cursor must be closed.
+    """
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    # 150 rows and a Scan page size of 100: page 2 is pulled during the drain.
+    populate_students(engine, students, n=150)
+
+    failing = _FailOnPageNClient(engine._client, fail_on=2)
+    recording = _QueryingCursorRecordingConnection(failing)
+    engine._dbapi_connection = recording
+
+    with engine.connect() as conn:
+        with pytest.raises(OperationalError) as excinfo:
+            conn.execute(delete(students))
+
+    assert isinstance(excinfo.value.__cause__, NotionError)
+    assert failing.query_calls == 2
+    # The read failed before the first write, so only the Scan cursor queried Notion.
+    assert len(recording.querying_cursors) == 1
+    assert recording.querying_cursors[0].closed
+
 def test_an_eager_select_closes_the_cursor_that_queried_notion_before_the_caller_closes_the_result(
     engine: Engine,
     students: Table,
