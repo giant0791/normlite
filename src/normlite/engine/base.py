@@ -298,28 +298,34 @@ class Connection:
         # build and execute the query plan
         conn = self._engine.raw_connection()
         plan = Planner(context).plan()
-        plan.open(conn)
+        try:
+            plan.open(conn)
 
-        # The plan root IS the batch source -- next() -> Optional[list[tuple]]
-        # already. Mint the result cursor and seed it with the first batch,
-        # exactly as Cursor.execute buffers page 1 before deciding anything.
-        context._result_cursor = conn.cursor()
-        rs = ResultSet(plan.result_schema.as_sequence(), "page", plan.next() or [])
-        context._result_cursor._batch_source = plan
+            # The plan root IS the batch source -- next() -> Optional[list[tuple]]
+            # already. Mint the result cursor and seed it with the first batch,
+            # exactly as Cursor.execute buffers page 1 before deciding anything.
+            context._result_cursor = conn.cursor()
+            rs = ResultSet(plan.result_schema.as_sequence(), "page", plan.next() or [])
+            context._result_cursor._batch_source = plan
 
-        if is_streaming:
+            if is_streaming:
+                context._result_cursor._result_sets.append(rs)
+                return
+
+            # eager: drain the rest into the SAME result set. Pull through the cursor,
+            # NOT through plan.next(): _next_batch is what sets _source_exhausted, and
+            # rowcount reads that flag. Draining the plan directly leaves an attached
+            # source looking unexhausted forever, so rowcount would answer -1.
+            while (batch := context._result_cursor._next_batch()) is not None:
+                rs.extend_rows(batch)
+
+            plan.close()
+
             context._result_cursor._result_sets.append(rs)
-            return
-
-        # eager: drain the rest into the SAME result set. Pull through the cursor,
-        # NOT through plan.next(): _next_batch is what sets _source_exhausted, and
-        # rowcount reads that flag. Draining the plan directly leaves an attached
-        # source looking unexhausted forever, so rowcount would answer -1.
-        while (batch := context._result_cursor._next_batch()) is not None:
-            rs.extend_rows(batch)
-        plan.close()
-
-        context._result_cursor._result_sets.append(rs)
+        except BaseException:
+            # close before re-raising
+            plan.close()
+            raise
 
     def _resolve_execution_options(self, stmt_execution_options: ExecutionOptions) -> ExecutionOptions:
         """Resolve the connection's execution options with the statement's ones."""
