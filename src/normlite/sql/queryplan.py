@@ -31,8 +31,9 @@ the tree from the compiled statement.
 .. versionadded:: 0.13.0
 """
 
+from abc import ABC, abstractmethod
 from enum import Enum, auto
-from typing import Any, Callable, Optional, Protocol, Sequence, Union, runtime_checkable
+from typing import Any, Callable, Optional, Sequence, Union
 
 from normlite._constants import SpecialColumns
 from normlite.engine.context import ExecutionContext
@@ -62,28 +63,39 @@ class _PlanShape(Enum):
 #: one Notion page at a time, so this is the operator's batch granularity.
 NOTION_MAX_PAGE_SIZE = 100
 
-@runtime_checkable
-class VolcanoOperator(Protocol):
-    """Base class for Volcano operators implementing the iterator model.
+class VolcanoOperator(ABC):
+    """Base abstract class for Volcano operators implementing the iterator model.
+
+    .. versionchanged:: 0.14.0
+        Refactored, so a missing method fails at instantiation (#451 as a follow-up
+        of #393).
 
     .. versionadded:: 0.13.0
     """
+    @abstractmethod
     def open(self, connection: Connection) -> None:
         """Acquire this operator's resources, and those of its children."""
-        ...
+        raise NotImplementedError
 
+    @abstractmethod
     def next(self) -> Optional[list[tuple]]:
         """Return the next batch of rows, or ``None`` when the source is drained."""
-        ...
+        raise NotImplementedError
 
+    @abstractmethod
     def close(self) -> None:
-        """Release this operator's resources, and those of its children."""
-        ...
+        """Release this operator's resources, and those of its children.
+
+        The base abstract class implements this method as no-op.
+        This supports safely calling ``super().close()`` in subclasses without
+        raising :exc:`NotImplementedError`.
+        """
 
     @property
+    @abstractmethod
     def result_schema(self) -> SchemaInfo:
         """Provide the schema of the rows this operator emits."""
-        ...
+        raise NotImplementedError
 
 class Scan(VolcanoOperator):
     """Fetch rows from a Notion data source, one result page at a time.

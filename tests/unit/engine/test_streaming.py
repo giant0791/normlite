@@ -15,7 +15,8 @@ from normlite.engine.context import ExecutionContext
 from normlite.engine.interfaces import _distill_params
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, OperationalError
 from normlite.notion_sdk.client import NotionError
-from normlite.sql.dml import delete, insert, select
+from normlite.sql.dml import delete, insert, select, update
+from normlite.sql.functions import func
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import String
 
@@ -438,7 +439,10 @@ def test_delete_ignores_streaming_and_reports_accurate_rowcount(
 
 
 class _QueryingCursorRecordingConnection(DBAPIConnection):
-    """DBAPI connection that keeps every cursor that executes an operation."""
+    """DBAPI connection that keeps every cursor that executes an operation.
+
+    Both ``execute()`` (a ``Scan``) and ``executemany()`` (a ``ModifyTable``) count.
+    """
 
     def __init__(self, client):
         super().__init__(client)
@@ -447,12 +451,18 @@ class _QueryingCursorRecordingConnection(DBAPIConnection):
     def cursor(self):
         cursor = super().cursor()
         execute = cursor.execute
+        executemany = cursor.executemany
 
         def recording_execute(*args, **kwargs):
             self.querying_cursors.append(cursor)
             return execute(*args, **kwargs)
 
+        def recording_executemany(*args, **kwargs):
+            self.querying_cursors.append(cursor)
+            return executemany(*args, **kwargs)
+
         cursor.execute = recording_execute
+        cursor.executemany = recording_executemany
         return cursor
 
 
@@ -580,4 +590,46 @@ def test_closing_an_eager_join_result_twice_keeps_both_cursors_that_queried_noti
 
     assert [row.title for row in rows] == ["Astronomy", "Physics"]
     assert len(recording.querying_cursors) == 2
+    assert all(cursor.closed for cursor in recording.querying_cursors)
+
+
+@pytest.mark.parametrize(
+    ("make_stmt", "n_querying_cursors"),
+    [
+        # Project -> Filter -> Scan
+        (lambda t: select(t).where(t.c.is_active.is_(True)), 1),
+        # Aggregate -> Scan
+        (lambda t: select(func.count()).select_from(t), 1),
+        # ModifyTable -> Filter -> Scan: the Scan reads, the ModifyTable writes
+        (lambda t: delete(t).where(t.c.is_active.is_(True)), 2),
+        (lambda t: update(t).values(grade="Z").where(t.c.is_active.is_(True)), 2),
+    ],
+    ids=["select-where", "aggregate", "delete-where", "update-where"],
+)
+def test_closing_a_result_closes_every_cursor_its_plan_used_to_reach_notion(
+    engine: Engine,
+    students: Table,
+    make_stmt,
+    n_querying_cursors,
+):
+    """Regression pin, green on arrival (#451).
+
+    ``@abstractmethod`` only checks that an operator defines ``close()``. It does not
+    check that ``close()`` forwards to the source. A ``def close(self): pass`` on a
+    compound operator still leaks the cursor below it. This pin closes the result of
+    each single-table plan shape and checks every cursor the plan sent to Notion.
+    The join shape (``HashJoin``, ``Sort``) is pinned by the #393 tests above.
+    """
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    recording = _QueryingCursorRecordingConnection(engine._client)
+    engine._dbapi_connection = recording
+
+    with engine.connect() as conn:
+        result = conn.execute(make_stmt(students))
+        result.close()
+
+    assert len(recording.querying_cursors) == n_querying_cursors
     assert all(cursor.closed for cursor in recording.querying_cursors)
