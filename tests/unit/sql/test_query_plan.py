@@ -8,6 +8,7 @@ from normlite.engine.base import _distill_params
 from normlite.exceptions import InvalidRequestError
 from normlite.engine.context import ExecutionContext
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection
+from normlite.sql.compiler import ROWS_UPDATE
 from normlite.sql.dml import delete, insert, select, update
 from normlite.sql.elements import or_
 from normlite.sql.functions import func
@@ -15,6 +16,7 @@ from normlite.sql.queryplan import (
     Aggregate,
     Filter,
     HashJoin,
+    ModifyTable,
     Planner,
     Project,
     Scan,
@@ -297,6 +299,27 @@ def test_an_operator_without_any_contract_member_cannot_be_created(missing):
 
     with pytest.raises(TypeError, match=missing):
         partial_operator()
+
+
+@pytest.mark.parametrize("operator_kind", ["scan", "modify-table"])
+def test_closing_an_operator_that_never_opened_does_not_raise(students, operator_kind):
+    # #453: HashJoin opens the left child, then the right child. If the left
+    # Scan fails on page 1, the right Scan never opens. The cleanup still
+    # closes the full plan, so close() on an unopened operator must not raise.
+    # If it raises, its error replaces the real error for the caller.
+    schema = SchemaInfo.from_table(students, execution_names=["object_id"])
+    scan = Scan({"endpoint": "data_sources", "request": "query"}, {}, schema=schema)
+    operators = {
+        "scan": scan,
+        "modify-table": ModifyTable(
+            scan,
+            operation=ROWS_UPDATE,
+            parameters={"payload": {"in_trash": True}},
+            schema=schema,
+        ),
+    }
+
+    operators[operator_kind].close()
 
 
 class _RecordingCursor:

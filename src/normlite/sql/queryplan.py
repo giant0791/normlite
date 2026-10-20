@@ -150,8 +150,15 @@ class Scan(VolcanoOperator):
         return next_batch if next_batch else None
 
     def close(self) -> None:
-        """Close the cursor opened by :meth:`open`."""
-        self._cursor.close()
+        """Close the cursor opened by :meth:`open`.
+            A call before :meth:`open` does nothing.
+
+            .. versionchanged:: 0.14.0
+                The method guards against ``None`` :attr:`_cursor`,
+        """
+
+        if self._cursor is not None:
+            self._cursor.close()
 
     @property
     def result_schema(self) -> SchemaInfo:
@@ -850,9 +857,16 @@ class ModifyTable(VolcanoOperator):
         return None
 
     def close(self) -> None:
-        """Close the source operator and the cursor opened by :meth:`open`."""
+        """Close the source operator and the cursor opened by :meth:`open`.
+
+        A call before :meth:`open` does nothing.
+
+        .. versionchanged:: 0.14.0
+            The method guards against ``None`` :attr:`_cursor`,
+        """
         self._source.close()
-        self._cursor.close()
+        if self._cursor is not None:
+            self._cursor.close()
 
     @property
     def result_schema(self) -> SchemaInfo:
