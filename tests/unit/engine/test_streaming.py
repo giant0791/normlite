@@ -9,13 +9,15 @@ observable behavior.
 
 import pytest
 
+from normlite import ForeignKey, Relation
 from normlite.engine.base import Engine
 from normlite.engine.context import ExecutionContext
 from normlite.engine.interfaces import _distill_params
 from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, OperationalError
 from normlite.notion_sdk.client import NotionError
-from normlite.sql.dml import delete, select
-from normlite.sql.schema import Table
+from normlite.sql.dml import delete, insert, select
+from normlite.sql.schema import Column, MetaData, Table
+from normlite.sql.type_api import String
 
 from tests.utils.db_helpers import (
     create_students_db,
@@ -474,3 +476,52 @@ def test_closing_a_half_read_streamed_result_closes_the_cursor_that_queried_noti
     assert len(recording.querying_cursors) == 1
     assert recording.querying_cursors[0].closed
 
+
+def test_closing_a_half_read_streamed_join_ordered_by_a_right_key_closes_both_cursors_that_queried_notion(
+    engine: Engine,
+):
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as conn:
+        physics_oid = (
+            conn.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            ).first().object_id
+        )
+        astronomy_oid = (
+            conn.execute(
+                insert(courses).values(title="Astronomy").returning(courses.c.object_id)
+            ).first().object_id
+        )
+        conn.execute(
+            insert(students).values(name="Galileo", enrolled_in=[physics_oid, astronomy_oid])
+        )
+
+    recording = _QueryingCursorRecordingConnection(engine._client)
+    engine._dbapi_connection = recording
+
+    with engine.connect() as conn:
+        conn = conn.execution_options(stream_results=True, yield_per=1)
+        result = conn.execute(
+            select(students, courses)
+            .join(students.c.enrolled_in)
+            .order_by(courses.c.title.asc())
+        )
+        result.fetchmany(1)
+        result.close()
+
+    # one cursor queried the left table, one queried the right table
+    assert len(recording.querying_cursors) == 2
+    assert all(cursor.closed for cursor in recording.querying_cursors)
