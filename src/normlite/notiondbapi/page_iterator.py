@@ -39,6 +39,9 @@ class PageIterator:
     def exhausted(self) -> bool:
         return self._exhausted
 
+    def close(self) -> None:
+        self._exhausted = True
+
     def __iter__(self):
         return self
 
@@ -96,3 +99,6 @@ class JsonPageSource:
             raise exc
         return list(ResultSet.from_json(self._description, obj))
 
+    def close(self) -> None:
+        if self._page_iter is not None:
+            self._page_iter.close()

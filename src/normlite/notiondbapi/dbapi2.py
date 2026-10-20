@@ -915,11 +915,24 @@ class Cursor:
 
         The cursor will be unusable from this point forward; an Error exception
         will be raised if any operation is attempted with the cursor.
+        Calling this method on a closed cursor is a no-op.
+        It closes its batch source first, so a plan or page source attached
+        to this cursor is released too.
+
+        .. versionchanged:: 0.14.0
+            The DBAPI cursor now closes its batch source (see #393).
 
         .. versionadded:: 0.5.0
         """
+        if self._closed:
+            return
+
         # set internal cursor state and close it
         self._description = None
+        if self._batch_source is not None:
+            # only execute() attaches a batch source:
+            # executemany() and an unexecuted cursor have none
+            self._batch_source.close()
         self._reset_results()
         self._closed = True
 

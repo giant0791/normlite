@@ -433,3 +433,44 @@ def test_delete_ignores_streaming_and_reports_accurate_rowcount(
     # The Scan sent one request (page_size 100): the connection's yield_per
     # never reached the mutation's read. A leak would surface as 3 pulls.
     assert counting.query_calls == 1
+
+
+class _QueryingCursorRecordingConnection(DBAPIConnection):
+    """DBAPI connection that keeps every cursor that executes an operation."""
+
+    def __init__(self, client):
+        super().__init__(client)
+        self.querying_cursors = []
+
+    def cursor(self):
+        cursor = super().cursor()
+        execute = cursor.execute
+
+        def recording_execute(*args, **kwargs):
+            self.querying_cursors.append(cursor)
+            return execute(*args, **kwargs)
+
+        cursor.execute = recording_execute
+        return cursor
+
+
+def test_closing_a_half_read_streamed_result_closes_the_cursor_that_queried_notion(
+    engine: Engine,
+    students: Table,
+):
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=6)
+
+    recording = _QueryingCursorRecordingConnection(engine._client)
+    engine._dbapi_connection = recording
+
+    with engine.connect() as conn:
+        conn = conn.execution_options(stream_results=True, yield_per=2)
+        result = conn.execute(select(students))
+        result.fetchmany(2)
+        result.close()
+
+    assert len(recording.querying_cursors) == 1
+    assert recording.querying_cursors[0].closed
+
