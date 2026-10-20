@@ -599,6 +599,10 @@ class Sort(VolcanoOperator):
             merged_rows.sort(key=sort_key, reverse=reverse)
         return merged_rows
 
+    def close(self) -> None:
+        """Close the source operator."""
+        self._source.close()
+
 class Aggregate(VolcanoOperator):
     """Aggregate columns value over all rows in the table.
 
