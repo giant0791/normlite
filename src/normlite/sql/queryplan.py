@@ -600,6 +600,7 @@ class Sort(VolcanoOperator):
         return merged_rows
 
     def close(self) -> None:
+        """Close the source operator."""
         self._source.close()
 
 class Aggregate(VolcanoOperator):
