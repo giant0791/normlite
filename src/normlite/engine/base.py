@@ -66,9 +66,8 @@ Here a quick example of how to use :class:`Engine` and :class:`Connection`.
 
 from __future__ import annotations
 from pathlib import Path
-import pdb
 from types import TracebackType
-from typing import Any, Mapping, Optional, Self, Sequence, Type, TypeAlias, TYPE_CHECKING, overload
+from typing import Any, Mapping, Optional, Self, Type, TypeAlias, TYPE_CHECKING, overload
 from dataclasses import dataclass
 from typing import Optional, Literal, Union
 from urllib.parse import urlparse, parse_qs, unquote
@@ -78,10 +77,9 @@ from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import _distill_params, IsolationLevel
 from normlite.engine.systemcatalog import SystemCatalog, SystemTablesEntry, TableState
 from normlite.exceptions import ArgumentError, InvalidRequestError, ObjectNotExecutableError
-from normlite.sql.reflection import ReflectedColumnInfo
 from normlite.notion_sdk.client import FileBasedNotionClient, InMemoryNotionClient, NotionError
 from normlite.sql.compiler import NotionCompiler
-from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, Error, InternalError, ProgrammingError
+from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, InternalError, ProgrammingError
 from normlite.utils import frozendict
 
 if TYPE_CHECKING:
@@ -323,7 +321,7 @@ class Connection:
 
             context._result_cursor._result_sets.append(rs)
         except BaseException:
-            # close before re-raising
+            # the caller gets no result, so the caller cannot close the plan.
             plan.close()
             raise
 
