@@ -929,12 +929,19 @@ class Cursor:
 
         # set internal cursor state and close it
         self._description = None
-        if self._batch_source is not None:
-            # only execute() attaches a batch source:
-            # executemany() and an unexecuted cursor have none
-            self._batch_source.close()
-        self._reset_results()
-        self._closed = True
+        try:
+            if self._batch_source is not None:
+                # only execute() attaches a batch source:
+                # executemany() and an unexecuted cursor have none
+                self._batch_source.close()
+        finally:
+            # The cursor must still end up closed and reset when the batch
+            # source close() raises: otherwise closed stays False, the result
+            # sets and the batch source stay attached, and every further
+            # close() re-raises on the same batch source — the cursor can
+            # never be closed. The error itself is not swallowed.
+            self._reset_results()
+            self._closed = True
 
 IsolationLevel = Literal[
     """Isolation level supported by the API."""
