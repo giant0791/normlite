@@ -525,3 +525,59 @@ def test_closing_a_half_read_streamed_join_ordered_by_a_right_key_closes_both_cu
     # one cursor queried the left table, one queried the right table
     assert len(recording.querying_cursors) == 2
     assert all(cursor.closed for cursor in recording.querying_cursors)
+
+
+def test_closing_an_eager_join_result_twice_keeps_both_cursors_that_queried_notion_closed(
+    engine: Engine,
+):
+    """Regression pin, green on arrival (#393).
+
+    The eager path closes the plan after its drain, and the result cursor closes it
+    again on ``result.close()``. Every ``close()`` in the chain must therefore be safe
+    to call twice. ORDER BY on a right key puts ``Sort`` in the chain too.
+    """
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as conn:
+        physics_oid = (
+            conn.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            ).first().object_id
+        )
+        astronomy_oid = (
+            conn.execute(
+                insert(courses).values(title="Astronomy").returning(courses.c.object_id)
+            ).first().object_id
+        )
+        conn.execute(
+            insert(students).values(name="Galileo", enrolled_in=[physics_oid, astronomy_oid])
+        )
+
+    recording = _QueryingCursorRecordingConnection(engine._client)
+    engine._dbapi_connection = recording
+
+    with engine.connect() as conn:
+        result = conn.execute(
+            select(students, courses)
+            .join(students.c.enrolled_in)
+            .order_by(courses.c.title.asc())
+        )
+        rows = result.fetchall()
+        result.close()
+        result.close()
+
+    assert [row.title for row in rows] == ["Astronomy", "Physics"]
+    assert len(recording.querying_cursors) == 2
+    assert all(cursor.closed for cursor in recording.querying_cursors)
