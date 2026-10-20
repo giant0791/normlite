@@ -265,19 +265,38 @@ def test_the_plan_batches_by_yield_per_not_by_the_notion_page_maximum(engine, st
     plan.close()
 
 
-def test_scan_is_recognised_as_a_volcano_operator_but_a_partial_object_is_not(engine, students):
-    # The plan drives every node through one uniform contract: open / next / close.
-    # Scan already speaks it, so it must be recognised as a VolcanoOperator — while
-    # an object missing part of the contract (here, no next()) must NOT be, or the
-    # protocol would guarantee nothing.
-    scan = Scan(operation={}, parameters={}, schema=SchemaInfo(columns=[]))
-
-    class _MissingNext:
+def test_an_operator_without_close_cannot_be_created():
+    # #393: Sort forgot close() and silently inherited a no-op, so its Scan
+    # cursor leaked. An operator that forgets close() must fail when it is
+    # created, not leak later.
+    class _NoClose(VolcanoOperator):
         def open(self, connection): ...
-        def close(self): ...
+        def next(self): ...
 
-    assert isinstance(scan, VolcanoOperator)
-    assert not isinstance(_MissingNext(), VolcanoOperator)
+        @property
+        def result_schema(self):
+            return SchemaInfo(columns=[])
+
+    with pytest.raises(TypeError, match="close"):
+        _NoClose()
+
+
+@pytest.mark.parametrize("missing", ["open", "next", "result_schema"])
+def test_an_operator_without_any_contract_member_cannot_be_created(missing):
+    # Regression pin (green on arrival): the #393 guard holds for every member
+    # of the contract, not only close(). A missing next() would be worse than a
+    # missing close(): the inherited None reads as "drained" and drops rows.
+    members = {
+        "open": lambda self, connection: None,
+        "next": lambda self: None,
+        "close": lambda self: None,
+        "result_schema": property(lambda self: SchemaInfo(columns=[])),
+    }
+    del members[missing]
+    partial_operator = type("_PartialOperator", (VolcanoOperator,), members)
+
+    with pytest.raises(TypeError, match=missing):
+        partial_operator()
 
 
 class _RecordingCursor:
