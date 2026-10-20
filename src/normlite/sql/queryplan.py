@@ -151,10 +151,11 @@ class Scan(VolcanoOperator):
 
     def close(self) -> None:
         """Close the cursor opened by :meth:`open`.
-            A call before :meth:`open` does nothing.
 
-            .. versionchanged:: 0.14.0
-                The method guards against ``None`` :attr:`_cursor`,
+        A call before :meth:`open` does nothing.
+
+        .. versionchanged:: 0.14.0
+            A plan that failed while it opened can close safely.
         """
 
         if self._cursor is not None:
@@ -862,7 +863,7 @@ class ModifyTable(VolcanoOperator):
         A call before :meth:`open` does nothing.
 
         .. versionchanged:: 0.14.0
-            The method guards against ``None`` :attr:`_cursor`,
+            A plan that failed while it opened can close safely.
         """
         self._source.close()
         if self._cursor is not None:
