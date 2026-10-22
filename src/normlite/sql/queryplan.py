@@ -916,8 +916,7 @@ class Planner:
         )
 
     def _plan_aggregate(self) -> VolcanoOperator:
-        # SELECT aggregate: create a simple scan operator
-
+        # SELECT aggregate: Scan -> [Filter] -> Aggregate
         recheck_where = self._ctx.compiled.planning_context.recheck_where
         schema = SchemaInfo.from_table(
             self._stmt_table,
@@ -927,9 +926,10 @@ class Planner:
         plan = Scan(self._ctx.operation, self._ctx.parameters, schema=schema)
 
         if recheck_where is not None:
-            # a pruned or unpushable predicate survived:
-            # add a Filter operator to apply the survided predicate to
-            # the scanned rows
+            # The recheck (ADR-0022): the compiler holds every WHERE, pushed or not.
+            # A pushed filter is a hint, and a pruned or dropped push keeps extra
+            # rows. Re-apply the whole WHERE before the reduction, so the aggregate
+            # reduces only the rows the WHERE keeps (#399).
             plan = Filter(
                 source=plan,
                 schema=plan.result_schema,
