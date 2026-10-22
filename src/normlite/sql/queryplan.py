@@ -918,13 +918,26 @@ class Planner:
     def _plan_aggregate(self) -> VolcanoOperator:
         # SELECT aggregate: create a simple scan operator
 
+        recheck_where = self._ctx.compiled.planning_context.recheck_where
         schema = SchemaInfo.from_table(
             self._stmt_table,
             execution_names=self._ctx.compiled.fetch_columns(),
             projected_names=self._ctx.compiled.result_columns(),
         )
-        scan = Scan(self._ctx.operation, self._ctx.parameters, schema=schema)
-        return Aggregate(scan, self._invoked_stmt._raw_columns)
+        plan = Scan(self._ctx.operation, self._ctx.parameters, schema=schema)
+
+        if recheck_where is not None:
+            # a pruned or unpushable predicate survived:
+            # add a Filter operator to apply the survided predicate to
+            # the scanned rows
+            plan = Filter(
+                source=plan,
+                schema=plan.result_schema,
+                filter=recheck_where,
+                tables=[self._stmt_table]
+            )
+
+        return Aggregate(plan, self._invoked_stmt._raw_columns)
 
     def _plan_join(self) -> VolcanoOperator:
         planning_context = self._ctx.compiled.planning_context
@@ -1106,7 +1119,8 @@ class Planner:
         The planner classifies the statement into one plan shape and calls
         the builder for that shape:
 
-        * aggregate -- ``Scan -> Aggregate``
+        * aggregate -- ``Scan -> [Filter] -> Aggregate``, the ``Scan`` widened to fetch
+          whatever the recheck reads
         * plain select -- ``Scan -> [Filter] -> Project``, the ``Scan`` widened to fetch
           whatever the recheck reads and ``Project`` trimming it back off
         * join -- ``(Scan, Scan) -> HashJoin -> [Filter] -> [Sort]``
@@ -1114,11 +1128,9 @@ class Planner:
           widened to fetch whatever the recheck reads. A DELETE/UPDATE with no WHERE
           clause lowers the retrieval cost by fetching the title column only.
 
-        The shapes are deliberately asymmetric:
-
-        * The aggregate shape has no recheck ``Filter``.
-        * Only the plain select ``Scan`` streams (``yield_per``). The join Scans and
-          the modify ``Scan`` do not.
+        The shapes are deliberately asymmetric: only the plain select ``Scan`` streams
+        (``yield_per``). The aggregate ``Scan``, the join Scans and the modify ``Scan``
+        do not.
 
         Only the first join of the statement is planned; chaining ``.join()``
         silently drops the rest.
@@ -1132,6 +1144,7 @@ class Planner:
 
         .. versionchanged:: 0.14.0
             Plan DELETE and UPDATE statements. Dispatch to one builder per plan shape.
+            Recheck the WHERE of an aggregate before the reduction (#399).
 
         .. versionadded:: 0.13.0
         """
