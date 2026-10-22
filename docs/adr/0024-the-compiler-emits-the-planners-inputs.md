@@ -104,4 +104,7 @@ those inputs and adds only what the execution decides.**
   so a join WHERE on a column that the projection does not name returns no rows on either side
   (#433). The rule of item 4 applies to every shape with a recheck. The join fix applies it per
   side, through the same helper.
-- **The aggregate shape has no recheck (#399),** so the helper does not run for it.
+- **The aggregate shape has no recheck (#399),** so the helper does not run for it. *(Superseded
+  by #399: the aggregate shape now has a recheck `Filter`, and the helper widens its `Scan`. The
+  compiler widens the left `Scan` of every SELECT shape the same way. It reads `_is_aggregate` and
+  `_joins` only to widen the right `Scan` of a join.)*

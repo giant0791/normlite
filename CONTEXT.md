@@ -968,7 +968,8 @@ three-valued evaluator reads the AST directly, deleting both the bridge and `_Fi
 The **class of Query plan** the **Planner** builds for a statement. There are four shapes, and
 every planned statement takes exactly one:
 
-- **aggregate** — `Scan → Aggregate`. No recheck `Filter`.
+- **aggregate** — `Scan → [Filter] → Aggregate`. The `Filter` is the recheck, and it runs before
+  the reduction (#399). The `Scan` does not stream.
 - **select** (plain, no join) — `Scan → [Filter] → Project`. The only shape whose `Scan` streams
   (`yield_per`).
 - **join** — `(Scan, Scan) → HashJoin → [Filter] → [Sort]`. The join Scans do not stream.

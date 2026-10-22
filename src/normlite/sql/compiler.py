@@ -17,7 +17,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Literal, NoReturn, Optional, Set, Union
+from typing import TYPE_CHECKING, Any, NoReturn, Optional, Set, Union
 
 from normlite._constants import SpecialColumns
 from normlite.exceptions import CompileError, StatementError, UnsupportedCompilationError
@@ -40,53 +40,9 @@ if TYPE_CHECKING:
 
 _NOTION_MAX_FILTER_DEPTH = 2
 
-# Private refusal reason for the aggregate SELECT.
-# The refusal helper below uses this string, and the tests match on it.
-# It is REMOVED, not relaxed, with #399. DELETE and UPDATE prune instead (#417).
-_FILTER_MAX_DEPTH_EXCEEDED = "It exceeds Notion filter max depth"
-
 #: The Notion operation that writes one page. ``ModifyTable`` sends it once per row.
 ROWS_UPDATE = {"endpoint": "pages", "request": "update"}
 
-# Refusal helper.
-# The compiler calls it to refuse a WHERE clause that Notion cannot evaluate exactly
-# AND that no client-side recheck corrects.
-# The aggregate SELECT is the last refusing statement. The helper goes with #399.
-# The helper adds the periods and selects the consequence by the _RefusingStmt key.
-_RefusingStmt = Literal["An aggregate SELECT"]
-
-_NO_RECHECK_CONSEQUENCE: dict[_RefusingStmt, str] = {
-    "An aggregate SELECT": "The aggregate would reduce rows this WHERE excludes (#399)",
-}
-
-
-def _raise_if_filter_max_depth_exceeded(
-    stmt: _RefusingStmt,
-    filter_obj: dict[str, Any],
-    remedy: str,
-) -> None:
-    """Refuse ``filter_obj`` if it nests deeper than Notion accepts.
-
-    Only a path with no recheck calls this. A plain ``SELECT``, ``DELETE`` and
-    ``UPDATE`` prune instead (:func:`_prune`), because their recheck removes the
-    extra rows that the prune admits.
-
-    Args:
-        stmt: The refusing statement. It selects the consequence in the message.
-        filter_obj: The emitted filter object, before any prune.
-        remedy: What the user can do instead. The caller supplies it.
-
-    Raises:
-        CompileError: If ``_depth(filter_obj)`` exceeds
-            ``_NOTION_MAX_FILTER_DEPTH``. The message holds
-            ``_FILTER_MAX_DEPTH_EXCEEDED``.
-
-    .. versionadded:: 0.13.0
-    """
-    if _depth(filter_obj) > _NOTION_MAX_FILTER_DEPTH:
-        raise CompileError(
-            f"{stmt} cannot compile this WHERE clause: {_FILTER_MAX_DEPTH_EXCEEDED}. {_NO_RECHECK_CONSEQUENCE[stmt]}. {remedy}."
-        )
 
 def compile_residual_sorts(residual_sorts: OrderByClause) -> list[dict]:
     """Interim solution until issue #365 — compile held-back right ORDER BY keys."""
@@ -245,8 +201,7 @@ def _prune(node: Any, parent_op: Optional[str] = None, level: int = 1) -> Any:
 
     Both rules make the filter WEAKER, so the pushed filter returns a
     superset of the answer. Only a path with a recheck may call this
-    (ADR-0022). A plain SELECT, DELETE and UPDATE prune. The aggregate
-    refuses instead (#399).
+    (ADR-0022). A plain SELECT, DELETE, UPDATE, and aggregate prune.
 
     Preconditions (the caller must guarantee both; ``_prune`` does not check them):
 
@@ -1038,19 +993,17 @@ class NotionCompiler(SQLCompiler):
                         and parent_tables == {select._table, select._right}
                     ):
                         if select._is_aggregate:
-                            # this site raises unconditionally because it pushes
-                            # a strict subset. NOT a depth refusal: whatever this
-                            # WHERE measures, only the left-only conjuncts go over
-                            # the wire and the rest is handed to a recheck the
-                            # aggregate branch never runs (queryplan.py:786).
+                            # This site raises unconditionally. It is NOT a depth
+                            # refusal. The aggregate plan shape has no join: it
+                            # scans the left table only. So the recheck cannot read
+                            # the right-side terms of this WHERE. An aggregate over
+                            # a join is out of scope (CONTEXT.md, "Aggregate query
+                            # -- clause interaction guards"). Today an aggregate
+                            # join crashes before it reaches this site (#430).
                             raise CompileError(
                                 "An aggregate SELECT cannot compile a WHERE clause that "
-                                "spans both sides of a join: only the left-only terms have "
-                                "a Notion filter form, so the pushed filter is a SUPERSET "
-                                "of the rows this WHERE selects. A plain SELECT re-applies "
-                                "the whole WHERE client-side, but the aggregate reduces "
-                                "whatever the push returns, so it would count rows this "
-                                "WHERE excludes. Run a plain SELECT over the join and "
+                                "spans both sides of a join: an aggregate over a join "
+                                "is not supported. Run a plain SELECT over the join and "
                                 "reduce client-side."
                             )
 
@@ -1079,40 +1032,13 @@ class NotionCompiler(SQLCompiler):
                             # expression depth can break this exactness
                             emitted_json = expression._compiler_dispatch(self)
 
-                            if select._is_aggregate:
-                                # Scope of this gate. Read it before you change the gate.
-                                #
-                                # The gate refuses one case only: the whole WHERE is pushable,
-                                # and its filter nests deeper than Notion allows. A plain
-                                # SELECT prunes such a filter to a legal superset, and the
-                                # recheck removes the extra rows. The planner's aggregate
-                                # branch builds no Filter and drops the recheck (#399). So
-                                # nothing narrows the rows after the push. A pruned push would
-                                # make the aggregate reduce rows that the WHERE excludes. The
-                                # gate raises.
-                                #
-                                # An unpushable WHERE never reaches this gate:
-                                # `_is_pushable(expression)` in the branch above is false, and
-                                # the compiler pushes no filter. The aggregate then reduces
-                                # every row. That is the same defect, #399, and the fix goes in
-                                # the planner. Do NOT hoist this raise above the `_is_pushable`
-                                # branch to catch that case. The refusal would block every
-                                # aggregate with an unpushable WHERE, which #399 makes correct.
-                                #
-                                # When #399 is fixed, this gate can prune in place of raising.
-                                _raise_if_filter_max_depth_exceeded(
-                                    stmt="An aggregate SELECT",
-                                    filter_obj=emitted_json,
-                                    remedy="Simplify the WHERE, or run a plain SELECT and reduce client-side",
-                                )
-                                payload["filter"] = emitted_json
-                            else:
-                                # for the left table, add "filter" to the payload
-                                # only if the expression is pushable (see #383)
-                                # prune the emitted_json to ensure max depth <= 2
-                                pruned = _prune(emitted_json)
-                                if pruned:
-                                    payload['filter'] = pruned
+                            # for the left table, add "filter" to the payload
+                            # only if the expression is pushable (see #383)
+                            # prune the emitted_json to ensure max depth <= 2,
+                            # this also applies to aggregates (#399)
+                            pruned = _prune(emitted_json)
+                            if pruned:
+                                payload['filter'] = pruned
 
                         # Hold the whole expression as raw AST for client-side evaluation,
                         # UNCONDITIONALLY -- whichever table it reads, and whether or not it
@@ -1179,21 +1105,13 @@ class NotionCompiler(SQLCompiler):
         # Compiled.fetch_columns() is the widened list. "Fetch" means what the Scan operator fetches.
         self.planning_context.pre_widening_fetch_columns = list(self._compiler_state.fetch_columns)
 
-        is_plain_select = not (select._is_aggregate or select._joins)
-        if is_plain_select:
-            self._compiler_state.fetch_columns = self._widen_fetch_columns(
-                self.planning_context.recheck_where,
-                table,
-                self._compiler_state.fetch_columns,
-                query_params
-            )
-        elif select._joins and not select._is_aggregate:
-            self._compiler_state.fetch_columns = self._widen_fetch_columns(
-                self.planning_context.recheck_where,
-                select._table,
-                self._compiler_state.fetch_columns,
-                query_params
-            )
+        self._compiler_state.fetch_columns = self._widen_fetch_columns(
+            self.planning_context.recheck_where,
+            table,
+            self._compiler_state.fetch_columns,
+            query_params
+        )
+        if select._joins and not select._is_aggregate:
             right = select._joins[0].right
             right_fetch = [c.name for c in projection if c.parent is right]
             widened_right = self._widen_fetch_columns(
