@@ -826,3 +826,152 @@ def test_an_eager_select_closes_the_cursor_that_queried_notion_before_the_caller
         assert len(recording.querying_cursors) == 1
         assert recording.querying_cursors[0].closed
         assert len(result.fetchall()) == 150
+
+
+class _CursorRecordingConnection(DBAPIConnection):
+    """DBAPI connection that keeps every cursor it hands out.
+
+    ``_QueryingCursorRecordingConnection`` keeps only the cursors that execute an
+    operation. This one keeps them all, so a cursor that the engine gets but never
+    executes on is visible too.
+    """
+
+    def __init__(self, client):
+        super().__init__(client)
+        self.cursors = []
+
+    def cursor(self):
+        cursor = super().cursor()
+        self.cursors.append(cursor)
+        return cursor
+
+
+def test_closing_an_eager_select_result_closes_every_cursor_the_statement_got(
+    engine: Engine,
+    students: Table,
+):
+    """Tracer bullet (#449).
+
+    The caller closes the result. After that, no cursor that the SELECT got from
+    the DBAPI connection stays open.
+    """
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    recording = _CursorRecordingConnection(engine._client)
+    engine._dbapi_connection = recording
+
+    with engine.connect() as conn:
+        result = conn.execute(select(students))
+        result.close()
+
+    assert recording.cursors
+    assert [cursor.closed for cursor in recording.cursors] == [True] * len(recording.cursors)
+
+
+def test_closing_a_streamed_select_result_closes_every_cursor_the_statement_got(
+    engine: Engine,
+    students: Table,
+):
+    """Regression pin, green on arrival (#449).
+
+    6 rows, ``yield_per=2`` -> backend pages of 2, 2, 2. The caller reads the
+    first page only, then closes the result. After that, no cursor that the
+    SELECT got from the DBAPI connection stays open.
+    """
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=6)
+
+    recording = _CursorRecordingConnection(engine._client)
+    engine._dbapi_connection = recording
+
+    with engine.connect() as conn:
+        conn = conn.execution_options(stream_results=True, yield_per=2)
+        result = conn.execute(select(students))
+        assert len(result.fetchmany(2)) == 2
+        result.close()
+
+    assert recording.cursors
+    assert [cursor.closed for cursor in recording.cursors] == [True] * len(recording.cursors)
+
+
+def test_closing_a_delete_result_closes_every_cursor_the_statement_got(
+    engine: Engine,
+    students: Table,
+):
+    """Regression pin, green on arrival (#449).
+
+    A DELETE runs through the query plan (ADR-0023). The caller closes the
+    result. After that, no cursor that the DELETE got from the DBAPI connection
+    stays open.
+    """
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    recording = _CursorRecordingConnection(engine._client)
+    engine._dbapi_connection = recording
+
+    with engine.connect() as conn:
+        result = conn.execute(delete(students))
+        assert result.rowcount == 3
+        result.close()
+
+    assert recording.cursors
+    assert [cursor.closed for cursor in recording.cursors] == [True] * len(recording.cursors)
+
+
+def test_closing_an_update_result_closes_every_cursor_the_statement_got(
+    engine: Engine,
+    students: Table,
+):
+    """Regression pin, green on arrival (#449).
+
+    An UPDATE runs through the query plan (ADR-0023). The caller closes the
+    result. After that, no cursor that the UPDATE got from the DBAPI connection
+    stays open.
+    """
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    recording = _CursorRecordingConnection(engine._client)
+    engine._dbapi_connection = recording
+
+    with engine.connect() as conn:
+        result = conn.execute(update(students).values(grade="Z"))
+        assert result.rowcount == 3
+        result.close()
+
+    assert recording.cursors
+    assert [cursor.closed for cursor in recording.cursors] == [True] * len(recording.cursors)
+
+
+
+def test_a_failed_first_page_pull_closes_every_cursor_the_select_got(
+    engine: Engine,
+    students: Table,
+):
+    """Regression pin, green on arrival (#449).
+
+    The first page pull fails, so ``execute()`` raises and the caller gets no
+    result to close. After that, no cursor that the SELECT got from the DBAPI
+    connection stays open.
+    """
+    db_id = create_students_db(engine)
+    attach_table_oid(students, db_id)
+    populate_students(engine, students, n=3)
+
+    failing = _FailOnPageNClient(engine._client, fail_on=1)
+    recording = _CursorRecordingConnection(failing)
+    engine._dbapi_connection = recording
+
+    with engine.connect() as conn:
+        with pytest.raises(OperationalError):
+            conn.execute(select(students))
+
+    assert failing.query_calls == 1
+    assert recording.cursors
+    assert [cursor.closed for cursor in recording.cursors] == [True] * len(recording.cursors)
