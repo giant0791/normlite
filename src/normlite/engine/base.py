@@ -293,6 +293,10 @@ class Connection:
         # set streaming only if it's a SELECT, remember DELETE must drain the source.
         is_streaming = context.invoked_stmt.is_select and (stream_results or yield_per is not None)
 
+        # The plan path never executes on the execution cursor. Close it before
+        # the plan exists, so that a failure in plan() or open() cannot leak it (#449).
+        context._cursor.close()
+
         # build and execute the query plan
         conn = self._engine.raw_connection()
         plan = Planner(context).plan()
