@@ -304,11 +304,14 @@ def test_right_side_filter_on_outer_join_drops_none_filled_rows(engine: Engine):
     assert pairs == {("Galileo Galilei", "Astronomy")}
 
 def test_right_side_is_empty_drops_absent_entity(engine: Engine):
-    # Arrange: As documented in ADR-0005, a right-side is_empty() drops the
-    # phantom (absent entity) — is_empty is NOT IS NULL. Single-sided: the
-    # present-entity-with-empty-title KEEP-side is currently unconstructable
-    # (String.bind_processor never emits {title: []}), so this test only pins
-    # the drop side. See memory project_unreachable_empty_title_boundary.
+    # Arrange: a right-side is_empty() drops the phantom (no join partner).
+    # The reason is derived, not structural (ADR-0019, superseding ADR-0005):
+    # the phantom's title cell is None, is_empty() on a None cell is UNKNOWN,
+    # and WHERE drops UNKNOWN. is_empty() is not is_null(): is_null() keeps
+    # this phantom (see the anti-join tests at the end of this file).
+    # Single-sided: the KEEP side (a real course with an empty title) cannot
+    # be inserted today, because String.bind_processor never emits
+    # {"title": []}. See ADR-0019 Correction (18).
     metadata = MetaData()
     courses = Table(
         "courses",
@@ -595,7 +598,9 @@ def test_right_side_filter_on_outer_join_drops_phantom_under_collision(engine: E
     # `title` collision. Phantom Student points at a dangling id (all-None right
     # slice); Galileo is a genuine match. A right-side WHERE on the colliding
     # courses.title must drop the None-filled phantom and keep the real match --
-    # provenance-based getter selection must not break the all-None phantom guard.
+    # provenance-based getter selection must read the phantom's None right
+    # title, not the colliding left title, so the comparison is UNKNOWN and
+    # WHERE drops it (ADR-0019).
     metadata = MetaData()
     courses = Table(
         "courses",

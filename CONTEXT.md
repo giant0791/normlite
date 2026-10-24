@@ -1292,8 +1292,10 @@ code never depended on an unasserted property: **every one of the 36 declared
 `<col_spec>.<operator>` pairs answers UNKNOWN on a `None` cell**
 (`test_every_declared_operator_on_a_none_cell_is_unknown`, derived from `type_mapper` so a newly
 registered operator is protected on arrival). The mechanism is the guard at `eval3.py`'s binary arm,
-whose only escape hatch is `_ABSENT_AWARE` — **empty until `is_null()` joins it in #366**. Adding an
-operator to that set removes its phantom protection, and the pin reds if that happens.
+whose only escape hatch is `_ABSENT_AWARE`. The set is **empty**. `is_null()` does **not** join it:
+`is_null()` is not a comparison and has no Notion operator name, so `eval3` answers it before the
+guard runs (#366). Adding an operator to that set removes its phantom protection, and the pin reds
+if that happens.
 
 ### Three value shapes (do not conflate)
 The single most important distinction for anything evaluating a predicate client-side:
@@ -1392,24 +1394,21 @@ DELETE / UPDATE / INSERT…RETURNING — joins simply stop borrowing it, which i
 ADR-0008's Alternative A rejected (that was `JoinExecution` *owning* the shared channel).
 
 ### Phantom NULL — ADR-0005 revisited
-[[adr-0005-outer-join-phantom-null-semantics]] ruled that "a phantom (all-None right slice) fails
-every right-side predicate", enforced **structurally**: `if all(c is None for c in right_slice):
-return False` (`dml.py:1404`), *before* the predicate runs. That rule was a workaround for a
-`bool`-returning, Notion-semantic evaluator with no notion of NULL — normlite had no way to say
-"there is no row here", so it hard-coded the drop.
-
-The plan **removes the constraint that forced it**. With three-valued logic plus a real `is_null()`:
-- a phantom's cells are `None`, so any **comparison** on them is UNKNOWN → **dropped by WHERE** —
-  the ADR-0005 outcome, now derived rather than hard-coded;
-- `is_null()` on a phantom is **TRUE → kept**, which makes **anti-join expressible** — closing
+[[adr-0005-outer-join-phantom-null-semantics]] dropped a phantom (an all-None right slice) with a
+structural guard, placed before the predicate ran. ADR-0005 is **superseded** by
+[[adr-0019-sql-null-semantics-pushdown-soundness]], and the guard is **deleted** (see "A phantom's
+verdict is derived" under §Recheck and Residual predicates are AST, evaluated over raw cells).
+Shipped state:
+- a phantom's cells are `None`, so any **comparison** on them is UNKNOWN → **dropped by WHERE**.
+  This is the ADR-0005 outcome, now derived rather than hard-coded;
+- `is_null()` on a phantom is **TRUE → kept**, so an **anti-join is expressible** (#366):
+  `outerjoin(...).where(right.c.col.is_null())` returns the unmatched left rows. This closes
   [[anti-join-inexpressible-boundary]];
-- the `all(None)` structural guard is **deleted**, closing
-  [[unreachable-empty-title-boundary]] (a real `title=None` row was mislabelled a phantom by it).
+- `is_null()` on a matched right row with a valueless cell is **FALSE**. The raw cell is a dict
+  (`{"number": null}`), not `None`, so a real empty cell is never mistaken for a phantom.
 
-This is a **deliberate behaviour change**, not a refactoring side effect: the existing join suite is
-no longer a bit-for-bit oracle for right-side filtering. ADR-0005 is **superseded** by
-[[adr-0019-sql-null-semantics-pushdown-soundness]], which lands as a **separate slice** from the
-structural work — a structural bug and a semantic bug must not be indistinguishable in one diff.
+This was a **deliberate behaviour change**: the join suite stopped being a bit-for-bit oracle for
+right-side filtering.
 
 ### Title NOT NULL — noted, out of scope
 Notion tolerates value-less properties (an omitted `rich_text` stores `[]`, an omitted number stores
