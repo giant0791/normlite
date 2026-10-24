@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, Union
 
 from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
-from normlite.sql.elements import BinaryExpression, BooleanClauseList, ColumnElement, UnaryExpression
+from normlite.sql.elements import BinaryExpression, BooleanClauseList, ColumnElement, Operator, UnaryExpression
 
 if TYPE_CHECKING:
     from normlite.sql.schema import Table
@@ -65,7 +65,7 @@ UNKNOWN = Ternary()
 
 _ABSENT_AWARE: set[str] = set()
 # operators that must inspect an absent cell themselves rather than
-# short-circuit to UNKNOWN; is_null() joins this set in #366
+# short-circuit to UNKNOWN
 
 _OPERATORS = {
     # number operators
@@ -156,6 +156,12 @@ def eval3(
         op = predicate.column.type_.supported_ops.get(predicate.operator)
         page = page_or_pagemap.get(predicate.column.parent, page_or_pagemap)
         prop_val = page.get(predicate.column.name)
+        if predicate.operator is Operator.IS_NULL:
+            # a None raw cell is null:
+            # Example: pagemap = ({"courses": {"title": None}})
+            # page = {"title": None}, thus prop_val is None
+            return TRUE if prop_val is None else FALSE
+
         if prop_val is None and op not in _ABSENT_AWARE:
             # guard against cells shape: {"a": None}
             # Indistinguishable from absent key {"b": ...}

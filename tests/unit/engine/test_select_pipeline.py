@@ -760,3 +760,44 @@ def test_is_empty_and_is_not_empty_on_text_are_still_pushed(
     )
     assert filters[0]["property"] == column_name
     assert operator in filters[0][notion_type]
+
+
+def test_a_left_is_null_is_not_pushed_and_drops_a_valued_row(
+    engine: Engine, monkeypatch
+):
+    # #366 / ADR-0019: `is_null()` is SQL-semantic and NEVER pushed. Notion
+    # cannot express "this cell is literally None", so no filter may reach the
+    # client. The WHERE still applies: a real title is not NULL, so the row
+    # evaluates FALSE and is dropped.
+    metadata = MetaData()
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        connection.execute(insert(students).values(name="Galileo Galilei"))
+
+        payloads = []
+        query = engine._client.data_sources_query
+
+        def spy(path_params=None, query_params=None, payload=None):
+            payloads.append(payload)
+            return query(
+                path_params=path_params,
+                query_params=query_params,
+                payload=payload,
+            )
+
+        monkeypatch.setattr(engine._client, "data_sources_query", spy)
+
+        rows = connection.execute(
+            select(students).where(students.c.name.is_null())
+        ).fetchall()
+
+    assert [p.get("filter") for p in payloads] == [None], (
+        f"`is_null()` must never reach the client -- got {payloads}"
+    )
+    assert rows == []

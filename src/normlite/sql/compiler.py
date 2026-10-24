@@ -105,7 +105,8 @@ def _is_pushable(node: ColumnElement) -> bool:
 
     Helper that implements the following rule:
         - **leaf** - pushable, unless it compares a ``None`` literal under ``==`` or ``!=``,
-          or a text (``title`` / ``rich_text``) column with the empty-string literal ``""``.
+          or a text (``title`` / ``rich_text``) column with the empty-string literal ``""``,
+          or it is the ``is_null`` operator.
         - **not** - never pushable.
         - **and** - drop unpushable children, push the survivors.
         - **or** - if any child is unpushable, the whole or is unpushable. Push nothing for it.
@@ -136,12 +137,16 @@ def _is_pushable(node: ColumnElement) -> bool:
     .. versionchanged:: 0.14.0
         A leaf with a comparison against the empty-string text literal ``""`` is unpushable (#382).
         Removed ``strict``: every statement rechecks its WHERE, so no DML gate uses it (#413).
+        A leaf with the ``is_null`` operator is unpushable (#366).
 
     .. versionchanged:: 0.13.0
         Added ``strict`` for the DML gate.
     """
 
     if isinstance(node, BinaryExpression):
+        if node.operator is Operator.IS_NULL:
+            return False
+
         if isinstance(node.column.type_, String) and node.value.effective_value == "":
             # a comparison against empty-string text literal is unpushable
             return False

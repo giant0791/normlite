@@ -138,6 +138,13 @@
 > **(17) The lesson is the one this ADR keeps re-learning.** Corrections (1), (5) and (9) record a
 > *model* read as *evidence*. This is the neighbouring failure: a **document** read as *code*. An
 > ADR marked Accepted is evidence about a decision, never about an implementation.
+>
+> **(18) "`is_null()` can now find it" is unreachable (2026-10-24, #366).** Deleting the `all(None)`
+> guard closed only half of the [unreachable empty-title] boundary: a real row with a `None` cell is
+> no longer mislabelled a phantom. The other half stays open. No row with a valueless title can be
+> inserted: the fake client rejects `title=None`, and `String.bind_processor` never emits
+> `{"title": []}`. On the live API a valueless title is the dict `{"title": []}`, and `is_null()`
+> answers FALSE for a dict. So `is_null()` finds a phantom, never a real row with an empty title.
 
 ---
 
