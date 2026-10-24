@@ -1786,3 +1786,117 @@ def test_a_widened_column_that_shares_a_projected_name_keeps_the_bare_name_under
         ("Galileo Galilei", 5),
     ]
     assert [list(row.keys()) for row in rows] == [["name", "credits"]] * 2
+
+def test_outer_join_where_right_is_null_returns_only_unmatched_left_rows(
+    engine: Engine,
+):
+    # Arrange: one student matches a course, one student has no join partner.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    bogus_course_oid = str(uuid.uuid4())  # never inserted -> no join partner
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Astronomy")
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                name="Galileo Galilei",
+                enrolled_in=[astronomy_oid],
+            )
+        )
+        connection.execute(
+            insert(students).values(
+                name="Unmatched Student",
+                enrolled_in=[bogus_course_oid],
+            )
+        )
+
+        # Act: anti-join — keep the left rows that found no right row.
+        result = connection.execute(
+            select(students, courses)
+            .outerjoin(students.c.enrolled_in)
+            .where(courses.c.title.is_null())
+        )
+        rows = result.fetchall()
+
+    # Assert: only the unmatched student survives, with a NULL right side.
+    assert [(row.name, row.title) for row in rows] == [("Unmatched Student", None)]
+
+
+def test_outer_join_where_right_is_null_keeps_a_matched_row_with_an_empty_cell_out(
+    engine: Engine,
+):
+    # Pinning test (#366 / ADR-0019), green on arrival: a matched course with
+    # a valueless cell is not a phantom. Its raw cell is a dict,
+    # {"number": null}, so is_null() is FALSE. Only the student with no join
+    # partner has a literally None right cell, so only that student is NULL.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("credits", Integer()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    bogus_course_oid = str(uuid.uuid4())  # never inserted -> no join partner
+
+    with engine.connect() as connection:
+        astronomy_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Astronomy", credits=None)
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                name="Galileo Galilei",
+                enrolled_in=[astronomy_oid],
+            )
+        )
+        connection.execute(
+            insert(students).values(
+                name="Unmatched Student",
+                enrolled_in=[bogus_course_oid],
+            )
+        )
+
+        result = connection.execute(
+            select(students, courses)
+            .outerjoin(students.c.enrolled_in)
+            .where(courses.c.credits.is_null())
+        )
+        rows = result.fetchall()
+
+    # Galileo has a real partner with an empty cell: not NULL, so dropped.
+    assert [(row.name, row.title, row.credits) for row in rows] == [
+        ("Unmatched Student", None, None)
+    ]

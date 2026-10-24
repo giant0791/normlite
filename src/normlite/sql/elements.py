@@ -139,6 +139,7 @@ class Operator(Enum):
     # unary / nullary
     IS_EMPTY = auto()
     IS_NOT_EMPTY = auto()
+    IS_NULL = auto()
 
     # relation-specific
     CONTAINS = auto()
@@ -189,6 +190,9 @@ class ColumnOperators:
 
     def is_empty(self):
         return self.operate(Operator.IS_EMPTY, None)
+
+    def is_null(self):
+        return self.operate(Operator.IS_NULL, None)
 
     def is_not_empty(self):
         return self.operate(Operator.IS_NOT_EMPTY, None)
@@ -309,7 +313,10 @@ class Comparator:
         self.type_ = expr.type_
 
     def operate(self, op: Operator, other):
-        if op not in self.type_.supported_ops:
+        if (
+            op not in self.type_.supported_ops and
+            op is not Operator.IS_NULL
+        ):
             raise TypeError(
                 f"Operator {op} not supported for type {type(self.type_).__name__}"
             )
