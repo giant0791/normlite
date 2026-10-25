@@ -766,3 +766,21 @@ def test_select_where_compiles_to_the_same_output_for_every_shape(
     assert compiled.planning_context.recheck_where is where
     assert compiled.fetch_columns() == expected_fetch
     assert compiled.planning_context.widened_right_columns == expected_widened_right
+
+
+def test_where_on_projected_table_without_join_still_compiles(
+    metadata: MetaData, students: Table
+):
+    # Pins today's output for #467 ("no change in the compiled output").
+    # #469 replaces this test: the SELECT then fails with a CompileError.
+    # Arrange
+    courses = Table('courses', metadata, Column('title', String(is_title=True)))
+    where = courses.c.title == 'Math'
+    stmt = select(students, courses).where(where)
+
+    # Act
+    compiled = stmt.compile(NotionCompiler())
+
+    # Assert
+    assert 'filter' not in compiled.as_dict()['payload']
+    assert compiled.planning_context.recheck_where is where
