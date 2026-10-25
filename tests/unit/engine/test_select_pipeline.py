@@ -6,6 +6,7 @@ from normlite.sql.dml import insert, select
 from normlite.sql.elements import not_
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Integer, String
+from normlite.exceptions import CompileError
 
 
 def test_a_valueless_cell_is_dropped_by_a_not_equal_where(engine: Engine):
@@ -801,3 +802,30 @@ def test_a_left_is_null_is_not_pushed_and_drops_a_valued_row(
         f"`is_null()` must never reach the client -- got {payloads}"
     )
     assert rows == []
+
+
+def test_a_where_on_a_table_outside_the_from_raises_and_returns_no_rows(engine: Engine):
+    # Arrange
+    metadata = MetaData()
+    courses = Table("courses", metadata, Column("title", String(is_title=True)))
+    students = Table("students", metadata, Column("name", String(is_title=True)))
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        connection.execute(insert(courses).values(title="Physics"))
+        connection.execute(insert(students).values(name="Ann"))
+        connection.execute(insert(students).values(name="Bob"))
+
+        # Act
+        rows = None
+        with pytest.raises(CompileError) as exc_info:
+            rows = connection.execute(
+                select(students).where(courses.c.title == "Math")
+            ).fetchall()
+
+    # Assert
+    assert rows is None
+    assert str(exc_info.value) == (
+        "WHERE clause reads tables that are not in the FROM: courses. "
+        "Add a join() to each table, or remove the conditions on it."
+    )
