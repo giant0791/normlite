@@ -987,7 +987,22 @@ class NotionCompiler(SQLCompiler):
                     f"Cannot route WHERE expression: no source table could be "
                     f"determined for {type(expression).__name__}."
                 )
-            if parent_tables <= {select._table, select._right}:
+
+            # A WHERE reads only the FROM tables: the left table and, on a join, the
+            # right table. A table outside the FROM has no rows in the plan, so no
+            # Filter can apply its conjuncts. Fail loudly at compile time rather than
+            # silently dropping the WHERE (CONTEXT.md, "WHERE routing"). On a plain
+            # SELECT, select._right is None; the set difference ignores it.
+            from_tables: Set[Table] = {select._table, select._right}
+            outside_tables: Set[Table] = parent_tables - from_tables
+            if outside_tables:
+                where_tablenames = ", ".join(sorted(t.name for t in outside_tables))
+                raise CompileError(
+                    f"WHERE clause reads tables that are not in the FROM: {where_tablenames}. "
+                    "Add a join() to each table, or remove the conditions on it."
+                )
+
+            if parent_tables <= from_tables:
                 with self._compiling(new_state=_CompileState.COMPILING_WHERE):
                     # emit the JSON code for the filter object of the query
                     # in the right context
@@ -995,7 +1010,7 @@ class NotionCompiler(SQLCompiler):
                         select._joins
                         and isinstance(expression, BooleanClauseList)
                         and expression.operator == "and"
-                        and parent_tables == {select._table, select._right}
+                        and parent_tables == from_tables
                     ):
                         if select._is_aggregate:
                             # This site raises unconditionally. It is NOT a depth

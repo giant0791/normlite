@@ -1173,6 +1173,21 @@ keep their names; only the WHERE channel became a recheck.
 >
 > Step 3's vocabulary pass, named two paragraphs up, is done as well.
 
+### WHERE routing: a WHERE reads only the FROM tables
+The compiler routes each WHERE by its **parent tables**: the tables whose columns the expression
+reads. A SELECT's FROM tables are its left table and, on a join, its right table. A WHERE that reads
+a table outside the FROM **fails loud** with a `CompileError`. The message names the tables outside
+the FROM. The remedy is to add a `join()` or to remove the conjunct. This is the same policy as the
+guard for a WHERE with **no** parent table ("Cannot route WHERE expression").
+
+normlite does **not** read a table outside the FROM as an implicit cross join (SQL `FROM a, b`).
+normlite has no cross-join plan shape. A partial push with no recheck for the outside conjuncts is
+rejected too: it is still a silent drop.
+
+> **Status: BUILT (#463).** Decided in the #416 design session (2026-10-24). The guard is in
+> `NotionCompiler.visit_select`, next to the "Cannot route WHERE expression" guard. It applies to
+> every SELECT shape: plain, join and aggregate. #416 moves the guard as a pure move.
+
 ### Pushdown soundness (the invariant)
 **The push may over-keep; it must never under-keep.**
 
