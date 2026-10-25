@@ -928,6 +928,138 @@ class NotionCompiler(SQLCompiler):
 
         return widened
 
+    def _compile_select_where(self, select: Select) -> dict:
+        """Route the WHERE of a SELECT and return the filter to push.
+
+        The caller must ensure the SELECT has a WHERE clause. The caller puts the
+        filter in ``payload['filter']`` only if it is not empty.
+
+        Returns:
+            dict: The Notion filter object to push. ``{}`` if nothing can be pushed.
+        """
+        expression = select._whereclause.expression
+        parent_tables = _get_expression_parent_tables(expression)
+        if not parent_tables:
+            # A WHERE expression is present but the router could attribute it
+            # to no source table. This is not a routing outcome but a failure
+            # to route — most likely an unsupported expression node type.
+            # Fail loudly at compile time rather than silently dropping the
+            # filter (which would return wrong rows with no error).
+            raise CompileError(
+                f"Cannot route WHERE expression: no source table could be "
+                f"determined for {type(expression).__name__}."
+            )
+
+        # A WHERE reads only the FROM tables: the left table and, on a join, the
+        # right table. A table outside the FROM has no rows in the plan, so no
+        # Filter can apply its conjuncts. Fail loudly at compile time rather than
+        # silently dropping the WHERE (CONTEXT.md, "WHERE routing"). On a plain
+        # SELECT, select._right is None; the set difference ignores it.
+        from_tables: Set[Table] = {select._table, select._right}
+        outside_tables: Set[Table] = parent_tables - from_tables
+        if outside_tables:
+            where_tablenames = ", ".join(sorted(t.name for t in outside_tables))
+            raise CompileError(
+                f"WHERE clause reads tables that are not in the FROM: {where_tablenames}. "
+                "Add a join() to each table, or remove the conditions on it."
+            )
+
+        # Hold the whole expression as raw AST for client-side evaluation,
+        # UNCONDITIONALLY: on every path below, whichever table it reads, and
+        # whether or not a part of it is pushed. A push is a HINT that never
+        # decides (ADR-0022). The recheck decides, and #384 is the case where only
+        # the recheck drops the row. A left conjunct is a RECHECK (it is pushed and
+        # applied again); a right conjunct is a RESIDUAL (nothing pushes it).
+        # `Planner.plan` finds the table from the predicate itself.
+        #
+        # Set it BEFORE the dispatch: the prune drops leaves after they registered
+        # their binds, and the recheck consumes them (see visit_where_clause).
+        # Hold the expression only. Do NOT dispatch it again: a second dispatch
+        # registers a bind that nothing consumes (#363).
+        self.planning_context.recheck_where = expression
+        if (
+            select._joins
+            and isinstance(expression, BooleanClauseList)
+            and expression.operator == "and"
+            and parent_tables == from_tables
+        ):
+            # An AND that reads both sides of the join: push only its left part.
+            return self._compile_join_where(select, expression)
+
+        if parent_tables == {select._table} and _is_pushable(expression):
+            # A WHERE that reads only the left table: push it with the WHERE step
+            # that a SELECT shares with DELETE and UPDATE. The step prunes the
+            # filter to Notion's nesting cap, so a part of it can stay unpushed.
+            return select._whereclause._compiler_dispatch(self)
+
+        # Nothing to push: the WHERE reads only the right table, it is not
+        # pushable, or it is an OR across both sides of the join. The recheck
+        # answers it all.
+        return {}
+
+    def _compile_join_where(self, select: Select, expression: ColumnElement) -> dict:
+        """Return the left-table conjuncts of a join WHERE as the filter to push.
+
+        ``expression`` is an AND that reads both sides of the join. The caller
+        routed it and set ``recheck_where`` before this call.
+
+        Returns:
+            dict: The pushable left conjuncts as a Notion filter object, pruned to
+                Notion's nesting cap. ``{}`` if no left conjunct is pushable.
+        """
+        if select._is_aggregate:
+            # This site raises unconditionally. It is NOT a depth
+            # refusal. The aggregate plan shape has no join: it
+            # scans the left table only. So the recheck cannot read
+            # the right-side terms of this WHERE. An aggregate over
+            # a join is out of scope (CONTEXT.md, "Aggregate query
+            # -- clause interaction guards"). Today an aggregate
+            # join crashes before it reaches this site (#430).
+            raise CompileError(
+                "An aggregate SELECT cannot compile a WHERE clause that "
+                "spans both sides of a join: an aggregate over a join "
+                "is not supported. Run a plain SELECT over the join and "
+                "reduce client-side."
+            )
+
+        # Split the AND per conjunct. A left-only, pushable conjunct narrows
+        # phase-1 to a SUPERSET of the answer, so we return it for the push. The
+        # right conjuncts stay out of the filter. The recheck holds the WHOLE AND,
+        # the pushed conjuncts INCLUDED, because a push never decides (ADR-0022).
+        # (See #311, #363.)
+        #
+        # Each conjunct is dispatched here, not through visit_where_clause, so
+        # this path opens its own COMPILING_WHERE context for the binds.
+        with self._compiling(new_state=_CompileState.COMPILING_WHERE):
+            left_conjuncts = [
+                clause._compiler_dispatch(self)
+                for clause in expression.clauses
+                if _get_expression_parent_tables(clause) == {select._table} and _is_pushable(clause)
+            ]
+
+        return _prune(_normalize_filter("and", left_conjuncts))
+
+    def _compile_order_by(self, select: Select, order_by_clause: OrderByClause) -> tuple[list[dict], tuple[ColumnElement, ...]]:
+        # Sort pushability is POSITIONAL: only the LEADING RUN of left-table
+        # keys can ride in phase-1 (databases.query sorts by left-table
+        # properties only). Stop the prefix at the first key that isn't purely
+        # left-table — a right-side (or mixed) primary key makes the remaining
+        # sort a client-side concern. This unifies the single-table case (every
+        # key is left-table, so the whole sort is pushed) with the join case.
+        sorts_obj = []
+        for clause in order_by_clause.clauses:
+            if _get_expression_parent_tables(clause) != {select._table}:
+                break
+            sorts_obj.append(clause._compiler_dispatch(self))
+
+        right_clauses = tuple(
+            clause
+            for clause in order_by_clause.clauses
+            if _get_expression_parent_tables(clause) != {select._table}
+        )
+
+        return sorts_obj, right_clauses
+
     def visit_select(self, select: Select) -> dict:
         self._compiler_state.is_select = select.is_select
         self._compiler_state.stmt = select
@@ -975,109 +1107,9 @@ class NotionCompiler(SQLCompiler):
             compiled_dict["path_params"] = path_params
 
         if select._whereclause.has_expression():
-            expression = select._whereclause.expression
-            parent_tables = _get_expression_parent_tables(expression)
-            if not parent_tables:
-                # A WHERE expression is present but the router could attribute it
-                # to no source table. This is not a routing outcome but a failure
-                # to route — most likely an unsupported expression node type.
-                # Fail loudly at compile time rather than silently dropping the
-                # filter (which would return wrong rows with no error).
-                raise CompileError(
-                    f"Cannot route WHERE expression: no source table could be "
-                    f"determined for {type(expression).__name__}."
-                )
-
-            # A WHERE reads only the FROM tables: the left table and, on a join, the
-            # right table. A table outside the FROM has no rows in the plan, so no
-            # Filter can apply its conjuncts. Fail loudly at compile time rather than
-            # silently dropping the WHERE (CONTEXT.md, "WHERE routing"). On a plain
-            # SELECT, select._right is None; the set difference ignores it.
-            from_tables: Set[Table] = {select._table, select._right}
-            outside_tables: Set[Table] = parent_tables - from_tables
-            if outside_tables:
-                where_tablenames = ", ".join(sorted(t.name for t in outside_tables))
-                raise CompileError(
-                    f"WHERE clause reads tables that are not in the FROM: {where_tablenames}. "
-                    "Add a join() to each table, or remove the conditions on it."
-                )
-
-            if parent_tables <= from_tables:
-                with self._compiling(new_state=_CompileState.COMPILING_WHERE):
-                    # emit the JSON code for the filter object of the query
-                    # in the right context
-                    if (
-                        select._joins
-                        and isinstance(expression, BooleanClauseList)
-                        and expression.operator == "and"
-                        and parent_tables == from_tables
-                    ):
-                        if select._is_aggregate:
-                            # This site raises unconditionally. It is NOT a depth
-                            # refusal. The aggregate plan shape has no join: it
-                            # scans the left table only. So the recheck cannot read
-                            # the right-side terms of this WHERE. An aggregate over
-                            # a join is out of scope (CONTEXT.md, "Aggregate query
-                            # -- clause interaction guards"). Today an aggregate
-                            # join crashes before it reaches this site (#430).
-                            raise CompileError(
-                                "An aggregate SELECT cannot compile a WHERE clause that "
-                                "spans both sides of a join: an aggregate over a join "
-                                "is not supported. Run a plain SELECT over the join and "
-                                "reduce client-side."
-                            )
-
-                        # Compound AND spanning both join sides: split per-clause.
-                        # Left-only conjuncts narrow phase-1 to a SUPERSET of the
-                        # answer, so push them into payload['filter']; the WHOLE
-                        # compound is then held as AST for client-side evaluation
-                        # after the merge -- the pushed conjuncts INCLUDED, because a
-                        # push never decides (ADR-0022). (See #311, #363.)
-                        left_conjuncts = [
-                            clause._compiler_dispatch(self)
-                            for clause in expression.clauses
-                            if _get_expression_parent_tables(clause) == {select._table} and _is_pushable(clause)
-                        ]
-
-                        filter_obj = _prune(_normalize_filter("and", left_conjuncts))
-                        if filter_obj:
-                            payload['filter'] = filter_obj
-
-                        self.planning_context.recheck_where = expression
-
-                    else:
-                        if parent_tables == {select._table} and _is_pushable(expression):
-                            # the WHERE expression involves columns belonging to the SELECT's table
-                            # here the whole predicate is pushed or nothing is:
-                            # expression depth can break this exactness
-                            emitted_json = expression._compiler_dispatch(self)
-
-                            # for the left table, add "filter" to the payload
-                            # only if the expression is pushable (see #383)
-                            # prune the emitted_json to ensure max depth <= 2,
-                            # this also applies to aggregates (#399)
-                            pruned = _prune(emitted_json)
-                            if pruned:
-                                payload['filter'] = pruned
-
-                        # Hold the whole expression as raw AST for client-side evaluation,
-                        # UNCONDITIONALLY -- whichever table it reads, and whether or not it
-                        # was just pushed above. A pushed conjunct is a HINT that never
-                        # decides (ADR-0022), so holding it is what makes the client-side
-                        # evaluation the answer; #384 is exactly the case where the push
-                        # over-keeps and only the re-application drops the row.
-                        #
-                        # In the settled vocabulary this channel now carries both kinds: a
-                        # LEFT conjunct is a RECHECK (it was pushed on the line above and is
-                        # re-applied), while a RIGHT conjunct is a genuine RESIDUAL (nothing
-                        # pushes it today). `Planner.plan` derives which table to evaluate it
-                        # against from the predicate itself -- do not assume the right side.
-                        #
-                        # Do NOT dispatch it here: that would register an unconsumed bind
-                        # (see #363). Holding an ALREADY-dispatched conjunct is safe and
-                        # measured -- _add_bindparam ran once inside the dispatch, and the
-                        # literal survives unprocessed.
-                        self.planning_context.recheck_where = expression
+            filter_obj = self._compile_select_where(select)
+            if filter_obj:
+                payload['filter'] = filter_obj
 
         projection = self._compiler_state.stmt._projection
 
@@ -1155,24 +1187,7 @@ class NotionCompiler(SQLCompiler):
                     f"determined for {type(order_by_clause).__name__}."
                 )
 
-            # Sort pushability is POSITIONAL: only the LEADING RUN of left-table
-            # keys can ride in phase-1 (databases.query sorts by left-table
-            # properties only). Stop the prefix at the first key that isn't purely
-            # left-table — a right-side (or mixed) primary key makes the remaining
-            # sort a client-side concern. This unifies the single-table case (every
-            # key is left-table, so the whole sort is pushed) with the join case.
-            sorts_obj = []
-            for clause in order_by_clause.clauses:
-                if _get_expression_parent_tables(clause) != {select._table}:
-                    break
-                sorts_obj.append(clause._compiler_dispatch(self))
-
-            right_clauses = tuple(
-                clause
-                for clause in order_by_clause.clauses
-                if _get_expression_parent_tables(clause) != {select._table}
-            )
-
+            sorts_obj, right_clauses = self._compile_order_by(select, order_by_clause)
             if right_clauses:
                 self.planning_context.residual_sorts = OrderByClause(right_clauses)
 
@@ -1187,12 +1202,14 @@ class NotionCompiler(SQLCompiler):
         return compiled_dict
 
     def visit_where_clause(self, where_clause: WhereClause) -> dict:
-        """Compile the WHERE clause of a DELETE/UPDATE statement.
+        """Compile the WHERE clause of a SELECT, DELETE, or UPDATE statement.
 
         This method returns the compiled where clause as filter object.
         If the Notion nesting cap is exceeded, a pruned filter object is returned.
+        A SELECT calls it only for a WHERE that reads the left table alone; a join
+        WHERE that reads both sides goes through ``_compile_join_where``.
 
-        The caller must ensure the DML statement has a WHERE clause before calling
+        The caller must ensure the statement has a WHERE clause before calling
         this method via :meth:`normlite.sql.dml.WhereClause.has_expression`.
 
         .. attention::
@@ -1210,7 +1227,7 @@ class NotionCompiler(SQLCompiler):
             :meth:`normlite.engine.context.ExecutionContext._assert_all_params_consumed`
 
         Args:
-            where_clause (WhereClause): The object containing the DML's WHERE clause.
+            where_clause (WhereClause): The object containing the statement's WHERE clause.
 
         Returns:
             dict: The WHERE clause as a Notion filter object, pruned to Notion's
