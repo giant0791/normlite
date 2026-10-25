@@ -435,3 +435,39 @@ def test_order_by_right_key_travels_as_ast_residual_off_the_compiled_dict(
 
     # ... and no longer as Notion JSON on the compiled dict, which stays pure data.
     assert "join_right_sorts" not in asdict
+
+
+def test_join_where_error_does_not_list_the_right_table(
+    metadata: MetaData, students: Table, courses: Table
+):
+    # Arrange
+    teachers = Table("teachers", metadata, Column("tname", String(is_title=True)))
+    stmt = (
+        select(students, courses)
+        .join(students.c.enrolled_in)
+        .where((courses.c.title == "Math") & (teachers.c.tname == "Bob"))
+    )
+
+    # Act / Assert
+    with pytest.raises(CompileError) as exc_info:
+        stmt.compile(NotionCompiler())
+
+    assert str(exc_info.value) == (
+        "WHERE clause reads tables that are not in the FROM: teachers. "
+        "Add a join() to each table, or remove the conditions on it."
+    )
+
+
+def test_a_right_table_where_compiles_into_the_recheck_and_not_into_the_push(
+    students: Table, courses: Table
+):
+    # Arrange
+    where = courses.c.title == "Astronomy"
+    stmt = select(students, courses).join(students.c.enrolled_in).where(where)
+
+    # Act
+    compiled = stmt.compile(NotionCompiler())
+
+    # Assert
+    assert "filter" not in compiled.as_dict()["payload"]
+    assert compiled.planning_context.recheck_where is where

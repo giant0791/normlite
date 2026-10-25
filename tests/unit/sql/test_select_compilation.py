@@ -6,10 +6,12 @@ import uuid
 from zoneinfo import ZoneInfo
 import pytest
 
+from normlite.exceptions import CompileError
 from normlite.sql.base import _CompileState, CompilerState
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Select, select
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, and_, not_
+from normlite.sql.functions import func
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Boolean, Date, DateTimeRange, Integer, String
 
@@ -617,3 +619,63 @@ def test_where_column_outside_the_projection_does_not_reach_the_row(students: Ta
     # Assert
     assert compiled.planning_context.pre_widening_fetch_columns == ['name']
     assert compiled.result_columns() == ['name']
+
+
+def test_where_on_a_table_outside_the_from_raises_compile_error(
+    metadata: MetaData, students: Table
+):
+    # Arrange
+    courses = Table('courses', metadata, Column('title', String(is_title=True)))
+    stmt = select(students).where(courses.c.title == 'Math')
+
+    # Act / Assert
+    with pytest.raises(CompileError) as exc_info:
+        stmt.compile(NotionCompiler())
+
+    assert str(exc_info.value) == (
+        "WHERE clause reads tables that are not in the FROM: courses. "
+        "Add a join() to each table, or remove the conditions on it."
+    )
+
+
+def test_where_error_lists_only_the_outside_tables_sorted_by_name(
+    metadata: MetaData, students: Table
+):
+    # Arrange
+    teachers = Table('teachers', metadata, Column('tname', String(is_title=True)))
+    courses = Table('courses', metadata, Column('title', String(is_title=True)))
+    stmt = select(students).where(
+        (students.c.name == 'Ann')
+        & (teachers.c.tname == 'Bob')
+        & (courses.c.title == 'Math')
+    )
+
+    # Act / Assert
+    with pytest.raises(CompileError) as exc_info:
+        stmt.compile(NotionCompiler())
+
+    assert str(exc_info.value) == (
+        "WHERE clause reads tables that are not in the FROM: courses, teachers. "
+        "Add a join() to each table, or remove the conditions on it."
+    )
+
+
+def test_aggregate_where_on_a_table_outside_the_from_raises_compile_error(
+    metadata: MetaData, students: Table
+):
+    # Arrange
+    courses = Table('courses', metadata, Column('title', String(is_title=True)))
+    stmt = (
+        select(func.count())
+        .select_from(students)
+        .where(courses.c.title == 'Math')
+    )
+
+    # Act / Assert
+    with pytest.raises(CompileError) as exc_info:
+        stmt.compile(NotionCompiler())
+
+    assert str(exc_info.value) == (
+        "WHERE clause reads tables that are not in the FROM: courses. "
+        "Add a join() to each table, or remove the conditions on it."
+    )
