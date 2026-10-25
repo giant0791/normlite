@@ -1039,6 +1039,27 @@ class NotionCompiler(SQLCompiler):
 
         return _prune(_normalize_filter("and", left_conjuncts))
 
+    def _compile_order_by(self, select: Select, order_by_clause: OrderByClause) -> tuple[list[dict], tuple[ColumnElement, ...]]:
+        # Sort pushability is POSITIONAL: only the LEADING RUN of left-table
+        # keys can ride in phase-1 (databases.query sorts by left-table
+        # properties only). Stop the prefix at the first key that isn't purely
+        # left-table — a right-side (or mixed) primary key makes the remaining
+        # sort a client-side concern. This unifies the single-table case (every
+        # key is left-table, so the whole sort is pushed) with the join case.
+        sorts_obj = []
+        for clause in order_by_clause.clauses:
+            if _get_expression_parent_tables(clause) != {select._table}:
+                break
+            sorts_obj.append(clause._compiler_dispatch(self))
+
+        right_clauses = tuple(
+            clause
+            for clause in order_by_clause.clauses
+            if _get_expression_parent_tables(clause) != {select._table}
+        )
+
+        return sorts_obj, right_clauses
+
     def visit_select(self, select: Select) -> dict:
         self._compiler_state.is_select = select.is_select
         self._compiler_state.stmt = select
@@ -1166,24 +1187,7 @@ class NotionCompiler(SQLCompiler):
                     f"determined for {type(order_by_clause).__name__}."
                 )
 
-            # Sort pushability is POSITIONAL: only the LEADING RUN of left-table
-            # keys can ride in phase-1 (databases.query sorts by left-table
-            # properties only). Stop the prefix at the first key that isn't purely
-            # left-table — a right-side (or mixed) primary key makes the remaining
-            # sort a client-side concern. This unifies the single-table case (every
-            # key is left-table, so the whole sort is pushed) with the join case.
-            sorts_obj = []
-            for clause in order_by_clause.clauses:
-                if _get_expression_parent_tables(clause) != {select._table}:
-                    break
-                sorts_obj.append(clause._compiler_dispatch(self))
-
-            right_clauses = tuple(
-                clause
-                for clause in order_by_clause.clauses
-                if _get_expression_parent_tables(clause) != {select._table}
-            )
-
+            sorts_obj, right_clauses = self._compile_order_by(select, order_by_clause)
             if right_clauses:
                 self.planning_context.residual_sorts = OrderByClause(right_clauses)
 
