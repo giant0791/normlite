@@ -955,6 +955,9 @@ class NotionCompiler(SQLCompiler):
         # Filter can apply its conjuncts. Fail loudly at compile time rather than
         # silently dropping the WHERE (CONTEXT.md, "WHERE routing"). On a plain
         # SELECT, select._right is None; the set difference ignores it.
+        # following line of code moves to #469.
+        # Switching it to _from_tables raises a CompileError for a no-join two-table WHERE.
+        # That is #469 behavior.
         from_tables: Set[Table] = {select._table, select._right}
         outside_tables: Set[Table] = parent_tables - from_tables
         if outside_tables:

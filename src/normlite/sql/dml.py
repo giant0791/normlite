@@ -691,6 +691,16 @@ class Select(HasTable, ExecutableClauseElement):
 
         self._projection = columns
 
+    @property
+    def _from_tables(self) -> tuple[Table, ...]:
+        """An ordered tuple containing the tables in the FROM clause.
+
+        .. versionadded:: 0.14.0
+        """
+        if self._table is None:          # columnless COUNT(*) before select_from()
+            return ()
+        return (self._table, *(j.right for j in self._joins))
+
     @generative
     def select_from(self, table: Table) -> Self:
         """Return a new select() construct with the given FROM clause
