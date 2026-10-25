@@ -768,6 +768,58 @@ def test_select_where_compiles_to_the_same_output_for_every_shape(
     assert compiled.planning_context.widened_right_columns == expected_widened_right
 
 
+def test_plain_select_from_tables_is_its_table(students: Table):
+    # Arrange
+    stmt = select(students)
+
+    # Act
+    from_tables = stmt._from_tables
+
+    # Assert
+    assert from_tables == (students,)
+
+
+def test_join_select_from_tables_are_left_then_right_table():
+    # Arrange
+    metadata = MetaData()
+    courses = Table('courses', metadata, Column('title', String(is_title=True)))
+    students = Table(
+        'students',
+        metadata,
+        Column('name', String(is_title=True)),
+        Column('enrolled_in', Relation(), ForeignKey('courses.object_id')),
+    )
+    stmt = select(students.c.name, courses.c.title).join(courses)
+
+    # Act
+    from_tables = stmt._from_tables
+
+    # Assert
+    assert from_tables == (students, courses)
+
+
+def test_columnless_count_without_select_from_has_no_from_tables():
+    # Arrange
+    stmt = select(func.count())
+
+    # Act
+    from_tables = stmt._from_tables
+
+    # Assert
+    assert from_tables == ()
+
+
+def test_aggregate_select_from_tables_is_the_select_from_table(students: Table):
+    # Arrange
+    stmt = select(func.count()).select_from(students)
+
+    # Act
+    from_tables = stmt._from_tables
+
+    # Assert
+    assert from_tables == (students,)
+
+
 def test_where_on_projected_table_without_join_still_compiles(
     metadata: MetaData, students: Table
 ):
