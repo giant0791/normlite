@@ -12,8 +12,8 @@ from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import Select, select
 from normlite.sql.elements import BinaryExpression, BindParameter, BooleanClauseList, and_, not_
 from normlite.sql.functions import func
-from normlite.sql.schema import Column, MetaData, Table
-from normlite.sql.type_api import Boolean, Date, DateTimeRange, Integer, String
+from normlite.sql.schema import Column, ForeignKey, MetaData, Table
+from normlite.sql.type_api import Boolean, Date, DateTimeRange, Integer, Relation, String
 
 """TDD for all select() use scenarios.
 
@@ -679,3 +679,90 @@ def test_aggregate_where_on_a_table_outside_the_from_raises_compile_error(
         "WHERE clause reads tables that are not in the FROM: courses. "
         "Add a join() to each table, or remove the conditions on it."
     )
+
+
+# Behavior under test:
+# Every SELECT shape compiles to the same pushed filter, held WHERE,
+# fetched columns, and widened right-side columns as it does today.
+@pytest.mark.parametrize(
+    "build, expected_filter, expected_fetch, expected_widened_right",
+    [
+        pytest.param(
+            lambda s, c: (select(s.c.name), s.c.id > 5),
+            {"property": "id", "number": {"greater_than": ":param_0"}},
+            ["name", "id"],
+            [],
+            id="plain",
+        ),
+        pytest.param(
+            lambda s, c: (
+                select(s.c.name),
+                (s.c.name == "A") | ((s.c.id > 1) & ((s.c.grade == "B") | (s.c.id < 9))),
+            ),
+            {"or": [
+                {"property": "name", "title": {"equals": ":param_0"}},
+                {"property": "id", "number": {"greater_than": ":param_1"}},
+            ]},
+            ["name", "grade", "id"],
+            [],
+            id="plain-too-deep",
+        ),
+        pytest.param(
+            lambda s, c: (
+                select(s.c.name, c.c.title).join(s.c.enrolled_in),
+                (s.c.name == "G") & (c.c.credits > 3),
+            ),
+            {"property": "name", "title": {"equals": ":param_0"}},
+            ["name", "enrolled_in"],
+            ["credits"],
+            id="join-spans-both-sides",
+        ),
+        pytest.param(
+            lambda s, c: (
+                select(s.c.name, c.c.title).join(s.c.enrolled_in),
+                c.c.credits > 3,
+            ),
+            None,
+            ["name", "enrolled_in"],
+            ["credits"],
+            id="join-right-only",
+        ),
+        pytest.param(
+            lambda s, c: (select(func.sum(s.c.id)), s.c.grade == "A"),
+            {"property": "grade", "rich_text": {"equals": ":param_0"}},
+            ["id", "grade"],
+            [],
+            id="aggregate",
+        ),
+    ],
+)
+def test_select_where_compiles_to_the_same_output_for_every_shape(
+    build, expected_filter, expected_fetch, expected_widened_right
+):
+    # Arrange
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("credits", Integer()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+        Column("grade", String()),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    students._sys_columns["data_source_id"]._value = str(uuid.uuid4())
+    stmt, where = build(students, courses)
+
+    # Act
+    compiled = stmt.where(where).compile(NotionCompiler())
+
+    # Assert
+    assert compiled.as_dict()["payload"].get("filter") == expected_filter
+    assert compiled.planning_context.recheck_where is where
+    assert compiled.fetch_columns() == expected_fetch
+    assert compiled.planning_context.widened_right_columns == expected_widened_right
