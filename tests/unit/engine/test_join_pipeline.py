@@ -1905,3 +1905,156 @@ def test_outer_join_where_right_is_null_keeps_a_matched_row_with_an_empty_cell_o
     assert [(row.name, row.title, row.credits) for row in rows] == [
         ("Unmatched Student", None, None)
     ]
+
+
+@pytest.mark.xfail(strict=True, reason="#468: the join takes its right table from the projection")
+def test_join_with_a_right_where_and_only_left_columns_returns_the_students_who_take_math(
+    engine: Engine,
+):
+    # Arrange: Ada takes Math and Physics, Bob takes only Physics.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(name="Ada", enrolled_in=[math_oid, physics_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[physics_oid])
+        )
+
+        # Act
+        rows = connection.execute(
+            select(students).join(courses).where(courses.c.title == "Math")
+        ).fetchall()
+
+    # Assert: one row, for Ada's Math pair only.
+    assert [row.name for row in rows] == ["Ada"]
+
+
+@pytest.mark.xfail(strict=True, reason="#468: the join takes its right table from the projection")
+def test_outer_join_with_only_left_columns_keeps_the_student_with_no_course(
+    engine: Engine,
+):
+    # Arrange: Ada takes two courses, Bob takes one, Cy takes none.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(name="Ada", enrolled_in=[math_oid, physics_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", enrolled_in=[]))
+
+        # Act
+        rows = connection.execute(select(students).outerjoin(courses)).fetchall()
+
+    # Assert: one row per matched pair, plus one row for Cy.
+    assert sorted(row.name for row in rows) == ["Ada", "Ada", "Bob", "Cy"]
+
+
+@pytest.mark.xfail(strict=True, reason="#468: the join takes its right table from the projection")
+def test_inner_join_with_only_left_columns_returns_one_left_row_per_matched_pair(
+    engine: Engine,
+):
+    # Arrange: Ada takes two courses, Bob takes one, Cy takes none.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(name="Ada", enrolled_in=[math_oid, physics_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", enrolled_in=[]))
+
+        # Act
+        rows = connection.execute(select(students).join(courses)).fetchall()
+
+    # Assert: two rows for Ada, one for Bob, none for Cy,
+    # and every row holds only students columns.
+    assert sorted(row.name for row in rows) == ["Ada", "Ada", "Bob"]
+    assert all(
+        list(row.keys()) == [column.name for column in students.c]
+        for row in rows
+    )

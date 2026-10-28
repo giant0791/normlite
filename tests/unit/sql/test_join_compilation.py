@@ -471,3 +471,50 @@ def test_a_right_table_where_compiles_into_the_recheck_and_not_into_the_push(
     # Assert
     assert "filter" not in compiled.as_dict()["payload"]
     assert compiled.planning_context.recheck_where is where
+
+
+@pytest.mark.xfail(strict=True, reason="#468: the join takes its right table from the projection")
+def test_join_takes_right_table_from_onclause_when_projection_has_only_left_table(
+    students: Table, courses: Table
+):
+    # Arrange
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    stmt = select(students).join(courses)
+
+    # Act
+    compiled = stmt.compile(NotionCompiler()).as_dict()
+
+    # Assert
+    assert len(compiled["joins"]) == 1
+    join = compiled["joins"][0]
+    assert join["left"] == "students"
+    assert join["right"] == "courses"
+    assert join["onclause"] == "enrolled_in"
+
+
+@pytest.mark.xfail(strict=True, reason="#468: the join takes its right table from the projection")
+@pytest.mark.parametrize(
+    "make_onclause",
+    [
+        pytest.param(lambda s, c: c, id="table"),
+        pytest.param(lambda s, c: s.c.enrolled_in, id="column"),
+        pytest.param(
+            lambda s, c: s.c.enrolled_in.contains(str(uuid.uuid4())),
+            id="binary-expression",
+        ),
+    ],
+)
+def test_every_onclause_form_names_the_same_right_table(
+    students: Table, courses: Table, make_onclause
+):
+    # Arrange
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    stmt = select(students).join(make_onclause(students, courses))
+
+    # Act
+    compiled = stmt.compile(NotionCompiler()).as_dict()
+
+    # Assert
+    join = compiled["joins"][0]
+    assert join["right"] == "courses"
+    assert join["onclause"] == "enrolled_in"
