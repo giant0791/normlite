@@ -785,6 +785,8 @@ class Select(HasTable, ExecutableClauseElement):
                     got column '{inner_col.name}' on table '{inner_col.parent.name}'
                 """
                 raise ArgumentError(message)
+            onclause = inner_col
+
         elif isinstance(onclause, Column):
             if not isinstance(onclause.type_, Relation):
                     raise ArgumentError(
@@ -805,6 +807,11 @@ class Select(HasTable, ExecutableClauseElement):
                 f"or BinaryExpression, got {type(onclause).__name__}"
             )
 
+        # Each branch above reduces the onclause to its Relation column.
+        # The column's foreign key gives the right table, not the projection.
+        onclause_fk = next(iter(onclause.foreign_keys))
+        # The compiler builds the WHERE FROM guard from _right until #469.
+        self._right = onclause_fk.column.parent
         return Join(self._table, self._right, onclause, isouter)
 
     @generative

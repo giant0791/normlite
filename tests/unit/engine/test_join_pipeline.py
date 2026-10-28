@@ -1907,7 +1907,6 @@ def test_outer_join_where_right_is_null_keeps_a_matched_row_with_an_empty_cell_o
     ]
 
 
-@pytest.mark.xfail(strict=True, reason="#468: the join takes its right table from the projection")
 def test_join_with_a_right_where_and_only_left_columns_returns_the_students_who_take_math(
     engine: Engine,
 ):
@@ -1957,7 +1956,6 @@ def test_join_with_a_right_where_and_only_left_columns_returns_the_students_who_
     assert [row.name for row in rows] == ["Ada"]
 
 
-@pytest.mark.xfail(strict=True, reason="#468: the join takes its right table from the projection")
 def test_outer_join_with_only_left_columns_keeps_the_student_with_no_course(
     engine: Engine,
 ):
@@ -2006,7 +2004,6 @@ def test_outer_join_with_only_left_columns_keeps_the_student_with_no_course(
     assert sorted(row.name for row in rows) == ["Ada", "Ada", "Bob", "Cy"]
 
 
-@pytest.mark.xfail(strict=True, reason="#468: the join takes its right table from the projection")
 def test_inner_join_with_only_left_columns_returns_one_left_row_per_matched_pair(
     engine: Engine,
 ):

@@ -473,7 +473,6 @@ def test_a_right_table_where_compiles_into_the_recheck_and_not_into_the_push(
     assert compiled.planning_context.recheck_where is where
 
 
-@pytest.mark.xfail(strict=True, reason="#468: the join takes its right table from the projection")
 def test_join_takes_right_table_from_onclause_when_projection_has_only_left_table(
     students: Table, courses: Table
 ):
@@ -492,7 +491,6 @@ def test_join_takes_right_table_from_onclause_when_projection_has_only_left_tabl
     assert join["onclause"] == "enrolled_in"
 
 
-@pytest.mark.xfail(strict=True, reason="#468: the join takes its right table from the projection")
 @pytest.mark.parametrize(
     "make_onclause",
     [
