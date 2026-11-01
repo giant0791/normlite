@@ -659,10 +659,7 @@ class Select(HasTable, ExecutableClauseElement):
             # anchor from the first aggregate carrying an operand column;
             # a JOIN onclause overrides it;
             # a pure COUNT(*) has none, .join() can resolve it
-            self._table = next(
-                (e.column.parent for e in entities if e.column is not None),
-                None,
-            )
+            self._table = next((c.parent for c in self._operand_columns), None,)
             return
 
         # A list of columns has been provided
@@ -848,11 +845,7 @@ class Select(HasTable, ExecutableClauseElement):
 
         if self._is_aggregate:
             # Operand column parents must be either the left or right table
-            op_col_parents = {
-                e.column.parent
-                for e in self._raw_columns
-                if e.column is not None
-            }
+            op_col_parents = {c.parent for c in self._operand_columns}
             unallowed_op_parents = op_col_parents - {self._table, self._right}
             if unallowed_op_parents:
                 unallowed = ", ".join(sorted(t.name for t in unallowed_op_parents))
