@@ -1,13 +1,11 @@
-import pdb
 import uuid
-
-import pytest
 
 from normlite import Relation, ForeignKey
 from normlite.engine.base import Engine
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import insert, select
 from normlite.sql.elements import or_
+from normlite.sql.functions import func
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Integer, String
 
@@ -2055,3 +2053,110 @@ def test_inner_join_with_only_left_columns_returns_one_left_row_per_matched_pair
         list(row.keys()) == [column.name for column in students.c]
         for row in rows
     )
+
+
+def test_sum_over_an_inner_join_counts_a_left_value_once_per_matched_right_page(
+    engine: Engine,
+):
+    # Arrange: Ada (id 1) takes Math and Physics, Bob (id 2) takes Physics,
+    # Cy (id 4) takes no course.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                name="Ada", id=1, enrolled_in=[math_oid, physics_oid]
+            )
+        )
+        connection.execute(
+            insert(students).values(name="Bob", id=2, enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", id=4, enrolled_in=[]))
+
+        # Act
+        rows = connection.execute(
+            select(func.sum(students.c.id)).join(students.c.enrolled_in)
+        ).fetchall()
+
+    # Assert: one row. Ada counts two times, Bob one time, Cy not at all.
+    assert len(rows) == 1
+    assert rows[0]["sum"] == 4
+
+
+def test_count_over_an_inner_join_counts_one_row_per_matched_right_page(
+    engine: Engine,
+):
+    # Arrange: Ada takes Math and Physics, Bob takes Physics,
+    # Cy takes no course.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(name="Ada", enrolled_in=[math_oid, physics_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", enrolled_in=[]))
+
+        # Act: count() has no operand, so only the join gives the rows.
+        rows = connection.execute(
+            select(func.count()).join(students.c.enrolled_in)
+        ).fetchall()
+
+    # Assert: one row. Ada counts two times, Bob one time, Cy not at all.
+    assert len(rows) == 1
+    assert rows[0]["count"] == 3
