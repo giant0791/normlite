@@ -11,6 +11,7 @@ from normlite.sql.dml import Join, select
 from normlite.sql.elements import BooleanClauseList, ColumnElement, OrderByExpression, or_
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import String
+from normlite.sql.functions import func
 
 
 @pytest.fixture
@@ -516,3 +517,114 @@ def test_every_onclause_form_names_the_same_right_table(
     join = compiled["joins"][0]
     assert join["right"] == "courses"
     assert join["onclause"] == "enrolled_in"
+
+
+def test_aggregate_join_takes_its_left_table_from_the_onclause_not_the_first_operand(
+    students: Table, courses: Table
+):
+    # Arrange: the first operand reads courses, the onclause reads students.
+    # Both tables are reflected, as in a real engine.
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    courses._sys_columns["data_source_id"]._value = str(uuid.uuid4())
+    stmt = select(
+        func.count(courses.c.title),
+        func.count(students.c.name),
+    ).join(students.c.enrolled_in)
+
+    # Act
+    compiled = stmt.compile(NotionCompiler()).as_dict()
+
+    # Assert
+    join = compiled["joins"][0]
+    assert join["left"] == "students"
+    assert join["right"] == "courses"
+
+
+def test_aggregate_join_raises_when_select_from_names_another_left_table(
+    students: Table, courses: Table
+):
+    # Arrange: select_from() names courses, the onclause reads students.
+    stmt = select(func.count()).select_from(courses)
+
+    # Act / Assert: join() rejects the conflict and names both tables.
+    with pytest.raises(ArgumentError, match=r"(?s)courses.*students|students.*courses"):
+        stmt.join(students.c.enrolled_in)
+
+
+def test_aggregate_join_raises_when_an_operand_is_neither_the_left_nor_the_right_table(
+    metadata: MetaData, students: Table, courses: Table
+):
+    # Arrange: teachers takes no part in the join students -> courses.
+    teachers = Table(
+        "teachers",
+        metadata,
+        Column("name", String(is_title=True)),
+    )
+    stmt = select(func.count(courses.c.title), func.count(teachers.c.name))
+
+    # Act / Assert: join() rejects the operand and names its table.
+    with pytest.raises(ArgumentError, match=r"teachers"):
+        stmt.join(students.c.enrolled_in)
+
+
+def test_columnless_aggregate_join_takes_its_left_table_from_the_onclause(
+    students: Table, courses: Table
+):
+    # Arrange: count() has no operand, so only the onclause names a table.
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    courses._sys_columns["data_source_id"]._value = str(uuid.uuid4())
+
+    # Act: no select_from() is necessary.
+    stmt = select(func.count()).join(students.c.enrolled_in)
+    compiled = stmt.compile(NotionCompiler()).as_dict()
+
+    # Assert
+    join = compiled["joins"][0]
+    assert join["left"] == "students"
+    assert join["right"] == "courses"
+
+
+@pytest.mark.parametrize(
+    "make_onclause",
+    [
+        pytest.param(lambda s: s.c.enrolled_in, id="column"),
+        pytest.param(
+            lambda s: s.c.enrolled_in.contains(str(uuid.uuid4())),
+            id="binary-expression",
+        ),
+    ],
+)
+def test_every_relation_onclause_form_gives_an_aggregate_join_the_same_left_table(
+    students: Table, courses: Table, make_onclause
+):
+    # Arrange: the operand reads courses, the onclause reads students.
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    courses._sys_columns["data_source_id"]._value = str(uuid.uuid4())
+
+    # Act
+    stmt = select(func.count(courses.c.title)).join(make_onclause(students))
+    compiled = stmt.compile(NotionCompiler()).as_dict()
+
+    # Assert
+    join = compiled["joins"][0]
+    assert join["left"] == "students"
+    assert join["right"] == "courses"
+
+
+@pytest.mark.parametrize(
+    "make_onclause",
+    [
+        pytest.param(lambda s: "enrolled_in", id="str"),
+        pytest.param(lambda s: None, id="none"),
+        pytest.param(lambda s: func.count(s.c.name), id="function"),
+    ],
+)
+def test_join_raises_when_the_onclause_is_not_a_column_expression(
+    students: Table, make_onclause
+):
+    # Arrange: the onclause is neither a Table, a Column, nor a BinaryExpression.
+    stmt = select(students)
+
+    # Act / Assert: join() rejects it with a domain error, not a crash.
+    with pytest.raises(ArgumentError):
+        stmt.join(make_onclause(students))

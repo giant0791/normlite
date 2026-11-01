@@ -573,6 +573,25 @@ class Select(HasTable, ExecutableClauseElement):
         The projection is now a tuple of columns to support colliding column names.
     """
 
+    _table: Optional[Table] = None
+    """The projection table for plain SELECT, the left table if a JOIN-clause is added.
+
+    .. versionadded:: 0.14.0
+        Missing declaration found during solution of #474
+    """
+
+    _left_table_named: bool
+    """``True`` if the left table is explicitly named as argument to SELECT
+    or by :meth:`normlite.sql.dml.Select.select_from`.
+
+    When this flag is set, the onclause in :meth:`normlite.sql.dml.Select.join`
+    must agree with the named :attr:`normlite.sql.dml.Select._table`.
+    When it is unset, the onclause in :meth:`normlite.sql.dml.Select.join` is the
+    source for :attr:`normlite.sql.dml.Select._table`.
+
+    .. versionadded:: 0.14.0
+    """
+
     _right: Optional[Table] = None
     """Optional right table if a JOIN-clause is added.
 
@@ -596,6 +615,7 @@ class Select(HasTable, ExecutableClauseElement):
 
         self._projection = None
         self._raw_columns = None
+        self._left_table_named = True
 
         if not entities:
             raise ArgumentError(
@@ -633,10 +653,12 @@ class Select(HasTable, ExecutableClauseElement):
         # check whether it is an aggregate
         is_aggregate = all(isinstance(entity, FunctionElement) for entity in entities)
         if is_aggregate:
+            self._left_table_named = False
             self._is_aggregate = True
             self._raw_columns = tuple(entities)
-            # anchor from the first aggregate carrying an operand column; a pure
-            # COUNT(*) has none, so leave it unresolved for .select_from()
+            # anchor from the first aggregate carrying an operand column;
+            # a JOIN onclause overrides it;
+            # a pure COUNT(*) has none, .join() can resolve it
             self._table = next(
                 (e.column.parent for e in entities if e.column is not None),
                 None,
@@ -708,6 +730,9 @@ class Select(HasTable, ExecutableClauseElement):
         This is introduced to support COUNT(*), ``func.count()`` where no table can be
         inferred from the missing operand.
 
+        .. versionchanged:: 0.14.0
+            Sets :attr:`_left_table_named` to mark the provenance of the left table.
+
         ..versionadded:: 0.12.0
 
         Args:
@@ -726,6 +751,7 @@ class Select(HasTable, ExecutableClauseElement):
                 "column/table selects is not supported"
             )
         self._table = table
+        self._left_table_named = True
         # generative returns a copy
 
     @generative
@@ -771,51 +797,109 @@ class Select(HasTable, ExecutableClauseElement):
             onclause = relation_cols[0]
 
         if isinstance(onclause, BinaryExpression):
-            inner_col = onclause.column
-            if not isinstance(inner_col.type_, Relation):
-                raise ArgumentError(
-                    f"join() onclause must be a BinaryExpression with a Relation column, got '{inner_col.name}' "
-                    f"(type: {type(inner_col.type_).__name__})"
-                )
+            onclause = onclause.column
 
-            if inner_col.parent is not self._table:
-                message = f"""
-                    join() onclause must a BinaryExpression and its column '{inner_col.name}'
-                    must belong to left table '{self._table.name}',
-                    got column '{inner_col.name}' on table '{inner_col.parent.name}'
-                """
-                raise ArgumentError(message)
-            onclause = inner_col
-
-        elif isinstance(onclause, Column):
-            if not isinstance(onclause.type_, Relation):
-                    raise ArgumentError(
-                        f"join() onclause must be a Relation column, got '{onclause.name}' "
-                        f"(type: {type(onclause.type_).__name__})"
-                    )
-
-            if onclause.parent is not self._table:
-                message = f"""
-                    join() onclause must belong to left table '{self._table.name}',
-                    got column '{onclause.name}' on table '{onclause.parent.name}'
-                """
-                raise ArgumentError(message)
-
-        else:
+        if not isinstance(onclause, Column):
             raise ArgumentError(
-                f"join() onclause must be a Column "
+                "join() onclause must be a Table, Column "
                 f"or BinaryExpression, got {type(onclause).__name__}"
             )
 
-        # Each branch above reduces the onclause to its Relation column.
+        if not isinstance(onclause.type_, Relation):
+            raise ArgumentError(
+                "join() onclause must be a Relation column or a BinaryExpression on it, "
+                f"got '{onclause.name}' (type: {type(onclause.type_).__name__})"
+            )
+
+        # onclause is now a Relation column
+        if self._left_table_named:
+            # the user named the left table: the onclause must agree with it.
+            if self._table is not onclause.parent:
+                raise ArgumentError(
+                    f"Left table named '{self._table.name}' "
+                    f"differs from onclause parent table '{onclause.parent.name}'."
+                )
+        else:
+            # the operand table is only a default: the onclause gives the left table.
+            self._table = onclause.parent
+
         # The column's foreign key gives the right table, not the projection.
         onclause_fk = next(iter(onclause.foreign_keys))
         # The compiler builds the WHERE FROM guard from _right until #469.
         self._right = onclause_fk.column.parent
+
+        if self._is_aggregate:
+            # Operand column parents must be either the left or right table
+            op_col_parents = {
+                e.column.parent
+                for e in self._raw_columns
+                if e.column is not None
+            }
+            unallowed_op_parents = op_col_parents - {self._table, self._right}
+            if unallowed_op_parents:
+                unallowed = ", ".join(sorted(t.name for t in unallowed_op_parents))
+                raise ArgumentError(
+                    f"Each operand column must belong to the left '{self._table.name}' "
+                    f"or right '{self._right.name}' table; found '{unallowed}'."
+                )
+
         return Join(self._table, self._right, onclause, isouter)
 
     @generative
     def join(self, onclause: ColumnExpressionArgument) -> Self:
+        """Create a JOIN against this :class:`Select` object's criterion and apply generatively,
+        returning the newly resulting :class:`Select` object.
+
+        **FROM and ON clauses inference rules**
+
+        The onclause names the :class:`normlite.sql.type_api.Relation` column
+        on the left side of the join. Its foreign key gives the right table.
+        A plain SELECT takes the left table from its projection, and the onclause
+        column must belong to it.
+        An aggregate SELECT takes the left table from the onclause column, not
+        from its operands. So ``select(func.count()).join(students.c.enrolled_in)``
+        needs no :meth:`select_from`.
+
+        .. note::
+
+            ``join()`` takes an argument with two meanings:
+
+            .. list-table::
+                :header-rows: 1
+
+                * - Argument
+                  - What it names
+                  - Side
+                * - A ``Column`` or a ``BinaryExpression``
+                  - The **path**: the ``Relation`` column
+                  - left
+                * - A ``Table``
+                  - The **destination**
+                  - right
+
+            A ``Table`` cannot give the left table. normlite finds the ``Relation``
+            column by a search of the foreign keys of a left table that is already
+            known. So ``select(func.count()).join(courses)`` needs
+            ``select_from(students)``.
+
+            Issue #480 tracks this ambiguity. One of its options aligns normlite with
+            SQLAlchemy Core: ``join(target, onclause=None)``, where ``target`` is always
+            the right table and ``onclause`` is always the ``Relation`` column or a
+            ``BinaryExpression`` on it.
+
+        Args:
+            onclause (ColumnExpressionArgument): A ``Column`` or a ``BinaryExpression``
+                that names the ``Relation`` column (left side), or a ``Table`` that names
+                the destination of the JOIN (right side).
+
+        Raises:
+            ArgumentError: If the onclause column is not a ``Relation`` column, if it does
+                not belong to the left table of a plain SELECT, if onclause and select_from disagree,
+                or if a ``Table`` is not referenced by a foreign key of the left table.
+
+        Returns:
+            Self: The newly resulting :class:`Select` object.
+        """
         # mutate-vs-rebind: here you create a new tuple
         self._joins = (*self._joins, self._create_join(onclause))
         # returning self is already encapsulated into the generative decorator

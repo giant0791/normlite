@@ -810,9 +810,15 @@ the same lesson ADR-0008 drew from the join code. See [[adr-0011-aggregate-execu
 In the whole-set/all-aggregate v1, an aggregate projection combined with:
 - **`.order_by()`** → raises `ArgumentError` (ordering a single synthetic row is meaningless;
   revisit when `GROUP BY` makes ordering partitions meaningful). Fail loud, never silently drop.
-- **`.join()` / `.outerjoin()`** → raises `ArgumentError`/`CompileError` (out of scope; a loud
-  guard, not a silent drop — cf. [[multi-join-silent-drop-boundary]]).
+- **`.join()` / `.outerjoin()`** → supported (#430). The aggregate reduces the **join rows**,
+  as SQL does. A left page that matches two right pages counts two times: Ada with two courses
+  adds her `id` two times to `func.sum(students.c.id)`. The join is not a semijoin filter.
+  An outer join also feeds its **phantom rows** to the aggregate. `func.count()` counts a
+  phantom row. A phantom cell is NULL, so `func.count(col)`, `func.sum(col)` and
+  `func.avg(col)` skip it (the skip-NULL rule below).
 - **`.where()`** → supported: the filter rides into the `databases.query` payload as usual.
+  Over a join, the WHERE routes as for a plain join (left-only, right-only, both sides, OR
+  across sides). The recheck runs on the join rows **before** the reduction.
 - **`yield_per` / `stream_results`** → forces drain-all (ignored for streaming purposes, like
   joins and two-phase mutations); raises nothing.
 
@@ -832,6 +838,13 @@ Construction tolerates the missing anchor (`Select._table` is left `None` until 
 fills it); at compile the columnless count falls back to fetching `object_id` so each matched
 page still yields exactly one row for `reduce()` to count (`len(rows)`, empties included —
 unlike `count(col)`, which counts non-empty cells).
+
+Over a join, the **onclause** gives the left table, not the operand (#430). The onclause
+column always belongs to the left table, so the answer has no doubt. Operand order cannot change
+it: `select(func.count(courses.c.title), func.sum(students.c.id)).join(students.c.enrolled_in)`
+has the left table `students`. `select(func.count()).join(students.c.enrolled_in)` needs no
+`select_from()`. A `select_from(t)` must name the onclause's table, and each operand must belong
+to the left or the right table. Otherwise `join()` raises `ArgumentError`.
 
 `select_from()` is **aggregate-only in v1**: calling it on a plain column/table select raises
 `ArgumentError`. It is not a general explicit-FROM mechanism — that (and explicit-FROM joins it
