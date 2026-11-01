@@ -1117,8 +1117,7 @@ class NotionCompiler(SQLCompiler):
         projection = self._compiler_state.stmt._projection
 
         if select._is_aggregate:
-            raw_cols = self._compiler_state.stmt._raw_columns
-            operand_names = [f.column.name for f in raw_cols if f.column is not None]
+            operand_names = [c.name for c in select._operand_columns]
             # a pure COUNT(*) has no operand columns; fall back fetching object_id so
             # each matched page still yields one row for reduce() to count
             self._compiler_state.fetch_columns = operand_names or ["object_id"]

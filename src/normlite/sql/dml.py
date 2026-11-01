@@ -659,10 +659,7 @@ class Select(HasTable, ExecutableClauseElement):
             # anchor from the first aggregate carrying an operand column;
             # a JOIN onclause overrides it;
             # a pure COUNT(*) has none, .join() can resolve it
-            self._table = next(
-                (e.column.parent for e in entities if e.column is not None),
-                None,
-            )
+            self._table = next((c.parent for c in self._operand_columns), None,)
             return
 
         # A list of columns has been provided
@@ -722,6 +719,24 @@ class Select(HasTable, ExecutableClauseElement):
         if self._table is None:          # columnless COUNT(*) before select_from()
             return ()
         return (self._table, *(j.right for j in self._joins))
+
+    @property
+    def _operand_columns(self) -> list[Column]:
+        """Compute the columns in an aggregate SELECT from the function operands.
+
+        The property delivers a deduped list of columns.
+        It returns an empty list on a plain SELECT.
+        Columnless operands (e.g. COUNT(*)) are removed. Thus by construction
+        the returned list does not contain any ``None`` values.
+
+        .. versionadded:: 0.14.0
+        """
+
+        if self._raw_columns is None:
+            return []
+
+        operand_cols = [f.column for f in self._raw_columns if f.column is not None]
+        return list(dict.fromkeys(operand_cols))
 
     @generative
     def select_from(self, table: Table) -> Self:
@@ -830,11 +845,7 @@ class Select(HasTable, ExecutableClauseElement):
 
         if self._is_aggregate:
             # Operand column parents must be either the left or right table
-            op_col_parents = {
-                e.column.parent
-                for e in self._raw_columns
-                if e.column is not None
-            }
+            op_col_parents = {c.parent for c in self._operand_columns}
             unallowed_op_parents = op_col_parents - {self._table, self._right}
             if unallowed_op_parents:
                 unallowed = ", ".join(sorted(t.name for t in unallowed_op_parents))

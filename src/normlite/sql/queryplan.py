@@ -58,6 +58,7 @@ class _PlanShape(Enum):
     JOIN = auto()
     MODIFY = auto()
     SELECT = auto()
+    AGGREGATE_JOIN = auto()
 
 #: Notion's maximum (and default) result page size. A ``Scan`` pulls the store
 #: one Notion page at a time, so this is the operator's batch granularity.
@@ -898,7 +899,18 @@ class Planner:
     def _get_shape(self) -> _PlanShape:
         """Classify the current execution context and provide the shape for the plan."""
 
-        if self._invoked_stmt.is_select and self._invoked_stmt._is_aggregate:
+        if (
+            self._invoked_stmt.is_select
+            and self._invoked_stmt._is_aggregate
+            and self._invoked_stmt._joins
+        ):
+            return _PlanShape.AGGREGATE_JOIN
+
+        if (
+            self._invoked_stmt.is_select
+            and self._invoked_stmt._is_aggregate
+            and not self._invoked_stmt._joins
+        ):
             return _PlanShape.AGGREGATE
 
         if self._invoked_stmt.is_select and not self._invoked_stmt._joins:
@@ -939,14 +951,26 @@ class Planner:
 
         return Aggregate(plan, self._invoked_stmt._raw_columns)
 
-    def _plan_join(self) -> VolcanoOperator:
+    def _build_join_plan(self, projection: list[Column]) -> tuple[VolcanoOperator, list[Column]]:
+        """Build the join pipeline shared by a SELECT join and an aggregate join.
+
+        The pipeline is ``Scan, Scan -> HashJoin -> [Filter] -> [Sort]``.
+        The caller adds its own top operator.
+
+        .. versionadded:: 0.14.0
+
+        Args:
+            projection (list[Column]): The columns the join row carries before
+                the widened columns.
+
+        Returns:
+            tuple[VolcanoOperator, list[Column]]: The pipeline and the widened
+            columns. The caller uses the widened columns to decide on a ``Project``.
+        """
         planning_context = self._ctx.compiled.planning_context
         recheck_where = planning_context.recheck_where
 
-        # SELECT with JOIN
         join: Join = self._invoked_stmt._joins[0]
-        projection = list(self._invoked_stmt._projection)
-
         # build the widened columns collection:
         # left JOIN: fetch_columns() minus pre_widening_fetch_columns
         # right JOIN: the widened right columns
@@ -1009,14 +1033,7 @@ class Planner:
             sorts = compile_residual_sorts(residual_sorts)
             plan = Sort(source=plan, schema=plan.result_schema, sorts=sorts, table=join.right)
 
-        # add a project on top, if the compiler widened:
-        # a join with nothing widened keeps today's plan exactly.
-        if widened:
-            qualified_projection = SchemaInfo.from_join_output(*projection).columns
-            projected = Project(plan, [c.name for c in qualified_projection])
-            plan = projected
-
-        return plan
+        return plan, widened
 
     def _plan_select(self) -> VolcanoOperator:
         recheck_where = self._ctx.compiled.planning_context.recheck_where
@@ -1053,6 +1070,26 @@ class Planner:
 
         # plain SELECT: put the projection at the top of the plan
         return Project(plan, self._ctx.compiled.planning_context.pre_widening_fetch_columns)
+
+    def _plan_aggregate_join(self) -> VolcanoOperator:
+        # aggregate join: Scan, Scan -> HashJoin -> [Filter] -> Aggregate
+        # Aggregate makes its own output schema, so no Project is necessary.
+        plan, _ = self._build_join_plan(self._invoked_stmt._operand_columns)
+        return Aggregate(plan, self._invoked_stmt._raw_columns)
+
+    def _plan_join(self) -> VolcanoOperator:
+        # SELECT join: Scan, Scan -> HashJoin -> [Filter] -> [Sort] -> [Project]
+        projection = list(self._invoked_stmt._projection)
+
+        plan, widened = self._build_join_plan(projection)
+        # add a project on top, if the compiler widened:
+        # a join with nothing widened keeps today's plan exactly.
+        if widened:
+            qualified_projection = SchemaInfo.from_join_output(*projection).columns
+            projected = Project(plan, [c.name for c in qualified_projection])
+            plan = projected
+
+        return plan
 
     def _plan_modify(self) -> VolcanoOperator:
         # DELETE/UPDATE: Scan -> [Filter] -> ModifyTable
@@ -1153,5 +1190,6 @@ class Planner:
             _PlanShape.SELECT: self._plan_select,
             _PlanShape.JOIN: self._plan_join,
             _PlanShape.MODIFY: self._plan_modify,
+            _PlanShape.AGGREGATE_JOIN: self._plan_aggregate_join,
         }
         return builders[self._get_shape()]()
