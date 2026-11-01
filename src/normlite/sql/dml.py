@@ -723,6 +723,24 @@ class Select(HasTable, ExecutableClauseElement):
             return ()
         return (self._table, *(j.right for j in self._joins))
 
+    @property
+    def _operand_columns(self) -> list[Column]:
+        """Compute the columns in an aggregate SELECT from the function operands.
+
+        The property delivers a deduped list of columns.
+        It returns an empty list on a plain SELECT.
+        Columnless operands (e.g. COUNT(*)) are removed. Thus by construction
+        the returned list does not contain any ``None`` values.
+
+        .. versionadded:: 0.14.0
+        """
+
+        if self._raw_columns is None:
+            return []
+
+        operand_cols = [f.column for f in self._raw_columns if f.column is not None]
+        return list(dict.fromkeys(operand_cols))
+
     @generative
     def select_from(self, table: Table) -> Self:
         """Return a new select() construct with the given FROM clause
