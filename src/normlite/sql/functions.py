@@ -24,7 +24,7 @@ from normlite.exceptions import ArgumentError
 from normlite.sql.base import generative
 from normlite.sql.elements import ColumnElement
 from normlite.sql.schema import Column
-from normlite.sql.type_api import Float, Integer, Number, Numeric, TypeEngine
+from normlite.sql.type_api import Float, Integer, Number, TypeEngine
 
 
 def _get_operand_columns(
