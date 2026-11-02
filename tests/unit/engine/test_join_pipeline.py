@@ -2285,3 +2285,171 @@ def test_operands_with_the_same_column_name_on_both_tables_each_read_their_own_t
     assert len(rows) == 1
     assert rows[0]["sum"] == 4
     assert rows[0]["count"] == 1
+
+
+def test_sum_over_an_outer_join_counts_a_left_value_once_per_joined_row(
+    engine: Engine,
+):
+    # Arrange: Ada (id 1) takes Math and Physics, Bob (id 2) takes Physics,
+    # Cy (id 4) takes no course.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                name="Ada", id=1, enrolled_in=[math_oid, physics_oid]
+            )
+        )
+        connection.execute(
+            insert(students).values(name="Bob", id=2, enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", id=4, enrolled_in=[]))
+
+        # Act
+        rows = connection.execute(
+            select(func.sum(students.c.id)).outerjoin(students.c.enrolled_in)
+        ).fetchall()
+
+    # Assert: one row. Ada counts two times, Bob one time, Cy one time
+    # (his row has no course, but it stays in the join).
+    assert len(rows) == 1
+    assert rows[0]["sum"] == 8
+
+
+def test_count_over_an_outer_join_counts_a_row_with_no_right_page(
+    engine: Engine,
+):
+    # Arrange: Ada (id 1) takes Math and Physics, Bob (id 2) takes Physics,
+    # Cy (id 4) takes no course.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                name="Ada", id=1, enrolled_in=[math_oid, physics_oid]
+            )
+        )
+        connection.execute(
+            insert(students).values(name="Bob", id=2, enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", id=4, enrolled_in=[]))
+
+        # Act
+        rows = connection.execute(
+            select(func.count()).outerjoin(students.c.enrolled_in)
+        ).fetchall()
+
+    # Assert: one row. Ada counts two times, Bob one time, Cy one time
+    # (count() counts a row, also a row with no course).
+    assert len(rows) == 1
+    assert rows[0]["count"] == 4
+
+
+def test_count_of_a_right_table_column_over_an_outer_join_skips_a_missing_right_cell(
+    engine: Engine,
+):
+    # Arrange: Ada (id 1) takes Math and Physics, Bob (id 2) takes Physics,
+    # Cy (id 4) takes no course.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                name="Ada", id=1, enrolled_in=[math_oid, physics_oid]
+            )
+        )
+        connection.execute(
+            insert(students).values(name="Bob", id=2, enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", id=4, enrolled_in=[]))
+
+        # Act
+        rows = connection.execute(
+            select(func.count(courses.c.title)).outerjoin(students.c.enrolled_in)
+        ).fetchall()
+
+    # Assert: one row. Ada counts two times, Bob one time, Cy not at all
+    # (his row has no course, so the title cell has no value).
+    assert len(rows) == 1
+    assert rows[0]["count"] == 3
