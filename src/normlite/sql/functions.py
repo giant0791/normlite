@@ -24,7 +24,35 @@ from normlite.exceptions import ArgumentError
 from normlite.sql.base import generative
 from normlite.sql.elements import ColumnElement
 from normlite.sql.schema import Column
-from normlite.sql.type_api import Float, Integer, Number, Numeric, TypeEngine
+from normlite.sql.type_api import Float, Integer, Number, TypeEngine
+
+
+def _get_operand_columns(
+    raw_columns: Optional[tuple[FunctionElement, ...]]
+) -> list[Column]:
+    """Compute the operand columns of the aggregate functions.
+
+    The returned list is deduped and keeps the order of the functions.
+    Columnless operands (e.g. COUNT(*)) are removed. Thus by construction
+    the returned list does not contain any ``None`` values.
+    This order is the order of the operand cells in the rows that
+    :class:`normlite.sql.dml.AggregateExecution` reduces.
+
+    .. versionadded:: 0.14.0
+
+    Args:
+        raw_columns (Optional[tuple[FunctionElement, ...]]): The aggregate
+            functions in the SELECT projection. If ``None``, the returned
+            value is an empty list.
+
+    Returns:
+        list[Column]: The deduped list of operand columns.
+    """
+    if raw_columns is None:
+        return []
+
+    operand_cols = [f.column for f in raw_columns if f.column is not None]
+    return list(dict.fromkeys(operand_cols))
 
 class _FuncNameSpace:
     """Function namespace exposed as :attr:`func` to users.
