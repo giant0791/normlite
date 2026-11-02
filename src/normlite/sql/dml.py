@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 from normlite.notiondbapi import Error
-from normlite.sql.functions import FunctionElement
+from normlite.sql.functions import FunctionElement, _get_operand_columns
 
 from types import MappingProxyType
 from typing import Any, Mapping, NoReturn, Optional, Protocol, Self, Sequence, Union, TYPE_CHECKING
@@ -722,21 +722,15 @@ class Select(HasTable, ExecutableClauseElement):
 
     @property
     def _operand_columns(self) -> list[Column]:
-        """Compute the columns in an aggregate SELECT from the function operands.
+        """Compute the deduped operand columns of an aggregate SELECT.
 
-        The property delivers a deduped list of columns.
         It returns an empty list on a plain SELECT.
-        Columnless operands (e.g. COUNT(*)) are removed. Thus by construction
-        the returned list does not contain any ``None`` values.
+        See :func:`normlite.sql.functions._get_operand_columns`.
 
         .. versionadded:: 0.14.0
         """
 
-        if self._raw_columns is None:
-            return []
-
-        operand_cols = [f.column for f in self._raw_columns if f.column is not None]
-        return list(dict.fromkeys(operand_cols))
+        return _get_operand_columns(self._raw_columns)
 
     @generative
     def select_from(self, table: Table) -> Self:
@@ -1054,13 +1048,17 @@ class AggregateExecution:
 
     def reduce(self, rows: list[tuple]) -> tuple[SchemaInfo, list[tuple[Any, ...]]]:
         # **IMPORTANT** - Resolve each func to the pos of its operand column in
-        # the order-preserving deduped list of operand names. This mirrors how the
-        # drained row is laid out (SchemaInfo.from_table -> _merge_names dedup over
-        # the compiler's aggregate fetch_columns); the two MUST stay in lockstep.
-        operand_order = list(dict.fromkeys(
-            f.column.name for f in self._raw_columns
-            if f.column is not None         # guard against column-less func.count()
-        ))
+        # _get_operand_columns(). The drained row has the same order: the compiler
+        # builds the single-table fetch_columns and the planner builds the join
+        # projection from Select._operand_columns, which calls the same helper.
+        # All three MUST stay in lockstep.
+        # The key is (table, column), not the bare column name: on a join, a left
+        # and a right operand can have the same column name (#476).
+        # Compare keys, never Column objects: Column.__eq__ builds a SQL expression.
+        operand_order = [
+            (c.parent.name, c.name)
+            for c in _get_operand_columns(self._raw_columns)
+        ]
         synthetic_row = tuple()
 
         for func in self._raw_columns:
@@ -1073,7 +1071,7 @@ class AggregateExecution:
                 continue
 
             # position of the column to apply the function on
-            pos = operand_order.index(func.column.name)
+            pos = operand_order.index((func.column.parent.name, func.column.name))
             synthetic_row += (self._compute_func_result(pos, func, rows), )
 
         return self._result_schema, [synthetic_row]
