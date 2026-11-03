@@ -1169,9 +1169,15 @@ class NotionCompiler(SQLCompiler):
             self._compiler_state.fetch_columns,
             query_params
         )
-        if select._joins and not select._is_aggregate:
+        if select._joins:
             right = select._joins[0].right
-            right_fetch = [c.name for c in projection if c.parent is right]
+            if select._is_aggregate:
+                # for an aggregate, the right Scan fetches the right-table operands (#476)
+                right_fetch = [c.name for c in select._operand_columns if c.parent is right]
+            else:
+                # otherwise, the right Scan fetches the righ-table columns in the projections
+                right_fetch = [c.name for c in projection if c.parent is right]
+
             widened_right = self._widen_fetch_columns(
                 self.planning_context.recheck_where,
                 right,

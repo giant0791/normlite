@@ -48,11 +48,22 @@ class PlanningContext:
     """
 
     widened_right_columns: list[str] = field(default_factory=list)
-    """The right columns in a JOIN the recheck reads that the projection does not name.
+    """The right-table columns that only the recheck needs.
 
-    This field holds names only. The compiler builds it with
-    :meth:`normlite.sql.compiler.NotionCompiler._widen_fetch_columns` without ``query_params`` so
-    the right ``Scan`` sends no ``filter_properties``.
+    The recheck can read a right-table column that the join row does not
+    carry. The compiler adds that column to the right ``Scan`` and records
+    its name here. The join row starts from a base list:
+
+    * a plain join: the right-table columns of the projection;
+    * an aggregate join: the right-table operands.
+
+    This field holds only the names that the compiler adds after the base
+    list, never the base list itself. The planner appends these columns to
+    the join row, so a base column here would appear two times.
+
+    The compiler builds this field with
+    :meth:`normlite.sql.compiler.NotionCompiler._widen_fetch_columns` and
+    no ``query_params``, so the right ``Scan`` sends no ``filter_properties``.
 
     .. versionadded:: 0.14.0
     """
