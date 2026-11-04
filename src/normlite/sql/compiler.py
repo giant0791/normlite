@@ -1010,21 +1010,6 @@ class NotionCompiler(SQLCompiler):
             dict: The pushable left conjuncts as a Notion filter object, pruned to
                 Notion's nesting cap. ``{}`` if no left conjunct is pushable.
         """
-        if select._is_aggregate:
-            # This site raises unconditionally. It is NOT a depth
-            # refusal. The aggregate plan shape has no join: it
-            # scans the left table only. So the recheck cannot read
-            # the right-side terms of this WHERE. An aggregate over
-            # a join is out of scope (CONTEXT.md, "Aggregate query
-            # -- clause interaction guards"). Today an aggregate
-            # join crashes before it reaches this site (#430).
-            raise CompileError(
-                "An aggregate SELECT cannot compile a WHERE clause that "
-                "spans both sides of a join: an aggregate over a join "
-                "is not supported. Run a plain SELECT over the join and "
-                "reduce client-side."
-            )
-
         # Split the AND per conjunct. A left-only, pushable conjunct narrows
         # phase-1 to a SUPERSET of the answer, so we return it for the push. The
         # right conjuncts stay out of the filter. The recheck holds the WHOLE AND,
