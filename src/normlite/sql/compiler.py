@@ -1010,21 +1010,6 @@ class NotionCompiler(SQLCompiler):
             dict: The pushable left conjuncts as a Notion filter object, pruned to
                 Notion's nesting cap. ``{}`` if no left conjunct is pushable.
         """
-        if select._is_aggregate:
-            # This site raises unconditionally. It is NOT a depth
-            # refusal. The aggregate plan shape has no join: it
-            # scans the left table only. So the recheck cannot read
-            # the right-side terms of this WHERE. An aggregate over
-            # a join is out of scope (CONTEXT.md, "Aggregate query
-            # -- clause interaction guards"). Today an aggregate
-            # join crashes before it reaches this site (#430).
-            raise CompileError(
-                "An aggregate SELECT cannot compile a WHERE clause that "
-                "spans both sides of a join: an aggregate over a join "
-                "is not supported. Run a plain SELECT over the join and "
-                "reduce client-side."
-            )
-
         # Split the AND per conjunct. A left-only, pushable conjunct narrows
         # phase-1 to a SUPERSET of the answer, so we return it for the push. The
         # right conjuncts stay out of the filter. The recheck holds the WHOLE AND,
@@ -1169,14 +1154,23 @@ class NotionCompiler(SQLCompiler):
             self._compiler_state.fetch_columns,
             query_params
         )
-        if select._joins and not select._is_aggregate:
+        if select._joins:
             right = select._joins[0].right
-            right_fetch = [c.name for c in projection if c.parent is right]
+            if select._is_aggregate:
+                # for an aggregate, the right Scan fetches the right-table operands (#476)
+                right_fetch = [c.name for c in select._operand_columns if c.parent is right]
+            else:
+                # otherwise, the right Scan fetches the right-table columns in the projection
+                right_fetch = [c.name for c in projection if c.parent is right]
+
             widened_right = self._widen_fetch_columns(
                 self.planning_context.recheck_where,
                 right,
                 right_fetch,
             )
+            self.planning_context.widened_left_columns = self._compiler_state.fetch_columns[
+                len(self.planning_context.pre_widening_fetch_columns):
+            ]
             self.planning_context.widened_right_columns = widened_right[len(right_fetch):]
 
         if select._order_by.has_expression():

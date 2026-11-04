@@ -951,7 +951,7 @@ class Planner:
 
         return Aggregate(plan, self._invoked_stmt._raw_columns)
 
-    def _build_join_plan(self, projection: list[Column]) -> tuple[VolcanoOperator, list[Column]]:
+    def _build_join_plan(self, projection: list[Column]) -> VolcanoOperator:
         """Build the join pipeline shared by a SELECT join and an aggregate join.
 
         The pipeline is ``Scan, Scan -> HashJoin -> [Filter] -> [Sort]``.
@@ -964,21 +964,20 @@ class Planner:
                 the widened columns.
 
         Returns:
-            tuple[VolcanoOperator, list[Column]]: The pipeline and the widened
-            columns. The caller uses the widened columns to decide on a ``Project``.
+            VolcanoOperator: The join pipeline. The caller reads
+            ``widened_left_columns`` and ``widened_right_columns`` from the
+            :class:`~normlite.sql.context.PlanningContext` to decide on a ``Project``.
         """
         planning_context = self._ctx.compiled.planning_context
         recheck_where = planning_context.recheck_where
 
         join: Join = self._invoked_stmt._joins[0]
-        # build the widened columns collection:
-        # left JOIN: fetch_columns() minus pre_widening_fetch_columns
-        # right JOIN: the widened right columns
+        # the columns that only the recheck needs: the left-table names first,
+        # then the right-table names
         widened = [
             *(
                 join.left.c[name]
-                for name in self._ctx.compiled.fetch_columns()
-                if name not in planning_context.pre_widening_fetch_columns
+                for name in planning_context.widened_left_columns
             ),
             *(
                 join.right.c[name]
@@ -1033,7 +1032,7 @@ class Planner:
             sorts = compile_residual_sorts(residual_sorts)
             plan = Sort(source=plan, schema=plan.result_schema, sorts=sorts, table=join.right)
 
-        return plan, widened
+        return plan
 
     def _plan_select(self) -> VolcanoOperator:
         recheck_where = self._ctx.compiled.planning_context.recheck_where
@@ -1074,17 +1073,18 @@ class Planner:
     def _plan_aggregate_join(self) -> VolcanoOperator:
         # aggregate join: Scan, Scan -> HashJoin -> [Filter] -> Aggregate
         # Aggregate makes its own output schema, so no Project is necessary.
-        plan, _ = self._build_join_plan(self._invoked_stmt._operand_columns)
+        plan = self._build_join_plan(self._invoked_stmt._operand_columns)
         return Aggregate(plan, self._invoked_stmt._raw_columns)
 
     def _plan_join(self) -> VolcanoOperator:
         # SELECT join: Scan, Scan -> HashJoin -> [Filter] -> [Sort] -> [Project]
         projection = list(self._invoked_stmt._projection)
 
-        plan, widened = self._build_join_plan(projection)
+        plan = self._build_join_plan(projection)
         # add a project on top, if the compiler widened:
         # a join with nothing widened keeps today's plan exactly.
-        if widened:
+        planning_context = self._ctx.compiled.planning_context
+        if planning_context.widened_left_columns or planning_context.widened_right_columns:
             qualified_projection = SchemaInfo.from_join_output(*projection).columns
             projected = Project(plan, [c.name for c in qualified_projection])
             plan = projected
