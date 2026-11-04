@@ -2567,3 +2567,62 @@ def test_sum_over_an_inner_join_with_an_and_where_across_both_sides_reduces_only
     # Assert: one row. Only the (Ada, Physics) pair survives the WHERE.
     assert len(rows) == 1
     assert rows[0]["sum"] == 1
+
+
+def test_sum_over_an_inner_join_with_an_or_where_across_both_sides_reduces_only_the_matching_pairs(
+    engine: Engine,
+):
+    # Arrange: Ada (id 1) takes Math and Physics, Bob (id 2) takes Physics,
+    # Cy (id 4) takes no course.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(
+                name="Ada", id=1, enrolled_in=[math_oid, physics_oid]
+            )
+        )
+        connection.execute(
+            insert(students).values(name="Bob", id=2, enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", id=4, enrolled_in=[]))
+
+        # Act
+        rows = connection.execute(
+            select(func.sum(students.c.id))
+            .join(students.c.enrolled_in)
+            .where(or_(students.c.id == 2, courses.c.title == "Math"))
+        ).fetchall()
+
+    # Assert: one row. The (Ada, Math) pair matches the right side, the
+    # (Bob, Physics) pair matches the left side. The (Ada, Physics) pair
+    # matches neither side.
+    assert len(rows) == 1
+    assert rows[0]["sum"] == 3
