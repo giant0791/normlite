@@ -47,6 +47,17 @@ class PlanningContext:
     ``result_columns()``, which drops the specials the row still needs.
     """
 
+    widened_left_columns: list[str] = field(default_factory=list)
+    """The left-table columns that only the recheck needs.
+
+    The compiler fills this field only for a join. It holds only the names
+    that the recheck adds to the left ``Scan``, never the base list. The base
+    list is :attr:`pre_widening_fetch_columns`. The planner appends these
+    columns to the join row.
+
+    .. versionadded:: 0.14.0
+    """
+
     widened_right_columns: list[str] = field(default_factory=list)
     """The right-table columns that only the recheck needs.
 
