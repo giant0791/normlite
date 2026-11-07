@@ -8,6 +8,7 @@ from normlite.sql.elements import and_, or_
 from normlite.sql.functions import func
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Integer, String
+from tests.utils.spies import QueryPayloadRecordingClient
 
 
 def test_inner_join_pairs_left_and_right_rows(engine: Engine):
@@ -2626,3 +2627,203 @@ def test_sum_over_an_inner_join_with_an_or_where_across_both_sides_reduces_only_
     # matches neither side.
     assert len(rows) == 1
     assert rows[0]["sum"] == 3
+
+
+# Behavior under test:
+# On an inner join, a WHERE that reads only right-table columns goes to Notion
+# with the query on the right data source, and the rows do not change.
+def test_inner_join_sends_a_right_only_where_with_the_right_data_source_query(
+    engine: Engine, monkeypatch
+):
+    # Arrange: Ada takes Math and Physics, Bob takes only Physics.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(name="Ada", enrolled_in=[math_oid, physics_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[physics_oid])
+        )
+
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .join(students.c.enrolled_in)
+            .where(courses.c.title == "Math")
+        ).fetchall()
+
+    # Assert: the right query carries the filter, the left query does not.
+    filter_by_data_source = {
+        path_params["data_source_id"]: (payload or {}).get("filter")
+        for path_params, payload in zip(spy.path_params_seen, spy.payloads_seen)
+    }
+    assert filter_by_data_source == {
+        students.get_data_source_id(): None,
+        courses.get_data_source_id(): {"property": "title", "title": {"equals": "Math"}},
+    }
+    assert [(row.name, row.title) for row in rows] == [("Ada", "Math")]
+
+
+# Behavior under test:
+# On an outer join, a WHERE that reads only right-table columns does not go to
+# Notion: the query on the right data source carries no filter.
+def test_outer_join_sends_no_filter_with_the_right_data_source_query(
+    engine: Engine, monkeypatch
+):
+    # Arrange: Ada takes Math, Bob takes Physics, Cy takes no course.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(insert(students).values(name="Ada", enrolled_in=[math_oid]))
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", enrolled_in=[]))
+
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .outerjoin(students.c.enrolled_in)
+            .where(courses.c.title == "Math")
+        ).fetchall()
+
+    # Assert: neither query carries a filter; the client-side check still
+    # keeps only the Math pair.
+    filter_by_data_source = {
+        path_params["data_source_id"]: (payload or {}).get("filter")
+        for path_params, payload in zip(spy.path_params_seen, spy.payloads_seen)
+    }
+    assert filter_by_data_source == {
+        students.get_data_source_id(): None,
+        courses.get_data_source_id(): None,
+    }
+    assert [(row.name, row.title) for row in rows] == [("Ada", "Math")]
+
+
+
+# Behavior under test:
+# On an inner join, a right-only `!=` WHERE goes to Notion with the right data
+# source query, and a right page with a valueless cell still drops out (#384).
+def test_inner_join_with_a_right_not_equal_where_drops_the_right_page_with_a_valueless_cell(
+    engine: Engine, monkeypatch
+):
+    # Arrange: Ada takes Math (5 credits), Bob takes Physics (6 credits),
+    # Cy takes Choir, which has no credits value.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("credits", Integer()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        def add_course(title, credits):
+            return (
+                connection.execute(
+                    insert(courses)
+                    .values(title=title, credits=credits)
+                    .returning(courses.c.object_id)
+                )
+                .first()
+                .object_id
+            )
+
+        math_oid = add_course("Math", 5)
+        physics_oid = add_course("Physics", 6)
+        choir_oid = add_course("Choir", None)
+        connection.execute(insert(students).values(name="Ada", enrolled_in=[math_oid]))
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", enrolled_in=[choir_oid]))
+
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .join(students.c.enrolled_in)
+            .where(courses.c.credits != 5)
+        ).fetchall()
+
+    # Assert: the right query carries the filter, the left query does not.
+    filter_by_data_source = {
+        path_params["data_source_id"]: (payload or {}).get("filter")
+        for path_params, payload in zip(spy.path_params_seen, spy.payloads_seen)
+    }
+    assert filter_by_data_source[students.get_data_source_id()] is None
+    assert filter_by_data_source[courses.get_data_source_id()] is not None
+
+    # Assert: SQL `<>` against a NULL is UNKNOWN, so Cy's Choir pair drops out.
+    assert [(row.name, row.title) for row in rows] == [("Bob", "Physics")]

@@ -50,15 +50,20 @@ class QueryPayloadRecordingClient:
     A test reads the pushed ``filter`` from the payload that reaches Notion.
     The in-memory client has no nesting cap, so only the payload shows a
     filter that the real API rejects.
+
+    ``path_params_seen`` runs in parallel with ``payloads_seen``: entry ``i``
+    tells which data source received payload ``i``.
     """
 
     def __init__(self, wrapped):
         self._wrapped = wrapped
         self.payloads_seen = []
+        self.path_params_seen = []
 
     def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
         if endpoint == "data_sources" and request == "query":
             self.payloads_seen.append(payload)
+            self.path_params_seen.append(path_params)
         return self._wrapped(endpoint, request, path_params, query_params, payload)
 
     def __getattr__(self, name):
