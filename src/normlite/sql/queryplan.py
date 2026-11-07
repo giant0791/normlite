@@ -172,8 +172,9 @@ class HashJoin(VolcanoOperator):
 
     Both children are drained on the first :meth:`next` call and the right rows
     are hashed by ``object_id``, so ``yield_per`` cannot cascade through this
-    operator. Only the left child carries a Notion-side filter; the right child
-    is a full data-source scan (ADR-0021).
+    operator. Both children can carry a Notion-side filter. The right child
+    carries one only on an inner join; on an outer join it is a full
+    data-source scan (ADR-0021, #391).
 
     .. versionchanged:: 0.14.0
         Add ``widened`` constructor argument.
@@ -992,9 +993,14 @@ class Planner:
             join.onclause
         )
         left_child = Scan(self._ctx.operation, self._ctx.parameters, schema=left_schema)
+        actual_values = dict(self._ctx.resolved_params or {})
+        right_parameters = self._ctx._bind_params(
+            self._ctx.compiled_dict["right_params"],
+            actual_values,
+        )
         right_child = Scan(
             self._ctx.operation,
-            parameters={"path_params": {"data_source_id": join.right.get_data_source_id()}},
+            parameters=right_parameters,
             schema=right_schema,
         )
         plan = HashJoin(

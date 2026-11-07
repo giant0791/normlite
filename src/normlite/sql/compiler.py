@@ -928,14 +928,17 @@ class NotionCompiler(SQLCompiler):
 
         return widened
 
-    def _compile_select_where(self, select: Select) -> dict:
-        """Route the WHERE of a SELECT and return the filter to push.
+    def _compile_select_where(self, select: Select) -> tuple[dict, dict]:
+        """Route the WHERE of a SELECT and return the filters to push, one per side.
 
-        The caller must ensure the SELECT has a WHERE clause. The caller puts the
-        filter in ``payload['filter']`` only if it is not empty.
+        The caller must ensure the SELECT has a WHERE clause. The caller puts each
+        filter in its payload only if it is not empty: the left filter in
+        ``payload['filter']``, the right filter in ``right_params['payload']['filter']``.
 
         Returns:
-            dict: The Notion filter object to push. ``{}`` if nothing can be pushed.
+            tuple[dict, dict]: ``(left_filter, right_filter)``. Each is a Notion
+                filter object, or ``{}`` if nothing can be pushed on that side.
+                The right filter is ``{}`` unless the SELECT has an inner join.
         """
         expression = select._whereclause.expression
         parent_tables = _get_expression_parent_tables(expression)
@@ -971,8 +974,10 @@ class NotionCompiler(SQLCompiler):
         # UNCONDITIONALLY: on every path below, whichever table it reads, and
         # whether or not a part of it is pushed. A push is a HINT that never
         # decides (ADR-0022). The recheck decides, and #384 is the case where only
-        # the recheck drops the row. A left conjunct is a RECHECK (it is pushed and
-        # applied again); a right conjunct is a RESIDUAL (nothing pushes it).
+        # the recheck drops the row. A pushed conjunct is a RECHECK (it is pushed
+        # and applied again): a left conjunct, and a right-only WHERE on an inner
+        # join (#391). A conjunct that nothing pushes is a RESIDUAL: a right
+        # conjunct on an outer join, or a WHERE that is not pushable.
         # `Planner.plan` finds the table from the predicate itself.
         #
         # Set it BEFORE the dispatch: the prune drops leaves after they registered
@@ -993,22 +998,37 @@ class NotionCompiler(SQLCompiler):
             # A WHERE that reads only the left table: push it with the WHERE step
             # that a SELECT shares with DELETE and UPDATE. The step prunes the
             # filter to Notion's nesting cap, so a part of it can stay unpushed.
-            return select._whereclause._compiler_dispatch(self)
+            return select._whereclause._compiler_dispatch(self), {}
 
-        # Nothing to push: the WHERE reads only the right table, it is not
-        # pushable, or it is an OR across both sides of the join. The recheck
-        # answers it all.
-        return {}
+        if (
+            select._joins
+            and not select._joins[0].isouter
+            and parent_tables == {select._right}
+            and _is_pushable(expression)
+        ):
+            # A WHERE that reads only the right table of an inner join: push it into
+            # the right Scan. A removed right page removes only pairs, and the
+            # recheck drops the same pairs. An outer join pushes nothing: a push can
+            # turn a left row into a phantom that the WHERE then keeps (CONTEXT.md,
+            # "Right `Scan` push"). A SELECT with no join has no right Scan.
+            return {}, select._whereclause._compiler_dispatch(self)
 
-    def _compile_join_where(self, select: Select, expression: ColumnElement) -> dict:
-        """Return the left-table conjuncts of a join WHERE as the filter to push.
+        # Nothing to push: the WHERE reads only the right table of an outer join,
+        # it is not pushable, or it is an OR across both sides of the join. The
+        # recheck answers it all.
+        return {}, {}
+
+    def _compile_join_where(self, select: Select, expression: ColumnElement) -> tuple[dict, dict]:
+        """Return the conjuncts of a join WHERE to push, one filter per side.
 
         ``expression`` is an AND that reads both sides of the join. The caller
         routed it and set ``recheck_where`` before this call.
 
         Returns:
-            dict: The pushable left conjuncts as a Notion filter object, pruned to
-                Notion's nesting cap. ``{}`` if no left conjunct is pushable.
+            tuple[dict, dict]: ``(left_filter, right_filter)``. The left filter holds
+                the pushable left conjuncts as a Notion filter object, pruned to
+                Notion's nesting cap, or ``{}`` if no left conjunct is pushable.
+                The right filter is always ``{}``: no right conjunct is pushed yet.
         """
         # Split the AND per conjunct. A left-only, pushable conjunct narrows
         # phase-1 to a SUPERSET of the answer, so we return it for the push. The
@@ -1025,7 +1045,7 @@ class NotionCompiler(SQLCompiler):
                 if _get_expression_parent_tables(clause) == {select._table} and _is_pushable(clause)
             ]
 
-        return _prune(_normalize_filter("and", left_conjuncts))
+        return _prune(_normalize_filter("and", left_conjuncts)), {}
 
     def _compile_order_by(self, select: Select, order_by_clause: OrderByClause) -> tuple[list[dict], tuple[ColumnElement, ...]]:
         # Sort pushability is POSITIONAL: only the LEADING RUN of left-table
@@ -1063,12 +1083,16 @@ class NotionCompiler(SQLCompiler):
         payload = {
             'page_size': 100,        # Notion imposed max page size
         }
+        right_payload = {
+            'page_size': 100,        # Notion imposed max page size
+        }
 
-        # add a new top-level 'joins' key to store the joins, if any
+        # add new top-level join-specific keys to store the joins and right params, if any
         joins = [j._compiler_dispatch(self) for j in select._joins]
         if joins:
             # emit only when non-empty
             compiled_dict["joins"] = joins
+            compiled_dict["right_params"] = {}
 
         table = select.get_table()
         if table is None:
@@ -1095,9 +1119,12 @@ class NotionCompiler(SQLCompiler):
             compiled_dict["path_params"] = path_params
 
         if select._whereclause.has_expression():
-            filter_obj = self._compile_select_where(select)
-            if filter_obj:
-                payload['filter'] = filter_obj
+            left_filter, right_filter = self._compile_select_where(select)
+            if left_filter:
+                payload['filter'] = left_filter
+
+            if right_filter:
+                right_payload["filter"] = right_filter
 
         projection = self._compiler_state.stmt._projection
 
@@ -1173,6 +1200,12 @@ class NotionCompiler(SQLCompiler):
             ]
             self.planning_context.widened_right_columns = widened_right[len(right_fetch):]
 
+            # add right-side join specific params
+            compiled_dict["right_params"]["path_params"] = {
+                "data_source_id": right.get_data_source_id()
+            }
+            compiled_dict["right_params"]["payload"] = right_payload
+
         if select._order_by.has_expression():
             order_by_clause = select._order_by
             parent_tables = _get_expression_parent_tables(order_by_clause)
@@ -1194,7 +1227,7 @@ class NotionCompiler(SQLCompiler):
             if sorts_obj:
                 payload['sorts'] = sorts_obj
 
-        compiled_dict ["payload"] = payload
+        compiled_dict["payload"] = payload
 
         if query_params:
             compiled_dict['query_params'] = query_params

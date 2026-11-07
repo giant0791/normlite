@@ -506,7 +506,10 @@ class ExecutionContext:
             else:
                 self.payload = self._bind_params(template, resolved_params[0])
 
-        if self.invoked_stmt.is_update:
+        # Keep the binds that the payload did not consume: the Planner binds a
+        # second template from them (ADR-0023). UPDATE has `update_params`, and a
+        # join SELECT has `right_params` (#391).
+        if self.invoked_stmt.is_update or 'right_params' in self.compiled_dict:
             self.resolved_params = dict(resolved_params[0])
 
         self._assert_all_params_consumed(resolved_params)
@@ -539,6 +542,11 @@ class ExecutionContext:
         #    BindParameter. SELECT, DELETE and UPDATE all recheck through the
         #    plan (#412, #413). This exemption trusts the Planner: it must place
         #    a Filter for every `recheck_where`, or this check hides the orphans.
+        #    On an inner join, the Planner also binds the right Scan's
+        #    `right_params` from `resolved_params` (#391). Its binds are
+        #    COLUMN_FILTER binds of `recheck_where`, so this exemption covers
+        #    them too. A right bind that never reaches `right_params` is hidden
+        #    here: the right query sends no bound value for it.
         # 2. The Planner reads UPDATE's COLUMN_VALUE binds. It binds the SET
         #    template from `resolved_params` after pre_exec (ADR-0023). This
         #    does not depend on a WHERE. INSERT has no such consumer: an INSERT
