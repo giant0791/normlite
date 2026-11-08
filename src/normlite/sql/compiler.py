@@ -1025,14 +1025,14 @@ class NotionCompiler(SQLCompiler):
         routed it and set ``recheck_where`` before this call.
 
         Returns:
-            tuple[dict, dict]: ``(left_filter, right_filter)``. The left filter holds
-                the pushable left conjuncts as a Notion filter object, pruned to
-                Notion's nesting cap, or ``{}`` if no left conjunct is pushable.
-                The right filter is always ``{}``: no right conjunct is pushed yet.
+            tuple[dict, dict]: ``(left_filter, right_filter)``. The left and right filters hold
+                the pushable left and right conjuncts as a Notion filter object, pruned to
+                Notion's nesting cap, or ``{}`` if no conjunct is pushable.
+                The right filter is ``{}`` for outer joins.
         """
         # Split the AND per conjunct. A left-only, pushable conjunct narrows
         # phase-1 to a SUPERSET of the answer, so we return it for the push. The
-        # right conjuncts stay out of the filter. The recheck holds the WHOLE AND,
+        # right conjuncts are pushed for inner joins. The recheck holds the WHOLE AND,
         # the pushed conjuncts INCLUDED, because a push never decides (ADR-0022).
         # (See #311, #363.)
         #
@@ -1044,8 +1044,22 @@ class NotionCompiler(SQLCompiler):
                 for clause in expression.clauses
                 if _get_expression_parent_tables(clause) == {select._table} and _is_pushable(clause)
             ]
+            left_filter = _prune(_normalize_filter("and", left_conjuncts))
 
-        return _prune(_normalize_filter("and", left_conjuncts)), {}
+            join = select._joins[0]
+            if join.isouter:
+                # on an outer join, the compiler pushes nothing into the right Scan:
+                # the guard is the contract.
+                right_filter = {}
+            else:
+                right_conjuncts = [
+                    clause._compiler_dispatch(self)
+                    for clause in expression.clauses
+                    if _get_expression_parent_tables(clause) == {join.right} and _is_pushable(clause)
+                ]
+                right_filter = _prune(_normalize_filter("and", right_conjuncts))
+
+        return left_filter, right_filter
 
     def _compile_order_by(self, select: Select, order_by_clause: OrderByClause) -> tuple[list[dict], tuple[ColumnElement, ...]]:
         # Sort pushability is POSITIONAL: only the LEADING RUN of left-table
