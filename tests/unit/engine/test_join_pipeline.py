@@ -2827,3 +2827,137 @@ def test_inner_join_with_a_right_not_equal_where_drops_the_right_page_with_a_val
 
     # Assert: SQL `<>` against a NULL is UNKNOWN, so Cy's Choir pair drops out.
     assert [(row.name, row.title) for row in rows] == [("Bob", "Physics")]
+
+
+# Behavior under test:
+# On an inner join, a WHERE that is an AND over both sides goes to Notion per
+# side: each data source query carries only the conjunct that reads its table,
+# and the rows do not change.
+def test_inner_join_sends_each_conjunct_of_a_spanning_and_with_its_own_data_source_query(
+    engine: Engine, monkeypatch
+):
+    # Arrange: Ada and Bob both take Math and Physics.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(name="Ada", enrolled_in=[math_oid, physics_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[math_oid, physics_oid])
+        )
+
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .join(students.c.enrolled_in)
+            .where((students.c.name == "Ada") & (courses.c.title == "Math"))
+        ).fetchall()
+
+    # Assert: each query carries only the conjunct on its own table.
+    filter_by_data_source = {
+        path_params["data_source_id"]: (payload or {}).get("filter")
+        for path_params, payload in zip(spy.path_params_seen, spy.payloads_seen)
+    }
+    assert filter_by_data_source == {
+        students.get_data_source_id(): {"property": "name", "title": {"equals": "Ada"}},
+        courses.get_data_source_id(): {"property": "title", "title": {"equals": "Math"}},
+    }
+    assert [(row.name, row.title) for row in rows] == [("Ada", "Math")]
+
+
+# Behavior under test:
+# On an outer join, a WHERE that is an AND over both sides sends its left
+# conjunct with the left data source query and no filter with the right data
+# source query, and the rows do not change.
+def test_outer_join_sends_no_filter_with_the_right_data_source_query_for_a_spanning_and(
+    engine: Engine, monkeypatch
+):
+    # Arrange: Ada and Bob both take Math and Physics.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(name="Ada", enrolled_in=[math_oid, physics_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[math_oid, physics_oid])
+        )
+
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .outerjoin(students.c.enrolled_in)
+            .where((students.c.name == "Ada") & (courses.c.title == "Math"))
+        ).fetchall()
+
+    # Assert: only the left query carries a filter.
+    filter_by_data_source = {
+        path_params["data_source_id"]: (payload or {}).get("filter")
+        for path_params, payload in zip(spy.path_params_seen, spy.payloads_seen)
+    }
+    assert filter_by_data_source == {
+        students.get_data_source_id(): {"property": "name", "title": {"equals": "Ada"}},
+        courses.get_data_source_id(): None,
+    }
+    assert [(row.name, row.title) for row in rows] == [("Ada", "Math")]
