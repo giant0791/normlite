@@ -122,6 +122,11 @@ Translates a DML/DDL AST into a `compiled_dict` — a JSON-like dict with keys `
 write operation and the write payload template for **ModifyTable**. Named placeholders (`:param`) are
 resolved at execution time by `ExecutionContext`.
 
+On a join, `compiled_dict` also carries `right_params`: the parameter template of the **right
+`Scan`** (`path_params`, `payload`, `query_params`). It has the same shape as `<kind>_params`
+(ADR-0023). `ExecutionContext` binds only the left template. The **Planner** binds `right_params`
+from `resolved_params` and gives the result to the right `Scan` (#391).
+
 **The compiler's user is the Planner**, not the Notion client. One SQL statement runs as a
 **Query plan**: a flow of several Notion calls. The compiler emits **every input the statement
 decides**; the Planner builds the Operators from them and adds only what the execution decides
@@ -134,8 +139,11 @@ and the **PlanningContext** (AST). See [[adr-0024-the-compiler-emits-the-planner
 widened list; `PlanningContext.pre_widening_fetch_columns` is the snapshot taken **before** the
 widening, and `Project` trims to it. A DELETE/UPDATE with no WHERE fetches the title only.
 A join widens **per side** (#433). The left side widens `fetch_columns` and `filter_properties`.
-The right `Scan` sends no `filter_properties`, so the right side widens only the planner's
-schemas: the compiler writes the added right names to `PlanningContext.widened_right_columns`.
+The compiler writes the added right names to `PlanningContext.widened_right_columns`. Today the
+right `Scan` sends no `filter_properties`. After #448 the right side uses the **same two rules** as
+the left: the projection gate (a non-empty strict subset of the right user columns) and the
+widening. The right `filter_properties` goes in `right_params['query_params']`. A right side with
+no user column to fetch sends none, so its `Scan` fetches every column.
 The join adds `Project` only when a side is widened.
 _Avoid_: "narrowing" for this step (it adds columns).
 
@@ -1240,6 +1248,25 @@ Under equality those rows are violations; under ⊇ they are slack, which is wha
 Slack is the unit both differential instruments report in, and it is no longer hypothetical:
 `number.does_not_equal` over `{"number": null}` is the **first and, as measured, only** leaf-level
 source of it.
+
+### Right `Scan` push: a push changes the join's input (#391)
+A left push removes left rows. A **right push** removes right pages, so it changes the **input** of
+the join, not its output. A relation ID with no right page contributes no pair (ADR-0007).
+
+- **Inner join: the push is sound.** A removed right page removes only pairs, and the recheck
+  drops the same pairs. ⊇ holds when the right filter follows the same push rules as the left.
+- **Outer join: the push is NOT sound by default.** A left row whose every partner is removed
+  becomes a **phantom**. A phantom-keeping WHERE (`is_null()` on the right) then keeps a row that
+  SQL drops. Example: Bob is enrolled in Art only, Art has `effort == 5`, and the WHERE is
+  `(effort != 5) | title.is_null()`. Without the push, Bob is dropped. With `effort != 5` pushed,
+  Bob is a phantom and is kept. **The push manufactures a row.**
+- **The gate is the join kind** (`isouter`), not the shape of the WHERE. An outer join sends no
+  right `filter`. It still sends the right `filter_properties`: fewer columns remove no page, so
+  they make no phantom.
+- **Exception (#447, optional):** if the whole WHERE rejects every phantom, the outer join gives
+  the same rows as the inner join, and the inner-join push rules apply.
+- The left push is the same for both join kinds. The left side is the preserved side, and SQL
+  also removes a left row that a left-only conjunct rejects.
 
 ### `is_empty()` vs `is_null()` — the overloaded-emptiness split
 **Flagged ambiguity — "empty" meant two different things.** They are now separate operators and
