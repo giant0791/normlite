@@ -1003,7 +1003,7 @@ class NotionCompiler(SQLCompiler):
         if (
             select._joins
             and not select._joins[0].isouter
-            and parent_tables == {select._right}
+            and parent_tables == {select._joins[0].right}
             and _is_pushable(expression)
         ):
             # A WHERE that reads only the right table of an inner join: push it into
