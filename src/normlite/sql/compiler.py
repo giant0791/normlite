@@ -1048,8 +1048,8 @@ class NotionCompiler(SQLCompiler):
 
             join = select._joins[0]
             if join.isouter:
-                # on an outer join, the compiler pushes nothing into the right Scan:
-                # the guard is the contract.
+                # On an outer join, push nothing into the right Scan.
+                # The gate is the join kind (CONTEXT.md, "Right `Scan` push", #391).
                 right_filter = {}
             else:
                 right_conjuncts = [
