@@ -3139,3 +3139,71 @@ def test_inner_join_sends_a_three_level_right_conjunct_pruned_to_two_levels(
         ]
     }
     assert [(row.name, row.title) for row in rows] == [("Ada", "Physics")]
+
+
+# Behavior under test:
+# On an outer join, a phantom-sensitive WHERE returns the same rows as SQL:
+# a student whose course fails the WHERE does not come back as a phantom.
+def test_outer_join_with_a_phantom_sensitive_where_returns_no_extra_phantom_rows(
+    engine: Engine,
+):
+    # Arrange: Ada takes Math (effort 3), Bob takes Physics (effort 5),
+    # Cy points at a course that does not exist (a phantom).
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("effort", Integer()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    bogus_course_oid = str(uuid.uuid4())  # never inserted -> no join partner
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Math", effort=3)
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Physics", effort=5)
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(insert(students).values(name="Ada", enrolled_in=[math_oid]))
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[physics_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Cy", enrolled_in=[bogus_course_oid])
+        )
+
+        # Act
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .outerjoin(students.c.enrolled_in)
+            .where((courses.c.effort != 5) | courses.c.title.is_null())
+        ).fetchall()
+
+    # Assert: SQL keeps Ada (3 != 5) and Cy (a real phantom, title IS NULL).
+    # SQL drops Bob: his course is Physics, so effort != 5 is FALSE and the
+    # title is not NULL. Bob must not come back as ("Bob", None).
+    assert sorted((row.name, row.title) for row in rows) == [
+        ("Ada", "Math"),
+        ("Cy", None),
+    ]
