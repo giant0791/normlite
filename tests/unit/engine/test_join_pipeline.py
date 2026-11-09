@@ -4,7 +4,7 @@ from normlite import Relation, ForeignKey
 from normlite.engine.base import Engine
 from normlite.sql.compiler import NotionCompiler
 from normlite.sql.dml import insert, select
-from normlite.sql.elements import and_, or_
+from normlite.sql.elements import and_, not_, or_
 from normlite.sql.functions import func
 from normlite.sql.schema import Column, MetaData, Table
 from normlite.sql.type_api import Integer, String
@@ -2961,3 +2961,181 @@ def test_outer_join_sends_no_filter_with_the_right_data_source_query_for_a_spann
         courses.get_data_source_id(): None,
     }
     assert [(row.name, row.title) for row in rows] == [("Ada", "Math")]
+
+
+def _insert_ada_and_bob_with_math_and_physics(engine: Engine):
+    """Create courses and students. Ada (id 1) takes Math and Physics, Bob
+    (id 2) takes Physics. Math has effort 3, Physics has effort 5."""
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("effort", Integer()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("id", Integer()),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math", effort=3).returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics", effort=5).returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(name="Ada", id=1, enrolled_in=[math_oid, physics_oid])
+        )
+        connection.execute(
+            insert(students).values(name="Bob", id=2, enrolled_in=[physics_oid])
+        )
+
+    return students, courses
+
+
+def _filter_by_data_source(spy: QueryPayloadRecordingClient) -> dict:
+    return {
+        path_params["data_source_id"]: (payload or {}).get("filter")
+        for path_params, payload in zip(spy.path_params_seen, spy.payloads_seen)
+    }
+
+
+# Behavior under test (pinning, #445):
+# An aggregate over an inner join with an AND over both sides sends each
+# conjunct with the data source query of its own table, and the aggregate
+# does not change.
+def test_sum_over_an_inner_join_sends_each_conjunct_of_a_spanning_and_with_its_own_data_source_query(
+    engine: Engine, monkeypatch
+):
+    # Arrange
+    students, courses = _insert_ada_and_bob_with_math_and_physics(engine)
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(func.sum(students.c.id))
+            .join(students.c.enrolled_in)
+            .where(and_(students.c.id < 2, courses.c.title == "Physics"))
+        ).fetchall()
+
+    # Assert: only the (Ada, Physics) pair survives, as in the #478 test.
+    assert _filter_by_data_source(spy) == {
+        students.get_data_source_id(): {"property": "id", "number": {"less_than": 2}},
+        courses.get_data_source_id(): {"property": "title", "title": {"equals": "Physics"}},
+    }
+    assert len(rows) == 1
+    assert rows[0]["sum"] == 1
+
+
+# Behavior under test (pinning, #445):
+# On an inner join, a conjunct that is an OR across both sides goes with
+# neither data source query, and the rows do not change.
+def test_inner_join_sends_a_cross_side_or_conjunct_with_neither_data_source_query(
+    engine: Engine, monkeypatch
+):
+    # Arrange
+    students, courses = _insert_ada_and_bob_with_math_and_physics(engine)
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .join(students.c.enrolled_in)
+            .where(
+                (students.c.id < 3)
+                & or_(students.c.name == "Bob", courses.c.title == "Math")
+            )
+        ).fetchall()
+
+    # Assert: only the left-only conjunct goes to Notion.
+    assert _filter_by_data_source(spy) == {
+        students.get_data_source_id(): {"property": "id", "number": {"less_than": 3}},
+        courses.get_data_source_id(): None,
+    }
+    assert sorted((row.name, row.title) for row in rows) == [
+        ("Ada", "Math"),
+        ("Bob", "Physics"),
+    ]
+
+
+# Behavior under test (pinning, #445):
+# On an inner join, a right-only NOT conjunct of a spanning AND does not go
+# with the right data source query, and the rows are correct.
+def test_inner_join_sends_no_right_filter_for_a_right_only_not_conjunct(
+    engine: Engine, monkeypatch
+):
+    # Arrange
+    students, courses = _insert_ada_and_bob_with_math_and_physics(engine)
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .join(students.c.enrolled_in)
+            .where((students.c.name == "Ada") & not_(courses.c.title == "Math"))
+        ).fetchall()
+
+    # Assert
+    assert _filter_by_data_source(spy) == {
+        students.get_data_source_id(): {"property": "name", "title": {"equals": "Ada"}},
+        courses.get_data_source_id(): None,
+    }
+    assert [(row.name, row.title) for row in rows] == [("Ada", "Physics")]
+
+
+# Behavior under test (pinning, #445):
+# On an inner join, a right conjunct that nests 3 levels deep goes with the
+# right data source query pruned to Notion's 2-level cap, and the rows do not
+# change.
+def test_inner_join_sends_a_three_level_right_conjunct_pruned_to_two_levels(
+    engine: Engine, monkeypatch
+):
+    # Arrange
+    students, courses = _insert_ada_and_bob_with_math_and_physics(engine)
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+    three_levels = or_(
+        and_(
+            or_(courses.c.title == "Math", courses.c.title == "Physics"),
+            courses.c.effort > 4,
+        ),
+        courses.c.effort == 9,
+    )
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .join(students.c.enrolled_in)
+            .where((students.c.name == "Ada") & three_levels)
+        ).fetchall()
+
+    # Assert: the inner `or` (level 3) is dropped from its `and` parent. The
+    # `and` keeps one child, so the right filter is weaker: a superset.
+    assert _filter_by_data_source(spy)[courses.get_data_source_id()] == {
+        "or": [
+            {"property": "effort", "number": {"greater_than": 4}},
+            {"property": "effort", "number": {"equals": 9}},
+        ]
+    }
+    assert [(row.name, row.title) for row in rows] == [("Ada", "Physics")]
