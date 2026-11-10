@@ -3431,3 +3431,125 @@ def test_join_asks_the_right_data_source_also_for_the_right_column_its_where_rea
     right_query_params = query_params_by_data_source[courses.get_data_source_id()]
     assert right_query_params.get("filter_properties") == ["title", "effort"]
     assert [(row.name, row.title) for row in rows] == [("Ada", "Physics")]
+
+
+# Behavior under test (#448):
+# An aggregate join asks the right data source only for the right column
+# that the aggregate reads, and the result does not change.
+def test_aggregate_join_asks_the_right_data_source_only_for_its_right_operand(
+    engine: Engine, monkeypatch
+):
+    # Arrange: `courses` has two columns besides `effort`. Ada takes Math
+    # (effort 3) and Physics (effort 5). Bob takes only Math.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("effort", Integer()),
+        Column("room", String()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Math", effort=3, room="A1")
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Physics", effort=5, room="B2")
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(
+            insert(students).values(name="Ada", enrolled_in=[math_oid, physics_oid])
+        )
+        connection.execute(insert(students).values(name="Bob", enrolled_in=[math_oid]))
+
+    spy = QueryParamsRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act: the aggregate reads only `effort` from the right table.
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(func.sum(courses.c.effort)).join(students.c.enrolled_in)
+        ).fetchall()
+
+    # Assert: the query on the right data source asks for `effort` only.
+    query_params_by_data_source = {
+        path_params["data_source_id"]: query_params or {}
+        for path_params, query_params in zip(spy.path_params_seen, spy.query_params_seen)
+    }
+    right_query_params = query_params_by_data_source[courses.get_data_source_id()]
+    assert right_query_params.get("filter_properties") == ["effort"]
+    assert rows[0]["sum"] == 3 + 5 + 3
+
+
+# Behavior under test (#448):
+# A join that projects no right user column, only the right object_id, sends
+# no filter_properties with the right query, and the rows do not change.
+def test_join_that_projects_only_the_right_object_id_sends_no_right_filter_properties(
+    engine: Engine, monkeypatch
+):
+    # Arrange: `courses` has two columns besides the title. Ada takes Math.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+        Column("effort", Integer()),
+        Column("room", String()),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses)
+                .values(title="Math", effort=3, room="A1")
+                .returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(insert(students).values(name="Ada", enrolled_in=[math_oid]))
+
+    spy = QueryParamsRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act: the only right column in the projection is `object_id`.
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.object_id).join(students.c.enrolled_in)
+        ).fetchall()
+
+    # Assert: the query on the right data source carries no filter_properties,
+    # so `object_id` never reaches Notion and no empty list is sent.
+    query_params_by_data_source = {
+        path_params["data_source_id"]: query_params or {}
+        for path_params, query_params in zip(spy.path_params_seen, spy.query_params_seen)
+    }
+    right_query_params = query_params_by_data_source[courses.get_data_source_id()]
+    assert "filter_properties" not in right_query_params
+    assert [(row.name, row.object_id) for row in rows] == [("Ada", math_oid)]
