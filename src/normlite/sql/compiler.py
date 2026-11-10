@@ -389,6 +389,70 @@ def _normalize_filter(op: str, clauses: list[dict]) -> dict:
 
     return {op: spliced}
 
+def _is_null_rejecting(expression: ColumnElement, left: Table, right: Table) -> bool:
+    """``True`` if expression is null-rejecting on the right table.
+
+    A null-rejecting expression **drops** phantom rows (rows manufactured by the join,
+    where unmatched columns are null-padded).
+    This function is used to determine whether an outer join can be simplified into an inner join.
+    In this case, for the outer join the same push rules hold as for the inner join.
+
+    A WHERE of a left outer join is null-rejecting on the right table if:
+        1. An OR is null-rejecting if every disjunct is.
+        2. An AND is null-rejecting if any conjunct is.
+        3. A leaf on a right column is null-rejecting unless its operator is IS_NULL.
+        4. A leaf on a left column is not null-rejecting.
+        5. A NOT, or any other node, is not null-rejecting (safe default).
+
+    .. note:: Safe Default
+        A NOT is not null-rejecting. This under-approximates.
+        It sometimes gives up a valid push, but it never manufactures a row.
+        NOT is never pushable, so the real cost: only cases like ``~right_table.c.col_name.is_null()``
+        used as the null-rejecting conjunct.
+
+    Args:
+        expression (ColumnElement): The expression in the WHERE clause.
+        left (Table): The left table in the join.
+        right (Table): The right table in the join.
+
+    Returns:
+        bool: ``True`` if expression is null-rejecting on the right table.
+
+    .. versionadded:: 0.14.0
+    """
+    if (
+        isinstance(expression, BinaryExpression)
+        and expression.column.parent is left
+    ):
+        # a leaf on a left column is not null-rejecting
+        return False
+
+    if (
+        isinstance(expression, BinaryExpression)
+        and expression.operator is not Operator.IS_NULL
+        and expression.column.parent is right
+    ):
+        # a right leaf is null-rejecting unless its operator is IS_NULL
+        return True
+
+    if isinstance(expression, BooleanClauseList):
+        if expression.operator == "and":
+            # An AND is null-rejecting if any conjunct is
+            return any(
+                _is_null_rejecting(clause, left, right)
+                for clause in expression.clauses
+            )
+
+        if expression.operator == "or":
+            # An OR is null-rejecting if every disjunct is
+            return all(
+                _is_null_rejecting(clause, left, right)
+                for clause in expression.clauses
+            )
+
+    # A NOT, or any other node, is not null-rejecting (safe default)
+    return False
+
 class NotionCompiler(SQLCompiler):
     """Notion compiler for SQL statements.
 
@@ -975,9 +1039,10 @@ class NotionCompiler(SQLCompiler):
         # whether or not a part of it is pushed. A push is a HINT that never
         # decides (ADR-0022). The recheck decides, and #384 is the case where only
         # the recheck drops the row. A pushed conjunct is a RECHECK (it is pushed
-        # and applied again): a left conjunct, and a right-only WHERE on an inner
-        # join (#391). A conjunct that nothing pushes is a RESIDUAL: a right
-        # conjunct on an outer join, or a WHERE that is not pushable.
+        # and applied again): a left conjunct, and a right conjunct on an inner
+        # join (#391) or on a null-rejecting outer join (#447). A conjunct that
+        # nothing pushes is a RESIDUAL: a right conjunct of an outer join whose
+        # WHERE is not null-rejecting, or a WHERE that is not pushable.
         # `Planner.plan` finds the table from the predicate itself.
         #
         # Set it BEFORE the dispatch: the prune drops leaves after they registered
@@ -1002,20 +1067,28 @@ class NotionCompiler(SQLCompiler):
 
         if (
             select._joins
-            and not select._joins[0].isouter
             and parent_tables == {select._joins[0].right}
             and _is_pushable(expression)
         ):
-            # A WHERE that reads only the right table of an inner join: push it into
-            # the right Scan. A removed right page removes only pairs, and the
-            # recheck drops the same pairs. An outer join pushes nothing: a push can
-            # turn a left row into a phantom that the WHERE then keeps (CONTEXT.md,
-            # "Right `Scan` push"). A SELECT with no join has no right Scan.
-            return {}, select._whereclause._compiler_dispatch(self)
 
-        # Nothing to push: the WHERE reads only the right table of an outer join,
-        # it is not pushable, or it is an OR across both sides of the join. The
-        # recheck answers it all.
+            if not select._joins[0].isouter:
+                # A WHERE that reads only the right table of an inner join: push it into
+                # the right Scan. A removed right page removes only pairs, and the
+                # recheck drops the same pairs.
+                # A SELECT with no join has no right Scan.
+                return {}, select._whereclause._compiler_dispatch(self)
+
+            if (select._joins[0].isouter
+                and _is_null_rejecting(expression, select._table, select._joins[0].right)
+            ):
+                # A WHERE that is null-rejecting on the right table drops every
+                # phantom, so the outer join gives the inner-join rows. The
+                # inner-join push rules apply (#447).
+                return {}, select._whereclause._compiler_dispatch(self)
+
+        # Nothing to push: the WHERE reads only the right table of an outer join
+        # and is not null-rejecting, it is not pushable, or it is an OR across
+        # both sides of the join. The recheck answers it all.
         return {}, {}
 
     def _compile_join_where(self, select: Select, expression: ColumnElement) -> tuple[dict, dict]:
@@ -1028,11 +1101,13 @@ class NotionCompiler(SQLCompiler):
             tuple[dict, dict]: ``(left_filter, right_filter)``. The left and right filters hold
                 the pushable left and right conjuncts as a Notion filter object, pruned to
                 Notion's nesting cap, or ``{}`` if no conjunct is pushable.
-                The right filter is ``{}`` for outer joins.
+                The right filter is ``{}`` for an outer join whose WHERE is not
+                null-rejecting on the right table.
         """
         # Split the AND per conjunct. A left-only, pushable conjunct narrows
         # phase-1 to a SUPERSET of the answer, so we return it for the push. The
-        # right conjuncts are pushed for inner joins. The recheck holds the WHOLE AND,
+        # right conjuncts are pushed for an inner join, and for an outer join whose
+        # WHERE is null-rejecting on the right table (#447). The recheck holds the WHOLE AND,
         # the pushed conjuncts INCLUDED, because a push never decides (ADR-0022).
         # (See #311, #363.)
         #
@@ -1047,9 +1122,11 @@ class NotionCompiler(SQLCompiler):
             left_filter = _prune(_normalize_filter("and", left_conjuncts))
 
             join = select._joins[0]
-            if join.isouter:
-                # On an outer join, push nothing into the right Scan.
-                # The gate is the join kind (CONTEXT.md, "Right `Scan` push", #391).
+            if join.isouter and not _is_null_rejecting(expression, select._table, join.right):
+                # On an outer join, push nothing into the right Scan unless the
+                # WHERE is null-rejecting on the right table: a push can turn a
+                # left row into a phantom that the WHERE then keeps (CONTEXT.md,
+                # "Right `Scan` push", #447).
                 right_filter = {}
             else:
                 right_conjuncts = [

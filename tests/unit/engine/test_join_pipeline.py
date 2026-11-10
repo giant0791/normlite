@@ -2696,17 +2696,19 @@ def test_inner_join_sends_a_right_only_where_with_the_right_data_source_query(
 
 
 # Behavior under test:
-# On an outer join, a WHERE that reads only right-table columns does not go to
+# On an outer join, a right-only WHERE that keeps a phantom does not go to
 # Notion: the query on the right data source carries no filter.
 def test_outer_join_sends_no_filter_with_the_right_data_source_query(
     engine: Engine, monkeypatch
 ):
-    # Arrange: Ada takes Math, Bob takes Physics, Cy takes no course.
+    # Arrange: Ada takes Math (effort 3), Bob takes Physics (effort 5),
+    # Cy takes no course.
     metadata = MetaData()
     courses = Table(
         "courses",
         metadata,
         Column("title", String(is_title=True)),
+        Column("effort", Integer()),
     )
     students = Table(
         "students",
@@ -2719,14 +2721,18 @@ def test_outer_join_sends_no_filter_with_the_right_data_source_query(
     with engine.connect() as connection:
         math_oid = (
             connection.execute(
-                insert(courses).values(title="Math").returning(courses.c.object_id)
+                insert(courses)
+                .values(title="Math", effort=3)
+                .returning(courses.c.object_id)
             )
             .first()
             .object_id
         )
         physics_oid = (
             connection.execute(
-                insert(courses).values(title="Physics").returning(courses.c.object_id)
+                insert(courses)
+                .values(title="Physics", effort=5)
+                .returning(courses.c.object_id)
             )
             .first()
             .object_id
@@ -2745,11 +2751,12 @@ def test_outer_join_sends_no_filter_with_the_right_data_source_query(
         rows = connection.execute(
             select(students.c.name, courses.c.title)
             .outerjoin(students.c.enrolled_in)
-            .where(courses.c.title == "Math")
+            .where((courses.c.effort != 5) | courses.c.title.is_null())
         ).fetchall()
 
-    # Assert: neither query carries a filter; the client-side check still
-    # keeps only the Math pair.
+    # Assert: neither query carries a filter. The `is_null()` branch is TRUE
+    # on a phantom, so a push could add phantom rows. The client-side check
+    # keeps Ada (3 != 5) and Cy (a phantom, title IS NULL).
     filter_by_data_source = {
         path_params["data_source_id"]: (payload or {}).get("filter")
         for path_params, payload in zip(spy.path_params_seen, spy.payloads_seen)
@@ -2758,7 +2765,10 @@ def test_outer_join_sends_no_filter_with_the_right_data_source_query(
         students.get_data_source_id(): None,
         courses.get_data_source_id(): None,
     }
-    assert [(row.name, row.title) for row in rows] == [("Ada", "Math")]
+    assert sorted((row.name, row.title) for row in rows) == [
+        ("Ada", "Math"),
+        ("Cy", None),
+    ]
 
 
 
@@ -2892,73 +2902,6 @@ def test_inner_join_sends_each_conjunct_of_a_spanning_and_with_its_own_data_sour
     assert filter_by_data_source == {
         students.get_data_source_id(): {"property": "name", "title": {"equals": "Ada"}},
         courses.get_data_source_id(): {"property": "title", "title": {"equals": "Math"}},
-    }
-    assert [(row.name, row.title) for row in rows] == [("Ada", "Math")]
-
-
-# Behavior under test:
-# On an outer join, a WHERE that is an AND over both sides sends its left
-# conjunct with the left data source query and no filter with the right data
-# source query, and the rows do not change.
-def test_outer_join_sends_no_filter_with_the_right_data_source_query_for_a_spanning_and(
-    engine: Engine, monkeypatch
-):
-    # Arrange: Ada and Bob both take Math and Physics.
-    metadata = MetaData()
-    courses = Table(
-        "courses",
-        metadata,
-        Column("title", String(is_title=True)),
-    )
-    students = Table(
-        "students",
-        metadata,
-        Column("name", String(is_title=True)),
-        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
-    )
-    metadata.create_all(engine)
-
-    with engine.connect() as connection:
-        math_oid = (
-            connection.execute(
-                insert(courses).values(title="Math").returning(courses.c.object_id)
-            )
-            .first()
-            .object_id
-        )
-        physics_oid = (
-            connection.execute(
-                insert(courses).values(title="Physics").returning(courses.c.object_id)
-            )
-            .first()
-            .object_id
-        )
-        connection.execute(
-            insert(students).values(name="Ada", enrolled_in=[math_oid, physics_oid])
-        )
-        connection.execute(
-            insert(students).values(name="Bob", enrolled_in=[math_oid, physics_oid])
-        )
-
-    spy = QueryPayloadRecordingClient(engine._client)
-    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
-
-    # Act
-    with engine.connect() as connection:
-        rows = connection.execute(
-            select(students.c.name, courses.c.title)
-            .outerjoin(students.c.enrolled_in)
-            .where((students.c.name == "Ada") & (courses.c.title == "Math"))
-        ).fetchall()
-
-    # Assert: only the left query carries a filter.
-    filter_by_data_source = {
-        path_params["data_source_id"]: (payload or {}).get("filter")
-        for path_params, payload in zip(spy.path_params_seen, spy.payloads_seen)
-    }
-    assert filter_by_data_source == {
-        students.get_data_source_id(): {"property": "name", "title": {"equals": "Ada"}},
-        courses.get_data_source_id(): None,
     }
     assert [(row.name, row.title) for row in rows] == [("Ada", "Math")]
 
@@ -3207,3 +3150,160 @@ def test_outer_join_with_a_phantom_sensitive_where_returns_no_extra_phantom_rows
         ("Ada", "Math"),
         ("Cy", None),
     ]
+
+
+# Behavior under test (#447):
+# On an outer join, a WHERE that drops every phantom goes to Notion with the
+# query on the right data source, and the rows stay the same as SQL.
+def test_outer_join_sends_a_phantom_rejecting_right_where_with_the_right_data_source_query(
+    engine: Engine, monkeypatch
+):
+    # Arrange: Ada takes Math, Bob takes Physics, Cy takes no course
+    # (Cy is a phantom on an outer join).
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(insert(students).values(name="Ada", enrolled_in=[math_oid]))
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", enrolled_in=[]))
+
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .outerjoin(students.c.enrolled_in)
+            .where(courses.c.title == "Math")
+        ).fetchall()
+
+    # Assert: a phantom has title NULL, so `title == "Math"` is UNKNOWN on it
+    # and SQL drops it. The outer join gives the inner-join rows, so the right
+    # query carries the filter. The left query carries none.
+    assert _filter_by_data_source(spy) == {
+        students.get_data_source_id(): None,
+        courses.get_data_source_id(): {"property": "title", "title": {"equals": "Math"}},
+    }
+    assert [(row.name, row.title) for row in rows] == [("Ada", "Math")]
+
+
+# Behavior under test (#447):
+# On an outer join, an AND over both sides with a null-rejecting right
+# conjunct sends each conjunct with the data source query of its own table,
+# and the rows stay the same as SQL.
+def test_outer_join_sends_each_conjunct_of_a_null_rejecting_spanning_and_with_its_own_data_source_query(
+    engine: Engine, monkeypatch
+):
+    # Arrange: Ada takes Math and Physics, Bob takes Physics.
+    students, courses = _insert_ada_and_bob_with_math_and_physics(engine)
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .outerjoin(students.c.enrolled_in)
+            .where((students.c.name == "Ada") & (courses.c.title == "Math"))
+        ).fetchall()
+
+    # Assert: `title == "Math"` is UNKNOWN on a phantom, so the whole AND is
+    # null-rejecting. The outer join gives the inner-join rows, so each
+    # conjunct goes with the query of its own table.
+    assert _filter_by_data_source(spy) == {
+        students.get_data_source_id(): {"property": "name", "title": {"equals": "Ada"}},
+        courses.get_data_source_id(): {"property": "title", "title": {"equals": "Math"}},
+    }
+    assert [(row.name, row.title) for row in rows] == [("Ada", "Math")]
+
+
+# Behavior under test (pinning, #447):
+# On an outer join, a right `is_null()` WHERE is TRUE on a phantom, so it is
+# not null-rejecting: no query carries a filter, and the WHERE returns the
+# unmatched left rows (the anti-join, #366).
+def test_outer_join_with_a_right_is_null_where_sends_no_filter_and_returns_the_unmatched_left_rows(
+    engine: Engine, monkeypatch
+):
+    # Arrange: Ada takes Math, Bob takes Physics, Cy takes no course.
+    metadata = MetaData()
+    courses = Table(
+        "courses",
+        metadata,
+        Column("title", String(is_title=True)),
+    )
+    students = Table(
+        "students",
+        metadata,
+        Column("name", String(is_title=True)),
+        Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
+    )
+    metadata.create_all(engine)
+
+    with engine.connect() as connection:
+        math_oid = (
+            connection.execute(
+                insert(courses).values(title="Math").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        physics_oid = (
+            connection.execute(
+                insert(courses).values(title="Physics").returning(courses.c.object_id)
+            )
+            .first()
+            .object_id
+        )
+        connection.execute(insert(students).values(name="Ada", enrolled_in=[math_oid]))
+        connection.execute(
+            insert(students).values(name="Bob", enrolled_in=[physics_oid])
+        )
+        connection.execute(insert(students).values(name="Cy", enrolled_in=[]))
+
+    spy = QueryPayloadRecordingClient(engine._client)
+    monkeypatch.setattr(engine.raw_connection(), "_client", spy)
+
+    # Act
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(students.c.name, courses.c.title)
+            .outerjoin(students.c.enrolled_in)
+            .where(courses.c.title.is_null())
+        ).fetchall()
+
+    # Assert: a right filter would remove every right page, so every student
+    # would become a phantom and come back. Only Cy has no course.
+    assert _filter_by_data_source(spy) == {
+        students.get_data_source_id(): None,
+        courses.get_data_source_id(): None,
+    }
+    assert [(row.name, row.title) for row in rows] == [("Cy", None)]
