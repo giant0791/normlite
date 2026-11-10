@@ -11,6 +11,7 @@ from normlite._constants import SpecialColumns
 from normlite.notion_sdk.client import InMemoryNotionClient
 from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.notiondbapi.dbapi2_consts import DBAPITypeCode
+from normlite.notiondbapi.dbapi2 import InternalError
 from normlite.notiondbapi.resultset import ResultSet
 
 class _RowGetter:
@@ -658,3 +659,77 @@ def test_rs_real_life_db_notion_object_creates_rows_as_metadata(database_retriev
     assert not get_metadata(next(rs))                                           # archived
     assert not get_metadata(next(rs))                                           # in_trash
     assert get_metadata(next(rs)) == "2021-07-08T23:50:00.000Z"                 # created_time
+
+
+# Behavior under test:
+# A page that lacks a property the description asks for raises an
+# InternalError that names the missing column.
+def test_a_page_without_a_described_property_raises_an_error_that_names_the_column():
+    # Arrange: the description asks for `title` and `effort`. Notion returns a
+    # page that carries `title` only.
+    description = (
+        (SpecialColumns.NO_ID, DBAPITypeCode.ID, None, None, None, None, None),
+        ("title", DBAPITypeCode.TITLE, None, None, None, None, None),
+        ("effort", DBAPITypeCode.NUMBER, None, None, None, None, None),
+    )
+    notion_obj = {
+        "object": "list",
+        "type": "page_or_data_source",
+        "results": [
+            {
+                "object": "page",
+                "id": "680dee41-b447-451d-9d36-c6eaff13fb45",
+                "properties": {
+                    "title": {
+                        "id": "title",
+                        "type": "title",
+                        "title": [{"type": "text", "text": {"content": "Math"}}],
+                    },
+                },
+            },
+        ],
+    }
+
+    # Act / Assert
+    with pytest.raises(InternalError, match="effort"):
+        ResultSet.from_json(description, notion_obj)
+
+
+# Behavior under test:
+# A page that lacks several described properties raises an InternalError
+# that names every missing column.
+def test_a_page_without_several_described_properties_raises_an_error_that_names_every_column():
+    # Arrange: the description asks for `title`, `effort` and `room`. Notion
+    # returns a page that carries `title` only.
+    description = (
+        (SpecialColumns.NO_ID, DBAPITypeCode.ID, None, None, None, None, None),
+        ("title", DBAPITypeCode.TITLE, None, None, None, None, None),
+        ("effort", DBAPITypeCode.NUMBER, None, None, None, None, None),
+        ("room", DBAPITypeCode.RICH_TEXT, None, None, None, None, None),
+    )
+    notion_obj = {
+        "object": "list",
+        "type": "page_or_data_source",
+        "results": [
+            {
+                "object": "page",
+                "id": "680dee41-b447-451d-9d36-c6eaff13fb45",
+                "properties": {
+                    "title": {
+                        "id": "title",
+                        "type": "title",
+                        "title": [{"type": "text", "text": {"content": "Math"}}],
+                    },
+                },
+            },
+        ],
+    }
+
+    # Act
+    with pytest.raises(InternalError) as excinfo:
+        ResultSet.from_json(description, notion_obj)
+
+    # Assert: the message names both missing columns.
+    message = str(excinfo.value)
+    assert "effort" in message
+    assert "room" in message

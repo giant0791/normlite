@@ -7,15 +7,20 @@ class QueryParamsRecordingClient:
 
     The request that reaches Notion is the observable: the Planner copies
     ``ctx.parameters`` and never changes them in place.
+
+    ``path_params_seen`` runs in parallel with ``query_params_seen``: entry
+    ``i`` tells which data source received query params ``i``.
     """
 
     def __init__(self, wrapped):
         self._wrapped = wrapped
         self.query_params_seen = []
+        self.path_params_seen = []
 
     def __call__(self, endpoint, request, path_params=None, query_params=None, payload=None):
         if endpoint == "data_sources" and request == "query":
             self.query_params_seen.append(query_params)
+            self.path_params_seen.append(path_params)
         return self._wrapped(endpoint, request, path_params, query_params, payload)
 
     def __getattr__(self, name):
