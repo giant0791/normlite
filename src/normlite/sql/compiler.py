@@ -1171,6 +1171,7 @@ class NotionCompiler(SQLCompiler):
 
         path_params = {}
         query_params = {}
+        right_query_params = {}
         payload = {
             'page_size': 100,        # Notion imposed max page size
         }
@@ -1281,11 +1282,22 @@ class NotionCompiler(SQLCompiler):
                 # otherwise, the right Scan fetches the right-table columns in the projection
                 right_fetch = [c.name for c in projection if c.parent is right]
 
+            right_result_columns = [c for c in right_fetch if c not in SpecialColumns]
+            right_uc_names = [ruc.name for ruc in right.uc]
+
+            if (
+                right_result_columns
+                and len(right_result_columns) < len(right_uc_names)
+            ):
+                right_query_params["filter_properties"] = right_result_columns
+
             widened_right = self._widen_fetch_columns(
                 self.planning_context.recheck_where,
                 right,
                 right_fetch,
+                right_query_params
             )
+
             self.planning_context.widened_left_columns = self._compiler_state.fetch_columns[
                 len(self.planning_context.pre_widening_fetch_columns):
             ]
@@ -1296,6 +1308,7 @@ class NotionCompiler(SQLCompiler):
                 "data_source_id": right.get_data_source_id()
             }
             compiled_dict["right_params"]["payload"] = right_payload
+            compiled_dict["right_params"]["query_params"] = right_query_params
 
         if select._order_by.has_expression():
             order_by_clause = select._order_by
