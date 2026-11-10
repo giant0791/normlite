@@ -1260,11 +1260,41 @@ the join, not its output. A relation ID with no right page contributes no pair (
   SQL drops. Example: Bob is enrolled in Art only, Art has `effort == 5`, and the WHERE is
   `(effort != 5) | title.is_null()`. Without the push, Bob is dropped. With `effort != 5` pushed,
   Bob is a phantom and is kept. **The push manufactures a row.**
-- **The gate is the join kind** (`isouter`), not the shape of the WHERE. An outer join sends no
-  right `filter`. It still sends the right `filter_properties`: fewer columns remove no page, so
-  they make no phantom.
-- **Exception (#447, optional):** if the whole WHERE rejects every phantom, the outer join gives
-  the same rows as the inner join, and the inner-join push rules apply.
+- **The gate is the join kind plus the WHERE (#447).** An outer join sends no right `filter`
+  unless the whole WHERE is **null-rejecting** on the right table (see below). It always sends the
+  right `filter_properties`: fewer columns remove no page, so they make no phantom.
+- **Outer-join simplification (#447).** If the whole WHERE is null-rejecting on the right table,
+  it drops every phantom. Then the outer join gives the same rows as the inner join, and the
+  inner-join push rules apply: every pushable right conjunct is pushed. The conjunct that makes
+  the WHERE null-rejecting does not itself need to be pushable. Source: the "strong predicate" of
+  Galindo-Legaria & Rosenthal, "Outerjoin Simplification and Reordering for Query Optimization".
+
+**Null-rejecting.** A predicate is **null-rejecting on a table** if it is FALSE or UNKNOWN on
+every row where all columns of that table are NULL. The table is the **null-supplying** side of
+the join. A left outer join null-pads the right table, so today the table is always the right
+one. (A right outer join would null-pad the left table; normlite has none yet.) The literature
+also says "strong" or "null-intolerant"; normlite uses **null-rejecting** only. The property
+belongs to the predicate; **phantom** stays the name of the row.
+
+A WHERE of a left outer join is null-rejecting on the right table if:
+1. it is an OR and **every** disjunct is null-rejecting;
+2. it is an AND and **any** conjunct is null-rejecting;
+3. it is a leaf on a right column and its operator is **not** `IS_NULL` (every other operator is
+   UNKNOWN on a `None` cell, `is_empty()` included; `is_null()` is TRUE);
+4. a leaf on a left column is **not** null-rejecting: a phantom keeps its real left values;
+5. a NOT, or any other node, is **not** null-rejecting (**safe default**).
+
+- **Why the safe default for NOT.** A yes/no verdict does not compose through NOT:
+  `~title.is_null()` is null-rejecting, `~(students.name == "Ada")` is not, and the child of
+  each is not null-rejecting. The safe default under-approximates: it can give up a valid push,
+  but it never manufactures a row. NOT is never pushable, so the cost is small.
+- **Today the rule is a contract guard, not a live gate.** Every pushable right conjunct is
+  already null-rejecting: `_is_pushable` rejects `is_null()` and NOT, and `_ABSENT_AWARE` is
+  empty. So a top-level AND with a pushable right conjunct is always null-rejecting, and no public
+  query can tell the rule apart from "always push". The phantom hazard above pushes a
+  **disjunct**, and the compiler pushes only conjuncts. The rule goes live if `is_null()` becomes
+  pushable or `_ABSENT_AWARE` gets a member. The pin is
+  `test_outer_join_with_a_right_is_null_where_sends_no_filter_and_returns_the_unmatched_left_rows`.
 - The left push is the same for both join kinds. The left side is the preserved side, and SQL
   also removes a left row that a left-only conjunct rejects.
 
