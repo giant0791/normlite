@@ -157,6 +157,7 @@ class ResultSet:
 
         row = []
         properties = page.get("properties", {})
+        missing = []
 
         for desc_entry in description:
             col = desc_entry[0]
@@ -165,11 +166,25 @@ class ResultSet:
                 row.append(page.get(_SYSTEM_COLUMNS_PAGE[col]))
             else:
                 prop = properties.get(str(col))
+                if prop is None:
+                    missing.append(str(col))
+                    continue
+
                 typ = prop.get("type")
                 row.append(
                     {typ: prop[typ]}       # new contract as per issue [#290](https://github.com/giant0791/normlite/issues/290)
                     if typ else None
                 )
+
+        if missing:
+            from normlite.notiondbapi.dbapi2 import InternalError
+            missing_cols = ", ".join(f"'{name}'" for name in missing)
+            present_cols = ", ".join(f"'{name}'" for name in sorted(properties))
+            message_start = "Columns" if len(missing) > 1 else "Column"
+            raise InternalError(
+                f"{message_start} {missing_cols} not found in the properties of "
+                f"page {page.get('id')}. The page carries: [{present_cols}]."
+            )
 
         return tuple(row)
 
