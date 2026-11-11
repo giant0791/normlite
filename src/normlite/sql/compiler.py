@@ -453,6 +453,23 @@ def _is_null_rejecting(expression: ColumnElement, left: Table, right: Table) -> 
     # A NOT, or any other node, is not null-rejecting (safe default)
     return False
 
+
+def _raise_if_outside_from(select: Select) -> None:
+    # A table outside the FROM has no rows in the plan, so the compiler
+    # must not drop it silently (CONTEXT.md, "FROM tables").
+    if select._is_aggregate:
+        parent_tables = {c.parent for c in select._operand_columns}
+    else:
+        parent_tables = {c.parent for c in select._projection}
+
+    outside_tables = parent_tables - set(select._from_tables)
+    if outside_tables:
+        names_list = ", ".join(sorted(f"'{t.name}'" for t in outside_tables))
+        raise CompileError(
+            f"SELECT reads tables that are not in the FROM: {names_list}. "
+            "Add a join() to each table, or remove the columns and aggregates that read it."
+        )
+
 class NotionCompiler(SQLCompiler):
     """Notion compiler for SQL statements.
 
@@ -1195,6 +1212,8 @@ class NotionCompiler(SQLCompiler):
                 "Aggregate select has no FROM: columnless func.count() (COUNT(*)) "
                 "must be anchored with select_from(table)"
             )
+
+        _raise_if_outside_from(select)
 
         data_source_id = table.get_data_source_id()
         if data_source_id is None:
