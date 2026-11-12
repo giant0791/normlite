@@ -633,7 +633,7 @@ def test_where_on_a_table_outside_the_from_raises_compile_error(
         stmt.compile(NotionCompiler())
 
     assert str(exc_info.value) == (
-        "WHERE clause reads tables that are not in the FROM: courses. "
+        "WHERE clause reads tables that are not in the FROM: 'courses'. "
         "Add a join() to each table, or remove the conditions on it."
     )
 
@@ -655,7 +655,7 @@ def test_where_error_lists_only_the_outside_tables_sorted_by_name(
         stmt.compile(NotionCompiler())
 
     assert str(exc_info.value) == (
-        "WHERE clause reads tables that are not in the FROM: courses, teachers. "
+        "WHERE clause reads tables that are not in the FROM: 'courses', 'teachers'. "
         "Add a join() to each table, or remove the conditions on it."
     )
 
@@ -676,7 +676,7 @@ def test_aggregate_where_on_a_table_outside_the_from_raises_compile_error(
         stmt.compile(NotionCompiler())
 
     assert str(exc_info.value) == (
-        "WHERE clause reads tables that are not in the FROM: courses. "
+        "WHERE clause reads tables that are not in the FROM: 'courses'. "
         "Add a join() to each table, or remove the conditions on it."
     )
 
@@ -842,3 +842,64 @@ def test_aggregate_on_two_tables_without_join_names_the_table_outside_from(
     # Act / Assert
     with pytest.raises(CompileError, match='courses'):
         stmt.compile(NotionCompiler())
+
+
+def test_select_with_two_joins_says_one_join_per_select():
+    # Arrange
+    metadata = MetaData()
+    courses = Table('courses', metadata, Column('title', String(is_title=True)))
+    teachers = Table('teachers', metadata, Column('surname', String(is_title=True)))
+    students = Table(
+        'students',
+        metadata,
+        Column('name', String(is_title=True)),
+        Column('enrolled_in', Relation(), ForeignKey('courses.object_id')),
+        Column('tutored_by', Relation(), ForeignKey('teachers.object_id')),
+    )
+    for table in (students, courses, teachers):
+        table._sys_columns["data_source_id"]._value = str(uuid.uuid4())
+    stmt = select(students.c.name, courses.c.title).join(courses).join(teachers)
+
+    # Act / Assert
+    with pytest.raises(CompileError, match='one join per SELECT'):
+        stmt.compile(NotionCompiler())
+
+
+def test_select_with_a_join_and_an_outerjoin_says_one_join_per_select():
+    # Arrange
+    metadata = MetaData()
+    courses = Table('courses', metadata, Column('title', String(is_title=True)))
+    teachers = Table('teachers', metadata, Column('surname', String(is_title=True)))
+    students = Table(
+        'students',
+        metadata,
+        Column('name', String(is_title=True)),
+        Column('enrolled_in', Relation(), ForeignKey('courses.object_id')),
+        Column('tutored_by', Relation(), ForeignKey('teachers.object_id')),
+    )
+    for table in (students, courses, teachers):
+        table._sys_columns["data_source_id"]._value = str(uuid.uuid4())
+    stmt = select(students.c.name, courses.c.title).join(courses).outerjoin(teachers)
+
+    # Act / Assert
+    with pytest.raises(CompileError, match=r"'courses', 'teachers'.*one join per SELECT"):
+        stmt.compile(NotionCompiler())
+
+
+def test_projection_outside_from_is_reported_before_where_outside_from():
+    # Arrange
+    metadata = MetaData()
+    students = Table('students', metadata, Column('name', String(is_title=True)))
+    courses = Table('courses', metadata, Column('title', String(is_title=True)))
+    teachers = Table('teachers', metadata, Column('surname', String(is_title=True)))
+    for table in (students, courses, teachers):
+        table._sys_columns["data_source_id"]._value = str(uuid.uuid4())
+    stmt = (
+        select(students.c.name, courses.c.title)
+        .where(teachers.c.surname == 'Smith')
+    )
+
+    # Act / Assert
+    with pytest.raises(CompileError, match=r"^SELECT reads tables that are not in the FROM: 'courses'\."):
+        stmt.compile(NotionCompiler())
+
