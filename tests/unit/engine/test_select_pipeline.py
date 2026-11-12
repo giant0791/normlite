@@ -826,6 +826,6 @@ def test_a_where_on_a_table_outside_the_from_raises_and_returns_no_rows(engine: 
     # Assert
     assert rows is None
     assert str(exc_info.value) == (
-        "WHERE clause reads tables that are not in the FROM: courses. "
+        "WHERE clause reads tables that are not in the FROM: 'courses'. "
         "Add a join() to each table, or remove the conditions on it."
     )

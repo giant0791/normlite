@@ -1194,20 +1194,53 @@ keep their names; only the WHERE channel became a recheck.
 >
 > Step 3's vocabulary pass, named two paragraphs up, is done as well.
 
+### FROM tables
+A SELECT's **FROM tables** are its left table, then the right table of each `join()` or
+`outerjoin()`, in that order. The projection never adds a FROM table. `select(students, courses)`
+with no `join()` has one FROM table: `students`.
+
+`Select._from_tables` holds the FROM tables. It is a derived property of `_table` and `_joins`, not a
+stored value. It is empty for a columnless `COUNT(*)` with no `select_from()`. A `join()` takes its
+right table from the onclause `ForeignKey`, not from the projection.
+
+A SELECT reads only its FROM tables. The compiler checks three rules, in this fixed order. Each
+failure is a `CompileError` that names the problem and the remedy:
+
+1. **One join per SELECT.** A SELECT with more than one `join()` or `outerjoin()` fails. Only
+   `_joins[0]` executes, so the plan would drop the other joins. Real multi-join is #465.
+2. **The projection reads only the FROM tables.** A projection column or an aggregate operand on a
+   table outside the FROM fails. The message names the tables. The remedy is to add a `join()` or
+   to remove the columns.
+3. **The WHERE reads only the FROM tables.** See §"WHERE routing" below.
+
+The "Aggregate select has no FROM" guard runs before the three rules. A columnless `COUNT(*)` with
+no `select_from()` and a WHERE gets that error, not a FROM error.
+
+A `select(students).join(courses)` has no right-side column. It follows SQL: one flat row of
+`students` columns per matched pair (ADR-0006). A student with two courses gives two rows. An
+`outerjoin()` also keeps a student with no course, once. normlite does not remove duplicates.
+
+> **Status: BUILT (#469).** Decided in the #416 design session (2026-10-25, #416 comment
+> 6400398010). `_raise_if_invalid_from_tables(select)` in `compiler.py` holds the three rules.
+> `NotionCompiler.visit_select` calls it once, after the "Aggregate select has no FROM" guard and
+> before the reflection check. `Select._right` is gone.
+
 ### WHERE routing: a WHERE reads only the FROM tables
 The compiler routes each WHERE by its **parent tables**: the tables whose columns the expression
-reads. A SELECT's FROM tables are its left table and, on a join, its right table. A WHERE that reads
-a table outside the FROM **fails loud** with a `CompileError`. The message names the tables outside
-the FROM. The remedy is to add a `join()` or to remove the conjunct. This is the same policy as the
-guard for a WHERE with **no** parent table ("Cannot route WHERE expression").
+reads. A WHERE that reads a table outside the FROM tables (§"FROM tables") **fails loud** with a
+`CompileError`. The message names the tables outside the FROM. The remedy is to add a `join()` or to
+remove the conjunct. This is the same policy as the guard for a WHERE with **no** parent table
+("Cannot route WHERE expression").
 
 normlite does **not** read a table outside the FROM as an implicit cross join (SQL `FROM a, b`).
 normlite has no cross-join plan shape. A partial push with no recheck for the outside conjuncts is
 rejected too: it is still a silent drop.
 
-> **Status: BUILT (#463).** Decided in the #416 design session (2026-10-24). The guard is in
-> `NotionCompiler.visit_select`, next to the "Cannot route WHERE expression" guard. It applies to
-> every SELECT shape: plain, join and aggregate. #416 moves the guard as a pure move.
+> **Status: BUILT (#463, moved by #469).** Decided in the #416 design session (2026-10-24). #463
+> put the guard in `NotionCompiler.visit_select` on `{_table, _right}`. #469 moved it into
+> `_raise_if_invalid_from_tables(select)` as the third rule, on `Select._from_tables`. The
+> "Cannot route WHERE expression" guard stays in `_compile_select_where`. The rule applies to every
+> SELECT shape: plain, join and aggregate.
 
 ### Pushdown soundness (the invariant)
 **The push may over-keep; it must never under-keep.**
@@ -1508,8 +1541,9 @@ already exists at the fake-client level (`dml.py:1252`: "insert `title=None` is 
 client").
 
 ### Multi-join (what the plan unblocks)
-`Select._joins` is a flat tuple, of which only `_joins[0]` is ever executed — chaining
-`.join().join()` silently drops the rest. Under the plan, joins **nest as Operators** instead.
+`Select._joins` is a flat tuple, of which only `_joins[0]` is ever executed. Chaining
+`.join().join()` used to drop the rest silently. Since #469 it fails loud with a `CompileError`
+(§"FROM tables", rule 1). Under the plan, joins **nest as Operators** instead (#465).
 
 **Chained** joins (`a JOIN b ON a.b_ref`, then `b JOIN c ON b.c_ref`) are the reason plan-owned
 I/O is load-bearing: `c`'s page IDs are unknowable until `b`'s pages are retrieved, so the join

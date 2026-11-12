@@ -454,7 +454,7 @@ def test_join_where_error_does_not_list_the_right_table(
         stmt.compile(NotionCompiler())
 
     assert str(exc_info.value) == (
-        "WHERE clause reads tables that are not in the FROM: teachers. "
+        "WHERE clause reads tables that are not in the FROM: 'teachers'. "
         "Add a join() to each table, or remove the conditions on it."
     )
 

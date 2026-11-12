@@ -592,12 +592,6 @@ class Select(HasTable, ExecutableClauseElement):
     .. versionadded:: 0.14.0
     """
 
-    _right: Optional[Table] = None
-    """Optional right table if a JOIN-clause is added.
-
-    .. versionadded:: 0.11.0
-    """
-
     _raw_columns: tuple[FunctionElement, ...]
     """Optional list of functions supplied as synthentic columns.
 
@@ -646,8 +640,7 @@ class Select(HasTable, ExecutableClauseElement):
             if isinstance(entities[0], Table) and isinstance(entities[1], Table):
                 # select columns from multiple tables: join case
                 self._table = entities[0]
-                self._right = entities[1]
-                self._projection = [*self._table.uc, *self._right.uc]
+                self._projection = [*self._table.uc, *entities[1].uc]
                 return
 
         # check whether it is an aggregate
@@ -691,23 +684,6 @@ class Select(HasTable, ExecutableClauseElement):
             )
 
         self._table: Table = dedup_tables[0]
-        self._right = dedup_tables[1] if len(dedup_tables) == 2 else None
-        # --- SAFEGUARD: column names must exist on each table ---
-        table_columns: ReadOnlyColumnCollection = self._table.columns
-
-        for col in columns:
-            if (
-                col.name not in table_columns
-                and
-                self._right is not None
-                and
-                col.name not in self._right.columns
-            ):
-                raise ArgumentError(
-                    f"Column: {col.name} must either belong to '{self._table.name}' or "
-                    f"to {self._right.name}"
-                )
-
         self._projection = columns
 
     @property
@@ -834,21 +810,20 @@ class Select(HasTable, ExecutableClauseElement):
 
         # The column's foreign key gives the right table, not the projection.
         onclause_fk = next(iter(onclause.foreign_keys))
-        # The compiler builds the WHERE FROM guard from _right until #469.
-        self._right = onclause_fk.column.parent
+        right = onclause_fk.column.parent
 
         if self._is_aggregate:
             # Operand column parents must be either the left or right table
             op_col_parents = {c.parent for c in self._operand_columns}
-            unallowed_op_parents = op_col_parents - {self._table, self._right}
+            unallowed_op_parents = op_col_parents - {self._table, right}
             if unallowed_op_parents:
                 unallowed = ", ".join(sorted(t.name for t in unallowed_op_parents))
                 raise ArgumentError(
                     f"Each operand column must belong to the left '{self._table.name}' "
-                    f"or right '{self._right.name}' table; found '{unallowed}'."
+                    f"or right '{right.name}' table; found '{unallowed}'."
                 )
 
-        return Join(self._table, self._right, onclause, isouter)
+        return Join(self._table, right, onclause, isouter)
 
     @generative
     def join(self, onclause: ColumnExpressionArgument) -> Self:

@@ -7,6 +7,30 @@
 [ADR-0023](./0023-dml-executes-through-the-query-plan.md)
 **Date:** 2026-10-16
 
+> **Correction (2026-11-12) — the compiler widens every SELECT shape, not only the plain one. The
+> decision stands.**
+>
+> Item 4 says that `visit_select()` calls the widening helper on the "plain SELECT path only". That
+> is no longer true. `visit_select()` now calls `_widen_fetch_columns` for every SELECT shape:
+>
+> - **Plain:** the `Scan` fetch, as item 4 says (#431).
+> - **Join:** the left `Scan` and the right `Scan`, one call per side (#433). An aggregate join
+>   also widens its right `Scan` (#478).
+> - **Aggregate:** the left `Scan`, for the recheck `Filter` that #399 added.
+>
+> The helper reads `recheck_where` and writes the `Scan` fetch, as item 4 says. Items 5 and 6 hold
+> for every shape: `visit_select()` takes the `pre_widening_fetch_columns` snapshot first, then
+> widens. The compiler reads `_is_aggregate` and `_joins` only to pick the right-side inputs, not
+> to skip the widening.
+>
+> Since #469 the widening is also safe for every shape: `_raise_if_invalid_from_tables` runs
+> before it and rejects a WHERE that reads a table outside the FROM tables (`CONTEXT.md` §"FROM
+> tables"). Each column that the recheck reads therefore belongs to a `Scan` that the helper
+> widens.
+>
+> The Consequences bullets on the join shape (#433) and the aggregate shape (#399) record the same
+> drift inline. This Correction states it at the top.
+
 ---
 
 ## Context

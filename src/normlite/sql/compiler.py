@@ -453,6 +453,50 @@ def _is_null_rejecting(expression: ColumnElement, left: Table, right: Table) -> 
     # A NOT, or any other node, is not null-rejecting (safe default)
     return False
 
+
+def _raise_if_invalid_from_tables(select: Select) -> None:
+    # The errors come in a fixed order: more than one join, then a projection
+    # outside the FROM, then a WHERE outside the FROM (#469).
+
+    # select with N joins is not supported yet (#465):
+    # the compiler must flag this.
+    if len(select._joins) > 1:
+        names_list = ", ".join(f"'{j.right.name}'" for j in select._joins)
+        left_table_name = select._joins[0].left.name
+        raise CompileError(
+            f"SELECT {left_table_name} has {len(select._joins)} joins: {names_list}, "
+            "normlite currently supports one join per SELECT. "
+            "Run one SELECT per join and combine the rows."
+        )
+
+    # A table outside the FROM has no rows in the plan, so the compiler
+    # must not drop it silently (CONTEXT.md, "FROM tables").
+    if select._is_aggregate:
+        parent_tables = {c.parent for c in select._operand_columns}
+    else:
+        parent_tables = {c.parent for c in select._projection}
+
+    outside_tables = parent_tables - set(select._from_tables)
+    if outside_tables:
+        names_list = ", ".join(sorted(f"'{t.name}'" for t in outside_tables))
+        raise CompileError(
+            f"SELECT reads tables that are not in the FROM: {names_list}. "
+            "Add a join() to each table, or remove the columns and aggregates that read it."
+        )
+
+    # A WHERE reads only the FROM tables. A table outside the FROM has no rows
+    # in the plan, so no Filter can apply its conjuncts. Fail loudly at compile
+    # time rather than silently dropping the WHERE (CONTEXT.md, "WHERE routing").
+    if select._whereclause.has_expression():
+        where_tables = _get_expression_parent_tables(select._whereclause.expression)
+        outside_tables = where_tables - set(select._from_tables)
+        if outside_tables:
+            names_list = ", ".join(sorted(f"'{t.name}'" for t in outside_tables))
+            raise CompileError(
+                f"WHERE clause reads tables that are not in the FROM: {names_list}. "
+                "Add a join() to each table, or remove the conditions on it."
+            )
+
 class NotionCompiler(SQLCompiler):
     """Notion compiler for SQL statements.
 
@@ -1017,23 +1061,6 @@ class NotionCompiler(SQLCompiler):
                 f"determined for {type(expression).__name__}."
             )
 
-        # A WHERE reads only the FROM tables: the left table and, on a join, the
-        # right table. A table outside the FROM has no rows in the plan, so no
-        # Filter can apply its conjuncts. Fail loudly at compile time rather than
-        # silently dropping the WHERE (CONTEXT.md, "WHERE routing"). On a plain
-        # SELECT, select._right is None; the set difference ignores it.
-        # following line of code moves to #469.
-        # Switching it to _from_tables raises a CompileError for a no-join two-table WHERE.
-        # That is #469 behavior.
-        from_tables: Set[Table] = {select._table, select._right}
-        outside_tables: Set[Table] = parent_tables - from_tables
-        if outside_tables:
-            where_tablenames = ", ".join(sorted(t.name for t in outside_tables))
-            raise CompileError(
-                f"WHERE clause reads tables that are not in the FROM: {where_tablenames}. "
-                "Add a join() to each table, or remove the conditions on it."
-            )
-
         # Hold the whole expression as raw AST for client-side evaluation,
         # UNCONDITIONALLY: on every path below, whichever table it reads, and
         # whether or not a part of it is pushed. A push is a HINT that never
@@ -1054,7 +1081,7 @@ class NotionCompiler(SQLCompiler):
             select._joins
             and isinstance(expression, BooleanClauseList)
             and expression.operator == "and"
-            and parent_tables == from_tables
+            and parent_tables == set(select._from_tables)
         ):
             # An AND that reads both sides of the join: push only its left part.
             return self._compile_join_where(select, expression)
@@ -1195,6 +1222,8 @@ class NotionCompiler(SQLCompiler):
                 "Aggregate select has no FROM: columnless func.count() (COUNT(*)) "
                 "must be anchored with select_from(table)"
             )
+
+        _raise_if_invalid_from_tables(select)
 
         data_source_id = table.get_data_source_id()
         if data_source_id is None:
