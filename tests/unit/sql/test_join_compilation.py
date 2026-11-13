@@ -67,7 +67,7 @@ def test_join_is_generative_and_accumulates_join_node(
 ):
     base = select(students, courses)
 
-    joined = base.join(students.c.enrolled_in)
+    joined = base.join(courses, students.c.enrolled_in)
 
     # generative: returns a new Select, the receiver is not mutated
     assert joined is not base
@@ -87,7 +87,7 @@ def test_select_with_join_emits_join_metadata_in_compiled_dict(
 ):
     students._sys_columns["object_id"]._value = str(uuid.uuid4())
 
-    stmt = select(students, courses).join(students.c.enrolled_in)
+    stmt = select(students, courses).join(courses, students.c.enrolled_in)
 
     nc = NotionCompiler()
     compiled = stmt.compile(nc)
@@ -123,7 +123,7 @@ def test_join_target_table_auto_resolves_single_fk_to_same_compiled_output(
     # explicit-column form (the canonical slice-1 contract)
     explicit = (
         select(students, courses)
-        .join(students.c.enrolled_in)
+        .join(courses, students.c.enrolled_in)
         .compile(NotionCompiler())
         .as_dict()
     )
@@ -161,7 +161,7 @@ def test_join_with_non_relation_column_raises_argument_error(
 ):
     # students.c.name is a String column, not a Relation — illegal as an onclause
     with pytest.raises(ArgumentError, match=r"Relation"):
-        select(students, courses).join(students.c.name)
+        select(students, courses).join(courses, students.c.name)
 
 def test_join_onclause_from_outside_left_table_raises_argument_error(
     metadata: MetaData, students: Table, courses: Table
@@ -177,7 +177,7 @@ def test_join_onclause_from_outside_left_table_raises_argument_error(
     )
 
     with pytest.raises(ArgumentError, match=r"students|left"):
-        select(students, courses).join(instructors.c.teaches)
+        select(students, courses).join(courses, instructors.c.teaches)
 
 def test_diagnostic_parent_identity(students: Table):
     assert students.c.enrolled_in.parent is students
@@ -190,7 +190,7 @@ def test_join_explicit_onclause_with_non_relation_left_raises_argument_error(
     bad_expr = students.c.name == "Galileo"
 
     with pytest.raises(ArgumentError, match=r"Relation"):
-        select(students, courses).join(bad_expr)
+        select(students, courses).join(courses, bad_expr)
 
 def test_two_relations_to_same_target_table_raise_naming_both_columns(
     metadata: MetaData, courses: Table
@@ -235,7 +235,7 @@ def test_right_side_where_filter_stays_out_of_phase_one_query_payload(
     # in the phase-1 query payload — it has to be answered client-side instead.
     stmt = (
         select(students, courses)
-        .join(students.c.enrolled_in)
+        .join(courses, students.c.enrolled_in)
         .where(courses.c.title == "Astronomy")
     )
 
@@ -262,7 +262,7 @@ def test_right_side_order_by_stays_out_of_phase_one_query_payload(
     # phase-1 query payload — it has to be applied client-side after the join.
     stmt = (
         select(students, courses)
-        .join(students.c.enrolled_in)
+        .join(courses, students.c.enrolled_in)
         .order_by(courses.c.title.asc())
     )
 
@@ -282,7 +282,7 @@ def test_order_by_right_then_left_pushes_nothing_into_phase_one(
     # routing is positional, NOT set-membership.
     students._sys_columns["object_id"]._value = str(uuid.uuid4())
     asdict = (
-        select(students, courses).join(students.c.enrolled_in)
+        select(students, courses).join(courses, students.c.enrolled_in)
         .order_by(courses.c.title.asc(), students.c.name.asc())
         .compile(NotionCompiler()).as_dict()
     )
@@ -311,7 +311,7 @@ def test_compound_and_where_pushes_only_left_conjunct_into_phase_one(
       # be answered client-side after the join.
       stmt = (
           select(students, courses)
-          .join(students.c.enrolled_in)
+          .join(courses, students.c.enrolled_in)
           .where(students.c.name == "Galileo")      # LEFT  — pushable
           .where(courses.c.title == "Astronomy")    # RIGHT — client-side only
       )
@@ -361,7 +361,7 @@ def test_compound_or_spanning_both_sides_pushes_nothing_into_phase_one(
     # touches the right table must stay WHOLLY client-side: push nothing.
     stmt = (
         select(students, courses)
-        .join(students.c.enrolled_in)
+        .join(courses, students.c.enrolled_in)
         .where(or_(students.c.name == "Galileo", courses.c.title == "Astronomy"))
     )
 
@@ -395,7 +395,7 @@ def test_order_by_left_then_right_pushes_only_left_prefix_into_phase_one(
     # for a client-side stable sort after the join.
     stmt = (
         select(students, courses)
-        .join(students.c.enrolled_in)
+        .join(courses, students.c.enrolled_in)
         .order_by(students.c.name.asc(), courses.c.title.asc())
     )
 
@@ -420,7 +420,7 @@ def test_order_by_right_key_travels_as_ast_residual_off_the_compiled_dict(
     # is the SECOND of the two ad-hoc residual keys #363 removes.
     stmt = (
         select(students, courses)
-        .join(students.c.enrolled_in)
+        .join(courses, students.c.enrolled_in)
         .order_by(students.c.name.asc(), courses.c.title.asc())
     )
 
@@ -445,7 +445,7 @@ def test_join_where_error_does_not_list_the_right_table(
     teachers = Table("teachers", metadata, Column("tname", String(is_title=True)))
     stmt = (
         select(students, courses)
-        .join(students.c.enrolled_in)
+        .join(courses, students.c.enrolled_in)
         .where((courses.c.title == "Math") & (teachers.c.tname == "Bob"))
     )
 
@@ -464,7 +464,7 @@ def test_a_right_table_where_compiles_into_the_recheck_and_not_into_the_push(
 ):
     # Arrange
     where = courses.c.title == "Astronomy"
-    stmt = select(students, courses).join(students.c.enrolled_in).where(where)
+    stmt = select(students, courses).join(courses, students.c.enrolled_in).where(where)
 
     # Act
     compiled = stmt.compile(NotionCompiler())
@@ -495,12 +495,8 @@ def test_join_takes_right_table_from_onclause_when_projection_has_only_left_tabl
 @pytest.mark.parametrize(
     "make_onclause",
     [
-        pytest.param(lambda s, c: c, id="table"),
+        pytest.param(lambda s, c: None, id="none"),
         pytest.param(lambda s, c: s.c.enrolled_in, id="column"),
-        pytest.param(
-            lambda s, c: s.c.enrolled_in.contains(str(uuid.uuid4())),
-            id="binary-expression",
-        ),
     ],
 )
 def test_every_onclause_form_names_the_same_right_table(
@@ -508,7 +504,7 @@ def test_every_onclause_form_names_the_same_right_table(
 ):
     # Arrange
     students._sys_columns["object_id"]._value = str(uuid.uuid4())
-    stmt = select(students).join(make_onclause(students, courses))
+    stmt = select(students).join(courses, make_onclause(students, courses))
 
     # Act
     compiled = stmt.compile(NotionCompiler()).as_dict()
@@ -529,7 +525,7 @@ def test_aggregate_join_takes_its_left_table_from_the_onclause_not_the_first_ope
     stmt = select(
         func.count(courses.c.title),
         func.count(students.c.name),
-    ).join(students.c.enrolled_in)
+    ).join(courses, students.c.enrolled_in)
 
     # Act
     compiled = stmt.compile(NotionCompiler()).as_dict()
@@ -548,7 +544,7 @@ def test_aggregate_join_raises_when_select_from_names_another_left_table(
 
     # Act / Assert: join() rejects the conflict and names both tables.
     with pytest.raises(ArgumentError, match=r"(?s)courses.*students|students.*courses"):
-        stmt.join(students.c.enrolled_in)
+        stmt.join(courses, students.c.enrolled_in)
 
 
 def test_aggregate_join_raises_when_an_operand_is_neither_the_left_nor_the_right_table(
@@ -564,7 +560,7 @@ def test_aggregate_join_raises_when_an_operand_is_neither_the_left_nor_the_right
 
     # Act / Assert: join() rejects the operand and names its table.
     with pytest.raises(ArgumentError, match=r"teachers"):
-        stmt.join(students.c.enrolled_in)
+        stmt.join(courses, students.c.enrolled_in)
 
 
 def test_columnless_aggregate_join_takes_its_left_table_from_the_onclause(
@@ -575,7 +571,7 @@ def test_columnless_aggregate_join_takes_its_left_table_from_the_onclause(
     courses._sys_columns["data_source_id"]._value = str(uuid.uuid4())
 
     # Act: no select_from() is necessary.
-    stmt = select(func.count()).join(students.c.enrolled_in)
+    stmt = select(func.count()).join(courses, students.c.enrolled_in)
     compiled = stmt.compile(NotionCompiler()).as_dict()
 
     # Assert
@@ -584,25 +580,15 @@ def test_columnless_aggregate_join_takes_its_left_table_from_the_onclause(
     assert join["right"] == "courses"
 
 
-@pytest.mark.parametrize(
-    "make_onclause",
-    [
-        pytest.param(lambda s: s.c.enrolled_in, id="column"),
-        pytest.param(
-            lambda s: s.c.enrolled_in.contains(str(uuid.uuid4())),
-            id="binary-expression",
-        ),
-    ],
-)
-def test_every_relation_onclause_form_gives_an_aggregate_join_the_same_left_table(
-    students: Table, courses: Table, make_onclause
+def test_aggregate_join_over_right_table_operands_takes_its_left_table_from_the_onclause(
+    students: Table, courses: Table
 ):
     # Arrange: the operand reads courses, the onclause reads students.
     students._sys_columns["object_id"]._value = str(uuid.uuid4())
     courses._sys_columns["data_source_id"]._value = str(uuid.uuid4())
 
     # Act
-    stmt = select(func.count(courses.c.title)).join(make_onclause(students))
+    stmt = select(func.count(courses.c.title)).join(courses, students.c.enrolled_in)
     compiled = stmt.compile(NotionCompiler()).as_dict()
 
     # Assert
@@ -615,16 +601,121 @@ def test_every_relation_onclause_form_gives_an_aggregate_join_the_same_left_tabl
     "make_onclause",
     [
         pytest.param(lambda s: "enrolled_in", id="str"),
-        pytest.param(lambda s: None, id="none"),
         pytest.param(lambda s: func.count(s.c.name), id="function"),
     ],
 )
 def test_join_raises_when_the_onclause_is_not_a_column_expression(
-    students: Table, make_onclause
+    students: Table, courses: Table, make_onclause
 ):
-    # Arrange: the onclause is neither a Table, a Column, nor a BinaryExpression.
+    # Arrange: the onclause is neither a Column nor a BinaryExpression.
+    # None is not here: it means "no onclause", which join() accepts (#480).
     stmt = select(students)
 
     # Act / Assert: join() rejects it with a domain error, not a crash.
     with pytest.raises(ArgumentError):
-        stmt.join(make_onclause(students))
+        stmt.join(courses, make_onclause(students))
+
+
+def test_join_takes_the_target_table_first_and_the_relation_onclause_second(
+    students: Table, courses: Table
+):
+    # Arrange
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    stmt = select(students, courses).join(courses, students.c.enrolled_in)
+
+    # Act
+    compiled = stmt.compile(NotionCompiler()).as_dict()
+
+    # Assert
+    assert compiled["joins"] == [
+        {
+            "left": "students",
+            "right": "courses",
+            "onclause": "enrolled_in",
+            "isouter": False,
+        }
+    ]
+
+
+def test_outerjoin_takes_the_target_table_first_and_the_relation_onclause_second(
+    students: Table, courses: Table
+):
+    # Arrange
+    students._sys_columns["object_id"]._value = str(uuid.uuid4())
+    stmt = select(students, courses).outerjoin(courses, students.c.enrolled_in)
+
+    # Act
+    compiled = stmt.compile(NotionCompiler()).as_dict()
+
+    # Assert
+    assert compiled["joins"] == [
+        {
+            "left": "students",
+            "right": "courses",
+            "onclause": "enrolled_in",
+            "isouter": True,
+        }
+    ]
+
+def test_join_raises_when_the_target_is_not_the_table_the_onclause_references(
+    metadata: MetaData, students: Table, courses: Table
+):
+    # Arrange: enrolled_in references courses, but the caller names teachers.
+    teachers = Table(
+        "teachers",
+        metadata,
+        Column("name", String(is_title=True)),
+    )
+    stmt = select(students, courses)
+
+    # Act / Assert
+    with pytest.raises(ArgumentError, match=r"(?s)teachers.*courses|courses.*teachers"):
+        stmt.join(teachers, students.c.enrolled_in)
+
+
+@pytest.mark.parametrize(
+    "make_target, type_name",
+    [
+        pytest.param(lambda s: s.c.enrolled_in, "Column", id="column-0.13-call"),
+        pytest.param(lambda s: "courses", "str", id="str"),
+        pytest.param(lambda s: None, "NoneType", id="none"),
+    ],
+)
+def test_join_raises_when_the_target_is_not_a_table(
+    students: Table, make_target, type_name
+):
+    # Arrange: the first argument of join() must name the right table.
+    stmt = select(students)
+
+    # Act / Assert: join() names the bad target and its type, and does not crash.
+    with pytest.raises(ArgumentError, match=rf"(?s)target.*{type_name}"):
+        stmt.join(make_target(students))
+
+
+def test_aggregate_join_without_onclause_or_select_from_raises_and_names_the_fixes(
+    students: Table, courses: Table
+):
+    # Arrange: count(*) has no operand, so the statement has no left table yet.
+    stmt = select(func.count())
+
+    # Act / Assert: join() cannot find the left table from the target alone.
+    with pytest.raises(ArgumentError) as excinfo:
+        stmt.join(courses)
+
+    message = str(excinfo.value)
+    assert "courses" in message
+    assert "select_from" in message
+    assert "onclause" in message
+
+
+@pytest.mark.parametrize("join_method", ["join", "outerjoin"])
+def test_join_rejects_a_predicate_onclause_and_points_to_where(
+    students: Table, courses: Table, join_method: str
+):
+    # Arrange: a predicate on the Relation column, passed as the onclause.
+    stmt = select(students, courses)
+    predicate = students.c.enrolled_in.contains(str(uuid.uuid4()))
+
+    # Act / Assert: join() refuses the predicate. It does not drop it in silence.
+    with pytest.raises(ArgumentError, match=r"where\(\)"):
+        getattr(stmt, join_method)(courses, predicate)

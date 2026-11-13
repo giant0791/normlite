@@ -39,19 +39,6 @@ if TYPE_CHECKING:
     from normlite.engine.base import Connection
     from normlite.engine.context import ExecutionContext
 
-ColumnExpressionArgument = Union[
-    BinaryExpression,
-    ColumnElement,
-    Table,
-]
-"""Column expression argument for :meth:`Select.join`.
-
-This type represents the options for the ``onclause`` argument in a JOIN ON clause.
-It enables to implement syntactic surgar expressions for the :meth:`Select.join` method.
-
-.. versionadded:: 0.11.0
-"""
-
 class HasTable(Protocol):
     """Mixin for DML statements"""
 
@@ -758,41 +745,61 @@ class Select(HasTable, ExecutableClauseElement):
         # returning self is already encapsulated into the generative decorator
 
     def _create_join(
-        self, onclause: ColumnExpressionArgument,
+        self,
+        target: Table,
+        onclause: Optional[Column] = None,
         isouter: bool = False
     ) -> Join:
-        if isinstance(onclause, Table):
-            # syntactic sugar: search the left tables's column that has a relation to
-            # this onclause table
-            reftable = onclause
-            fkcs = self._table.foreign_keys
-            relation_cols = [fk.column for fk in fkcs if fk.reftable is reftable]
+        if not isinstance(target, Table):
+            raise ArgumentError(
+                f"join() target must be a Table, got {type(target).__name__}"
+            )
+
+        if onclause is None:
+            if self._table is None:
+                raise ArgumentError(
+                    f"join() cannot find the left table for target table '{target.name}': "
+                    f"the SELECT has no left table and no onclause. "
+                    f"Name the left table with select_from(), as in "
+                    f"select_from(<left table>).join({target.name}), "
+                    f"or pass the Relation column as the onclause, as in "
+                    f"join({target.name}, <left table>.c.<relation column>)."
+                )
+
+            relation_cols = [
+                fk.column for fk in self._table.foreign_keys if fk.reftable is target
+            ]
             if not relation_cols:
-                # the table supplied in onclause must be a referenced table in the left table's foreign keys
+                # the target table must be a referenced table in the left table's foreign keys
                 hint = ""
-                if reftable.name in self._table.metadata:
-                    hint = (f" (a table named '{reftable.name}' exists in metadata, "
+                if target.name in self._table.metadata:
+                    hint = (f" (a table named '{target.name}' exists in metadata, "
                             f"but the instance you passed is a different object — "
                             f"was it built under another MetaData?)")
                 raise ArgumentError(
-                    f"Table '{reftable.name}' is not a referenced table in "
+                    f"Table '{target.name}' is not a referenced table in "
                     f"'{self._table.name}' foreign keys.{hint}"
                 )
-
             onclause = relation_cols[0]
 
         if isinstance(onclause, BinaryExpression):
-            onclause = onclause.column
+            raise ArgumentError(
+                f"join() onclause must be a Relation column, got a BinaryExpression "
+                f"on column '{onclause.column.name}'. "
+                f"The onclause is the path of the join, not a filter on rows. "
+                f"Pass the Relation column as the onclause and move the predicate to where(), as in "
+                f"join({target.name}, {onclause.column.parent.name}.c.{onclause.column.name})"
+                f".where(<predicate>)."
+            )
 
         if not isinstance(onclause, Column):
             raise ArgumentError(
-                "join() onclause must be a Table, Column "
-                f"or BinaryExpression, got {type(onclause).__name__}"
+                f"join() onclause must be a Relation column, got {type(onclause).__name__}"
             )
 
         if not isinstance(onclause.type_, Relation):
             raise ArgumentError(
-                "join() onclause must be a Relation column or a BinaryExpression on it, "
+                f"join() onclause must be a Relation column, "
                 f"got '{onclause.name}' (type: {type(onclause.type_).__name__})"
             )
 
@@ -808,9 +815,21 @@ class Select(HasTable, ExecutableClauseElement):
             # the operand table is only a default: the onclause gives the left table.
             self._table = onclause.parent
 
-        # The column's foreign key gives the right table, not the projection.
+        # The target gives the right table; the column's foreign key must agree with it.
         onclause_fk = next(iter(onclause.foreign_keys))
-        right = onclause_fk.column.parent
+        referenced = onclause_fk.column.parent
+        if referenced is not target:
+            hint = ""
+            if referenced.name == target.name:
+                hint = (f" (both tables are named '{target.name}', "
+                        f"but they are different objects — "
+                        f"was one built under another MetaData?)")
+            raise ArgumentError(
+                f"Column '{onclause.name}' references table '{referenced.name}', "
+                f"but the join target is table '{target.name}'.{hint}"
+            )
+
+        right = target
 
         if self._is_aggregate:
             # Operand column parents must be either the left or right table
@@ -826,7 +845,7 @@ class Select(HasTable, ExecutableClauseElement):
         return Join(self._table, right, onclause, isouter)
 
     @generative
-    def join(self, onclause: ColumnExpressionArgument) -> Self:
+    def join(self, target: Table, onclause: Optional[Column] = None) -> Self:
         """Create a JOIN against this :class:`Select` object's criterion and apply generatively,
         returning the newly resulting :class:`Select` object.
 
@@ -837,57 +856,73 @@ class Select(HasTable, ExecutableClauseElement):
         A plain SELECT takes the left table from its projection, and the onclause
         column must belong to it.
         An aggregate SELECT takes the left table from the onclause column, not
-        from its operands. So ``select(func.count()).join(students.c.enrolled_in)``
+        from its operands. So
+        ``select(func.count()).join(courses, students.c.enrolled_in)``
         needs no :meth:`select_from`.
-
-        .. note::
-
-            ``join()`` takes an argument with two meanings:
-
-            .. list-table::
-                :header-rows: 1
-
-                * - Argument
-                  - What it names
-                  - Side
-                * - A ``Column`` or a ``BinaryExpression``
-                  - The **path**: the ``Relation`` column
-                  - left
-                * - A ``Table``
-                  - The **destination**
-                  - right
-
-            A ``Table`` cannot give the left table. normlite finds the ``Relation``
-            column by a search of the foreign keys of a left table that is already
-            known. So ``select(func.count()).join(courses)`` needs
-            ``select_from(students)``.
-
-            Issue #480 tracks this ambiguity. One of its options aligns normlite with
-            SQLAlchemy Core: ``join(target, onclause=None)``, where ``target`` is always
-            the right table and ``onclause`` is always the ``Relation`` column or a
-            ``BinaryExpression`` on it.
+        With no onclause, normlite searches the foreign keys of the left table
+        for the ``Relation`` column that references ``target``.
 
         Args:
-            onclause (ColumnExpressionArgument): A ``Column`` or a ``BinaryExpression``
-                that names the ``Relation`` column (left side), or a ``Table`` that names
-                the destination of the JOIN (right side).
+            target (Table): The join target: the ``Table`` that the JOIN adds as the
+                right table.
+            onclause (Optional[Column]): The path of the JOIN: the ``Relation`` column on
+                the left table that references ``target``. Defaults to ``None``.
 
         Raises:
-            ArgumentError: If the onclause column is not a ``Relation`` column, if it does
-                not belong to the left table of a plain SELECT, if onclause and select_from disagree,
-                or if a ``Table`` is not referenced by a foreign key of the left table.
+            ArgumentError: If one of these conditions is true:
+
+                - ``target`` is not a ``Table``.
+                - The onclause is a ``BinaryExpression``. The onclause is the path of the
+                  JOIN, not a filter on rows: move the predicate to :meth:`where`.
+                - The onclause column is not a ``Relation`` column.
+                - The onclause column does not belong to the left table of a plain SELECT.
+                - The onclause column and :meth:`select_from` name different left tables.
+                - The onclause column does not reference ``target`` through its foreign key.
+                - The onclause is omitted and the SELECT has no left table (an aggregate
+                  with no column operands and no :meth:`select_from`).
+                - The onclause is omitted and ``target`` is not referenced by a foreign
+                  key of the left table.
 
         Returns:
             Self: The newly resulting :class:`Select` object.
+
+        .. versionchanged:: 0.14.0
+            Now, each argument names uniquely the side of the join (#480).
         """
         # mutate-vs-rebind: here you create a new tuple
-        self._joins = (*self._joins, self._create_join(onclause))
+        self._joins = (*self._joins, self._create_join(target, onclause))
         # returning self is already encapsulated into the generative decorator
 
     @generative
-    def outerjoin(self, onclause: ColumnExpressionArgument) -> Self:
+    def outerjoin(
+        self,
+        target: Table,
+        onclause: Optional[Column] = None
+    ) -> Self:
+        """Create a LEFT OUTER JOIN against this :class:`Select` object's criterion and apply
+        generatively, returning the newly resulting :class:`Select` object.
+
+        The arguments, the FROM and ON clauses inference rules, and the errors are the same
+        as for :meth:`join`. Only the join kind is different: an outer join keeps each left
+        row that has no right row.
+
+        Args:
+            target (Table): The join target: the ``Table`` that the JOIN adds as the
+                right table.
+            onclause (Optional[Column]): The path of the JOIN: the ``Relation`` column on
+                the left table that references ``target``. Defaults to ``None``.
+
+        Raises:
+            ArgumentError: In the same cases as :meth:`join`.
+
+        Returns:
+            Self: The newly resulting :class:`Select` object.
+
+        .. versionchanged:: 0.14.0
+            Now, each argument names uniquely the side of the join (#480).
+        """
         # mutate-vs-rebind: here you create a new tuple
-        self._joins = (*self._joins, self._create_join(onclause, isouter=True))
+        self._joins = (*self._joins, self._create_join(target, onclause, isouter=True))
         # returning self is already encapsulated into the generative decorator
 
     def _setup_execution(self, context: ExecutionContext) -> None:
