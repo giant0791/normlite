@@ -98,6 +98,42 @@ class VolcanoOperator(ABC):
         """Provide the schema of the rows this operator emits."""
         raise NotImplementedError
 
+class _UnaryOperator(VolcanoOperator):
+    """Shared base for unary Volcano operators.
+
+    Subclasses call ``super().__init__(source, schema)``, keep their extra state and override only
+    :meth:`next`.
+
+    :meth:`next` stays abstract here on purpose: a subclass that forgets it
+    must fail when it is created, not when the plan runs (#451).
+
+    .. versionadded:: 0.14.0
+    """
+    def __init__(self, source: VolcanoOperator, schema: SchemaInfo) -> None:
+        """Construct the operator over an already built source operator.
+
+        Args:
+            source (VolcanoOperator): Supplies the rows this operator transforms.
+            schema (SchemaInfo): The schema of the rows this operator emits. The
+                subclass decides it: some pass the source's schema through,
+                others narrow it.
+        """
+        self._source = source
+        self._schema = schema
+
+    @property
+    def result_schema(self) -> SchemaInfo:
+        """Provide the schema the subclass gave to the constructor."""
+        return self._schema
+
+    def open(self, connection: Connection) -> None:
+        """Open the source operator on ``connection``."""
+        self._source.open(connection)
+
+    def close(self) -> None:
+        """Close the source operator."""
+        self._source.close()
+
 class Scan(VolcanoOperator):
     """Fetch rows from a Notion data source, one result page at a time.
 
@@ -363,7 +399,7 @@ class HashJoin(VolcanoOperator):
         self._left_child.close()
         self._right_child.close()
 
-class Filter(VolcanoOperator):
+class Filter(_UnaryOperator):
     """Answer the WHERE client-side over raw cells, and decide the row.
 
     A pushed Notion filter is a lossy probe: it may keep rows SQL drops, so it
@@ -374,6 +410,12 @@ class Filter(VolcanoOperator):
 
     The predicate is evaluated over the slice of each row owned by the tables it
     reads: the whole row on the scan path, either or both sides on the join path.
+
+    Filtering removes rows, never columns, so :attr:`result_schema` is the
+    schema of the source rows, unchanged.
+
+    .. versionchanged:: 0.14.0
+        Now, :class:`Filter` derives from the shared base :class:`_UnaryOperator` (#375)
 
     .. versionadded:: 0.13.0
     """
@@ -395,8 +437,7 @@ class Filter(VolcanoOperator):
                 membership only -- the order is arbitrary and nothing may
                 depend on it.
         """
-        self._source = source
-        self._merged_schema = schema
+        super().__init__(source, schema)
         self._filter = filter
         self._predicate_tables: list[Table] = tables
 
@@ -425,26 +466,13 @@ class Filter(VolcanoOperator):
         # the obvious `Table.__eq__` (by name) cannot silently broaden this slice
         # under a self-join -- no exception, just wrong rows.
         self._predicate_cols = [
-            c for c in self._merged_schema.columns
+            c for c in self._schema.columns
             if any(c.table is t for t in self._predicate_tables)
         ]
         self._predicate_getters = [
-            self._merged_schema.column_getter(c.name)
+            self._schema.column_getter(c.name)
             for c in self._predicate_cols
         ]
-
-    @property
-    def result_schema(self) -> SchemaInfo:
-        """Provide the schema of the rows this filter was given.
-
-        Filtering removes rows, never columns, so the schema passes through
-        unchanged.
-        """
-        return self._merged_schema
-
-    def open(self, connection: Connection) -> None:
-        """Open the source operator on ``connection``."""
-        self._source.open(connection)
 
     def next(self) -> Optional[list[tuple]]:
         """Return the next batch of the source, keeping only the rows that pass.
@@ -463,10 +491,6 @@ class Filter(VolcanoOperator):
         ]
 
         return merged_rows
-
-    def close(self) -> None:
-        """Close the source operator."""
-        self._source.close()
 
     def _predicate_passes(
         self,
@@ -532,13 +556,16 @@ class Filter(VolcanoOperator):
 
         return eval3(self._filter, pages, schema=None) is TRUE
 
-class Sort(VolcanoOperator):
+class Sort(_UnaryOperator):
     """Apply a held-back ORDER BY client-side.
 
     A sort key owned by the join's right table has no pushed form, so it is a
     genuine residual: applied once, here, over the merged rows. Keys are applied
     least-significant first, so the first key dominates. Empty values sort last
     ascending and first descending, which is the order Postgres gives NULLs.
+
+    .. versionchanged:: 0.14.0
+        Now, :class:`Sort` derives from the shared base :class:`_UnaryOperator` (#375)
 
     .. versionadded:: 0.13.0
     """
@@ -559,19 +586,9 @@ class Sort(VolcanoOperator):
             table (Table): The table owning the sort keys. Each ``property`` is
                 resolved to its result column within this table, by identity.
         """
-        self._source = source
-        self._merged_schema = schema
+        super().__init__(source, schema)
         self._sorts = sorts
         self._table = table
-
-    @property
-    def result_schema(self) -> SchemaInfo:
-        """Provide the schema of the rows this sort was given, unchanged."""
-        return self._merged_schema
-
-    def open(self, connection: Connection) -> None:
-        """Open the source operator on ``connection``."""
-        self._source.open(connection)
 
     def next(self) -> Optional[list[tuple]]:
         """Return the next batch of the source, ordered by the residual keys.
@@ -586,7 +603,7 @@ class Sort(VolcanoOperator):
         from normlite.sql.type_api import type_mapper
         from normlite.notion_sdk.client import EMPTY_TEXT, EMPTY_NUMBER
 
-        right_cols = [c for c in self._merged_schema.columns if c.table is self._table]
+        right_cols = [c for c in self._schema.columns if c.table is self._table]
         by_bare = {c.bare_name: c for c in right_cols}
         merged_rows = list(merged_rows)
         for sort in reversed(self._sorts):
@@ -594,7 +611,7 @@ class Sort(VolcanoOperator):
             col = by_bare[sort["property"]]
 
             # merged name — survives collision
-            getter = self._merged_schema.column_getter(col.name)
+            getter = self._schema.column_getter(col.name)
             direction = sort.get("direction", "ascending")
             reverse = direction == "descending"
 
@@ -620,10 +637,6 @@ class Sort(VolcanoOperator):
 
             merged_rows.sort(key=sort_key, reverse=reverse)
         return merged_rows
-
-    def close(self) -> None:
-        """Close the source operator."""
-        self._source.close()
 
 class Aggregate(VolcanoOperator):
     """Aggregate columns value over all rows in the table.
@@ -678,13 +691,20 @@ class Aggregate(VolcanoOperator):
         """Close the source operator."""
         self._source.close()
 
-class Project(VolcanoOperator):
+class Project(_UnaryOperator):
     """Trim each row to the columns the statement projects, and own that schema.
 
     The recheck must read columns the user did not select, so :class:`Planner`
     widens the :class:`Scan` to fetch them. This operator trims them back off,
     which is what keeps the widening invisible to the user's ``Row``
     (ADR-0022).
+
+    :attr:`result_schema` is the trimmed schema, which is the one the user sees.
+    On the plan path the user-visible ``keys()`` come from the plan root, so
+    this is the schema that decides them.
+
+    .. versionchanged:: 0.14.0
+        Now, :class:`Project` derives from the shared base :class:`_UnaryOperator` (#375)
 
     .. versionadded:: 0.13.0
     """
@@ -703,14 +723,13 @@ class Project(VolcanoOperator):
             NoSuchColumnError: If a name is absent from the source's schema.
             InvalidRequestError: If the source's schema carries no columns.
         """
-        self._source = source
         self._names = list(names)
         project_idxs = [
             source.result_schema.column_index(name)
             for name in self._names
         ]
 
-        self._projected_schema = SchemaInfo([
+        projected_schema = SchemaInfo([
             source.result_schema.columns[idx]
             for idx in project_idxs
         ])
@@ -720,18 +739,7 @@ class Project(VolcanoOperator):
             for name in self._names
         ]
 
-    @property
-    def result_schema(self) -> SchemaInfo:
-        """Provide the trimmed schema, which is the one the user sees.
-
-        On the plan path the user-visible ``keys()`` come from the plan root, so
-        this is the schema that decides them.
-        """
-        return self._projected_schema
-
-    def open(self, connection: Connection) -> None:
-        """Open the source operator on ``connection``."""
-        self._source.open(connection)
+        super().__init__(source, projected_schema)
 
     def next(self) -> Optional[list[tuple]]:
         """Return the next batch of the source, each row trimmed to the projection."""
@@ -749,10 +757,6 @@ class Project(VolcanoOperator):
         ]
 
         return tuple(trimmed)
-
-    def close(self) -> None:
-        """Close the source operator."""
-        self._source.close()
 
 class ModifyTable(VolcanoOperator):
     """Mutate rows in DELETE and UPDATE query plans.
