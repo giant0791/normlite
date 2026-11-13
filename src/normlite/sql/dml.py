@@ -336,7 +336,7 @@ class Insert(ValuesBase):
     """Provide the SQL ``INSERT`` node to create a new row in the specified table.
 
     This class provide a generative implementation of the SQL ``INSERT`` node to be executed on a
-    :class:`normlite.connection.Connection`.
+    :class:`normlite.engine.base.Connection`.
 
     Usage:
         >>> # create a new insert statement for the table students
@@ -356,14 +356,14 @@ class Insert(ValuesBase):
 
     Important:
         The :class:`Insert` has always by default the Notion specific columns as ``RETURNING`` clause.
-        That is, the :class:`normlite.CursorResult` methods of an insert statement always returns rows with the
+        That is, the :class:`normlite.engine.cursor.CursorResult` methods of an insert statement always returns rows with the
         columns corresponding to the Notion specific ones.
-        You specify the :meth:`Insert.returning()` to get additional columns in the rows returned by the
-        :class:`normlite.CursorResult` methods.
+        You specify the :meth:`UpdateBase.returning()` to get additional columns in the rows returned by the
+        :class:`normlite.engine.cursor.CursorResult` methods.
 
     Note:
         The :class:`Insert`  can also be constructed without specifying the values.
-        In this case, the parameters passed in the :meth:`normlite.connection.Connection.execute()` are bound
+        In this case, the parameters passed in the :meth:`normlite.engine.base.Connection.execute()` are bound
         as ``VALUES`` clause parameters at execution time.
 
     .. versionchanged:: 0.8.0
@@ -514,7 +514,7 @@ class WhereClause(HasExpression, ColumnElement):
         Users of the :class:`WhereClause` shall test for presence of an expression
         by invoking this method and not simply ...
         This safely bypasses Python thruthiness invocation, which otherwise raises
-        a :exc:`TyperError`.
+        a :exc:`TypeError`.
 
         .. seealso::
             :meth:`normlite.sql.elements.ColumnElement.__bool__`

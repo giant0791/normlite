@@ -755,7 +755,7 @@ class NotionCompiler(SQLCompiler):
             It fixes also the returning columns to be set to the **meta columns**.
 
         Args:
-            ddl_stmt (CreateTable): The DDL statement to be compiled.
+            ddl_stmt (normlite.sql.ddl.CreateTable): The DDL statement to be compiled.
 
         Returns:
             dict: The compiled object as dictionary.
@@ -903,7 +903,7 @@ class NotionCompiler(SQLCompiler):
 
         .. versionchanged:: 0.9.0
             This version adds full support for INSERT ... RETURNING.
-            It initializes the :attr:`normlite.sql.base.CompilerState.result_columns
+            It initializes the :attr:`normlite.sql.base.CompilerState.result_columns`
 
 
 
@@ -1689,15 +1689,15 @@ class NotionCompiler(SQLCompiler):
         This method assigns the bind parameters attributes according to the following scheme:
 
         * ``WHERE`` clause: key is an auto-generated anonymous parameter "params_n", type is the column's type and role is
-            :attr:`normlite.sql.base._CompileState.COLUMN_FILTER` (meaning the ``filter_value_processor()``
+            :attr:`normlite.sql.base._CompileState.COMPILING_WHERE` (meaning the ``filter_value_processor()``
             shall be used).
 
         * ``VALUES`` clause: key is the column's name, type is the column's type and role is
-            :attr:`normlite.sql.base._CompileState.COLUMN_VALUE` (meaning the ``bind_processor()``
+            :attr:`normlite.sql.base._CompileState.COMPILING_VALUES` (meaning the ``bind_processor()``
             shall be used).
 
         * DBAPI parameters: the already assigned key remains, only the bind role is assigned to
-            :attr:`normlite.sql.base._CompileState.DBAPI_PARAM` (meaning the value shall be used).
+            :attr:`normlite.sql.base._CompileState.COMPILING_DBAPI_PARAM` (meaning the value shall be used).
         """
 
         if bindparam.role != _BindRole.NO_BINDROLE:

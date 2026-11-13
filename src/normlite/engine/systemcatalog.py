@@ -196,7 +196,7 @@ class SystemCatalog:
 
     .. seealso::
 
-        :doc:`Working with Databases <user-guide-working-with-databases>` for an overview on what data structures
+        :doc:`Working with Databases </user-guide-working-with-databases>` for an overview on what data structures
         ``normlite`` uses to manage table metadata in a Notion integration.
 
     .. versionadded:: 0.8.0

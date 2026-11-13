@@ -139,10 +139,10 @@ class Executable(ClauseElement):
     """Provide the interface for all executable SQL statements.
 
     This base class implements the command design pattern for execution of clause elements.
-    The :meth:`execute` method has a base implementation of the execution flow that can be used as default implementation
+    The ``execute()`` method has a base implementation of the execution flow that can be used as default implementation
     in the subclasses.
 
-    It provides a post execution hook with the :meth:`_post_exec` that is intended to be optionally implemented in
+    It provides a post execution hook with the ``_post_exec()`` method that is intended to be optionally implemented in
     the subclasses.
 
     .. versionchanged:: 0.8.0
@@ -353,7 +353,7 @@ class Compiled:
     """``True`` if the compiled class represents a compiled DDL statement.
 
     .. versionadded:: 0.8.0
-        This class attribute is used by :class:`normlite.cursor.CursorResult` to properly process the cursor description and the result set.
+        This class attribute is used by :class:`normlite.engine.cursor.CursorResult` to properly process the cursor description and the result set.
     """
 
     def __init__(self, element: ClauseElement, compiled: dict, compiler: SQLCompiler):
@@ -370,7 +370,7 @@ class Compiled:
 
         self._result_columns = []
         """Optional sequence of strings specifying the column names to be considered
-        in the rows produced by the :class:`normlite.cursor.CursorResult` methods.
+        in the rows produced by the :class:`normlite.engine.cursor.CursorResult` methods.
         """
 
         self._fetch_columns = compiler._compiler_state.fetch_columns
@@ -396,9 +396,9 @@ class Compiled:
         """Provide the values for the bind parameters for this compiled object.
 
         This attribute returns the column value bind parameters only.
-        Use :meth:`normlite.sql.NotionCompiler.construct_params()
+        Use :meth:`normlite.sql.compiler.NotionCompiler.construct_params` to get all bind parameters.
 
-        .. versionchanged: 0.9.0
+        .. versionchanged:: 0.9.0
             In this version, the dictionary returned has the effective values as dictionary
             values, instead of the bind parameters.
 

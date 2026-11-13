@@ -31,7 +31,7 @@ class DBAPITypeCode(StrEnum):
         :attr:`NUMBER_FLOAT` added to support ``func.avg()`` to return float values.
 
     .. versionadded:: 0.8.0
-        With this enum the module :mod:`dbapi2.py` is more PEP 249 compliant.
+        With this enum the module :mod:`normlite.notiondbapi.dbapi2` is more PEP 249 compliant.
     """
     ID                 = 'object_id'
     PROPERTY_ID        = 'property_id'

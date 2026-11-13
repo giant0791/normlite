@@ -28,7 +28,7 @@ The design of SQL statement execution separates responsibilities cleanly using t
      - Responsibility
    * - :class:`normlite.sql.base.Executable`
      - Describes *what* to execute (e.g. :class:`normlite.sql.ddl.CreateTable`, :class:`normlite.sql.dml.Insert`)
-       :class:`notiondbapi._model.NotionPage` for more details).
+       ``NotionPage`` for more details).
    * - :class:`normlite.sql.base.SQLCompiler`
      - Translates the :class:`normlite.sql.base.Executable` into a serializable payload.
    * - :class:`ExecutionContext`
@@ -104,8 +104,8 @@ class ExecutionContext:
     """Orchestrate binding, compilation, and result setup.
 
     This class manages the key activities for the execution of SQL statements.
-    It binds dynamically the parameters at runtime prior to execution using the owned :class:`normlite.sql.Compiled` object.
-    After execution, it sets up the :class:`normlite.cursor.CursorResult` object to be returned using the owned :class:`normlite.notiondbapi.dbapi2.Cursor`
+    It binds dynamically the parameters at runtime prior to execution using the owned :class:`normlite.sql.base.Compiled` object.
+    After execution, it sets up the :class:`normlite.engine.cursor.CursorResult` object to be returned using the owned :class:`normlite.notiondbapi.dbapi2.Cursor`
     (which contains the result set of the executed statement).
 
     .. versionchanged:: 0.8.0
@@ -278,13 +278,13 @@ class ExecutionContext:
     """
 
     bulk_operation: Optional[dict]
-    """The operation to be executed when :attr:`execution_style` is :attr:`ExecutionStyle.EXCUTEMANY`.
+    """The operation to be executed when :attr:`execution_style` is ``ExecutionStyle.EXECUTEMANY``.
 
     .. versionadded:: 0.9.0
     """
 
     bulk_parameters: Optional[list[dict]]
-    """The parameters set for the bulk operation when :attr:`execution_style` is :attr:`ExecutionStyle.EXCUTEMANY`.
+    """The parameters set for the bulk operation when :attr:`execution_style` is ``ExecutionStyle.EXECUTEMANY``.
 
     .. versionadded:: 0.9.0
     """
@@ -356,8 +356,8 @@ class ExecutionContext:
         Instead, it simply reflects the outcome of that decision:
 
         - If a post-processing step (e.g. bulk update, post-fetch, RETURNING)
-        has produced a new cursor, it will have been assigned to
-        :attr:`_result_cursor` and is returned here.
+          has produced a new cursor, it will have been assigned to
+          :attr:`_result_cursor` and is returned here.
         - Otherwise, the original execution cursor (:attr:`_cursor`) is returned.
 
         .. versionadded:: 0.9.0
@@ -790,31 +790,32 @@ class ExecutionContext:
         Key design guarantees
         ---------------------
         * **Execution is frozen**
-        Once this method is called, the execution outcome is considered final.
-        No further mutation of the underlying cursor or execution context is
-        permitted or expected.
+          Once this method is called, the execution outcome is considered final.
+          No further mutation of the underlying cursor or execution context is
+          permitted or expected.
 
         * **Single-execution binding**
-        The returned :class:`CursorResult` is bound to exactly one execution of
-        one compiled statement. Each :class:`ExecutionContext` may produce
-        **at most one** result object.
+          The returned :class:`CursorResult` is bound to exactly one execution of
+          one compiled statement. Each :class:`ExecutionContext` may produce
+          **at most one** result object.
 
         * **Materialized result façade**
-        The :class:`CursorResult` acts as a read-only façade over the cursor’s
-        final state. It exposes rows, metadata, and identity information derived
-        from the cursor without copying or re-buffering data.
+          The :class:`CursorResult` acts as a read-only façade over the cursor’s
+          final state. It exposes rows, metadata, and identity information derived
+          from the cursor without copying or re-buffering data.
 
         * **Identity preservation**
-        At the time this method is called:
-            - execution has fully completed
-            - all row and object identities (e.g. Notion object IDs / lastrowid)
+          At the time this method is called:
+
+          - execution has fully completed
+          - all row and object identities (e.g. Notion object IDs / lastrowid)
             have been resolved and preserved
-            - the cursor reflects the final, stable execution state
+          - the cursor reflects the final, stable execution state
 
         * **Source of truth**
-        The execution context and its cursor remain the authoritative source
-        of execution data. The result object does not mutate or re-interpret
-        execution state.
+          The execution context and its cursor remain the authoritative source
+          of execution data. The result object does not mutate or re-interpret
+          execution state.
 
         Lifecycle and usage
         -------------------
@@ -828,7 +829,7 @@ class ExecutionContext:
         .. note::
            - The underlying DBAPI cursor must not be mutated after this method has been invoked.
            - Result consumption (iteration, scalar access, identity inspection)
-            may occur lazily, but the execution itself is fully complete.
+             may occur lazily, but the execution itself is fully complete.
 
         .. versionchanged:: 0.8.0
             This version formalizes structural membership and API contract.

@@ -226,7 +226,8 @@ def and_(*clauses: ColumnElement) -> BooleanClauseList:
 
     .. versionadded:: 0.8.0
 
-    ..code:: python
+    .. code-block:: python
+
         stmt = select(students).where(
             and_(
                 students.c.balance.is_empty(),
@@ -237,13 +238,14 @@ def and_(*clauses: ColumnElement) -> BooleanClauseList:
     The :func:`and_` conjunction is also available using the Python ``&`` operator.
     Note that compound expressions need to be parenthesized in order to function with Python operator precedence behavior.
 
-    ..code:: python
+    .. code-block:: python
+
         stmt = select(students).where(
             (students.c.balance.is_empty()) & (students.c.grade > Decimal('996.56'))
         )
 
     Raises:
-        ValueError: If less than two ``clauses`` are provided provided.
+        ValueError: If less than two ``clauses`` are provided.
 
     Returns:
         BooleanClauseList: The AST node for this expression.
@@ -257,11 +259,12 @@ def and_(*clauses: ColumnElement) -> BooleanClauseList:
     )
 
 def or_(*clauses: ColumnElement) -> BooleanClauseList:
-    """Produce a conjunction of expressions joined by ``OR``.
+    """Produce a disjunction of expressions joined by ``OR``.
 
     .. versionadded:: 0.8.0
 
-    ..code:: python
+    .. code-block:: python
+
         stmt = select(students).where(
             or_(
                 students.c.balance.is_empty(),
@@ -269,16 +272,17 @@ def or_(*clauses: ColumnElement) -> BooleanClauseList:
             )
         )
 
-    The :func:`and_` conjunction is also available using the Python ``|`` operator.
+    The :func:`or_` disjunction is also available using the Python ``|`` operator.
     Note that compound expressions need to be parenthesized in order to function with Python operator precedence behavior.
 
-    ..code:: python
+    .. code-block:: python
+
         stmt = select(students).where(
             (students.c.balance.is_empty()) | (students.c.grade > Decimal('996.56'))
         )
 
     Raises:
-        ValueError: If less than two ``clauses`` are provided provided.
+        ValueError: If less than two ``clauses`` are provided.
 
     Returns:
         BooleanClauseList: The AST node for this expression.

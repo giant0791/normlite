@@ -18,18 +18,18 @@
 
 
 
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 from normlite.notiondbapi.resultset import ResultSet
 
 
 class PageIterator:
-    _page_fetcher: callable
+    _page_fetcher: Callable
     _page_size: int
     _start_cursor: str
     _exhausted: bool
 
-    def __init__(self, page_fetcher: callable, page_size: Optional[int]):
+    def __init__(self, page_fetcher: Callable, page_size: Optional[int]):
         self._page_fetcher = page_fetcher
         self._page_size = page_size or 100
         self._exhausted = False
@@ -77,7 +77,7 @@ class JsonPageSource:
         self,
         page_iter: PageIterator,
         description: Sequence[tuple],
-        translate: callable,
+        translate: Callable,
     ):
         self._page_iter = page_iter
         self._description = description

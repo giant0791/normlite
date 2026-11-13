@@ -42,7 +42,7 @@ class CursorResult:
 
     .. versionchanged:: 0.8.0
         This class now provides results for row-returning (DML) statements only.
-        The :meth:`CursorResult.__init__` method receives the whole execution context. This enables the cursor
+        The :class:`CursorResult` constructor receives the whole execution context. This enables the cursor
         result to process the result set data in a context-oriented way. This means, the cursor result object
         can now determine whether the rows returned are data or reflected metadata.
 
@@ -51,7 +51,7 @@ class CursorResult:
         Additionally, the :meth:`close()` is now available to close the underlying DBAPI cursor.
         Therefore, all methods returning rows now check whether the cursor
         is closed and raise the :exc:`ResourceClosedError`.
-        The attribute :attr:`CursorResult.return_rows` of closed cursor result always returns ``False``.
+        The attribute :attr:`CursorResult.returns_rows` of closed cursor result always returns ``False``.
 
     .. versionchanged:: 0.5.0
         The fetcher methods now check that the cursor metadata returns row prior to execution.
@@ -177,8 +177,8 @@ class CursorResult:
     def _soft_close(self) -> None:
         """Soft close the cursor result.
 
-        Soft closing means the underlying result set is closed (:attr:`returns_row` is `` False``),
-        but the cursor result itself it is not, that is no :exc:`normlite.exceptions.ResourceCloseError`
+        Soft closing means the underlying result set is closed (:attr:`returns_rows` is `` False``),
+        but the cursor result itself it is not, that is no :exc:`normlite.exceptions.ResourceClosedError`
         is raised.
         This method is private and it is used by user classes that are perform result interpretation.
 
@@ -196,7 +196,7 @@ class CursorResult:
             Soft-closing logic added.
 
         .. versionchanged:: 0.7.0
-            Raise :exc:`normlite.exceptions.ResourceCloseError` if it was previously closed.
+            Raise :exc:`normlite.exceptions.ResourceClosedError` if it was previously closed.
 
         .. versionadded:: 0.5.0
 
@@ -236,7 +236,7 @@ class CursorResult:
             and soft-closing logic.
 
         .. versionchanged:: 0.7.0
-            Raise :exc:`ResourceCloseError` if it was previously closed.
+            Raise :exc:`ResourceClosedError` if it was previously closed.
 
         .. versionadded:: 0.5.0
 
@@ -368,7 +368,7 @@ class CursorResult:
     def close(self) -> None:
         """Close the cursor result.
 
-        After a cursor result is closed, the :attr:`returns_row` returns ``False``, and
+        After a cursor result is closed, the :attr:`returns_rows` returns ``False``, and
         all public API methods raise :exc:`normlite.exceptions.ResourceClosedError`.
 
         .. versionchanged:: 0.9.0
