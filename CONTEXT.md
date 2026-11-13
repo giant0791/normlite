@@ -849,8 +849,8 @@ unlike `count(col)`, which counts non-empty cells).
 
 Over a join, the **onclause** gives the left table, not the operand (#430). The onclause
 column always belongs to the left table, so the answer has no doubt. Operand order cannot change
-it: `select(func.count(courses.c.title), func.sum(students.c.id)).join(students.c.enrolled_in)`
-has the left table `students`. `select(func.count()).join(students.c.enrolled_in)` needs no
+it: `select(func.count(courses.c.title), func.sum(students.c.id)).join(courses, students.c.enrolled_in)`
+has the left table `students`. `select(func.count()).join(courses, students.c.enrolled_in)` needs no
 `select_from()`. A `select_from(t)` must name the onclause's table, and each operand must belong
 to the left or the right table. Otherwise `join()` raises `ArgumentError`.
 
@@ -1194,6 +1194,33 @@ keep their names; only the WHERE channel became a recheck.
 >
 > Step 3's vocabulary pass, named two paragraphs up, is done as well.
 
+### Join target and onclause
+`join(target, onclause=None)` and `outerjoin(target, onclause=None)` take two arguments. Each
+argument names one side of the join (#480):
+
+**Join target**: the `Table` that `join()` adds as the right table.
+_Avoid_: destination, joined table
+
+**Onclause**: the **path** of the join, that is, the `Relation` column on the left table that
+references the join target.
+_Avoid_: join condition, ON predicate
+
+The onclause is a path, not a condition. The join condition is always implicit: the left
+`Relation` cell contains the right `object_id`. The onclause only chooses which `Relation` column
+gives that condition. A filter on rows belongs in `where()`, not in the onclause. So the onclause
+is a `Column` only: `join()` rejects a `BinaryExpression` such as
+`join(courses, students.c.enrolled_in.contains(u))` with an `ArgumentError`. The remedy is
+`join(courses, students.c.enrolled_in).where(students.c.enrolled_in.contains(u))`. With no onclause,
+normlite searches the foreign keys of the left table for the `Relation` column that references the
+join target.
+
+> **Status: DECIDED (#480 grill, 2026-11-13; ADR-0025).** normlite cannot express a SQL `ON` condition: a
+> column-to-column comparison such as `students.c.enrolled_in == courses.c.object_id` does not
+> build. An ON predicate on an `outerjoin()` also needs NULL behavior that is different from a
+> WHERE predicate. So `join()` does not move an onclause predicate to the WHERE: on an
+> `outerjoin()` that move drops the left rows that an ON predicate keeps. Before #480, `join()`
+> dropped the predicate with no error.
+
 ### FROM tables
 A SELECT's **FROM tables** are its left table, then the right table of each `join()` or
 `outerjoin()`, in that order. The projection never adds a FROM table. `select(students, courses)`
@@ -1201,7 +1228,7 @@ with no `join()` has one FROM table: `students`.
 
 `Select._from_tables` holds the FROM tables. It is a derived property of `_table` and `_joins`, not a
 stored value. It is empty for a columnless `COUNT(*)` with no `select_from()`. A `join()` takes its
-right table from the onclause `ForeignKey`, not from the projection.
+right table from its **join target**, not from the projection (#480).
 
 A SELECT reads only its FROM tables. The compiler checks three rules, in this fixed order. Each
 failure is a `CompileError` that names the problem and the remedy:
