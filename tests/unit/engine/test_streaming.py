@@ -526,7 +526,7 @@ def test_closing_a_half_read_streamed_join_ordered_by_a_right_key_closes_both_cu
         conn = conn.execution_options(stream_results=True, yield_per=1)
         result = conn.execute(
             select(students, courses)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .order_by(courses.c.title.asc())
         )
         result.fetchmany(1)
@@ -581,7 +581,7 @@ def test_closing_an_eager_join_result_twice_keeps_both_cursors_that_queried_noti
     with engine.connect() as conn:
         result = conn.execute(
             select(students, courses)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .order_by(courses.c.title.asc())
         )
         rows = result.fetchall()
@@ -792,7 +792,7 @@ def test_a_failed_first_page_pull_of_the_left_side_of_a_join_closes_the_cursor_t
 
     with engine.connect() as conn:
         with pytest.raises(OperationalError) as excinfo:
-            conn.execute(select(students, courses).join(students.c.enrolled_in))
+            conn.execute(select(students, courses).join(courses, students.c.enrolled_in))
 
     assert isinstance(excinfo.value.__cause__, NotionError)
     assert failing.query_calls == 1

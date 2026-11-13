@@ -709,7 +709,7 @@ def test_aggregate_where_on_a_table_outside_the_from_raises_compile_error(
         ),
         pytest.param(
             lambda s, c: (
-                select(s.c.name, c.c.title).join(s.c.enrolled_in),
+                select(s.c.name, c.c.title).join(c, s.c.enrolled_in),
                 (s.c.name == "G") & (c.c.credits > 3),
             ),
             {"property": "name", "title": {"equals": ":param_0"}},
@@ -719,7 +719,7 @@ def test_aggregate_where_on_a_table_outside_the_from_raises_compile_error(
         ),
         pytest.param(
             lambda s, c: (
-                select(s.c.name, c.c.title).join(s.c.enrolled_in),
+                select(s.c.name, c.c.title).join(c, s.c.enrolled_in),
                 c.c.credits > 3,
             ),
             None,
@@ -902,4 +902,3 @@ def test_projection_outside_from_is_reported_before_where_outside_from():
     # Act / Assert
     with pytest.raises(CompileError, match=r"^SELECT reads tables that are not in the FROM: 'courses'\."):
         stmt.compile(NotionCompiler())
-

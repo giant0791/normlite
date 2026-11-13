@@ -551,7 +551,7 @@ def test_planner_turns_a_join_select_into_a_hashjoin_over_two_scans(engine):
     # A join select with NO right-side WHERE, built into a real ExecutionContext
     # the way phase-1 callers do (compile -> bind), but with nothing driving the
     # cursor yet -- the Planner reads the plan off the context, it does not run it.
-    stmt = select(students, courses).join(students.c.enrolled_in)
+    stmt = select(students, courses).join(courses, students.c.enrolled_in)
     compiled = stmt.compile(engine._sql_compiler)
     cursor = engine.raw_connection().cursor()
     ctx = ExecutionContext(
@@ -614,7 +614,7 @@ def test_planner_builds_the_right_leaf_as_a_full_query_scan_of_the_right_data_so
 
     # A WHERE-free join, built into a real ExecutionContext the phase-1 way; the
     # Planner reads the plan off the context, it does not run it.
-    stmt = select(students, courses).join(students.c.enrolled_in)
+    stmt = select(students, courses).join(courses, students.c.enrolled_in)
     compiled = stmt.compile(engine._sql_compiler)
     cursor = engine.raw_connection().cursor()
     ctx = ExecutionContext(
@@ -661,7 +661,7 @@ def test_hashjoin_open_forwards_the_connection_to_both_leaves():
         Column("name", String(is_title=True)),
         Column("enrolled_in", Relation(), ForeignKey("courses.object_id")),
     )
-    stmt = select(students, courses).join(students.c.enrolled_in)
+    stmt = select(students, courses).join(courses, students.c.enrolled_in)
     join = stmt._joins[0]
     projection = list(stmt._projection)
 
@@ -723,7 +723,7 @@ def test_planner_layers_a_filter_carrying_the_residual_over_the_hashjoin(engine)
 
     stmt = (
         select(students, courses)
-        .join(students.c.enrolled_in)
+        .join(courses, students.c.enrolled_in)
         .where(courses.c.title == "Astronomy")
     )
     compiled = stmt.compile(engine._sql_compiler)
@@ -788,7 +788,7 @@ def test_planner_hands_the_residual_over_with_its_literal_unprocessed(engine):
 
     stmt = (
         select(students, courses)
-        .join(students.c.enrolled_in)
+        .join(courses, students.c.enrolled_in)
         .where(courses.c.start_date.after(date(2026, 1, 1)))
     )
     compiled = stmt.compile(engine._sql_compiler)
@@ -851,7 +851,7 @@ def test_planner_plans_a_cross_side_compound_into_one_two_table_filter(engine):
 
     stmt = (
         select(students, courses)
-        .join(students.c.enrolled_in)
+        .join(courses, students.c.enrolled_in)
         .where(or_(students.c.name == "Galileo", courses.c.title == "Astronomy"))
     )
     compiled = stmt.compile(engine._sql_compiler)
@@ -1461,7 +1461,7 @@ def test_running_the_plan_for_an_update_changes_exactly_the_targeted_pages(engin
     [
         (lambda s, c: select(func.sum(s.c.id)), "AGGREGATE"),
         (lambda s, c: select(s).where(s.c.id > 1), "SELECT"),
-        (lambda s, c: select(s, c).join(s.c.enrolled_in), "JOIN"),
+        (lambda s, c: select(s, c).join(c, s.c.enrolled_in), "JOIN"),
         (lambda s, c: delete(s).where(s.c.id > 1), "MODIFY"),
         (lambda s, c: update(s).values(id=7).where(s.c.id > 1), "MODIFY"),
     ],
@@ -1583,7 +1583,7 @@ def test_a_join_plan_reads_each_side_in_one_request_even_with_yield_per(engine):
             )
 
     # Seeding is done; only the join below is counted.
-    stmt = select(students, courses).join(students.c.enrolled_in)
+    stmt = select(students, courses).join(courses, students.c.enrolled_in)
     compiled = stmt.compile(engine._sql_compiler)
     counting = _PageCountingClient(engine._client)
     connection = DBAPIConnection(counting)

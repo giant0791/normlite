@@ -49,7 +49,7 @@ def test_inner_join_pairs_left_and_right_rows(engine: Engine):
 
         # execute the join
         result = connection.execute(
-            select(students, courses).join(students.c.enrolled_in)
+            select(students, courses).join(courses, students.c.enrolled_in)
         )
         rows = result.fetchall()
 
@@ -112,7 +112,7 @@ def test_inner_join_emits_one_pair_per_left_row_when_each_points_at_a_distinct_r
 
         # Act
         result = connection.execute(
-            select(students, courses).join(students.c.enrolled_in)
+            select(students, courses).join(courses, students.c.enrolled_in)
         )
         rows = result.fetchall()
 
@@ -171,7 +171,7 @@ def test_inner_join_silently_drops_left_rows_whose_relation_targets_no_existing_
 
         # Act
         result = connection.execute(
-            select(students, courses).join(students.c.enrolled_in)
+            select(students, courses).join(courses, students.c.enrolled_in)
         )
         rows = result.fetchall()
 
@@ -229,7 +229,7 @@ def test_outer_join_keeps_left_rows_whose_relation_targets_no_existing_right_pag
 
         # Act: outer join over the same FK relation.
         result = connection.execute(
-            select(students, courses).outerjoin(students.c.enrolled_in)
+            select(students, courses).outerjoin(courses, students.c.enrolled_in)
         )
         rows = result.fetchall()
 
@@ -292,7 +292,7 @@ def test_right_side_filter_on_outer_join_drops_none_filled_rows(engine: Engine):
         # Act: outer join, then a right-side filter on courses.title.
         result = connection.execute(
             select(students, courses)
-            .outerjoin(students.c.enrolled_in)
+            .outerjoin(courses, students.c.enrolled_in)
             .where(courses.c.title.is_not_empty())
         )
         rows = result.fetchall()
@@ -354,7 +354,7 @@ def test_right_side_is_empty_drops_absent_entity(engine: Engine):
         # Act: outer join, then a right-side filter on courses.title.
         result = connection.execute(
             select(students, courses)
-            .outerjoin(students.c.enrolled_in)
+            .outerjoin(courses, students.c.enrolled_in)
             .where(courses.c.title.is_empty())
         )
         no_rows = result.fetchall()
@@ -416,7 +416,7 @@ def test_right_side_filter_under_narrowed_projection_keeps_genuine_match(engine:
         # right-side filter on courses.title.
         result = connection.execute(
             select(students.c.name, courses.c.title)
-            .outerjoin(students.c.enrolled_in)
+            .outerjoin(courses, students.c.enrolled_in)
             .where(courses.c.title.is_not_empty())
         )
         rows = result.fetchall()
@@ -474,7 +474,7 @@ def test_right_side_filter_on_colliding_column_keeps_genuine_match(engine: Engin
         # Act: inner join, then a right-side filter on the colliding courses.title.
         result = connection.execute(
             select(students, courses)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(courses.c.title.is_not_empty())
         )
         rows = result.fetchall()
@@ -529,7 +529,7 @@ def test_right_side_filter_on_colliding_column_with_extra_right_column_survives(
         # non-colliding courses.code also in the projection (full expansion).
         result = connection.execute(
             select(students, courses)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(courses.c.title.is_not_empty())
         )
         rows = result.fetchall()
@@ -583,7 +583,7 @@ def test_right_side_filter_on_colliding_column_drops_non_matching_row(engine: En
         # course ("Astronomy") does NOT have.
         result = connection.execute(
             select(students, courses)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(courses.c.title == "Chemistry")
         )
         rows = result.fetchall()
@@ -642,7 +642,7 @@ def test_right_side_filter_on_outer_join_drops_phantom_under_collision(engine: E
         # Act: outer join, then a right-side filter on the colliding courses.title.
         result = connection.execute(
             select(students, courses)
-            .outerjoin(students.c.enrolled_in)
+            .outerjoin(courses, students.c.enrolled_in)
             .where(courses.c.title.is_not_empty())
         )
         rows = result.fetchall()
@@ -692,7 +692,7 @@ def test_join_projects_explicit_colliding_columns_from_both_tables(engine: Engin
 
         # Act: explicitly project the colliding `title` from each side.
         result = connection.execute(
-            select(students.c.title, courses.c.title).join(students.c.enrolled_in)
+            select(students.c.title, courses.c.title).join(courses, students.c.enrolled_in)
         )
         row = result.fetchall()[0]
 
@@ -743,7 +743,7 @@ def test_join_qualifies_colliding_column_names_by_table(engine: Engine):
 
         # Act: join the two tables, both of which carry a `name`.
         result = connection.execute(
-            select(students, instructors).join(students.c.advisor)
+            select(students, instructors).join(instructors, students.c.advisor)
         )
         row = result.fetchall()[0]
 
@@ -797,7 +797,7 @@ def test_join_projects_columns_from_both_tables(engine: Engine):
 
         # Act: project one column from each side of the join.
         result = connection.execute(
-            select(students.c.name, instructors.c.director).join(students.c.advisor)
+            select(students.c.name, instructors.c.director).join(instructors, students.c.advisor)
         )
         row = result.fetchall()[0]
 
@@ -853,7 +853,7 @@ def test_join_keeps_projected_name_bare_when_collision_is_unprojected(engine: En
         # Act: project `name` from ONE side only, alongside the other side's
         # `director`. The unprojected `instructors.name` is the collision bait.
         result = connection.execute(
-            select(students.c.name, instructors.c.director).join(students.c.advisor)
+            select(students.c.name, instructors.c.director).join(instructors, students.c.advisor)
         )
         row = result.fetchall()[0]
 
@@ -914,7 +914,7 @@ def test_inner_join_order_by_left_then_right_breaks_ties_by_right_key(engine: En
 
         result = connection.execute(
             select(students, courses)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .order_by(students.c.name.asc(), courses.c.title.asc())
         )
         rows = result.fetchall()
@@ -970,7 +970,7 @@ def test_join_with_right_order_by_sorts_with_residual_off_the_compiled_dict(
         def title_tiebreak_join():
             return (
                 select(students, courses)
-                .join(students.c.enrolled_in)
+                .join(courses, students.c.enrolled_in)
                 .order_by(students.c.name.asc(), courses.c.title.asc())
             )
 
@@ -1033,7 +1033,7 @@ def test_inner_join_order_by_left_then_right_breaks_ties_by_right_key_descending
 
         result = connection.execute(
             select(students, courses)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .order_by(students.c.name.asc(), courses.c.title.desc())
         )
         rows = result.fetchall()
@@ -1090,7 +1090,7 @@ def test_join_with_parameterised_right_side_where_executes_with_residual_off_the
         def astronomy_join():
             return (
                 select(students, courses)
-                .join(students.c.enrolled_in)
+                .join(courses, students.c.enrolled_in)
                 .where(courses.c.title == "Astronomy")
             )
 
@@ -1176,7 +1176,7 @@ def test_compound_and_where_applies_both_the_pushed_and_the_held_conjunct(
         def galileo_enrolled_in(course_title: str):
             return (
                 select(students, courses)
-                .join(students.c.enrolled_in)
+                .join(courses, students.c.enrolled_in)
                 .where(students.c.name == "Galileo Galilei")   # LEFT  — pushed
                 .where(courses.c.title == course_title)        # RIGHT — held back
             )
@@ -1266,7 +1266,7 @@ def test_join_with_a_left_only_where_keeps_the_matching_pair(engine: Engine):
 
         rows = connection.execute(
             select(students, courses)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(students.c.name == "Galileo Galilei")   # LEFT — the only conjunct
         ).fetchall()
 
@@ -1381,7 +1381,7 @@ def test_a_compound_where_spanning_both_join_sides_rechecks_every_conjunct(
 
         rows = connection.execute(
             select(students, courses)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(students.c.effort != 5)              # LEFT  — pushed, and owed a recheck
             .where(courses.c.title == "Astronomy")      # RIGHT — held back today
         ).fetchall()
@@ -1464,7 +1464,7 @@ def test_a_two_table_predicate_resolves_each_leaf_by_provenance(engine: Engine):
 
         rows = connection.execute(
             select(students, courses)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(students.c.title == "Galileo Galilei")   # LEFT  `title`
             .where(courses.c.title == "Astronomy")          # RIGHT `title`
         ).fetchall()
@@ -1554,7 +1554,7 @@ def test_a_cross_side_or_where_is_answered_client_side(engine: Engine):
 
         rows = connection.execute(
             select(students, courses)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(
                 or_(
                     students.c.name == "Galileo Galilei",
@@ -1617,7 +1617,7 @@ def test_a_join_where_on_an_unprojected_left_column_keeps_the_matching_pair(engi
 
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(students.c.grade == 1)     # LEFT, not projected
         ).fetchall()
 
@@ -1671,7 +1671,7 @@ def test_a_join_where_on_an_unprojected_right_column_keeps_the_matching_pair(eng
 
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(courses.c.credits == 5)     # RIGHT, not projected
         ).fetchall()
 
@@ -1725,7 +1725,7 @@ def test_a_widened_column_that_shares_a_projected_name_keeps_the_bare_name(engin
 
         rows = connection.execute(
             select(students.c.name, courses.c.credits)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(courses.c.name == "Astronomy")     # RIGHT, not projected, same name as students.name
         ).fetchall()
 
@@ -1780,7 +1780,7 @@ def test_a_widened_column_that_shares_a_projected_name_keeps_the_bare_name_under
 
         rows = connection.execute(
             select(students.c.name, courses.c.credits)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(courses.c.name != "Chemistry")     # RIGHT, not projected, same name as students.name
             .order_by(courses.c.credits.asc())        # RIGHT: the residual Sort
         ).fetchall()
@@ -1837,7 +1837,7 @@ def test_outer_join_where_right_is_null_returns_only_unmatched_left_rows(
         # Act: anti-join — keep the left rows that found no right row.
         result = connection.execute(
             select(students, courses)
-            .outerjoin(students.c.enrolled_in)
+            .outerjoin(courses, students.c.enrolled_in)
             .where(courses.c.title.is_null())
         )
         rows = result.fetchall()
@@ -1895,7 +1895,7 @@ def test_outer_join_where_right_is_null_keeps_a_matched_row_with_an_empty_cell_o
 
         result = connection.execute(
             select(students, courses)
-            .outerjoin(students.c.enrolled_in)
+            .outerjoin(courses, students.c.enrolled_in)
             .where(courses.c.credits.is_null())
         )
         rows = result.fetchall()
@@ -2103,7 +2103,7 @@ def test_sum_over_an_inner_join_counts_a_left_value_once_per_matched_right_page(
 
         # Act
         rows = connection.execute(
-            select(func.sum(students.c.id)).join(students.c.enrolled_in)
+            select(func.sum(students.c.id)).join(courses, students.c.enrolled_in)
         ).fetchall()
 
     # Assert: one row. Ada counts two times, Bob one time, Cy not at all.
@@ -2155,7 +2155,7 @@ def test_count_over_an_inner_join_counts_one_row_per_matched_right_page(
 
         # Act: count() has no operand, so only the join gives the rows.
         rows = connection.execute(
-            select(func.count()).join(students.c.enrolled_in)
+            select(func.count()).join(courses, students.c.enrolled_in)
         ).fetchall()
 
     # Assert: one row. Ada counts two times, Bob one time, Cy not at all.
@@ -2212,7 +2212,7 @@ def test_sum_of_a_right_table_column_over_an_inner_join_reads_the_right_cells(
 
         # Act: the operand names a right-table column.
         rows = connection.execute(
-            select(func.sum(courses.c.credits)).join(students.c.enrolled_in)
+            select(func.sum(courses.c.credits)).join(courses, students.c.enrolled_in)
         ).fetchall()
 
     # Assert: one row. Ada adds 5 + 3, Bob adds 3, Cy adds nothing.
@@ -2275,7 +2275,7 @@ def test_operands_with_the_same_column_name_on_both_tables_each_read_their_own_t
         # Act: "id" names a left-table operand and a right-table operand.
         rows = connection.execute(
             select(func.sum(students.c.id), func.count(courses.c.id)).join(
-                students.c.enrolled_in
+                courses, students.c.enrolled_in
             )
         ).fetchall()
 
@@ -2335,7 +2335,7 @@ def test_sum_over_an_outer_join_counts_a_left_value_once_per_joined_row(
 
         # Act
         rows = connection.execute(
-            select(func.sum(students.c.id)).outerjoin(students.c.enrolled_in)
+            select(func.sum(students.c.id)).outerjoin(courses, students.c.enrolled_in)
         ).fetchall()
 
     # Assert: one row. Ada counts two times, Bob one time, Cy one time
@@ -2391,7 +2391,7 @@ def test_count_over_an_outer_join_counts_a_row_with_no_right_page(
 
         # Act
         rows = connection.execute(
-            select(func.count()).outerjoin(students.c.enrolled_in)
+            select(func.count()).outerjoin(courses, students.c.enrolled_in)
         ).fetchall()
 
     # Assert: one row. Ada counts two times, Bob one time, Cy one time
@@ -2447,7 +2447,7 @@ def test_count_of_a_right_table_column_over_an_outer_join_skips_a_missing_right_
 
         # Act
         rows = connection.execute(
-            select(func.count(courses.c.title)).outerjoin(students.c.enrolled_in)
+            select(func.count(courses.c.title)).outerjoin(courses, students.c.enrolled_in)
         ).fetchall()
 
     # Assert: one row. Ada counts two times, Bob one time, Cy not at all
@@ -2504,7 +2504,7 @@ def test_sum_over_an_inner_join_with_a_right_only_where_reduces_only_the_matchin
         # Act
         rows = connection.execute(
             select(func.sum(students.c.id))
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(courses.c.title == "Math")
         ).fetchall()
 
@@ -2561,7 +2561,7 @@ def test_sum_over_an_inner_join_with_an_and_where_across_both_sides_reduces_only
         # Act
         rows = connection.execute(
             select(func.sum(students.c.id))
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(and_(students.c.id < 2, courses.c.title == "Physics"))
         ).fetchall()
 
@@ -2618,7 +2618,7 @@ def test_sum_over_an_inner_join_with_an_or_where_across_both_sides_reduces_only_
         # Act
         rows = connection.execute(
             select(func.sum(students.c.id))
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(or_(students.c.id == 2, courses.c.title == "Math"))
         ).fetchall()
 
@@ -2679,7 +2679,7 @@ def test_inner_join_sends_a_right_only_where_with_the_right_data_source_query(
     with engine.connect() as connection:
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(courses.c.title == "Math")
         ).fetchall()
 
@@ -2750,7 +2750,7 @@ def test_outer_join_sends_no_filter_with_the_right_data_source_query(
     with engine.connect() as connection:
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .outerjoin(students.c.enrolled_in)
+            .outerjoin(courses, students.c.enrolled_in)
             .where((courses.c.effort != 5) | courses.c.title.is_null())
         ).fetchall()
 
@@ -2823,7 +2823,7 @@ def test_inner_join_with_a_right_not_equal_where_drops_the_right_page_with_a_val
     with engine.connect() as connection:
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(courses.c.credits != 5)
         ).fetchall()
 
@@ -2890,7 +2890,7 @@ def test_inner_join_sends_each_conjunct_of_a_spanning_and_with_its_own_data_sour
     with engine.connect() as connection:
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where((students.c.name == "Ada") & (courses.c.title == "Math"))
         ).fetchall()
 
@@ -2973,7 +2973,7 @@ def test_sum_over_an_inner_join_sends_each_conjunct_of_a_spanning_and_with_its_o
     with engine.connect() as connection:
         rows = connection.execute(
             select(func.sum(students.c.id))
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(and_(students.c.id < 2, courses.c.title == "Physics"))
         ).fetchall()
 
@@ -3001,7 +3001,7 @@ def test_inner_join_sends_a_cross_side_or_conjunct_with_neither_data_source_quer
     with engine.connect() as connection:
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(
                 (students.c.id < 3)
                 & or_(students.c.name == "Bob", courses.c.title == "Math")
@@ -3034,7 +3034,7 @@ def test_inner_join_sends_no_right_filter_for_a_right_only_not_conjunct(
     with engine.connect() as connection:
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where((students.c.name == "Ada") & not_(courses.c.title == "Math"))
         ).fetchall()
 
@@ -3069,7 +3069,7 @@ def test_inner_join_sends_a_three_level_right_conjunct_pruned_to_two_levels(
     with engine.connect() as connection:
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where((students.c.name == "Ada") & three_levels)
         ).fetchall()
 
@@ -3139,7 +3139,7 @@ def test_outer_join_with_a_phantom_sensitive_where_returns_no_extra_phantom_rows
         # Act
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .outerjoin(students.c.enrolled_in)
+            .outerjoin(courses, students.c.enrolled_in)
             .where((courses.c.effort != 5) | courses.c.title.is_null())
         ).fetchall()
 
@@ -3202,7 +3202,7 @@ def test_outer_join_sends_a_phantom_rejecting_right_where_with_the_right_data_so
     with engine.connect() as connection:
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .outerjoin(students.c.enrolled_in)
+            .outerjoin(courses, students.c.enrolled_in)
             .where(courses.c.title == "Math")
         ).fetchall()
 
@@ -3232,7 +3232,7 @@ def test_outer_join_sends_each_conjunct_of_a_null_rejecting_spanning_and_with_it
     with engine.connect() as connection:
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .outerjoin(students.c.enrolled_in)
+            .outerjoin(courses, students.c.enrolled_in)
             .where((students.c.name == "Ada") & (courses.c.title == "Math"))
         ).fetchall()
 
@@ -3296,7 +3296,7 @@ def test_outer_join_with_a_right_is_null_where_sends_no_filter_and_returns_the_u
     with engine.connect() as connection:
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .outerjoin(students.c.enrolled_in)
+            .outerjoin(courses, students.c.enrolled_in)
             .where(courses.c.title.is_null())
         ).fetchall()
 
@@ -3350,7 +3350,7 @@ def test_join_asks_the_right_data_source_only_for_the_projected_right_column(
     # Act
     with engine.connect() as connection:
         rows = connection.execute(
-            select(students.c.name, courses.c.title).join(students.c.enrolled_in)
+            select(students.c.name, courses.c.title).join(courses, students.c.enrolled_in)
         ).fetchall()
 
     # Assert: the query on the right data source asks for `title` only.
@@ -3418,7 +3418,7 @@ def test_join_asks_the_right_data_source_also_for_the_right_column_its_where_rea
     with engine.connect() as connection:
         rows = connection.execute(
             select(students.c.name, courses.c.title)
-            .join(students.c.enrolled_in)
+            .join(courses, students.c.enrolled_in)
             .where(courses.c.effort > 4)
         ).fetchall()
 
@@ -3487,7 +3487,7 @@ def test_aggregate_join_asks_the_right_data_source_only_for_its_right_operand(
     # Act: the aggregate reads only `effort` from the right table.
     with engine.connect() as connection:
         rows = connection.execute(
-            select(func.sum(courses.c.effort)).join(students.c.enrolled_in)
+            select(func.sum(courses.c.effort)).join(courses, students.c.enrolled_in)
         ).fetchall()
 
     # Assert: the query on the right data source asks for `effort` only.
@@ -3541,7 +3541,7 @@ def test_join_that_projects_only_the_right_object_id_sends_no_right_filter_prope
     # Act: the only right column in the projection is `object_id`.
     with engine.connect() as connection:
         rows = connection.execute(
-            select(students.c.name, courses.c.object_id).join(students.c.enrolled_in)
+            select(students.c.name, courses.c.object_id).join(courses, students.c.enrolled_in)
         ).fetchall()
 
     # Assert: the query on the right data source carries no filter_properties,
