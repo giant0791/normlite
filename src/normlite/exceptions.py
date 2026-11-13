@@ -126,7 +126,7 @@ class NoReferencedTableError(NoReferenceError):
       located in the metadata.
     - During ``Table.create()``: the referred ``Table`` exists but has
       not been created yet (its object id is ``None``). The caller
-      should use :meth:`MetaData.create_all` to create tables in
+      should use :meth:`normlite.sql.schema.MetaData.create_all` to create tables in
       dependency order.
 
     .. versionadded:: 0.11.0

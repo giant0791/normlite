@@ -18,6 +18,15 @@ autoapi/index
 ```
 
 ```{toctree}
+:caption: Architecture decisions
+:maxdepth: 1
+:hidden:
+:glob:
+
+adr/*
+```
+
+```{toctree}
 :caption: About the project
 :hidden:
 

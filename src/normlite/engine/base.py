@@ -174,7 +174,7 @@ class Connection:
 
         Args:
             stmt (Executable): The statement to execute.
-            parameters (Optional[d_CoreAnyExecuteParams]): An optional mapping or sequence of mappings containing the parameters to be
+            parameters (Optional[_CoreAnyExecuteParams]): An optional mapping or sequence of mappings containing the parameters to be
                 bound to the SQL statement.
             execution_options (Mapping[str, Any]): Optional per-statement execution options. Defaults to ``None``.
 
@@ -624,7 +624,7 @@ class Engine:
 
         Public API for engine disposal.
 
-        A disposed engine raises :exc:`normlite.execeptions.InvalidRequestError` if
+        A disposed engine raises :exc:`normlite.exceptions.InvalidRequestError` if
         :meth:`Engine.connect` is called.
 
 
@@ -1093,7 +1093,7 @@ class Inspector:
             table_name (str): The name of the table to search for.
 
         Returns:
-            bool: ``True`` if the table state is :attr:`normlite.engine.reflection.TableState.ACTIVE`, ``False`` otherwise.
+            bool: ``True`` if the table state is :attr:`normlite.engine.systemcatalog.TableState.ACTIVE`, ``False`` otherwise.
         """
         state = self._engine.get_table_state(
             table_name=table_name,

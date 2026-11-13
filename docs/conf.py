@@ -95,3 +95,73 @@ html_theme_options = {
 html_css_files = ["custom.css"]
 
 nitpicky = True
+
+# -- Nitpicky reference resolution ------------------------------------------
+
+# Exclude the agent workflow notes. They are instructions for coding agents,
+# not user documentation.
+exclude_patterns += ["agents/**"]
+
+# Names that are never a real reference target:
+# - "optional": napoleon turns the Google-style "x (int, optional)" into a type.
+# - "Ellipsis": autoapi renders the "..." in "tuple[int, ...]" as a class.
+nitpick_ignore = [
+    ("py:class", "optional"),
+    ("py:class", "Ellipsis"),
+]
+
+intersphinx_mapping.update({
+    "requests": ("https://requests.readthedocs.io/en/latest/", None),
+    "flask": ("https://flask.palletsprojects.com/en/stable/", None),
+    "werkzeug": ("https://werkzeug.palletsprojects.com/en/stable/", None),
+})
+
+# Names that an annotation shows unqualified, because the module imports them
+# with ``from X import Name`` or under an alias. They point to the real target.
+_ANNOTATION_TARGETS = {
+    "datetime": "datetime.datetime",
+    "Decimal": "decimal.Decimal",
+    "TracebackType": "types.TracebackType",
+    "DBAPIConnection": "normlite.notiondbapi.dbapi2.Connection",
+    # Re-exported by the package, documented in its module.
+    "normlite.notiondbapi.Error": "normlite.notiondbapi.dbapi2.Error",
+}
+
+
+def _resolve_unqualified(app, env, node, contnode):
+    """Resolve a ``py:class`` or ``py:exc`` reference given as a bare name.
+
+    autoapi documents a type alias (``IsolationLevel = Literal[...]``) as
+    ``py:data``, but an annotation refers to it as ``py:class``. This handler
+    looks the name up as any Python object. A bare name prefers the object in
+    the module of the reference. It runs before intersphinx.
+    """
+    if node.get("refdomain") != "py" or node.get("reftype") not in ("class", "obj", "exc"):
+        return None
+
+    target = node["reftarget"]
+    if target in _ANNOTATION_TARGETS:
+        # Rewrite the target. If it is not a normlite object, intersphinx
+        # resolves it after this handler.
+        target = node["reftarget"] = _ANNOTATION_TARGETS[target]
+
+    domain = env.get_domain("py")
+    # A qualified path must match exactly, so a wrong path still warns.
+    # Only a bare name may match an object in any module.
+    is_bare = "." not in target
+    candidates = [
+        name for name, *_ in domain.get_objects()
+        if name == target or (is_bare and name.endswith("." + target))
+    ]
+    if not candidates:
+        return None
+
+    module = node.get("py:module") or ""
+    candidates.sort(key=lambda name: (not name.startswith(module + "."), name))
+    from sphinx.util.nodes import make_refnode
+    obj = domain.objects[candidates[0]]
+    return make_refnode(app.builder, node["refdoc"], obj.docname, obj.node_id, contnode, candidates[0])
+
+
+def setup(app):
+    app.connect("missing-reference", _resolve_unqualified, priority=400)

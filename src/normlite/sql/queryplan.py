@@ -102,9 +102,9 @@ class _UnaryOperator(VolcanoOperator):
     """Shared base for unary Volcano operators.
 
     Subclasses call ``super().__init__(source, schema)``, keep their extra state and override only
-    :meth:`next`.
+    :meth:`VolcanoOperator.next`.
 
-    :meth:`next` stays abstract here on purpose: a subclass that forgets it
+    :meth:`VolcanoOperator.next` stays abstract here on purpose: a subclass that forgets it
     must fail when it is created, not when the plan runs (#451).
 
     .. versionadded:: 0.14.0
@@ -411,7 +411,7 @@ class Filter(_UnaryOperator):
     The predicate is evaluated over the slice of each row owned by the tables it
     reads: the whole row on the scan path, either or both sides on the join path.
 
-    Filtering removes rows, never columns, so :attr:`result_schema` is the
+    Filtering removes rows, never columns, so :attr:`_UnaryOperator.result_schema` is the
     schema of the source rows, unchanged.
 
     .. versionchanged:: 0.14.0
@@ -506,7 +506,7 @@ class Filter(_UnaryOperator):
         lossy probe and never decides (ADR-0022) -- and sometimes a genuine
         **residual**, a conjunct with no pushed form at all.
 
-        Shape adapter around :func:`eval3`: the merged row is a flat tuple of
+        Shape adapter around :func:`normlite.sql.eval3.eval3`: the merged row is a flat tuple of
         raw cells, while the evaluator reads them keyed by column name. The
         cells stay RAW because decoding erases the Notion TYPE TAG, and
         emptiness is per-type -- a number is empty when it is ``null``, a text
@@ -699,7 +699,7 @@ class Project(_UnaryOperator):
     which is what keeps the widening invisible to the user's ``Row``
     (ADR-0022).
 
-    :attr:`result_schema` is the trimmed schema, which is the one the user sees.
+    :attr:`_UnaryOperator.result_schema` is the trimmed schema, which is the one the user sees.
     On the plan path the user-visible ``keys()`` come from the plan root, so
     this is the schema that decides them.
 
@@ -816,7 +816,7 @@ class ModifyTable(VolcanoOperator):
         in the RETURNING schema, for :meth:`next`.
 
         Args:
-            connection (Connection): The DBAPI connection that sends the writes.
+            connection (normlite.notiondbapi.dbapi2.Connection): The DBAPI connection that sends the writes.
         """
         self._source.open(connection)
         self._cursor = connection.cursor()

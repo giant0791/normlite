@@ -77,7 +77,7 @@ _NO_CURSOR_RESULT_METADATA = _NoCursorResultMetadata()
 
 class CursorResultMetaData(_NoCursorResultMetadata):
     """Provide helper metadata structures to access row data from low level
-    :class:`normlite.notionbdapi.dbapi2.Cursor` DBAPI 2.0.
+    :class:`normlite.notiondbapi.dbapi2.Cursor` DBAPI 2.0.
 
     .. versionchanged:: 0.8.0
         This version now provides full support for constructing and accessing :class:`Row` objects with a subset of columns
@@ -85,7 +85,7 @@ class CursorResultMetaData(_NoCursorResultMetadata):
 
         .. seealso::
 
-            :mod:`normlite.notiondbapi.compiler` module
+            ``normlite.notiondbapi.compiler`` module
                 Documentation explaining how retrieved Notion database objects are compiled.
 
     .. versionchanged:: 0.7.0

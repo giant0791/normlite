@@ -81,7 +81,7 @@ class NotionError(Exception):
 
         .. seealso::
 
-            `Notion API error codes and messages <https://developers.notion.com/reference/status-codes#error-codes>__
+            `Notion API error codes and messages <https://developers.notion.com/reference/status-codes#error-codes>`__
         """
 
         # Preserve normal Exception behavior
@@ -354,8 +354,8 @@ class AbstractNotionClient(ABC):
         Args:
             endpoint (str): The REST API endpoint, example: ``databases``.
             request (str): The REST API request, example: ``create``.
-            path_params (dict): Optional REST API path parameters, example: ``{"page_id": "b55c9c91-384d-452b-81db-d1ef79372b75"}
-            query_params (dict): The REST API query parameters, example: ``{"filter_properties": ["title", "status"]}
+            path_params (dict): Optional REST API path parameters, example: ``{"page_id": "b55c9c91-384d-452b-81db-d1ef79372b75"}``
+            query_params (dict): The REST API query parameters, example: ``{"filter_properties": ["title", "status"]}``
             payload (dict): The JSON object as payload (also called body of the request).
 
         Raises:
@@ -637,12 +637,12 @@ class InMemoryNotionClient(AbstractNotionClient):
         with the :class:`FileBasedNotionClient`.
 
     .. versionchanged:: 0.7.0
-        In this version, the :attr:`_store` is a Python :type:`dict` to provide random access.
+        In this version, the ``_store`` is a Python :class:`dict` to provide random access.
         The object indentifier is used as key and the object itself is the value.
         Additionally, the store is always initialized with a root page as is the case for Notion internal integrations.
 
     .. deprecated:: 0.7.0
-        The :meth:`__init__` parameters **shall not** be used anymore, they will be removed in a future verison.
+        The ``__init__()`` parameters **shall not** be used anymore, they will be removed in a future verison.
         The datastructures info schema page and tables are created by the :class:`normlite.engine.base.Engine`.
         Clients do not have knowledge of these datastructures.
 
@@ -680,7 +680,7 @@ class InMemoryNotionClient(AbstractNotionClient):
             Notion clients must enforce the invariant that the store is empty
             after creation.
             Users of this class have the responsibility to call this utility method,
-            if required (see :meth:`normlite.engine.base.Engine._bootstrap` for more
+            if required (see :meth:`normlite.engine.base.Engine._bootstrap_catalog` for more
             details).
 
 

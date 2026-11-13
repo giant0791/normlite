@@ -46,7 +46,7 @@ Note:
     column ``student_id``), the primary key constraint will add it to its collection of columns as well along
     with the ``_no_id``.
 
-You can inspect the table's primary key constraints by calling the :attr:`primary_key` as follows:
+You can inspect the table's primary key constraints by calling the :attr:`Table.primary_key` as follows:
     >>> print(repr(stundents.primary_key))
     PrimaryKeyConstraint(name=None,
         (Column('student_id', Integer, table=<students>, primary_key=True),
@@ -93,7 +93,7 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
     """A single table column specifying the type and its constraints.
 
     The :class:`Column` objects model Notion properties. You define a column by assigning it a name
-    and a type (for available types, refer to :mod:`normlite.sql.type_api.py`).
+    and a type (for available types, refer to :mod:`normlite.sql.type_api`).
     If a column is intended to act as a primary key in your database, then set the
     argument ``primary_key`` to true (refer to :class:`PrimaryKeyConstraint` for more details).
 
@@ -175,7 +175,7 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
         to inject the right column name:
 
             - :attr:`Column.name` for user columns
-            - :attr:`SystemColumns._api_name` for system columns
+            - :class:`normlite._constants.SpecialColumns` values for system columns
 
         .. versionadded:: 0.9.0
         """
@@ -525,7 +525,7 @@ class Table(HasIdentifier):
         """Return all user defined columns only.
 
         .. versionadded:: 0.9.0
-            Use this method instead of depreacted :meth:`Table.get_user_defined_columns`.
+            Use this method instead of deprecated ``Table.get_user_defined_columns()``.
         """
         return self._usr_columns.as_readonly()
 
@@ -740,14 +740,14 @@ class Table(HasIdentifier):
 
         Raises:
             NoReferencedTableError: If any foreign-key target table has not been created yet.
-                Call :meth:`MetaData.create_all` to create tables in dependency order.
+                Call :meth:`normlite.sql.schema.MetaData.create_all` to create tables in dependency order.
             ProgrammingError: If the ``checkfirst == False`` and the table already exists or
                 if the table is dropped and the execution option ``restore_dropped`` is False.
 
             InternalError: If the table is ORPHANED.
 
         .. seealso::
-            :class:`normlite.sql.reflection.TableState` for better understanding table lifecycle and state resolution.
+            :class:`normlite.engine.systemcatalog.TableState` for better understanding table lifecycle and state resolution.
 
         .. versionchanged:: 0.11.0
             Raises :exc:`NoReferencedTableError` when an FK target table
@@ -841,9 +841,9 @@ class Table(HasIdentifier):
         """Drop an existing table using the provided bind
 
         This method is table state life-cycle aware and uses the :class:`normlite.sql.ddl.DropTable`
-        DDL statement to create the table.
+        DDL statement to drop the table.
 
-                Args:
+        Args:
             bind (Engine): _description_
             checkfirst (bool, optional): _description_. Defaults to False.
 

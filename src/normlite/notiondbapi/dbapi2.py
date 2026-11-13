@@ -132,7 +132,7 @@ class Cursor:
     """Provide database base cursor functionalty according to the DBAPI 2.0 specification (PEP 249).
 
     Note:
-        the :class:`Cursor` does not support transaction awareness. Use :class:`CompositeCursor` for fully
+        the :class:`Cursor` does not support transaction awareness. Use ``CompositeCursor`` for fully
         DBAPI 2.0 compliant cursor.
 
     .. versionchanged: 0.9.0
@@ -177,7 +177,7 @@ class Cursor:
         """
 
         self._result_set = None
-        """The result set returned by the last :meth:`.execute()`. It is set by :meth:`._parse_result_set()`
+        """The result set returned by the last :meth:`.execute()`. It is set by ``_parse_result_set()``
 
         ..version-removed:: 0.9.0
             Outdated internal attribute. This will be removed in the next version.
@@ -195,7 +195,7 @@ class Cursor:
 
         .. versionchanged:: 0.9.0
             In this version, the :attr:`_description` is now used to buffer the description until the
-            :meth:`_parse_result_set` is called. This method now uses the new :class:`normlite.notiondbapi.resultset.ResultSet`
+            ``_parse_result_set()`` is called. This method now uses the new :class:`normlite.notiondbapi.resultset.ResultSet`
             to do the parsing of the Notion returned object. The new class for the result set takes care to
             either return the injected description, in the DML case, or to construct the description from the retrieved database,
             in the DDL case.
@@ -555,7 +555,7 @@ class Cursor:
 
         This method returns all the remaining rows contained in this query result as a sequence of sequences
         (e.g. a list of tuples).
-        Please refer to :mod:`notiondbapi` for a detailed description of how Notion JSON objects are
+        Please refer to :mod:`normlite.notiondbapi` for a detailed description of how Notion JSON objects are
         parsed and cross-compiled into Python ``tuple`` objects.
 
         Important:
@@ -677,7 +677,7 @@ class Cursor:
             :meth:`Cursor.execute` now supports paginated results.
 
         .. versionchanged:: 0.7.0
-            :meth:`Cursor:execute` now accepts operations with no parameters. This happens for ``CREATE TABLE`` DDL statements.
+            :meth:`Cursor.execute` now accepts operations with no parameters. This happens for ``CREATE TABLE`` DDL statements.
 
         .. versionchanged:: 0.5.0
             Calling this method on a closed cursor raises the :exc:`Error`.
@@ -950,8 +950,8 @@ class Connection:
     """Provide database base connection functionalty according to the DBAPI 2.0 specification (PEP 249).
 
     Warning:
-        This class implements the "AUTOCOMMIT" (non-transactional) isolation level only. This means that its transaction-related methods like :meth:`Connection.commit()`
-        and :meth:`Connection.rollback()` are not implemented.
+        This class implements the "AUTOCOMMIT" (non-transactional) isolation level only. This means that its transaction-related methods like ``Connection.commit()``
+        and ``Connection.rollback()`` are not implemented.
 
     .. versionadded:: 0.7.0
 
@@ -982,7 +982,7 @@ class Connection:
         Return ``True`` if the connection is operating in autocommit (non-transactional) mode.
 
         Note:
-            :class:`BaseConnection` implements the autocommit mode only, so the read-only attribute always returns ``True``.
+            :class:`Connection` implements the autocommit mode only, so the read-only attribute always returns ``True``.
             Setting the autocommit mode by writing to the attribute is not supported as it is deprecated according to PEP 249.
 
         """
