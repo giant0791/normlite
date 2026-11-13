@@ -20,6 +20,7 @@ from normlite.sql.queryplan import (
     Planner,
     Project,
     Scan,
+    Sort,
     VolcanoOperator,
 )
 from normlite.sql.resultschema import SchemaInfo
@@ -1609,3 +1610,47 @@ def test_a_join_plan_reads_each_side_in_one_request_even_with_yield_per(engine):
     # request -- not one left request per two rows.
     assert len(rows) == 5
     assert counting.query_calls == 2
+
+
+@pytest.mark.parametrize("operator_kind", ["filter", "sort", "project"])
+def test_a_single_source_operator_forwards_open_and_close_to_its_source(
+    students, operator_kind
+):
+    # #375: Filter, Sort and Project each take ONE source. Each must hand the
+    # caller's connection down on open(), and must close its source on close().
+    # Today every operator does this on its own. A refactor that shares the
+    # work must keep it, for each operator. A lost open() gives the Scan no
+    # cursor. A lost close() leaks the Scan cursor (#393).
+    #
+    # This test is GREEN before the refactor. It is the safety net that must
+    # stay green after it.
+    schema = SchemaInfo.from_table(students, execution_names=["object_id", "name", "id"])
+
+    class _SpySource(_WideSource):
+        def __init__(self) -> None:
+            super().__init__(schema, rows=[])
+            self.opened_with = "<unopened>"
+            self.closed = False
+
+        def open(self, connection) -> None:
+            self.opened_with = connection
+
+        def close(self) -> None:
+            self.closed = True
+
+    source = _SpySource()
+    operators = {
+        "filter": lambda: Filter(source, schema, students.c.id == 5, [students]),
+        "sort": lambda: Sort(source, schema, [{"property": "id"}], students),
+        "project": lambda: Project(source, ["name"]),
+    }
+    operator = operators[operator_kind]()
+    connection = object()   # opaque stand-in for the DBAPI Connection
+
+    # Act: open, then close, the operator.
+    operator.open(connection)
+    operator.close()
+
+    # Assert: the source got the SAME connection, and the source is closed.
+    assert source.opened_with is connection
+    assert source.closed
