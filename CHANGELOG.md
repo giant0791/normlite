@@ -1,3 +1,76 @@
+## 0.14.0 (2026-11-14)
+
+### BREAKING CHANGE
+
+- join(students.c.enrolled_in) now raises ArgumentError.
+Use join(courses, students.c.enrolled_in), or join(courses) when the
+left table has one Relation column to courses. Move an onclause
+predicate to where(): join(courses, col).where(col.contains(u)).
+
+### Feat
+
+- **sql**: push the right conjuncts of a null-rejecting outer-join WHERE (#447)
+- **sql**: an aggregate SELECT takes its left table from the onclause (#474)
+- **sql**: add is_null() and make it unpushable (#366)
+
+### Fix
+
+- **sql**: fail loud on more than one join per SELECT (#469)
+- **sql**: fail loud when a SELECT reads a table outside its FROM (#469)
+- **notiondbapi**: name every missing page property in the error
+- **sql**: narrow the right Scan with its own filter_properties (#448)
+- **sql**: push the right conjuncts of a spanning WHERE on an inner join (#445)
+- **sql**: push a right-only WHERE into the right Scan on an inner join (#444)
+- **sql**: an aggregate join routes an AND WHERE across both sides (#478)
+- **sql**: widen the right Scan of an aggregate join for the recheck (#478)
+- **sql**: an aggregate operand resolves by (table, column) (#476)
+- **sql**: an aggregate SELECT reduces the rows of an inner join (#475)
+- **sql**: a join takes its right table from the onclause (#468)
+- **sql**: raise CompileError for a WHERE that reads a table outside the FROM (#463)
+- **engine**: close the execution cursor on the query plan path (#449)
+- **sql**: recheck the WHERE of an aggregate before the reduction (#399)
+- **engine**: close the query plan when a Notion page pull fails (#453)
+- **sql**: make Scan.close() and ModifyTable.close() safe before open() (#453)
+- **sql**: Sort.close() closes its source operator (#393)
+- **notiondbapi**: the cursor closes its batch source on close (#393)
+- **sql**: a widened join column keeps the user's bare names (#433)
+- **sql**: a join WHERE on an unprojected right column keeps its rows (#433)
+- **sql**: a join WHERE on an unprojected left column keeps its rows (#433)
+- **sql**: do not push an empty-string text literal to Notion (#382)
+
+### Refactor
+
+- **sql**: extract a _UnaryOperator base for Filter/Sort/Project (#375)
+- **sql**: join() takes a target table and a Relation onclause (#480)
+- **sql**: remove Select._right
+- **sql**: read the right table of the gate from the executed join (#444)
+- **sql**: record the widened left columns of a join in PlanningContext (#478)
+- **sql**: remove the unused Numeric import
+- **sql**: read the aggregate operands from Select._operand_columns (#475)
+- **sql**: a SELECT knows its FROM tables (#467)
+- **sql**: compile the SELECT ORDER BY in its own method
+- **sql**: compile the SELECT WHERE in its own methods (#466)
+- **engine**: remove unused imports and explain the plan cleanup (#453)
+- **sql**: make VolcanoOperator an ABC so a missing method fails at instantiation (#451)
+- **sql**: rename the join SchemaInfo builders and drop dead params (#374)
+- **sql**: the join Filter and Sort reuse the HashJoin result schema (#437)
+- **sql**: HashJoin requires a projection (#436)
+- **sql**: the widening helper takes a side and returns the list (#433)
+- **sql**: the Planner stops writing query_params (#431)
+- **sql**: the DML visitors own the title-only fetch (#431)
+- **sql**: one pre-compile step for DELETE and UPDATE (#431)
+- **sql**: the compiler widens the DELETE and UPDATE fetch (#431)
+- **sql**: the compiler widens the plain SELECT fetch (#431)
+- **sql**: split Planner.plan into one builder per plan shape (#425)
+- **sql**: prune a too-deep DELETE/UPDATE WHERE instead of raising (#417)
+- **sql**: recheck the UPDATE WHERE instead of refusing it (#413)
+- **sql**: fetch the title only for an UPDATE with no WHERE (#413)
+- **sql,engine**: execute UPDATE through the query plan (#413)
+- **sql,engine**: recheck the DELETE WHERE through the plan (#412)
+- **sql,engine**: execute DELETE through the query plan (#411)
+- **sql**: build a filter plan for a DELETE (#410)
+- **sql,engine**: compile DML WHERE through one shared visitor (#409)
+
 ## 0.13.0 (2026-10-06)
 
 ### Feat
