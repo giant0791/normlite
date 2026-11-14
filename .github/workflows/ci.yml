@@ -16,6 +16,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Sphinx reads a malformed version directive (".. versionadded: X" or
+      # "..versionadded:: X") as an RST comment and gives no warning (#502).
+      - name: Check version directives in docstrings
+        run: |
+          if grep -rnE --include='*.py' '\.\.version(added|changed|deprecated)|\.\. *version(added|changed|deprecated):($|[^:])' src; then
+            echo "::error::Malformed version directive. Use '.. versionadded:: X' or '.. versionchanged:: X'."
+            exit 1
+          fi
+
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
