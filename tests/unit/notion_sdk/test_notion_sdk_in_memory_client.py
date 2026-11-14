@@ -228,6 +228,18 @@ def test_root_page_exists_by_default(client):
     assert root["properties"]["Title"]["title"][0]["text"]["content"] == "ROOT_PAGE"
 
 
+def test_default_root_page_id_names_the_store_root_page(client):
+    # Arrange
+    root_page_id = client.default_root_page_id
+
+    # Act
+    root = client.pages_retrieve(path_params={"page_id": root_page_id})
+
+    # Assert
+    assert root["object"] == "page"
+    assert root["id"] == root_page_id
+
+
 # ---------------------------------------------------------
 # Page under page rules
 # ---------------------------------------------------------
