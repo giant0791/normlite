@@ -49,91 +49,128 @@ Below is the complete flow used for preparing and releasing new versions.
 git checkout -b feature/my-feature
 ```
 
-#### Manual Step: Run CI (ci.yml)
+#### CI runs on the pull request (ci.yml)
 
-Run the `ci.yml` workflow manually on your feature branch.
-It validates:
+You do not start `ci.yml` by hand. It runs on each pull request to `main`
+and on each push to `main`. It does these checks:
 
 * test execution
-* test coverage
-* linting (if enabled)
-* typing (if enabled in this phase)
+* test coverage (the workflow posts a comment on the PR)
+* Sphinx documentation build
 
-Fix any issues until the workflow passes.
+Lint (`ruff`) and type checks (`ty`) are not in CI yet.
+They are not in the project dependencies yet.
+
+> GitHub runs workflows only on refs that are on the remote.
+> Push your branch (`git push -u origin <branch>`) before you open the PR.
 
 #### When ready → Open a Pull Request
 
 Merge feature branches into `main` through a PR.
 
+Before you merge, make sure the remote branch has all your local commits.
+`gh pr merge` merges the **remote** tip, not your local `HEAD`:
+
+```bash
+git fetch
+git log origin/<branch>..<branch>   # must print nothing
+```
+
 > *Developers are encouraged (but not required at this stage) to update documentation relevant to their feature while developing.*
 
 ---
 
-### 2. Release Preparation (Release Branch)
+### 2. Release
 
-Once all features are merged and you want to prepare a release, create a dedicated release branch:
+The full procedure is in `docs/releasing.md` ("Cutting a release" in the documentation site).
+This section is a summary.
 
+**Do not create the release branch yourself. Do not create the tag yourself.**
+The `release.yml` workflow creates the `release/vX.Y.Z` branch.
+The `tag-and-deploy.yml` workflow creates the tag on `main`.
+
+Commitizen calculates the version from the conventional commits since the
+last tag. You do not select the version. Tags are bare (`0.14.0`, no `v`).
+
+#### 2.1 Prepare `main`
+
+1. Merge all the work for the release into `main`.
+   Close or move the open issues of the release milestone.
+2. Make sure CI on `main` is green.
+3. Make sure all workflow edits (for example, action version bumps) are on
+   `main`. `tag-and-deploy.yml` runs the workflow files from `main`.
+4. Preview the version and the changelog:
+
+   ```bash
+   git checkout main && git pull
+   uv run cz bump --dry-run --yes
+   ```
+
+   If the version is not the milestone version, stop.
+   Find the commit with the wrong type before you continue.
+
+#### 2.2 Start the Release workflow (release.yml)
+
+Start it on `main`. The workflow stops on all other branches.
+
+```bash
+gh workflow run release.yml --ref main
+gh run watch
 ```
-git checkout -b release/vX.Y.Z
+
+Or: **Actions → Release → Run workflow → Branch: main**.
+
+The workflow does these steps:
+
+* calculates the next version (`cz bump --dry-run`)
+* creates the `release/vX.Y.Z` branch on the remote
+* updates the version in `pyproject.toml` and adds the release to `CHANGELOG.md`
+* opens the PR `release: vX.Y.Z` into `main`
+
+#### 2.3 Review the release PR
+
+* Check the version in `pyproject.toml`.
+* Check the new `CHANGELOG.md` section. Its newest entry must be your newest commit.
+* Wait for CI on the PR. You may have to approve the workflow run.
+
+If the PR is wrong: close it, delete the `release/vX.Y.Z` branch, fix `main`,
+and start the Release workflow again. No remote tag exists yet.
+
+#### 2.4 Merge the release PR (tag-and-deploy.yml)
+
+Merge with a **merge commit**. Do not squash. Do not rebase.
+
+```bash
+gh pr merge <PR#> --merge
 ```
 
-#### Manual Step: Build & Validate Documentation (docs.yml)
+The merge starts `tag-and-deploy.yml`. It does these steps:
 
-Run the `docs.yml` workflow on the release branch:
+* creates the tag `X.Y.Z` on the merge commit and pushes it
+* builds the Sphinx documentation
+* deploys it to GitHub Pages
 
-* Sphinx build
-* linkcheck
-* spelling
-* API reference generation
-* any warnings promoted to errors
+#### 2.5 Verify
 
-Fix any doc issues and re-run until clean.
-
-Documentation polishing should be finished before releasing.
-
----
-
-### 3. Finalize Release (release.yml)
-
-> First and foremost, the git tag for the release **must** be created.
-
-For example, for release v0.8.0, create the tag as follows:
-
-``` bash
-git tag -a 0.8.0 -m "Release version 0.8.0"
-git push origin --tags
+```bash
+git checkout main && git pull --tags
+git tag --sort=-creatordate | head -1   # X.Y.Z
+gh run list --workflow tag-and-deploy.yml --limit 1
 ```
 
-> Pushing the created tags to the remote branch is **essential**: cz needs the release tags.
+Then close the release milestone.
 
-If cz cannot find a tag, it will interrupt the GitHub action with the error:
+The pipeline does **not** upload to PyPI.
 
-> **No tag found to do an incremental changelog**
+#### Documentation-only deploy (docs.yml)
 
+`docs.yml` builds the documentation and deploys it to GitHub Pages.
+It does no linkcheck and no spelling check. Use it only to deploy the
+documentation again without a release:
 
-Trigger `release.yml` manually on the release branch.
-
-This workflow performs:
-
-* version bump via Commitizen
-* changelog update
-* tagging
-* packaging & validation
-* optional PyPI upload (if enabled)
-
-Fix any issues and re-run as needed.
-
----
-
-### 4. Merge Release Branch → Main
-
-Once the release branch is validated and tagged:
-
-1. Open a “Release PR” into `main`
-2. Merge after review (or after re-running CI)
-3. Optionally trigger docs deployment to GitHub Pages (if configured)
-
-At this point, the release is complete and the documentation on `main` is up to date.
+```bash
+gh workflow run docs.yml --ref main
+```
 
 ---
 
@@ -144,8 +181,8 @@ Documentation is a core part of the project and evolves alongside code.
 ### Where docs should be updated
 
 * Feature-specific docs → during the feature PR if possible
-* Final polishing → in the release branch during step 2
-* Final deployment → after merging release branch into `main`
+* Final polishing → in a normal PR to `main`, before step 2.2
+* Final deployment → automatic, when the release PR merges into `main`
 
 ### Build system
 

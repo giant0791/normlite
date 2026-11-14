@@ -42,6 +42,11 @@ Three workflows cooperate:
   [conventional commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`,
   `docs:`, `refactor:`, etc.). The commit types determine the version bump.
 - CI is green on `main`.
+- All workflow edits (for example, action version bumps) are on `main`.
+  Tag and Deploy runs the workflow files from `main`.
+- Every merged PR had all its local commits on the remote. `gh pr merge`
+  merges the remote branch tip. Check with `git log origin/<branch>..<branch>`
+  before each merge.
 - You have permission to run workflows in the repository.
 
 While the project is on `0.x` (`major_version_zero = true`):
@@ -71,8 +76,10 @@ The workflow then, automatically:
 2. Computes the next version from the commit history (`cz bump --dry-run`).
 3. Creates a `release/v<version>` branch.
 4. Runs `cz bump --yes`, which updates the version in `pyproject.toml`, updates
-   the changelog, and creates the version tag locally.
-5. Pushes the branch and tag.
+   the changelog, and creates the version tag in the runner.
+5. Pushes the branch. The tag stays in the runner: `cz bump` makes a
+   lightweight tag, and `git push --follow-tags` pushes only annotated tags.
+   Tag and Deploy creates the remote tag in Step 3.
 6. Opens a pull request titled `release: v<version>` against `main`.
 
 ## Step 2 — Review the release PR
@@ -84,14 +91,18 @@ Open the pull request the workflow created and check:
 - CI on the PR is green.
 
 If something is wrong (e.g. a commit was mis-typed and produced the wrong bump),
-**close the PR, delete the `release/v<version>` branch and tag**, fix the commit
-history on `main`, and re-run the Release workflow.
+**close the PR and delete the `release/v<version>` branch**, fix the commit
+history on `main`, and re-run the Release workflow. No remote tag exists yet.
 
 ## Step 3 — Merge the release PR
 
+Merge with a **merge commit** (`gh pr merge <PR#> --merge`). Do not squash or
+rebase: Tag and Deploy reads the `release/v*` head branch name and the merge
+commit SHA.
+
 Merging the PR into `main` triggers **Tag and Deploy**, which:
 
-1. Re-points the version tag to the merge commit (so the tag lands on `main`,
+1. Creates the version tag on the merge commit (so the tag lands on `main`,
    not on the now-merged release branch).
 2. Builds the Sphinx documentation.
 3. Deploys it to GitHub Pages (the `github-pages` environment).
@@ -108,12 +119,11 @@ and the published documentation reflects the new version.
   `fix:` (etc.) commit messages.
 - **Wrong version computed** — a commit message used the wrong type. Verify with
   `uv run cz bump --dry-run --yes`, fix the history on `main`, and re-run.
-- **Tag/branch left over from an aborted attempt** — delete the remote branch
-  and tag before retrying:
+- **Branch left over from an aborted attempt** — delete the remote branch
+  before retrying. An unmerged release PR leaves no remote tag:
 
   ```bash
   git push origin --delete release/v<version>
-  git push origin :refs/tags/<version>
   ```
 
 - **Docs didn't update after merge** — check the **Tag and Deploy** run; the
