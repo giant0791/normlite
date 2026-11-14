@@ -60,6 +60,9 @@ CONTEXT §"Layers" sets one dependency direction: ENGINE → DBAPI, and nobody c
   stem) comes from the URI in the Engine. The deprecated `Engine._database` is deleted.
 - **The creator closes.** `dbapi2.Connection` gains a PEP 249 `close()`, and `Engine.dispose()`
   calls it. See the amendment in [ADR-0003](0003-engine-dispose-semantics.md).
+- **`client` is a normlite extension.** PEP 249 does not define `Connection.client`. PEP 249
+  sets a minimum, and extra attributes do not break compliance. Only the Engine reads the property.
+  The property is read-only: the constructor is the only way to set the client.
 - **Test seams stay.** `Engine._client` becomes a private read-only property that returns
   `self._dbapi_connection.client`. `dbapi2.Connection(client)` stays the dependency-injection seam,
   and `connect()` is the public factory on top of it.
