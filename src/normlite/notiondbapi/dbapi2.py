@@ -1026,7 +1026,7 @@ class Connection:
         This method closes the underlying client.
         A second close on a closed connection is a no-op.
         As defined by PEP 249, a closed connection is unusable.
-        This implementation of the :class::`Connection` does not raise
+        This implementation of the :class:`Connection` does not raise
         if any operation is attempted on a closed connection.
 
         .. versionadded:: 0.15.0
