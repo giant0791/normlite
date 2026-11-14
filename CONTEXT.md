@@ -201,6 +201,14 @@ upward**:
 - **ENGINE** (`engine/`) — the orchestration layer. Owns `Connection._execute_context`, execution-
   style dispatch, and cursor routing.
 
+**Client-agnostic Engine** (#439): the `Engine` never names or builds a concrete Notion client
+class. `create_engine` parses the URI. The `Engine` turns it into plain keyword arguments and calls
+the DBAPI factory `dbapi2.connect(**kwargs)`, which builds the client. DBAPI knows no URI type. The
+`Engine` reaches the client only through the public `Connection.client` property, typed as
+`AbstractNotionClient`.
+_Avoid_: "the engine creates the client". See
+[[adr-0026-the-dbapi-builds-the-client-the-engine-translates-the-uri]].
+
 **The invariant for execution**: SQL *builds* the plan (data), ENGINE *drives* it (the drive loop
 lives in the engine, not the hook), and `CursorResult` is the *pull consumer* for streaming.
 `Select._setup_execution` calling `context.engine.do_execute` (`dml.py:832`) is the current
@@ -424,23 +432,30 @@ is never *required* for simulated URIs, only optional. An earlier inconsistency 
 demanded a user-supplied `root_page_id` was a latent bug; both simulated branches now share the
 "default to the client's `_ROOT_PAGE_ID_`" rule.
 
+**Ensure vs. resolve** (#439): two owners, two tasks.
+- *Ensure* the root page exists — DBAPI. `dbapi2.connect()` prepares the simulated store.
+- *Resolve* which page anchors the catalog — ENGINE. The Engine uses the user value, else the
+  client's public `default_root_page_id` (the minted ID for simulated clients, `None` for a real
+  integration). If both are `None`, the Engine raises `ArgumentError`.
+
 ---
 
 ## Engine Lifecycle
 
 ### Engine.dispose()
-Terminal disposal of an `Engine`. Releases backend resources by calling `self._client.close()`
-— a no-op for `InMemoryNotionClient` and a flush-to-disk for `FileBasedNotionClient`.
+Terminal disposal of an `Engine`. Releases backend resources by calling
+`self._dbapi_connection.close()`, which closes the client the DBAPI connection built (#439) — a no-op for `InMemoryNotionClient` and a flush-to-disk for `FileBasedNotionClient`.
 After `dispose()` has been *called* (whether it returned cleanly or raised), the engine is
 **terminal**: `engine.connect()` and `engine.raw_connection()` raise
 `InvalidRequestError("Engine has been disposed")`. User-held `Connection` objects are not
 tracked; they fail at their next `execute()` because the path goes through
 `Engine.raw_connection()`.
 Idempotent: calling `dispose()` on an already-disposed engine is a silent no-op.
-Cascade is minimal — only `self._client` is closed; `self._dbapi_connection` and `self._catalog`
-hold no I/O state of their own and are not given a `close()` method.
+Cascade is minimal — one hop per layer: Engine → DBAPI `Connection.close()` → client `close()`.
+The creator closes: `dbapi2.connect()` builds the client, so the DBAPI connection closes it.
+`self._catalog` holds no I/O state of its own and gets no `close()` method.
 
-**Error handling.** `self._client.close()` is wrapped in `try / finally`. If close raises
+**Error handling.** `self._dbapi_connection.close()` is wrapped in `try / finally`. If close raises
 (e.g. `OSError` from a failed `FileBasedNotionClient.flush()`), the exception propagates
 unchanged and `self._is_disposed` is still flipped to `True` in the `finally` block. The
 engine cannot be reused or retried after a failed close — retry can't recover the partially

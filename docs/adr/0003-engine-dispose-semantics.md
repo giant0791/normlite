@@ -1,6 +1,6 @@
 # ADR-0003: Engine.dispose() semantics
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-11-14 by #439, see "Amendment")
 **Date:** 2026-05-19
 
 ---
@@ -131,3 +131,19 @@ errors muddles its DBAPI semantics.
   appears, a separate `engine.flush()` or `dispose(close=False)` can be added later
   without breaking this contract — the addition would be non-breaking because the
   default behaviour stays terminal.
+
+## Amendment (2026-11-14, #439)
+
+#439 moves client creation into `dbapi2.connect()`. The DBAPI `Connection` now builds the
+client, so it owns a real resource. The reason for "no `close()` on the DBAPI connection"
+(it is a pure-Python object) no longer holds.
+
+- `dbapi2.Connection` gains a PEP 249 `close()`. It closes its client and is idempotent.
+- `Engine.dispose()` calls `self._dbapi_connection.close()` in place of `self._client.close()`.
+  The same `try / finally` wraps it.
+- The cascade stays minimal: one hop per layer (Engine → DBAPI connection → client). The rule is
+  "the creator closes".
+- The observable contract does not change: the engine is terminal, the flag flips in `finally`,
+  and the I/O exception propagates.
+- Out of scope: `cursor()` on a closed DBAPI connection. PEP 249 says it raises `Error`. The
+  `raw_connection()` guard already covers every Engine path.
