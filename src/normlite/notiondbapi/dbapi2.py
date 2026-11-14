@@ -135,7 +135,7 @@ class Cursor:
         the :class:`Cursor` does not support transaction awareness. Use ``CompositeCursor`` for fully
         DBAPI 2.0 compliant cursor.
 
-    .. versionchanged: 0.9.0
+    .. versionchanged:: 0.9.0
         This version supports execution of bulk operations, see :meth:`Cursor.executemany`.
 
     .. versionadded:: 0.7.0

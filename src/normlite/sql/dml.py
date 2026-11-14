@@ -705,7 +705,7 @@ class Select(HasTable, ExecutableClauseElement):
         .. versionchanged:: 0.14.0
             Sets :attr:`_left_table_named` to mark the provenance of the left table.
 
-        ..versionadded:: 0.12.0
+        .. versionadded:: 0.12.0
 
         Args:
             table (Table): The table the function shall operate on

@@ -142,7 +142,7 @@ class ExecutionContext:
     .. seealso::
         :attr:`ExecutionContext._result_cursor`
 
-    .. versionchanged: 0.9.0
+    .. versionchanged:: 0.9.0
 
     .. versionadded:: 0.8.0
     """
@@ -464,7 +464,7 @@ class ExecutionContext:
     def pre_exec(self) -> None:
         """Perform value binding and type adaptation before execution.
 
-        ..versionchanged: 0.9.0
+        .. versionchanged:: 0.9.0
             In this version, binding supports bulk inserts with multi-parameters.
 
         .. versionchanged:: 0.8.0
@@ -597,7 +597,7 @@ class ExecutionContext:
 
         Supports both single and multi-parameter execution.
 
-        .. versionchanged: 0.9.0
+        .. versionchanged:: 0.9.0
             It uses :meth:`normlite.sql.compiler.NotionCompiler.construct_params` to resolve overrides.
 
         .. versionadded:: 0.8.0
