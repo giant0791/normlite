@@ -25,7 +25,7 @@ The ``normlite`` client application interacts with the Flask proxy via the :clas
     The package implements an in-process test client based on the pytest Flask plugin via :class:`normlite.proxy.client.InProcessProxyClient`
     through a uniform interface (defined by :class:`normlite.proxy.base.BaseProxyClient`).
 
-.. versionadded: 0.6.0
+.. versionadded:: 0.6.0
     Initial version. Experimental code. Tests successful.
 
 Warning:

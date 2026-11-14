@@ -78,7 +78,7 @@ if TYPE_CHECKING:
 class HasIdentifier(ABC):
     """Mixin providing a uniform interface for objects that have an internal identifier.
 
-    .. versionadded: 0.7.0
+    .. versionadded:: 0.7.0
     """
     @abstractmethod
     def get_oid(self) -> str:
@@ -150,7 +150,7 @@ class Column(HasIdentifier, ColumnElement, ColumnOperators):
         :class:`Column` injects at runtime the comparator using the :attr:`normlite.sql.type_api.TypeEngine.comparator_factory`
         class attribute to instantiate the right typed comparator.
 
-        .. versionadded: 0.8.0
+        .. versionadded:: 0.8.0
         """
 
         self.foreign_keys = set()
@@ -353,7 +353,7 @@ class Table(HasIdentifier):
             ...     Column('_no_archived', ArchivalFlag, table=<students>))
 
 
-    .. versionadded: 0.7.0
+    .. versionadded:: 0.7.0
         This version fully supports the main use cases.
 
     """
@@ -754,7 +754,7 @@ class Table(HasIdentifier):
             has not been created yet, instead of letting compilation fail
             with a misleading :exc:`CompileError`.
 
-        .. versionchanged: 0.8.0
+        .. versionchanged:: 0.8.0
             This version provides full state-driven behavior.
 
         .. versionadded:: 0.7.0

@@ -76,7 +76,7 @@ class CursorResult:
         self._compiled = context.compiled
         """The execution context that produced this cursor result.
 
-        .. versionadded: 0.8.0
+        .. versionadded:: 0.8.0
         """
 
         self._closed = False

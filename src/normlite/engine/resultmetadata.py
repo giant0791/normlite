@@ -109,7 +109,7 @@ class CursorResultMetaData(_NoCursorResultMetadata):
         self._colmap: _ColMapType = dict()
         """Mapping representing the projected view on :attr:`_full_map` considering the result columns.
 
-        .. versionadded: 0.8.0
+        .. versionadded:: 0.8.0
             The projection map stores DBAPI indexes as :attr:`_full_map`, thus it guarantees index correctness by construction.
         """
 

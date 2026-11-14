@@ -24,21 +24,21 @@
 class NormliteError(Exception):
     """Base exception class for all ``normlite`` exceptions.
 
-    .. versionadded: 0.5.0
+    .. versionadded:: 0.5.0
     """
     ...
 
 class NoResultFound(NormliteError):
     """Raised when exactly one result row is expected, but none was found.
 
-    .. versionadded: 0.5.0
+    .. versionadded:: 0.5.0
     """
     ...
 
 class MultipleResultsFound(NormliteError):
     """Raised if multiple rows were found when exactly one was required.
 
-    .. versionadded: 0.5.0
+    .. versionadded:: 0.5.0
     """
     ...
 
