@@ -374,6 +374,21 @@ class AbstractNotionClient(ABC):
         return method(path_params, query_params=query_params, payload=payload)
 
     @property
+    def default_root_page_id(self) -> Optional[str]:
+        """Provide the default root page ID.
+
+        The base class implementation returns ``None``.
+        Clients which mint a root page override it.
+
+        Returns:
+            Optional[str]: ``None``, because the base client mints no root page.
+            The caller must supply a ``root_page_id``.
+
+        .. versionadded:: 0.15.0
+        """
+        return None
+
+    @property
     def ischema_page_id(self) -> Optional[str]:
         """Return object id for ``information_schema`` page.
 
@@ -667,6 +682,20 @@ class InMemoryNotionClient(AbstractNotionClient):
         self._ischema_page_id = ischema_page_id or '66666666-6666-6666-6666-666666666666'
         self._tables_db_id = tables_db_id or 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
         self._store: dict[str, dict] = {}
+
+    @property
+    def default_root_page_id(self) -> str:
+        """Return the root page ID.
+
+        The :class:`InMemoryNotionClient` mints the root page ID.
+        The root page exists in the store only after store setup.
+
+        Returns:
+            str: The ID of the root page that the simulated store creates.
+
+        .. versionadded:: 0.15.0
+        """
+        return self._ROOT_PAGE_ID_
 
     # ------------------------------------------------------------------
     # Store invariants
