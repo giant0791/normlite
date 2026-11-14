@@ -975,6 +975,22 @@ class Connection:
 
         self.errorhandler = _default_errorhandler
 
+        self._closed = False
+        """Internal flag used to signal whether the connection and its underlying client is closed."""
+
+    @property
+    def client(self) -> AbstractNotionClient:
+        """Read-only attribute providing the Notion client this connection interacts with.
+
+        This attribute is a normlite extension. PEP 249 does not define it.
+
+        Returns:
+            AbstractNotionClient: The client this connection is using.
+
+        .. versionadded:: 0.15.0
+        """
+        return self._client
+
     @property
     def autocommit(self) -> bool:
         """Read-only attribute to query the autocommit mode of the connection.
@@ -1003,6 +1019,23 @@ class Connection:
 
         # IMPORTANT: The DBAPI connection must always procure a new cursor because this has a per-operation lifecyle
         return Cursor(self)
+
+    def close(self) -> None:
+        """Close this connection.
+
+        This method closes the underlying client.
+        A second close on a closed connection is a no-op.
+        As defined by PEP 249, a closed connection is unusable.
+        This implementation of the :class:`Connection` does not raise
+        if any operation is attempted on a closed connection.
+
+        .. versionadded:: 0.15.0
+        """
+        if self._closed:
+            return
+
+        self._closed = True
+        self._client.close()
 
     def _begin_transaction(self) -> None:
         """Begin a new transaction."""

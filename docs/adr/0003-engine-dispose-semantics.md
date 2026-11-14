@@ -141,6 +141,10 @@ client, so it owns a real resource. The reason for "no `close()` on the DBAPI co
 - `dbapi2.Connection` gains a PEP 249 `close()`. It closes its client and is idempotent.
 - `Engine.dispose()` calls `self._dbapi_connection.close()` in place of `self._client.close()`.
   The same `try / finally` wraps it.
+- `dbapi2.Connection.close()` is terminal in the same way. It marks the connection closed before
+  it calls `client.close()`. If `client.close()` raises, the I/O exception propagates and the
+  connection stays closed. A second `close()` is a no-op and does not retry. Option C's reasons
+  apply: a failed flush has already lost the data, and a retry cannot recover it.
 - The cascade stays minimal: one hop per layer (Engine → DBAPI connection → client). The rule is
   "the creator closes".
 - The observable contract does not change: the engine is terminal, the flag flips in `finally`,
