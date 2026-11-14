@@ -1248,3 +1248,36 @@ def test_rowcount_returns_sum_of_resultsets(
     )
 
     assert cursor.rowcount == len(pages)
+
+
+def test_connection_exposes_the_injected_client(client: InMemoryNotionClient):
+    # Act
+    connection = Connection(client)
+
+    # Assert
+    assert connection.client is client
+
+
+class _CloseCountingClient(InMemoryNotionClient):
+    """Test client that records how many times it is closed."""
+
+    def __init__(self):
+        super().__init__()
+        self.close_calls = 0
+
+    def close(self) -> None:
+        self.close_calls += 1
+        super().close()
+
+
+def test_closing_a_connection_twice_closes_the_client_once():
+    # Arrange
+    client = _CloseCountingClient()
+    connection = Connection(client)
+
+    # Act
+    connection.close()
+    connection.close()
+
+    # Assert
+    assert client.close_calls == 1
