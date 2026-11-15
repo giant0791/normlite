@@ -3,7 +3,7 @@ import json
 import pdb
 import pytest
 
-from normlite.engine.base import Engine, Inspector, NotionAuthURI, NotionURI, _parse_uri, NotionSimulatedURI, Connection, create_engine
+from normlite.engine.base import Engine, Inspector, NotionURI, _parse_uri, Connection, create_engine
 from normlite.engine.systemcatalog import TableState
 from normlite.exceptions import ArgumentError, InvalidRequestError
 from normlite.notion_sdk.client import FileBasedNotionClient, InMemoryNotionClient
@@ -56,30 +56,32 @@ def inspector(engine: Engine) -> Inspector:
 
 def test_parse_uri_for_inmemory_integration():
     uri: NotionURI = _parse_uri('normlite:///:memory:')
-    assert isinstance(uri, NotionSimulatedURI)
+    assert isinstance(uri, NotionURI)
     assert uri.kind == 'simulated'
     assert uri.mode == 'memory'
     assert uri.path is None
+    assert uri.database == 'memory'
 
 def test_parse_uri_for_file_integration():
     uri: NotionURI = _parse_uri('normlite:///path/to/my/test-integration.db')
-    assert isinstance(uri, NotionSimulatedURI)
+    assert isinstance(uri, NotionURI)
     assert uri.kind == 'simulated'
     assert uri.mode == 'file'
     assert uri.path == '/path/to/my/test-integration.db'    # leading '/' is crucial, this is an absolute path
-    assert uri.file == 'test-integration.db'
+    assert uri.database == 'test-integration'
 
 def test_parse_uri_for_internal_integration(int_env: Environment):
     uri: NotionURI = _parse_uri(
         f'normlite+auth://internal?token={int_env.NOTION_TOKEN}&version={int_env.NOTION_VERSION}'
     )
-    assert isinstance(uri, NotionAuthURI)
+    assert isinstance(uri, NotionURI)
     assert uri.kind == 'internal'
     assert uri.token == int_env.NOTION_TOKEN
     assert uri.version == int_env.NOTION_VERSION
     assert uri.client_id is None
     assert uri.client_secret is None
     assert uri.auth_url is None
+    assert uri.database is None
 
 #---------------------------------------------------
 # Bootstrap tests

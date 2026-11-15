@@ -65,16 +65,13 @@ Here a quick example of how to use :class:`Engine` and :class:`Connection`.
 """
 
 from __future__ import annotations
-from pathlib import Path
 from types import TracebackType
-from typing import Any, Mapping, Optional, Self, Type, TypeAlias, TYPE_CHECKING, overload
-from dataclasses import dataclass
-from typing import Optional, Literal, Union
-from urllib.parse import urlparse, parse_qs, unquote
+from typing import Any, Mapping, Optional, Self, Type, TYPE_CHECKING, Union, overload
 
 from normlite.engine.cursor import CursorResult
 from normlite.engine.context import ExecutionContext, ExecutionStyle
 from normlite.engine.interfaces import _distill_params, IsolationLevel
+from normlite.engine.notionuri import NotionURI, _parse_uri
 from normlite.engine.systemcatalog import SystemCatalog, SystemTablesEntry, TableState
 from normlite.exceptions import ArgumentError, InvalidRequestError, ObjectNotExecutableError
 from normlite.notion_sdk.client import FileBasedNotionClient, InMemoryNotionClient, NotionError
@@ -355,89 +352,6 @@ class Connection:
     def __exit__(self, type_: Any, value: Any, traceback: Any) -> None:
         pass
 
-@dataclass
-class NotionAuthURI:
-    """Provide a helper data structure to hold URI schema elements for an internal or external Notion integration.
-
-    Warning:
-        Experimental code! Do not use!
-    """
-    kind: Literal["internal", "external"]
-    token: Optional[str] = None
-    version: Optional[str] = None
-    client_id: Optional[str] = None
-    client_secret: Optional[str] = None
-    auth_url: Optional[str] = None
-
-@dataclass
-class NotionSimulatedURI:
-    """Provide an a helper data structure to hold URI schema elements for test integrations."""
-    kind: Literal["simulated"]
-    """The kind of the integration."""
-
-    mode: Literal["memory", "file"]
-    """The mode the integration."""
-
-    path: Optional[str] = None
-    """The path to the database file (``None`` for in-memory integrations)."""
-
-    file: Optional[str] = None
-    """The database file name (``None`` for in-memory integrations)."""
-
-NotionURI: TypeAlias = Union[NotionAuthURI, NotionSimulatedURI]
-"""Type for the URI."""
-
-def _parse_uri(uri: str) -> NotionURI:
-    """Provide helper function to parse a normlite URI."""
-    parsed = urlparse(uri)
-
-    if not parsed.scheme in ["normlite+auth", "normlite"]:
-        raise ValueError(f"Unsupported URI scheme: {parsed.scheme}")
-
-    host = parsed.hostname
-    path = unquote(parsed.path)
-
-    if host in ("internal", "external"):
-        params = parse_qs(parsed.query)
-        def get_param(name: str) -> Optional[str]:
-            return params.get(name, [None])[0]
-
-        if host == "internal":
-            return NotionAuthURI(
-                kind="internal",
-                token=get_param("token"),
-                version=get_param("version")
-            )
-        elif host == "external":
-            return NotionAuthURI(
-                kind="external",
-                client_id=get_param("client_id"),
-                client_secret=get_param("client_secret"),
-                auth_url=get_param("auth_url")
-            )
-
-    elif host is None:
-        # Simulated integrations
-        if path == "/:memory:":
-            return NotionSimulatedURI(
-                kind="simulated",
-                mode="memory",
-                path=None,
-                file=None
-            )
-        elif path.startswith("/"):
-            return NotionSimulatedURI(
-                kind="simulated",
-                mode="file",
-                path=str(Path(path).absolute()),
-                file=Path(path).name
-            )
-        else:
-            raise ValueError(f"Invalid simulated integration path: {path}")
-
-    else:
-        raise ValueError(f"Unsupported notion integration type: {host}")
-
 def create_engine(
         uri: str,
         *,
@@ -499,7 +413,7 @@ class Engine:
             *,
             execution_options: Optional[ExecutionOptions] = None,
             **kwargs: Any) -> None:
-        if isinstance(uri, NotionAuthURI):
+        if uri.kind != "simulated":
             raise NotImplementedError(
                 "Auth-based integrations are not supported yet."
             )
@@ -519,7 +433,7 @@ class Engine:
         """The database name.
 
         For simulated URIs, ``memory`` if mode is memory, the file name without extension if mode is file.
-        For :class:`NotionAuthURI`, the name in the keyword argument user_database_name.
+        For auth URIs, the name in the keyword argument user_database_name.
 
         .. versionchanged:: 0.8.0
             Renamed to make the intend clearer.
@@ -669,21 +583,21 @@ class Engine:
     # Client creation + bootstrap
     # -------------------------------------------------
 
-    def _create_client(self, uri: NotionSimulatedURI) -> None:
+    def _create_client(self, uri: NotionURI) -> None:
         if uri.mode not in ("memory", "file"):
             raise NotImplementedError
 
         # Resolve database name
         if uri.mode == "memory":
             self._client = InMemoryNotionClient()
-            self._database = "memory"
-            self._user_database_name = self._user_database_name or "memory"
+            self._database = uri.database
+            self._user_database_name = self._user_database_name or uri.database
         else:
             self._client = FileBasedNotionClient(
                 uri.path,
                 read_only=self._read_only
             )
-            self._database = Path(uri.file).stem
+            self._database = uri.database
             self._user_database_name = (
                 self._user_database_name or self._database
             )
