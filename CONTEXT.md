@@ -413,6 +413,24 @@ shipped join FK-resolution contract and PRD #302 for the integration deferral.
 
 ## Engine Setup
 
+### User database
+A named, isolated collection of SQL objects (tables, schemas, views, functions) that one Notion
+integration manages. It is not a Notion **database** (see §"Data Source"). Its name is
+`user_database_name`. The `tables` catalog stores it as `table_catalog`, and the `SystemCatalog`
+creates a page with this name under the root page.
+- Today one integration has exactly one user database. The auth URI has no name.
+- For a `:memory:` URI the name is `"memory"`, as in SQLite. For a file URI it is the file stem.
+  A user `user_database_name` overrides the default.
+- The auth default is open (#505). Until then, an auth URI with no user value gives `None`.
+- A future auth URI can carry the name as a path segment:
+  `normlite+auth://internal/university?token=...&version=...` → `"university"`.
+
+**The ENGINE selects the user database** (#510). The name is an address element of the URI:
+`_parse_uri` puts the default name into `NotionURI.database`. The Engine uses the user
+`user_database_name`, else `uri.database`, and gives the result to the `SystemCatalog`. The name
+is not a `dbapi2.connect()` keyword. DBAPI and the Notion clients never use it.
+_Avoid_: "database" alone, when you mean the user database.
+
 ### root_page_id
 The Notion-side identifier of the top-most parent under which the engine's `information_schema`
 page and user databases are anchored. Every page/database in normlite needs a parent; this is the

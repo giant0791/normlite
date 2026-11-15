@@ -1,6 +1,6 @@
 # ADR-0026: The DBAPI builds the client; the Engine translates the URI
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-11-15 by #510, see "Amendment")
 **Date:** 2026-11-14
 **Issue:** #439
 
@@ -69,3 +69,33 @@ CONTEXT §"Layers" sets one dependency direction: ENGINE → DBAPI, and nobody c
 - **Known limit.** `SystemCatalog` calls `find_child_page`, `find_child_database` and `_add`. These
   methods exist only on `InMemoryNotionClient`. The Engine is client-agnostic by type, but the
   catalog still needs these methods. #505 resolves this in the catalog creation workflow.
+
+## Amendment (2026-11-15, #510)
+
+The first TDD steps of #510 used a free function `_connect_args(uri)`. It returned a record of the
+`connect()` keywords and the user database name. Two problems came up. The names `_ConnectArgs` and
+`_ConnectKWArgs` were too close to tell apart. Each function that read the URI also had to branch on
+two URI classes (`NotionSimulatedURI`, `NotionAuthURI`) with different fields.
+
+- **One flat `NotionURI`.** It is a frozen, keyword-only dataclass in `engine/notionuri.py`. It
+  holds the union of all fields: `kind` (`"simulated"`, `"internal"`, `"external"`, the only
+  required field), `database`, `mode`, `path`, `token`, `version`, `client_id`, `client_secret`,
+  `auth_url`. `NotionSimulatedURI` and `NotionAuthURI` are deleted (breaking). The `file` field is
+  deleted, because `database` holds the file stem.
+- **The URI carries the user database name.** `_parse_uri` sets `database`: `"memory"` for
+  `:memory:`, the file stem for a file URI, `None` for an auth URI. A future auth URI carries it as
+  a path segment (`internal/university`). The Engine uses the user `user_database_name`, else
+  `uri.database`. The name is still not a `connect()` keyword.
+- **The URI translates itself.** `NotionURI.translate_connect_args(*, read_only=False)` replaces
+  `_connect_args`. It returns only the `connect()` keywords (`_ConnectKWArgs`, a `TypedDict`), and
+  only the keys that the URI sets. It raises `ArgumentError` for `read_only=True` with a memory
+  URI, and `NotImplementedError` for an external URI. `_ConnectArgs` is deleted.
+
+**Why.** SQLAlchemy uses the same shape: one flat `URL` type with a `database` field and a
+`translate_connect_args()` method. A frozen dataclass, not a `NamedTuple`, so that no code can read
+the URI by position. The layer rule does not change: `NotionURI` stays in ENGINE, and DBAPI still
+knows no URI type.
+
+**Rejected.** A flat `_ConnectArgs` with `user_database_name` next to the `connect()` keywords and
+`dataclasses.asdict()`. The Engine must then remove the name before it calls `connect()`, and
+`asdict()` returns every field, so the keywords are no longer minimal.
