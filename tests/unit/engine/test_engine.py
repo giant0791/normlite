@@ -3,7 +3,7 @@ import json
 import pdb
 import pytest
 
-from normlite.engine.base import Engine, Inspector, NotionAuthURI, NotionURI, _parse_uri, NotionSimulatedURI, Connection, create_engine
+from normlite.engine.base import Engine, Inspector, NotionURI, _parse_uri, Connection, create_engine
 from normlite.engine.systemcatalog import TableState
 from normlite.exceptions import ArgumentError, InvalidRequestError
 from normlite.notion_sdk.client import FileBasedNotionClient, InMemoryNotionClient
@@ -56,30 +56,116 @@ def inspector(engine: Engine) -> Inspector:
 
 def test_parse_uri_for_inmemory_integration():
     uri: NotionURI = _parse_uri('normlite:///:memory:')
-    assert isinstance(uri, NotionSimulatedURI)
+    assert isinstance(uri, NotionURI)
     assert uri.kind == 'simulated'
     assert uri.mode == 'memory'
     assert uri.path is None
+    assert uri.database == 'memory'
 
 def test_parse_uri_for_file_integration():
     uri: NotionURI = _parse_uri('normlite:///path/to/my/test-integration.db')
-    assert isinstance(uri, NotionSimulatedURI)
+    assert isinstance(uri, NotionURI)
     assert uri.kind == 'simulated'
     assert uri.mode == 'file'
     assert uri.path == '/path/to/my/test-integration.db'    # leading '/' is crucial, this is an absolute path
-    assert uri.file == 'test-integration.db'
+    assert uri.database == 'test-integration'
 
 def test_parse_uri_for_internal_integration(int_env: Environment):
     uri: NotionURI = _parse_uri(
         f'normlite+auth://internal?token={int_env.NOTION_TOKEN}&version={int_env.NOTION_VERSION}'
     )
-    assert isinstance(uri, NotionAuthURI)
+    assert isinstance(uri, NotionURI)
     assert uri.kind == 'internal'
     assert uri.token == int_env.NOTION_TOKEN
     assert uri.version == int_env.NOTION_VERSION
     assert uri.client_id is None
     assert uri.client_secret is None
     assert uri.auth_url is None
+    assert uri.database is None
+
+#---------------------------------------------------
+# URI translation tests
+#---------------------------------------------------
+
+def test_translate_connect_args_memory_uri_gives_memory_mode():
+    uri: NotionURI = _parse_uri('normlite:///:memory:')
+
+    connect_kwargs = uri.translate_connect_args()
+
+    assert connect_kwargs == {'mode': 'memory'}
+
+def test_translate_connect_args_file_uri_gives_file_mode_with_path_and_read_write():
+    uri: NotionURI = _parse_uri('normlite:///path/to/my/store.json')
+
+    connect_kwargs = uri.translate_connect_args()
+
+    assert connect_kwargs == {
+        'mode': 'file',
+        'path': '/path/to/my/store.json',
+        'read_only': False,
+    }
+
+def test_translate_connect_args_file_uri_with_read_only_gives_read_only_store():
+    uri: NotionURI = _parse_uri('normlite:///path/to/my/store.json')
+
+    connect_kwargs = uri.translate_connect_args(read_only=True)
+
+    assert connect_kwargs == {
+        'mode': 'file',
+        'path': '/path/to/my/store.json',
+        'read_only': True,
+    }
+
+def test_translate_connect_args_memory_uri_with_read_only_raises_argument_error():
+    uri: NotionURI = _parse_uri('normlite:///:memory:')
+
+    with pytest.raises(ArgumentError, match='read_only is only valid for file-based URIs'):
+        uri.translate_connect_args(read_only=True)
+
+def test_translate_connect_args_internal_uri_gives_token_and_version(int_env: Environment):
+    uri: NotionURI = _parse_uri(
+        f'normlite+auth://internal?token={int_env.NOTION_TOKEN}&version={int_env.NOTION_VERSION}'
+    )
+
+    connect_kwargs = uri.translate_connect_args()
+
+    assert connect_kwargs == {
+        'token': int_env.NOTION_TOKEN,
+        'version': int_env.NOTION_VERSION,
+    }
+
+def test_translate_connect_args_internal_uri_without_token_omits_token(int_env: Environment):
+    uri: NotionURI = _parse_uri(f'normlite+auth://internal?version={int_env.NOTION_VERSION}')
+
+    connect_kwargs = uri.translate_connect_args()
+
+    assert connect_kwargs == {'version': int_env.NOTION_VERSION}
+
+def test_translate_connect_args_internal_uri_without_version_omits_version(int_env: Environment):
+    uri: NotionURI = _parse_uri(f'normlite+auth://internal?token={int_env.NOTION_TOKEN}')
+
+    connect_kwargs = uri.translate_connect_args()
+
+    assert connect_kwargs == {'token': int_env.NOTION_TOKEN}
+
+def test_translate_connect_args_external_uri_raises_not_implemented_error():
+    uri: NotionURI = _parse_uri(
+        'normlite+auth://external?client_id=abc&client_secret=xyz&auth_url=https%3A%2F%2Fexample.com%2Fauth'
+    )
+
+    with pytest.raises(NotImplementedError, match='External integrations are not supported yet'):
+        uri.translate_connect_args()
+
+#---------------------------------------------------
+# User database tests
+#---------------------------------------------------
+
+def test_create_engine_user_database_name_overrides_uri_database(students: Table):
+    engine = create_engine('normlite:///:memory:', user_database_name='school')
+
+    students.create(bind=engine)
+
+    assert engine.find_table_metadata('students', table_catalog='school') is not None
 
 #---------------------------------------------------
 # Bootstrap tests
