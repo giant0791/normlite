@@ -28,8 +28,25 @@ and puts its parts into one :class:`NotionURI` object.
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, TypedDict
 from urllib.parse import urlparse, parse_qs, unquote
+
+from normlite.exceptions import ArgumentError
+
+
+class _ConnectKWArgs(TypedDict, total=False):
+    """A type dict data structure to hold connect keyword arguments.
+
+    This class is used to translate :class:`NotionURI` objects into keyword
+    arguments used to create DBAPI connections.
+
+    .. versionadded:: 0.15.0
+    """
+    mode: Literal["memory", "file"]
+    path: Optional[str]
+    read_only: bool
+    token: str
+    version: str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -78,6 +95,46 @@ class NotionURI:
 
     auth_url: Optional[str] = None
     """The OAuth authorization URL of an external integration."""
+
+    def translate_connect_args(self, *, read_only: bool = False) -> _ConnectKWArgs:
+        """Translate uri attributes into a dictionary of connection arguments.
+
+        Args:
+            read_only (bool, optional): Whether the database to connect to is read-only.
+                This is a top-level kwarg for :func:`normlite.engine.base.create_engine`
+                and it is used for file-based simulated clients. Defaults to ``False``.
+                See :class:`normlite.notion_sdk.client.FileBasedNotionClient`.
+
+        Raises:
+            ArgumentError: If ``read_only`` is ``True`` for an in-memory URI. The argument
+                is valid for file-based URIs only.
+            NotImplementedError: If the URI is an external URI. ``connect()`` has no
+                keywords for ``client_id``, ``client_secret`` or ``auth_url``.
+
+        Returns:
+            _ConnectKWArgs: The attributes of this URI as :class:`_ConnectKWArgs` object.
+                Unset attributes are omitted from the final dictionary.
+        """
+        if self.kind == "simulated":
+            if self.mode == "file":
+                return _ConnectKWArgs(mode=self.mode, path=self.path, read_only=read_only)
+
+            if read_only:
+                raise ArgumentError("read_only is only valid for file-based URIs.")
+
+            return _ConnectKWArgs(mode=self.mode)
+
+        if self.kind == "internal":
+            connect_args = _ConnectKWArgs()
+            if self.token is not None:
+                connect_args["token"] = self.token
+            if self.version is not None:
+                connect_args["version"] = self.version
+
+            return connect_args
+
+        # kind is "external": _parse_uri builds no other kind.
+        raise NotImplementedError("External integrations are not supported yet.")
 
 
 def _parse_uri(uri: str) -> NotionURI:
