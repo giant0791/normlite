@@ -22,7 +22,7 @@ from itertools import islice
 import uuid
 
 from normlite._constants import SpecialColumns
-from normlite.notion_sdk.client import AbstractNotionClient, NotionError
+from normlite.notion_sdk.client import AbstractNotionClient, FileBasedNotionClient, InMemoryNotionClient, NotionError
 from normlite.notiondbapi.page_iterator import JsonPageSource, PageIterator
 from normlite.notiondbapi.resultset import ResultSet
 
@@ -96,11 +96,12 @@ class OperationalError(DatabaseError):
     """
 
 class ProgrammingError(DatabaseError):
-    """Exception raised for errors that are related to the database’s operation and not necessarily under
-    the control of the programmer.
+    """Exception raised for programming errors e.g. table not found or already exists,
+    syntax error in the SQL statement, wrong number of parameters specified, etc.
 
-    Example situations are an unexpected disconnect occurs, the data source name is not found,
-    a transaction could not be processed, a memory allocation error occurred during processing, etc.
+    .. versionchanged:: 0.15.0
+        docstring now refers to programming errors, instead of wrongly repeating
+        the :exc:`OperationalError` docstring.
 
     .. versionadded:: 0.8.0
 
@@ -127,6 +128,43 @@ class _Description:
 
     def as_sequence(self) -> tuple[tuple, ...]:
         return self._entries
+
+
+def connect(
+    *,
+    mode: Optional[str] = None,
+    path: Optional[str] = None,
+    read_only: bool = False,
+    token: Optional[str] = None,
+    version: Optional[str] = None,
+) -> Connection:
+    if token is not None or version is not None:
+        raise NotImplementedError("Internal integrations are not supported yet.")
+
+    match mode:
+        case "memory":
+            client = InMemoryNotionClient()
+
+        case "file" if path:
+            try:
+                client = FileBasedNotionClient(path, read_only=read_only)
+            except NotionError as ne:
+                if ne.code == "invalid_request_url":
+                    message = f"Read-only file mode requires an existing file: {path!r}"
+                else:
+                    message = f"Cannot open the store file {path!r}: {ne}"
+
+                raise OperationalError(message) from ne
+
+        case "file":
+            raise InterfaceError("File mode requires a path.")
+
+        case _:
+            raise InterfaceError(f"Unsupported connection mode: {mode!r}")
+
+    client._ensure_root()
+    return Connection(client)
+
 
 class Cursor:
     """Provide database base cursor functionalty according to the DBAPI 2.0 specification (PEP 249).
@@ -945,6 +983,7 @@ IsolationLevel = Literal[
     "READ UNCOMMITTED",
     "AUTOCOMMIT",
 ]
+
 
 class Connection:
     """Provide database base connection functionalty according to the DBAPI 2.0 specification (PEP 249).
