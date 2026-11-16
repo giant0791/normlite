@@ -54,8 +54,12 @@ CONTEXT §"Layers" sets one dependency direction: ENGINE → DBAPI, and nobody c
   public `default_root_page_id` (`None` for a real integration). If both are `None`, the Engine
   raises `ArgumentError`.
 - **Validation of user input stays in the Engine.** `read_only` with `:memory:` raises
-  `ArgumentError` in `_connect_args`, before the Engine calls `connect()`. `connect()` raises
-  `InterfaceError` for a missing or unknown `mode`, and `NotImplementedError` for `token`.
+  `ArgumentError` in `NotionURI.translate_connect_args()`, before the Engine calls `connect()`.
+  `connect()` raises `InterfaceError` for a missing or unknown `mode` and for file mode without a
+  `path`. It raises `OperationalError` when the file client cannot open the store (a missing file
+  in read-only mode, or a corrupted store). A set `token` or `version` raises
+  `NotImplementedError` ("Internal integrations are not supported yet."). An external URI never
+  reaches `connect()`: the Engine raises `NotImplementedError` for it first.
 - **The Engine keeps catalog naming.** The `user_database_name` default (`"memory"`, or the file
   stem) comes from the URI in the Engine. The deprecated `Engine._database` is deleted.
 - **The creator closes.** `dbapi2.Connection` gains a PEP 249 `close()`, and `Engine.dispose()`

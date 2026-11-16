@@ -1,16 +1,19 @@
+import ast
 from operator import itemgetter
-import pdb
+from pathlib import Path
 import uuid
 
 import pytest
 from faker import Faker
 
-from normlite.notion_sdk.client import InMemoryNotionClient, NotionError
+from normlite.notion_sdk.client import FileBasedNotionClient, InMemoryNotionClient, NotionError
 from normlite.notion_sdk.getters import rich_text_to_plain_text
+from normlite.notiondbapi import dbapi2
 from normlite.notiondbapi.dbapi2 import (
     Connection,
     Cursor,
     DatabaseError,
+    InterfaceError,
     OperationalError,
     ProgrammingError,
 )
@@ -1281,3 +1284,130 @@ def test_closing_a_connection_twice_closes_the_client_once():
 
     # Assert
     assert client.close_calls == 1
+
+
+def test_connect_in_memory_mode_returns_a_connection_whose_client_has_its_root_page():
+    # Act
+    connection = dbapi2.connect(mode="memory")
+
+    # Assert
+    assert isinstance(connection, Connection)
+    client = connection.client
+    root_page = client.pages_retrieve(
+        path_params={"page_id": client.default_root_page_id}
+    )
+    assert root_page["id"] == client.default_root_page_id
+
+
+@pytest.mark.parametrize(
+    "connect_kwargs",
+    [{}, {"mode": "cloud"}],
+    ids=["missing-mode", "unknown-mode"],
+)
+def test_connect_with_a_missing_or_unknown_mode_raises_interface_error(connect_kwargs):
+    # Act / Assert
+    with pytest.raises(InterfaceError, match="Unsupported connection mode"):
+        dbapi2.connect(**connect_kwargs)
+
+
+def test_connect_in_file_mode_stores_the_root_page_in_the_file_at_path(tmp_path):
+    # Arrange
+    path = str(tmp_path / "school.json")
+
+    # Act
+    connection = dbapi2.connect(mode="file", path=path)
+    root_page_id = connection.client.default_root_page_id
+    connection.close()
+
+    # Assert
+    reopened_client = FileBasedNotionClient(path)
+    root_page = reopened_client.pages_retrieve(path_params={"page_id": root_page_id})
+    assert root_page["id"] == root_page_id
+
+
+def test_connect_in_file_mode_without_a_path_raises_interface_error():
+    # Act / Assert
+    with pytest.raises(InterfaceError, match="File mode requires a path"):
+        dbapi2.connect(mode="file")
+
+
+def test_connect_in_file_mode_with_read_only_does_not_write_changes_to_the_file(tmp_path):
+    # Arrange
+    path = str(tmp_path / "school.json")
+    dbapi2.connect(mode="file", path=path).close()
+
+    # Act
+    connection = dbapi2.connect(mode="file", path=path, read_only=True)
+    client = connection.client
+    page = client.pages_create(
+        payload={
+            "parent": {"type": "page_id", "page_id": client.default_root_page_id},
+            "properties": {"title": {"title": [{"text": {"content": "Draft"}}]}},
+        }
+    )
+    connection.close()
+
+    # Assert
+    reopened_client = FileBasedNotionClient(path)
+    with pytest.raises(NotionError) as exc_info:
+        reopened_client.pages_retrieve(path_params={"page_id": page["id"]})
+    assert exc_info.value.status_code == 404
+
+
+def test_connect_in_read_only_file_mode_with_a_missing_file_raises_operational_error(tmp_path):
+    # Arrange
+    path = str(tmp_path / "missing.json")
+
+    # Act / Assert
+    with pytest.raises(
+        OperationalError, match="Read-only file mode requires an existing file"
+    ):
+        dbapi2.connect(mode="file", path=path, read_only=True)
+
+
+def test_connect_in_file_mode_with_a_corrupted_store_raises_operational_error(tmp_path):
+    # Arrange
+    store_file = tmp_path / "corrupted.json"
+    store_file.write_text('{"version": 1}', encoding="utf-8")
+
+    # Act / Assert
+    with pytest.raises(OperationalError, match="Cannot open the store file"):
+        dbapi2.connect(mode="file", path=str(store_file))
+
+
+@pytest.mark.parametrize(
+    "external_kwargs",
+    [{"token": "secret-token"}, {"version": "2025-09-03"}],
+    ids=["token", "version"],
+)
+def test_connect_with_a_token_or_version_raises_not_implemented_error(external_kwargs):
+    # Act / Assert
+    with pytest.raises(
+        NotImplementedError, match="Internal integrations are not supported yet"
+    ):
+        dbapi2.connect(**external_kwargs)
+
+
+def test_dbapi_layer_imports_nothing_from_the_engine_layer():
+    # Arrange
+    dbapi_package_dir = Path(dbapi2.__file__).parent
+    imported_modules = []
+    for source_file in sorted(dbapi_package_dir.glob("*.py")):
+        tree = ast.parse(source_file.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported_modules.extend(
+                    (source_file.name, alias.name) for alias in node.names
+                )
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported_modules.append((source_file.name, node.module))
+
+    # Act
+    engine_imports = [
+        (file_name, module)
+        for file_name, module in imported_modules
+        if module == "normlite.engine" or module.startswith("normlite.engine.")
+    ]
+
+    # Assert
+    assert engine_imports == []
