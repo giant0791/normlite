@@ -982,6 +982,9 @@ class Connection:
 
     """
 
+    _closed: bool
+    """Internal flag used to signal whether the connection and its underlying client is closed."""
+
     errorhandler: DBAPIErrorHandlerType
     """Read/write attribute which references an error handler to call in case an error condition is met.
 
@@ -1001,7 +1004,6 @@ class Connection:
         self.errorhandler = _default_errorhandler
 
         self._closed = False
-        """Internal flag used to signal whether the connection and its underlying client is closed."""
 
     @property
     def client(self) -> AbstractNotionClient:
@@ -1028,6 +1030,14 @@ class Connection:
 
         """
         return self._isolation_level == 'AUTOCOMMIT'
+
+    @property
+    def closed(self) -> bool:
+        """Read-only attribute to query whether this connection is closed.
+
+        .. versionadded:: 0.15.0
+        """
+        return self._closed
 
     def cursor(self) -> Cursor:
         """Procure a new cursor object using the connection.

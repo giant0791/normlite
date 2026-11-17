@@ -552,21 +552,23 @@ class Engine:
         return self._execution_options
 
     def dispose(self) -> None:
-        """Dispose this engine and closes the underlying client.
+        """Dispose this engine and close its DBAPI connection.
 
-        Public API for engine disposal.
+        Public API for engine disposal. Closing the connection also closes the client.
 
         A disposed engine raises :exc:`normlite.exceptions.InvalidRequestError` if
         :meth:`Engine.connect` is called.
 
+        .. versionchanged:: 0.15.0
+            Closes the DBAPI connection, which closes the client.
 
-        .. versionadded:: 0.11.0.
+        .. versionadded:: 0.11.0
         """
         if self._is_disposed:
             return
 
         try:
-            self._client.close()
+            self._dbapi_connection.close()
         finally:
             self._is_disposed = True
 

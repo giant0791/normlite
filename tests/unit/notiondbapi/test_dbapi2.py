@@ -1286,6 +1286,39 @@ def test_closing_a_connection_twice_closes_the_client_once():
     assert client.close_calls == 1
 
 
+def test_closed_property_reflects_connection_lifecycle_state():
+    # Arrange
+    connection = dbapi2.connect(mode="memory")
+
+    # Assert (pre): a new connection is open
+    assert connection.closed is False
+
+    # Act
+    connection.close()
+
+    # Assert (post): the connection now reports itself as closed
+    assert connection.closed is True
+
+
+class _FailingCloseClient(InMemoryNotionClient):
+    """Test client whose close always fails with an I/O error."""
+
+    def close(self) -> None:
+        raise OSError("disk full")
+
+
+def test_connection_is_closed_even_when_client_close_fails():
+    # Arrange
+    connection = Connection(_FailingCloseClient())
+
+    # Act: the client error reaches the caller
+    with pytest.raises(OSError, match="disk full"):
+        connection.close()
+
+    # Assert: the connection is closed all the same
+    assert connection.closed is True
+
+
 def test_connect_in_memory_mode_returns_a_connection_whose_client_has_its_root_page():
     # Act
     connection = dbapi2.connect(mode="memory")
