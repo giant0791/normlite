@@ -74,9 +74,9 @@ from normlite.engine.interfaces import _distill_params, IsolationLevel
 from normlite.engine.notionuri import NotionURI, _parse_uri
 from normlite.engine.systemcatalog import SystemCatalog, SystemTablesEntry, TableState
 from normlite.exceptions import ArgumentError, InvalidRequestError, ObjectNotExecutableError
-from normlite.notion_sdk.client import FileBasedNotionClient, InMemoryNotionClient, NotionError
+from normlite.notion_sdk.client import AbstractNotionClient, NotionError
 from normlite.sql.compiler import NotionCompiler
-from normlite.notiondbapi.dbapi2 import Connection as DBAPIConnection, Cursor as DBAPICursor, InternalError, ProgrammingError
+from normlite.notiondbapi.dbapi2 import connect, Connection as DBAPIConnection, Cursor as DBAPICursor, InternalError, ProgrammingError
 from normlite.utils import frozendict
 
 if TYPE_CHECKING:
@@ -404,6 +404,41 @@ class Engine:
             The root page is created for simulated clients only.
     """
 
+    _root_page_id: str
+    """The id for the root page in the integration."""
+
+    _user_database_name: str
+    """The database name.
+
+    For simulated URIs, ``memory`` if mode is memory, the file name without extension if mode is file.
+    For auth URIs, the name in the keyword argument user_database_name.
+
+    .. versionchanged:: 0.8.0
+
+        Renamed to make the intend clearer.
+    """
+
+    _read_only: bool
+    """Whether the integration's store is read_only.
+
+    It applies to file based Notion simulated clients.
+
+    .. versionadded:: 0.11.0
+    """
+
+    _dbapi_connection: DBAPIConnection
+    """The underlying DBAPI connection.
+
+    The connection object is procured via :func:`normlite.notiondbapi.dbapi2.connect`.
+
+    .. versionchanged:: 0.15.0
+        The engine does not create the DBAPI connection anymore, it uses the new factory function.
+
+    .. versionadded:: 0.7.0
+    """
+    _client: AbstractNotionClient
+    """The Notion client this engine interacts with."""
+
     _execution_options: ExecutionOptions
     """Engine's execution options."""
 
@@ -421,49 +456,37 @@ class Engine:
         self._uri = uri
         """The Notion URI denoting the integration to connect to."""
 
-        self._execution_options = frozendict(execution_options or {})
-
         # -------------------------
-        # Engine identity / config
+        # User options (no I/O)
         # -------------------------
-        self._root_page_id: Optional[str] = kwargs.get("root_page_id")
-        """The id for the root page in the integration."""
-
-        self._user_database_name: Optional[str] = kwargs.get("user_database_name")
-        """The database name.
-
-        For simulated URIs, ``memory`` if mode is memory, the file name without extension if mode is file.
-        For auth URIs, the name in the keyword argument user_database_name.
-
-        .. versionchanged:: 0.8.0
-            Renamed to make the intend clearer.
-        """
-
-        self._read_only: bool = kwargs.get("read_only", False)
-        """Whether the integration's store is read_only.
-
-        It applies to file based Notion simulated clients.
-
-        .. versionadded:: 0.11.0
-        """
+        self._read_only = kwargs.get("read_only", False)
         if self._read_only and uri.mode == "memory":
             raise ArgumentError("read_only is only valid for file-based URIs")
 
-        self._database: Optional[str] = None
-        """The database name.
+        self._user_database_name = kwargs.get("user_database_name") or uri.database
 
-        .. deprecated:: 0.8.0
+        # -------------------------
+        # DBAPI connection
+        # -------------------------
+        connect_args = uri.translate_connect_args(read_only=self._read_only)
+        self._dbapi_connection = connect(**connect_args)
+        self._client = self._dbapi_connection.client
 
-            This will be removed in the next version.
-        """
+        # -------------------------
+        # Catalog anchor
+        # -------------------------
+        self._root_page_id = kwargs.get("root_page_id") or self._client.default_root_page_id
+        if self._root_page_id is None:
+            self._dbapi_connection.close()
+            raise ArgumentError(
+                "Cannot resolve the root page: pass root_page_id=..., "
+                f"{type(self._client).__name__} gives no default_root_page_id."
+            )
 
         self._ws_id: Optional[str] = kwargs.get("ws_id")
 
         self._ischema_page_id: Optional[str] = None
         """Id for the information schema page."""
-
-        self._client = None
-        """The Notion client this engine interacts with."""
 
         self._catalog = None
         """The information schema system catalog.
@@ -478,14 +501,9 @@ class Engine:
         .. versionadded:: 0.11.0
         """
 
-        self._create_client(uri)
+        self._execution_options = frozendict(execution_options or {})
+
         self._bootstrap_catalog()
-
-        self._dbapi_connection = DBAPIConnection(self._client)
-        """The underlying DBAPI connetion.
-
-        .. versionadded:: 0.7.0
-        """
 
         self._sql_compiler = NotionCompiler()
         """The SQL compiler.
@@ -578,35 +596,6 @@ class Engine:
         .. versionadded:: 0.11.0
         """
         return self._is_disposed
-
-    # -------------------------------------------------
-    # Client creation + bootstrap
-    # -------------------------------------------------
-
-    def _create_client(self, uri: NotionURI) -> None:
-        if uri.mode not in ("memory", "file"):
-            raise NotImplementedError
-
-        # Resolve database name
-        if uri.mode == "memory":
-            self._client = InMemoryNotionClient()
-            self._database = uri.database
-            self._user_database_name = self._user_database_name or uri.database
-        else:
-            self._client = FileBasedNotionClient(
-                uri.path,
-                read_only=self._read_only
-            )
-            self._database = uri.database
-            self._user_database_name = (
-                self._user_database_name or self._database
-            )
-
-        self._root_page_id = self._root_page_id or self._client._ROOT_PAGE_ID_
-
-        if uri.mode in ("memory", "file"):
-            # root page is required for simulated clients
-            self._client._ensure_root()
 
     # -------------------------------------------------
     # Bootstrap logic (idempotent)

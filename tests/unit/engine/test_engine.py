@@ -527,3 +527,49 @@ def test_create_table_persists_table_dsid_in_catalog(engine: Engine, students: T
     )
 
     assert entry.table_dsid == students.get_data_source_id()
+
+
+# -----------------------------------------------
+# Root page resolution
+# -----------------------------------------------
+
+def test_create_engine_without_user_or_client_root_page_id_raises_argument_error(monkeypatch):
+    # Arrange: a client that mints no root page and gives no default.
+    monkeypatch.setattr(
+        InMemoryNotionClient,
+        "default_root_page_id",
+        property(lambda self: None),
+    )
+
+    # Act / Assert: no user root_page_id, so the engine has no catalog anchor.
+    with pytest.raises(ArgumentError, match="root_page_id"):
+        create_engine("normlite:///:memory:")
+
+
+def test_create_engine_anchors_catalog_under_user_root_page_id(tmp_path):
+    # Arrange: a file store that holds a page the user wants as the root.
+    store_path = tmp_path / "store.json"
+    seed = FileBasedNotionClient(str(store_path))
+    seed._ensure_root()
+    user_root = seed.pages_create(payload={
+        "parent": {"type": "page_id", "page_id": seed.default_root_page_id},
+        "properties": {"Name": {"title": [{"text": {"content": "my_root"}}]}},
+    })
+    seed.close()
+
+    # Act
+    engine = create_engine(f"normlite:{store_path}", root_page_id=user_root["id"])
+
+    # Assert: the catalog lives under the user root, not under the client default.
+    client = engine.raw_connection().client
+    assert client.find_child_page(user_root["id"], "information_schema") is not None
+    assert client.find_child_page(client.default_root_page_id, "information_schema") is None
+
+
+def test_create_engine_without_user_root_anchors_catalog_under_client_default():
+    # Arrange / Act: no root_page_id from the user.
+    engine = create_engine("normlite:///:memory:")
+
+    # Assert: the catalog lives under the root page that the client mints.
+    client = engine.raw_connection().client
+    assert client.find_child_page(client.default_root_page_id, "information_schema") is not None
