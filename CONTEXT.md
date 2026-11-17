@@ -40,8 +40,13 @@ the `tables` catalog stores `data_source_id` alongside `table_id`. Reflection is
 
 A data source's **name is its `title`** (rich text), equal to the database title under the
 single-source invariant. **Orphan detection** — `get_table_state` for a table with *no* catalog
-row — finds a stray table by searching **data sources** on that title (search yields `data_source`
-objects, never `database`, per ADR-0014); a hit with no catalog row is `ORPHANED`.
+row — looks only inside the **user database page**. It lists the page children
+(`GET /v1/blocks/{block_id}/children`) and looks for a `child_database` block with the title
+`table_name`. A hit with no catalog row is `ORPHANED`. A Notion database outside the user database
+page is invisible to normlite (#505, #525). See
+[[adr-0027-the-catalog-lists-children-it-does-not-search]].
+_Avoid_: workspace `search` for orphan detection. It ignores the user database, and on a real
+integration its index is eventually consistent.
 
 The `tables` catalog **row schema** (final order): `table_name` (title), `table_schema`,
 `table_catalog`, `table_id`, **`data_source_id`** (rich_text, per ADR-0014), **`is_dropped`**
@@ -405,7 +410,7 @@ errors. See [[adr-0002-fake-client-lax-fk-validation]].
 `properties_retrieve` pagination endpoint. The fake currently returns the full list with
 no truncation. `Select.join()` v1 (PRD #302) ships **against in-memory clients only**, so
 this divergence is deferred **until a real Notion integration is built** — not resolved by
-the join work. Joins that paginate large relations in production must not silently rely on
+the join work. #505 builds the integration but does not close the gap: #527 owns it. Joins that paginate large relations in production must not silently rely on
 the fake's non-truncating behaviour. See [[adr-0007-join-dangling-fk-propagation]] for the
 shipped join FK-resolution contract and PRD #302 for the integration deferral.
 
@@ -418,12 +423,13 @@ A named, isolated collection of SQL objects (tables, schemas, views, functions) 
 integration manages. It is not a Notion **database** (see §"Data Source"). Its name is
 `user_database_name`. The `tables` catalog stores it as `table_catalog`, and the `SystemCatalog`
 creates a page with this name under the root page.
-- Today one integration has exactly one user database. The auth URI has no name.
 - For a `:memory:` URI the name is `"memory"`, as in SQLite. For a file URI it is the file stem.
   A user `user_database_name` overrides the default.
-- The auth default is open (#505). Until then, an auth URI with no user value gives `None`.
-- A future auth URI can carry the name as a path segment:
-  `normlite+auth://internal/university?token=...&version=...` → `"university"`.
+- An internal URI carries the name as a path segment (#505):
+  `normlite+auth://internal/university?token=...&version=...` → `"university"`. A user
+  `user_database_name` overrides it. If both are missing, the Engine raises `ArgumentError`.
+  There is no fixed default, so two projects in one workspace never share a user database by
+  accident.
 
 **The ENGINE selects the user database** (#510). The name is an address element of the URI:
 `_parse_uri` puts the default name into `NotionURI.database`. The Engine uses the user
@@ -455,6 +461,32 @@ demanded a user-supplied `root_page_id` was a latent bug; both simulated branche
 - *Resolve* which page anchors the catalog — ENGINE. The Engine uses the user value, else the
   client's public `default_root_page_id` (the minted ID for simulated clients, `None` for a real
   integration). If both are `None`, the Engine raises `ArgumentError`.
+
+### Engine construction failure
+`create_engine` connects eagerly: the Engine bootstraps the catalog in its constructor. If the
+bootstrap fails, the Engine closes the DBAPI connection and raises a DBAPI exception, with the
+`NotionError` as `__cause__` (#505). The Engine and the `Cursor` use the same error map.
+
+The bootstrap reads the root page first. On `object_not_found`, the message tells the user to
+share the root page with the integration. In Notion, a page that is not shared and a page that
+does not exist give the same 404.
+
+**Known limit — first-use race** (#505). The bootstrap is "get or create" with no lock. Two
+first-use bootstraps on one root page at the same time can create two `information_schema` pages.
+Every later bootstrap then raises `InternalError`, and the message names the duplicates and their
+IDs. Run the first `create_engine` on a new root page from one process only.
+
+### Notion API version
+The value of the `Notion-Version` header. normlite supports the versions in one set in
+`notion_sdk` (today only `2026-03-11`). The in-memory client simulates this version. The compiler
+emits payloads for this version only.
+
+An internal URI must carry `token` and `version` (#505):
+- A missing `token` or `version` is a user input error. `NotionURI.translate_connect_args()`
+  raises `ArgumentError`, before the Engine calls `dbapi2.connect()`.
+- An unsupported version is a client fact. The HTTP client constructor rejects it, and
+  `dbapi2.connect()` raises `InterfaceError`. The Engine does not know the set of versions.
+_Avoid_: a default version. The user always names the version.
 
 ---
 

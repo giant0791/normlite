@@ -1,6 +1,6 @@
 # ADR-0026: The DBAPI builds the client; the Engine translates the URI
 
-**Status:** Accepted (amended 2026-11-15 by #510, see "Amendment")
+**Status:** Accepted (amended 2026-11-15 by #510 and 2026-11-17 by #505, see "Amendment" sections)
 **Date:** 2026-11-14
 **Issue:** #439
 
@@ -72,7 +72,8 @@ CONTEXT §"Layers" sets one dependency direction: ENGINE → DBAPI, and nobody c
   and `connect()` is the public factory on top of it.
 - **Known limit.** `SystemCatalog` calls `find_child_page`, `find_child_database` and `_add`. These
   methods exist only on `InMemoryNotionClient`. The Engine is client-agnostic by type, but the
-  catalog still needs these methods. #505 resolves this in the catalog creation workflow.
+  catalog still needs these methods. #505 resolves this in the catalog creation workflow (see the
+  amendment of 2026-11-17).
 
 ## Amendment (2026-11-15, #510)
 
@@ -103,3 +104,18 @@ knows no URI type.
 **Rejected.** A flat `_ConnectArgs` with `user_database_name` next to the `connect()` keywords and
 `dataclasses.asdict()`. The Engine must then remove the name before it calls `connect()`, and
 `asdict()` returns every field, so the keywords are no longer minimal.
+
+## Amendment (2026-11-17, #505)
+
+The #505 design session changed three points of this ADR.
+
+- **The known limit is resolved.** `SystemCatalog` calls only `AbstractNotionClient` methods. It
+  lists children with the new endpoint method `blocks_children_list` and creates objects with
+  `pages_create` and `databases_create`. `find_child_page` and `find_child_database` are deleted.
+  See [ADR-0027](0027-the-catalog-lists-children-it-does-not-search.md).
+- **`connect()` builds `HttpNotionClient`.** A set `token` and `version` no longer raise
+  `NotImplementedError`. Both are mandatory for an internal URI: a missing one raises
+  `ArgumentError` in `NotionURI.translate_connect_args()`. An unsupported version raises
+  `InterfaceError` in `connect()`, because the set of supported versions is a client fact.
+- **`read_only` with an internal URI raises `ArgumentError`**, the same rule as for `:memory:`.
+  Before, `translate_connect_args()` dropped it silently.
