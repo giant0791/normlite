@@ -573,3 +573,16 @@ def test_create_engine_without_user_root_anchors_catalog_under_client_default():
     # Assert: the catalog lives under the root page that the client mints.
     client = engine.raw_connection().client
     assert client.find_child_page(client.default_root_page_id, "information_schema") is not None
+
+
+def test_dispose_closes_the_dbapi_connection_handed_out_by_raw_connection():
+    # Arrange: an in-memory engine, and the DBAPI connection it hands out
+    engine = create_engine("normlite:///:memory:")
+    dbapi_conn = engine.raw_connection()
+    assert dbapi_conn.closed is False
+
+    # Act: dispose the engine
+    engine.dispose()
+
+    # Assert: the DBAPI connection is now closed
+    assert dbapi_conn.closed is True
