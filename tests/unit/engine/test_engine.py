@@ -1,7 +1,11 @@
+import ast
 from collections import namedtuple
 import json
+from pathlib import Path
 import pdb
 import pytest
+
+import normlite.engine as engine_layer
 
 from normlite.engine.base import Engine, Inspector, NotionURI, _parse_uri, Connection, create_engine
 from normlite.engine.systemcatalog import TableState
@@ -586,3 +590,26 @@ def test_dispose_closes_the_dbapi_connection_handed_out_by_raw_connection():
 
     # Assert: the DBAPI connection is now closed
     assert dbapi_conn.closed is True
+
+
+def test_engine_layer_imports_no_concrete_notion_client():
+    # Arrange: the names that each engine module imports from the client module
+    engine_package_dir = Path(engine_layer.__file__).parent
+    client_imports = []
+    for source_file in sorted(engine_package_dir.rglob("*.py")):
+        tree = ast.parse(source_file.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and node.module.endswith("notion_sdk.client"):
+                client_imports.extend(
+                    (source_file.name, alias.name) for alias in node.names
+                )
+
+    # Act: keep only the concrete client classes
+    concrete_client_imports = [
+        (file_name, name)
+        for file_name, name in client_imports
+        if name in {"InMemoryNotionClient", "FileBasedNotionClient"}
+    ]
+
+    # Assert: the engine layer sees only the abstract client
+    assert concrete_client_imports == []
