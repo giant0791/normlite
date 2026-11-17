@@ -115,20 +115,6 @@ _desc_mapper: dict[str, str] = {
     SpecialColumns.NO_TITLE: "title",
 }
 
-class _Description:
-    """Internal DBAPI representation of cursor.description.
-
-    .. versionadded:: 0.9.0
-    """
-
-    __slots__ = ("_entries",)
-
-    def __init__(self, entries: tuple[tuple, ...]):
-        self._entries = entries
-
-    def as_sequence(self) -> tuple[tuple, ...]:
-        return self._entries
-
 
 def connect(
     *,
