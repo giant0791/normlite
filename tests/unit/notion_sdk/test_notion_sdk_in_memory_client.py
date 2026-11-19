@@ -1965,3 +1965,98 @@ def test_databases_query_endpoint_is_retired(client: InMemoryNotionClient):
     """
     with pytest.raises(NotionError, match="Unknown or unsupported operation"):
         client("databases", "query", path_params={"database_id": "some-db-id"})
+
+
+# ---------------------------------------------------------
+# blocks_children_list (#530, ADR-0027)
+# ---------------------------------------------------------
+
+def test_blocks_children_list_lists_child_page_and_child_database(client):
+    root_id = client.default_root_page_id
+    client.pages_create(payload=make_title_page(root_id, title="information_schema"))
+    client.databases_create(payload=make_database(root_id, name="students"))
+
+    response = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": root_id},
+    )
+
+    children = sorted(
+        (block["type"], block[block["type"]]["title"])
+        for block in response["results"]
+    )
+    assert response["object"] == "list"
+    assert children == [
+        ("child_database", "students"),
+        ("child_page", "information_schema"),
+    ]
+
+
+def test_blocks_children_list_returns_101_children_in_two_pages_of_at_most_100(client):
+    root_id = client.default_root_page_id
+    created_ids = [
+        client.pages_create(payload=make_title_page(root_id, title=f"page_{i}"))["id"]
+        for i in range(101)
+    ]
+
+    page_one = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": root_id},
+    )
+    page_two = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": root_id},
+        query_params={"start_cursor": page_one["next_cursor"]},
+    )
+
+    assert len(page_one["results"]) == 100
+    assert page_one["has_more"] is True
+    assert page_one["next_cursor"] is not None
+
+    assert len(page_two["results"]) == 1
+    assert page_two["has_more"] is False
+    assert page_two["next_cursor"] is None
+
+    seen_ids = [b["id"] for b in page_one["results"] + page_two["results"]]
+    assert sorted(seen_ids) == sorted(created_ids)
+
+
+def test_blocks_children_list_lists_children_in_creation_order(client):
+    root_id = client.default_root_page_id
+    created_ids = [
+        client.pages_create(payload=make_title_page(root_id, title="first"))["id"],
+        client.databases_create(payload=make_database(root_id, name="second"))["id"],
+        client.pages_create(payload=make_title_page(root_id, title="third"))["id"],
+    ]
+
+    first_listing = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": root_id},
+    )
+    second_listing = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": root_id},
+    )
+
+    assert [b["id"] for b in first_listing["results"]] == created_ids
+    assert [b["id"] for b in second_listing["results"]] == created_ids
+
+
+def test_blocks_children_list_of_a_page_without_children_is_empty(client):
+    root_id = client.default_root_page_id
+    leaf_page = client.pages_create(payload=make_title_page(root_id, title="leaf"))
+
+    response = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": leaf_page["id"]},
+    )
+
+    assert response["results"] == []
+    assert response["has_more"] is False
+    assert response["next_cursor"] is None
