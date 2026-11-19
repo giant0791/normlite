@@ -119,3 +119,20 @@ The #505 design session changed three points of this ADR.
   `InterfaceError` in `connect()`, because the set of supported versions is a client fact.
 - **`read_only` with an internal URI raises `ArgumentError`**, the same rule as for `:memory:`.
   Before, `translate_connect_args()` dropped it silently.
+
+## Amendment (2026-11-19, #529)
+
+This amendment replaces the version rule of the 2026-11-17 amendment.
+
+- **normlite pins the Notion API version.** One constant in `notion_sdk` holds it (today
+  `2026-03-11`). The user does not select it. The `Notion-Version` header controls the shape of
+  the responses, and normlite parses one shape only. A user-selected version can only break the
+  parsing. `HttpNotionClient` is not a normlite API class, so the version is invisible to the user.
+- **`version` is deleted** from `NotionURI`, from `_ConnectKWArgs`, from the `connect()` keywords
+  and from the `HttpNotionClient` constructor: `HttpNotionClient(token, *, session=None)`. No set
+  of supported versions exists, and no `InterfaceError` for an unsupported version.
+- **An internal URI accepts only `token`.** `_parse_uri()` raises `ArgumentError` for any other
+  query parameter, `version` included. Before #529, `connect()` raised `NotImplementedError` for a
+  set `token`, so no working URI depends on `version`.
+
+**Rejected.** Silently ignore `version`. An old URI then seems to select a version, but it does not.
