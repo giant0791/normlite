@@ -22,7 +22,7 @@ from itertools import islice
 import uuid
 
 from normlite._constants import SpecialColumns
-from normlite.notion_sdk.client import AbstractNotionClient, FileBasedNotionClient, InMemoryNotionClient, NotionError
+from normlite.notion_sdk.client import AbstractNotionClient, FileBasedNotionClient, HttpNotionClient, InMemoryNotionClient, NotionError
 from normlite.notiondbapi.page_iterator import JsonPageSource, PageIterator
 from normlite.notiondbapi.resultset import ResultSet
 
@@ -122,10 +122,9 @@ def connect(
     path: Optional[str] = None,
     read_only: bool = False,
     token: Optional[str] = None,
-    version: Optional[str] = None,
 ) -> Connection:
-    if token is not None or version is not None:
-        raise NotImplementedError("Internal integrations are not supported yet.")
+    if token is not None:
+        return Connection(HttpNotionClient(token))
 
     match mode:
         case "memory":
