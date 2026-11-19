@@ -2045,3 +2045,18 @@ def test_blocks_children_list_lists_children_in_creation_order(client):
 
     assert [b["id"] for b in first_listing["results"]] == created_ids
     assert [b["id"] for b in second_listing["results"]] == created_ids
+
+
+def test_blocks_children_list_of_a_page_without_children_is_empty(client):
+    root_id = client.default_root_page_id
+    leaf_page = client.pages_create(payload=make_title_page(root_id, title="leaf"))
+
+    response = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": leaf_page["id"]},
+    )
+
+    assert response["results"] == []
+    assert response["has_more"] is False
+    assert response["next_cursor"] is None
