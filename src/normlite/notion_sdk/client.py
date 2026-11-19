@@ -41,7 +41,7 @@ import urllib.parse
 from requests import PreparedRequest, Session
 from requests.auth import AuthBase
 
-from normlite.notion_sdk.getters import get_object_type, get_title
+from normlite.notion_sdk.getters import get_object_type, get_parent_id, get_parent_type, get_title
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
 
 
@@ -621,6 +621,46 @@ class AbstractNotionClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def blocks_children_list(
+        self,
+        path_params: dict,
+        query_params: Optional[dict] = None,
+        payload: Optional[dict] = None,
+    ) -> dict:
+        """Return a paginated list of the child blocks of the block
+        ``path_params["block_id"]``.
+
+        The returned object is a ``list`` object. It is paginated, and it provides the top-level
+        child blocks under the key ``"results"``.
+
+        .. note::
+            This method is used to retrieve child pages and databases.
+            The block object id provides the child page or database id.
+
+            .. code-block:: python
+
+                # a child block object is returned as a dict
+                # the id refers to the child_page id
+                {
+                    "object": "block",
+                    "id": "7af38973-3787-41b3-bd75-0ed3a1edfac9",
+                    "type": "child_page",
+                    "child_page": { "title": "Lacinato kale" }
+                }
+
+        Args:
+            path_params (dict): A dict specifying the object id in the key "block_id".
+            query_params (Optional[dict], optional): A dict for paginated results: "start_cursor" is
+                the id for the next result page and "page_size" is the number of objects per page results.
+                Defaults to ``None``.
+            payload (Optional[dict], optional): Not used. Defaults to None.
+
+        Returns:
+            dict: A dict containing the result object.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def search(
         self,
         path_params: Optional[dict] = None,
@@ -644,7 +684,7 @@ class AbstractNotionClient(ABC):
             dict: Dictionary as result object containing the search results. The list key "result" is empty,
                 if no results were found.
         """
-
+        raise NotImplementedError
 
 class InMemoryNotionClient(AbstractNotionClient):
     """Provide a simple but complete in-memory Notion client.
@@ -1328,6 +1368,40 @@ class InMemoryNotionClient(AbstractNotionClient):
             )
         return copy.deepcopy(obj)
 
+    _CHILD_BLOCK_TYPES = {"page": "child_page", "database": "child_database"}
+    """Map the object kind of a child to the Notion block type that lists it."""
+
+    def blocks_children_list(
+        self,
+        path_params: dict,
+        query_params: Optional[dict] = None,
+        payload: Optional[dict] = None,
+    ) -> dict:
+        block_id = path_params.get("block_id")
+        results = []
+        for obj in self._store.values():
+            if get_parent_type(obj) == "data_source_id":
+                # skip rows: a page in a data source is not a child block of a page
+                continue
+
+            if get_parent_id(obj) != block_id:
+                continue
+
+            block_type = self._CHILD_BLOCK_TYPES[get_object_type(obj)]
+            results.append({
+                "object": "block",
+                "id": obj["id"],
+                "type": block_type,
+                block_type: {"title": get_title(obj)},
+            })
+
+        return {
+            "type": "block",
+            "block": {},
+            "object": "list",
+            "results": results,
+        }
+
     def search(
             self,
             path_params: Optional[dict] = None,
@@ -1678,6 +1752,14 @@ class HttpNotionClient(AbstractNotionClient):
         raise NotImplementedError
 
     def data_sources_retrieve(self, path_params = None, query_params = None, payload = None) -> dict:
+        raise NotImplementedError
+
+    def blocks_children_list(
+        self,
+        path_params: dict,
+        query_params: Optional[dict] = None,
+        payload: Optional[dict] = None,
+    ) -> dict:
         raise NotImplementedError
 
     def search(

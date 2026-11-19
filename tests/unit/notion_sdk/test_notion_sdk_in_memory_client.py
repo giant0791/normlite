@@ -1965,3 +1965,29 @@ def test_databases_query_endpoint_is_retired(client: InMemoryNotionClient):
     """
     with pytest.raises(NotionError, match="Unknown or unsupported operation"):
         client("databases", "query", path_params={"database_id": "some-db-id"})
+
+
+# ---------------------------------------------------------
+# blocks_children_list (#530, ADR-0027)
+# ---------------------------------------------------------
+
+def test_blocks_children_list_lists_child_page_and_child_database(client):
+    root_id = client.default_root_page_id
+    client.pages_create(payload=make_title_page(root_id, title="information_schema"))
+    client.databases_create(payload=make_database(root_id, name="students"))
+
+    response = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": root_id},
+    )
+
+    children = sorted(
+        (block["type"], block[block["type"]]["title"])
+        for block in response["results"]
+    )
+    assert response["object"] == "list"
+    assert children == [
+        ("child_database", "students"),
+        ("child_page", "information_schema"),
+    ]
