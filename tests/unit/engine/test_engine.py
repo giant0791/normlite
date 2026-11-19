@@ -47,11 +47,11 @@ Create a new table (new Notion database)
 2. Update the tables Notion database under the page information_schema
 """
 
-Environment = namedtuple('Environment', ['NOTION_TOKEN', 'NOTION_VERSION'])
+Environment = namedtuple('Environment', ['NOTION_TOKEN'])
 
 @pytest.fixture
 def int_env() -> Environment:
-    return Environment('ntn_abc123def456ghi789jkl012mno345pqr', '2022-06-28')
+    return Environment('ntn_abc123def456ghi789jkl012mno345pqr')
 
 @pytest.fixture
 def inspector(engine: Engine) -> Inspector:
@@ -75,13 +75,10 @@ def test_parse_uri_for_file_integration():
     assert uri.database == 'test-integration'
 
 def test_parse_uri_for_internal_integration(int_env: Environment):
-    uri: NotionURI = _parse_uri(
-        f'normlite+auth://internal?token={int_env.NOTION_TOKEN}&version={int_env.NOTION_VERSION}'
-    )
+    uri: NotionURI = _parse_uri(f'normlite+auth://internal?token={int_env.NOTION_TOKEN}')
     assert isinstance(uri, NotionURI)
     assert uri.kind == 'internal'
     assert uri.token == int_env.NOTION_TOKEN
-    assert uri.version == int_env.NOTION_VERSION
     assert uri.client_id is None
     assert uri.client_secret is None
     assert uri.auth_url is None
@@ -126,31 +123,28 @@ def test_translate_connect_args_memory_uri_with_read_only_raises_argument_error(
     with pytest.raises(ArgumentError, match='read_only is only valid for file-based URIs'):
         uri.translate_connect_args(read_only=True)
 
-def test_translate_connect_args_internal_uri_gives_token_and_version(int_env: Environment):
-    uri: NotionURI = _parse_uri(
-        f'normlite+auth://internal?token={int_env.NOTION_TOKEN}&version={int_env.NOTION_VERSION}'
-    )
+def test_parse_uri_internal_integration_rejects_the_version_parameter(int_env: Environment):
+    # normlite pins the Notion API version. The URI does not select it.
+    with pytest.raises(ArgumentError, match="unknown parameter 'version'"):
+        _parse_uri(f'normlite+auth://internal?token={int_env.NOTION_TOKEN}&version=2026-03-11')
 
-    connect_kwargs = uri.translate_connect_args()
+def test_parse_uri_internal_integration_rejects_an_unknown_parameter(int_env: Environment):
+    with pytest.raises(ArgumentError, match="unknown parameter 'colour'"):
+        _parse_uri(f'normlite+auth://internal?token={int_env.NOTION_TOKEN}&colour=blue')
 
-    assert connect_kwargs == {
-        'token': int_env.NOTION_TOKEN,
-        'version': int_env.NOTION_VERSION,
-    }
-
-def test_translate_connect_args_internal_uri_without_token_omits_token(int_env: Environment):
-    uri: NotionURI = _parse_uri(f'normlite+auth://internal?version={int_env.NOTION_VERSION}')
-
-    connect_kwargs = uri.translate_connect_args()
-
-    assert connect_kwargs == {'version': int_env.NOTION_VERSION}
-
-def test_translate_connect_args_internal_uri_without_version_omits_version(int_env: Environment):
+def test_translate_connect_args_internal_uri_gives_token(int_env: Environment):
     uri: NotionURI = _parse_uri(f'normlite+auth://internal?token={int_env.NOTION_TOKEN}')
 
     connect_kwargs = uri.translate_connect_args()
 
     assert connect_kwargs == {'token': int_env.NOTION_TOKEN}
+
+def test_translate_connect_args_internal_uri_without_token_omits_token():
+    uri: NotionURI = _parse_uri('normlite+auth://internal')
+
+    connect_kwargs = uri.translate_connect_args()
+
+    assert connect_kwargs == {}
 
 def test_translate_connect_args_external_uri_raises_not_implemented_error():
     uri: NotionURI = _parse_uri(
@@ -608,7 +602,7 @@ def test_engine_layer_imports_no_concrete_notion_client():
     concrete_client_imports = [
         (file_name, name)
         for file_name, name in client_imports
-        if name in {"InMemoryNotionClient", "FileBasedNotionClient"}
+        if name in {"InMemoryNotionClient", "FileBasedNotionClient", "HttpNotionClient"}
     ]
 
     # Assert: the engine layer sees only the abstract client

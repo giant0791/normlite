@@ -46,7 +46,6 @@ class _ConnectKWArgs(TypedDict, total=False):
     path: Optional[str]
     read_only: bool
     token: str
-    version: str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -59,7 +58,8 @@ class NotionURI:
     .. versionchanged:: 0.15.0
         :class:`NotionURI` is one flat, frozen, keyword-only dataclass. It replaces the union of
         ``NotionSimulatedURI`` and ``NotionAuthURI``, which are deleted. The ``file`` field is
-        deleted, and the new ``database`` field holds the file stem.
+        deleted, and the new ``database`` field holds the file stem. The ``version`` field is
+        deleted: normlite pins the Notion API version (see ADR-0026).
     """
 
     kind: Literal["simulated", "internal", "external"]
@@ -82,9 +82,6 @@ class NotionURI:
     # internal
     token: Optional[str] = None
     """The integration token of an internal integration."""
-
-    version: Optional[str] = None
-    """The Notion API version of an internal integration."""
 
     # external
     client_id: Optional[str] = None
@@ -128,8 +125,6 @@ class NotionURI:
             connect_args = _ConnectKWArgs()
             if self.token is not None:
                 connect_args["token"] = self.token
-            if self.version is not None:
-                connect_args["version"] = self.version
 
             return connect_args
 
@@ -137,11 +132,20 @@ class NotionURI:
         raise NotImplementedError("External integrations are not supported yet.")
 
 
+_INTERNAL_URI_PARAMS = frozenset({"token"})
+"""The query parameters that an internal URI accepts."""
+
+
 def _parse_uri(uri: str) -> NotionURI:
     """Provide helper function to parse a normlite URI.
 
+    Raises:
+        ArgumentError: If an internal URI has a query parameter other than ``token``.
+            normlite pins the Notion API version, so ``version`` is an unknown parameter.
+
     .. versionchanged:: 0.15.0
         Returns one flat :class:`NotionURI` and sets its ``database`` field.
+        Rejects unknown query parameters of internal URIs.
     """
     parsed = urlparse(uri)
 
@@ -157,10 +161,16 @@ def _parse_uri(uri: str) -> NotionURI:
             return params.get(name, [None])[0]
 
         if host == "internal":
+            for name in params:
+                if name not in _INTERNAL_URI_PARAMS:
+                    raise ArgumentError(
+                        f"Internal URI has an unknown parameter '{name}'. "
+                        f"Supported parameters: {', '.join(sorted(_INTERNAL_URI_PARAMS))}."
+                    )
+
             return NotionURI(
                 kind="internal",
                 token=get_param("token"),
-                version=get_param("version")
             )
         elif host == "external":
             return NotionURI(
