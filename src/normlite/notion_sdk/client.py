@@ -48,6 +48,9 @@ from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
 _NOTION_API_VERSION = "2026-03-11"
 """Notion API version supported by the clients."""
 
+_NOTION_MAX_PAGE_SIZE = 100
+"""Notion API delivers up to 100 elements per page."""
+
 
 class NotionError(Exception):
     """Exception raised for all errors related to the Notion REST API.
@@ -150,6 +153,45 @@ def decode_cursor(cursor_str: str) -> int:
     except ValueError as e:
         raise ValueError(f"Invalid or corrupted cursor string: {cursor_str}") from e
 
+def _paginate_results(
+    object_type: str,
+    results: list[dict],
+    *,
+    start_cursor: Optional[str] = None,
+    page_size: Optional[int] = None,
+) -> dict:
+    """Return one page of ``results`` as a Notion ``list`` object.
+
+    The pagination is stateless. The cursor holds an offset into ``results``.
+    Each call slices the full list again from that offset.
+    The caller must therefore pass the same list, in the same order, on every call.
+
+    Args:
+        object_type (str): The type of the listed objects, for example ``"page"`` or ``"block"``.
+        results (list[dict]): The full, ordered list of objects.
+        start_cursor (Optional[str]): The ``next_cursor`` of the previous page.
+            ``None`` starts at the first object.
+        page_size (Optional[int]): The requested page size.
+            The page size is at most :data:`_NOTION_MAX_PAGE_SIZE`.
+
+    Returns:
+        dict: The Notion ``list`` object with ``results``, ``has_more`` and ``next_cursor``.
+    """
+    page_size = min(page_size or _NOTION_MAX_PAGE_SIZE, _NOTION_MAX_PAGE_SIZE)
+    offset = decode_cursor(start_cursor) if start_cursor is not None else 0
+    end = offset + page_size
+    has_more = end < len(results)
+
+    return {
+        "type": object_type,
+        object_type: {},
+        "object": "list",
+        "results": results[offset:end],
+        "has_more": has_more,
+        "next_cursor": encode_cursor(end) if has_more else None,
+    }
+
+
 class _ClientQueryEngine:
     def __init__(
         self,
@@ -175,23 +217,12 @@ class _ClientQueryEngine:
         }
 
     def _paginate(self) -> None:
-        # pagination slices every time the same overall result,
-        # but it uses the start_cursor for the next offset to begin to slice from
-        requested_page_size = self._payload.get("page_size") or InMemoryNotionClient.NOTION_MAX_PAGE_SIZE
-        page_size = min(requested_page_size, InMemoryNotionClient.NOTION_MAX_PAGE_SIZE)
-        start_cursor = self._payload.get("start_cursor")
-        offset = decode_cursor(start_cursor) if start_cursor is not None else 0
-        end = offset + page_size
-
-        # slice the next page and encode the next cursor if necessary
-        next_page = [
-            p
-            for p in self._query_results[offset:end]
-        ]
-        self._query_result_object["results"] = next_page
-        if end < len(self._query_results):
-            self._query_result_object["has_more"] = True
-            self._query_result_object["next_cursor"] = encode_cursor(end)
+        self._query_result_object = _paginate_results(
+            "page",
+            self._query_results,
+            start_cursor=self._payload.get("start_cursor"),
+            page_size=self._payload.get("page_size"),
+        )
 
     def _sort(self) -> None:
         sorts = self._payload.get("sorts")
@@ -300,7 +331,7 @@ class AbstractNotionClient(ABC):
     allowed_operations: Set[str] = set()
     """The set of Notion API calls."""
 
-    NOTION_MAX_PAGE_SIZE = 100
+    NOTION_MAX_PAGE_SIZE = _NOTION_MAX_PAGE_SIZE
 
     def __init__(self):
         self._ischema_page_id = None
@@ -1395,12 +1426,11 @@ class InMemoryNotionClient(AbstractNotionClient):
                 block_type: {"title": get_title(obj)},
             })
 
-        return {
-            "type": "block",
-            "block": {},
-            "object": "list",
-            "results": results,
-        }
+        return _paginate_results(
+            "block",
+            results,
+            start_cursor=(query_params or {}).get("start_cursor")
+        )
 
     def search(
             self,

@@ -1991,3 +1991,34 @@ def test_blocks_children_list_lists_child_page_and_child_database(client):
         ("child_database", "students"),
         ("child_page", "information_schema"),
     ]
+
+
+def test_blocks_children_list_returns_101_children_in_two_pages_of_at_most_100(client):
+    root_id = client.default_root_page_id
+    created_ids = [
+        client.pages_create(payload=make_title_page(root_id, title=f"page_{i}"))["id"]
+        for i in range(101)
+    ]
+
+    page_one = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": root_id},
+    )
+    page_two = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": root_id},
+        query_params={"start_cursor": page_one["next_cursor"]},
+    )
+
+    assert len(page_one["results"]) == 100
+    assert page_one["has_more"] is True
+    assert page_one["next_cursor"] is not None
+
+    assert len(page_two["results"]) == 1
+    assert page_two["has_more"] is False
+    assert page_two["next_cursor"] is None
+
+    seen_ids = [b["id"] for b in page_one["results"] + page_two["results"]]
+    assert sorted(seen_ids) == sorted(created_ids)
