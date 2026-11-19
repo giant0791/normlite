@@ -2022,3 +2022,26 @@ def test_blocks_children_list_returns_101_children_in_two_pages_of_at_most_100(c
 
     seen_ids = [b["id"] for b in page_one["results"] + page_two["results"]]
     assert sorted(seen_ids) == sorted(created_ids)
+
+
+def test_blocks_children_list_lists_children_in_creation_order(client):
+    root_id = client.default_root_page_id
+    created_ids = [
+        client.pages_create(payload=make_title_page(root_id, title="first"))["id"],
+        client.databases_create(payload=make_database(root_id, name="second"))["id"],
+        client.pages_create(payload=make_title_page(root_id, title="third"))["id"],
+    ]
+
+    first_listing = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": root_id},
+    )
+    second_listing = client(
+        "blocks",
+        "children_list",
+        path_params={"block_id": root_id},
+    )
+
+    assert [b["id"] for b in first_listing["results"]] == created_ids
+    assert [b["id"] for b in second_listing["results"]] == created_ids
