@@ -48,7 +48,7 @@ You can even view or edit that database in the Notion app, just like any normal 
 
 When everything is set up, connecting is as simple as:
 ``` python
-engine = create_engine("normlite+auth:///internal?token=YOUR_NOTION_TOKEN&version=NOTION_VERSION")
+engine = create_engine("normlite+auth:///internal?token=YOUR_NOTION_TOKEN")
 ```
 There is **no need to specify a database name**.
 Your integration token already defines which database you’re working with.

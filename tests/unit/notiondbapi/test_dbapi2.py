@@ -4,9 +4,15 @@ from pathlib import Path
 import uuid
 
 import pytest
+import requests
 from faker import Faker
 
-from normlite.notion_sdk.client import FileBasedNotionClient, InMemoryNotionClient, NotionError
+from normlite.notion_sdk.client import (
+    FileBasedNotionClient,
+    HttpNotionClient,
+    InMemoryNotionClient,
+    NotionError,
+)
 from normlite.notion_sdk.getters import rich_text_to_plain_text
 from normlite.notiondbapi import dbapi2
 from normlite.notiondbapi.dbapi2 import (
@@ -1408,17 +1414,24 @@ def test_connect_in_file_mode_with_a_corrupted_store_raises_operational_error(tm
         dbapi2.connect(mode="file", path=str(store_file))
 
 
-@pytest.mark.parametrize(
-    "external_kwargs",
-    [{"token": "secret-token"}, {"version": "2025-09-03"}],
-    ids=["token", "version"],
-)
-def test_connect_with_a_token_or_version_raises_not_implemented_error(external_kwargs):
-    # Act / Assert
-    with pytest.raises(
-        NotImplementedError, match="Internal integrations are not supported yet"
-    ):
-        dbapi2.connect(**external_kwargs)
+def test_connect_with_a_token_builds_an_http_client_and_sends_no_request(monkeypatch):
+    # Arrange: the client creates its own session. The fake replaces the
+    # session class in the client module only, and it records each request.
+    sent: list[requests.PreparedRequest] = []
+
+    class RecordingSession(requests.Session):
+        def send(self, request, **kwargs):
+            sent.append(request)
+            raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    monkeypatch.setattr("normlite.notion_sdk.client.Session", RecordingSession)
+
+    # Act
+    connection = dbapi2.connect(token="fake-token")
+
+    # Assert
+    assert isinstance(connection.client, HttpNotionClient)
+    assert sent == []
 
 
 def test_dbapi_layer_imports_nothing_from_the_engine_layer():

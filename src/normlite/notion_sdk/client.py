@@ -38,8 +38,16 @@ import random
 import string
 import urllib.parse
 
+from requests import PreparedRequest, Session
+from requests.auth import AuthBase
+
 from normlite.notion_sdk.getters import get_object_type, get_title
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
+
+
+_NOTION_API_VERSION = "2026-03-11"
+"""Notion API version supported by the clients."""
+
 
 class NotionError(Exception):
     """Exception raised for all errors related to the Notion REST API.
@@ -1596,6 +1604,100 @@ class FileBasedNotionClient(InMemoryNotionClient):
         if self._auto_flush:
             self.close()
         return False  # never swallow exceptions
+
+class _NotionAuth(AuthBase):
+    """Provide a simple class to attach the Notion token to a given Request object."""
+
+    _token: str
+
+    def __init__(self, token: str) -> None:
+        self._token = token
+
+    def __call__(self, r: PreparedRequest) -> PreparedRequest:
+        r.headers["Authorization"] = f"Bearer {self._token}"
+        return r
+
+    def __repr__(self) -> str:
+        return "<_NotionAuth token=***>"
+
+
+class HttpNotionClient(AbstractNotionClient):
+    """HTTP client to communicate with real Notion.
+
+    .. versionadded:: 0.15.0
+    """
+
+    _API_BASE_URL = "https://api.notion.com/v1"
+
+    _headers: dict
+    """The Notion API required headers."""
+
+    _session: Session
+    """The request session used for HTTP communication."""
+
+    _owns_session: bool
+    """Internal flag to signal whether this client created the session."""
+
+    _auth: _NotionAuth
+    """Opaque object used for Notion API authentication."""
+
+    def __init__(self, token: str, *, session: Optional[Session] = None) -> None:
+        super().__init__()
+        self._auth = _NotionAuth(token)
+        self._session = session if session is not None else Session()
+        self._owns_session = session is None
+        self._headers = {
+            "Notion-Version": _NOTION_API_VERSION,
+            "Content-Type": "application/json"
+        }
+
+    def pages_create(self, path_params=None, query_params=None, payload=None) -> dict:
+        raise NotImplementedError
+
+    def pages_retrieve(self, path_params = None, query_params = None, payload = None) -> dict:
+        response = self._session.get(
+            f"{self._API_BASE_URL}/pages/{path_params['page_id']}",
+            headers=self._headers,
+            auth=self._auth
+        )
+        return response.json()
+
+    def pages_update(self, path_params = None, query_params = None, payload = None) -> dict:
+        raise NotImplementedError
+
+    def databases_create(self, path_params = None, query_params = None, payload = None) -> dict:
+        raise NotImplementedError
+
+    def databases_retrieve(self, path_params = None, query_params = None, payload = None) -> dict:
+        raise NotImplementedError
+
+    def databases_update(self, path_params = None, query_params = None, payload = None) -> dict:
+        raise NotImplementedError
+
+    def data_sources_query(self, path_params = None, query_params = None, payload = None) -> dict:
+        raise NotImplementedError
+
+    def data_sources_retrieve(self, path_params = None, query_params = None, payload = None) -> dict:
+        raise NotImplementedError
+
+    def search(
+        self,
+        path_params: Optional[dict] = None,
+        query_params: Optional[dict] = None,
+        payload: Optional[dict] = None
+    ) -> dict:
+        raise NotImplementedError
+
+    def close(self) -> None:
+        """Close the client and the underlying session if the client owns it.
+
+        The HTTP client tracks whether the session was injected or it is owned, and
+        only if the client owns it, it closes the ``requests.Session`` object.
+
+        .. versionadded:: 0.15.0
+        """
+        if self._owns_session:
+            self._session.close()
 
 #--------------------------------------------------
 # Private classes for implementing database queries

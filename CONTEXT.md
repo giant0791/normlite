@@ -426,7 +426,7 @@ creates a page with this name under the root page.
 - For a `:memory:` URI the name is `"memory"`, as in SQLite. For a file URI it is the file stem.
   A user `user_database_name` overrides the default.
 - An internal URI carries the name as a path segment (#505):
-  `normlite+auth://internal/university?token=...&version=...` → `"university"`. A user
+  `normlite+auth://internal/university?token=...` → `"university"`. A user
   `user_database_name` overrides it. If both are missing, the Engine raises `ArgumentError`.
   There is no fixed default, so two projects in one workspace never share a user database by
   accident.
@@ -477,16 +477,19 @@ Every later bootstrap then raises `InternalError`, and the message names the dup
 IDs. Run the first `create_engine` on a new root page from one process only.
 
 ### Notion API version
-The value of the `Notion-Version` header. normlite supports the versions in one set in
-`notion_sdk` (today only `2026-03-11`). The in-memory client simulates this version. The compiler
-emits payloads for this version only.
+The value of the `Notion-Version` header. normlite pins one version in one constant in
+`notion_sdk` (today `2026-03-11`). The HTTP client always sends it, and the in-memory client
+simulates it. The compiler emits payloads for this version only.
 
-An internal URI must carry `token` and `version` (#505):
-- A missing `token` or `version` is a user input error. `NotionURI.translate_connect_args()`
-  raises `ArgumentError`, before the Engine calls `dbapi2.connect()`.
-- An unsupported version is a client fact. The HTTP client constructor rejects it, and
-  `dbapi2.connect()` raises `InterfaceError`. The Engine does not know the set of versions.
-_Avoid_: a default version. The user always names the version.
+The user does not select the version (#529). `HttpNotionClient` is not a normlite API class, so
+the version is invisible to the user. When Notion retires the pinned version, the user upgrades
+normlite.
+- An internal URI must carry `token`. A missing `token` is a user input error:
+  `NotionURI.translate_connect_args()` raises `ArgumentError`, before the Engine calls
+  `dbapi2.connect()`.
+- An internal URI accepts no other query parameter. `_parse_uri()` raises `ArgumentError` for an
+  unknown parameter, and `version` is one.
+_Avoid_: a `version` URI parameter; a set of supported versions.
 
 ---
 
