@@ -39,7 +39,7 @@ def test_pages_retrieve_sends_one_get_with_the_notion_headers():
     page_id = "680dee41-b447-451d-9d36-c6eaff13fb46"
     page = {"object": "page", "id": page_id, "properties": {}}
     session = FakeSession(response_body=page)
-    client = HttpNotionClient("fake-token", "2026-03-11", session=session)
+    client = HttpNotionClient("fake-token", session=session)
 
     # Act
     result = client.pages_retrieve({"page_id": page_id})
@@ -66,7 +66,7 @@ def test_close_closes_the_session_that_the_client_created(monkeypatch):
         return session
 
     monkeypatch.setattr("normlite.notion_sdk.client.Session", make_session)
-    client = HttpNotionClient("fake-token", "2026-03-11")
+    client = HttpNotionClient("fake-token")
 
     # Act
     client.close()
@@ -78,7 +78,7 @@ def test_close_closes_the_session_that_the_client_created(monkeypatch):
 
 def test_client_state_does_not_show_the_token():
     # Arrange
-    client = HttpNotionClient("fake-token", "2026-03-11", session=FakeSession())
+    client = HttpNotionClient("fake-token", session=FakeSession())
 
     # Act: show the client and all the state it keeps, as a debugger or a
     # traceback with local variables does.
@@ -86,3 +86,17 @@ def test_client_state_does_not_show_the_token():
 
     # Assert
     assert "fake-token" not in shown
+
+
+def test_close_does_not_close_an_injected_session():
+    # Regression guard: the creator closes. The caller created this session,
+    # so the caller closes it.
+    # Arrange
+    session = FakeSession()
+    client = HttpNotionClient("fake-token", session=session)
+
+    # Act
+    client.close()
+
+    # Assert
+    assert not session.closed

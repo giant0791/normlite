@@ -44,6 +44,11 @@ from requests.auth import AuthBase
 from normlite.notion_sdk.getters import get_object_type, get_title
 from normlite.notion_sdk.types import normalize_filter_date, normalize_page_date
 
+
+_NOTION_API_VERSION = "2026-03-11"
+"""Notion API version supported by the clients."""
+
+
 class NotionError(Exception):
     """Exception raised for all errors related to the Notion REST API.
 
@@ -1624,9 +1629,6 @@ class HttpNotionClient(AbstractNotionClient):
 
     _API_BASE_URL = "https://api.notion.com/v1"
 
-    _version: str
-    """The Notion API version."""
-
     _headers: dict
     """The Notion API required headers."""
 
@@ -1639,14 +1641,13 @@ class HttpNotionClient(AbstractNotionClient):
     _auth: _NotionAuth
     """Opaque object used for Notion API authentication."""
 
-    def __init__(self, token: str, version: str, *, session: Optional[Session] = None) -> None:
+    def __init__(self, token: str, *, session: Optional[Session] = None) -> None:
         super().__init__()
         self._auth = _NotionAuth(token)
-        self._version = version
         self._session = session if session is not None else Session()
         self._owns_session = session is None
         self._headers = {
-            "Notion-Version": version,
+            "Notion-Version": _NOTION_API_VERSION,
             "Content-Type": "application/json"
         }
 
@@ -1688,6 +1689,13 @@ class HttpNotionClient(AbstractNotionClient):
         raise NotImplementedError
 
     def close(self) -> None:
+        """Close the client and the underlying session if the client owns it.
+
+        The HTTP client tracks whether the session was injected or it is owned, and
+        only if the client owns it, it closes the ``requests.Session`` object.
+
+        .. versionadded:: 0.15.0
+        """
         if self._owns_session:
             self._session.close()
 
